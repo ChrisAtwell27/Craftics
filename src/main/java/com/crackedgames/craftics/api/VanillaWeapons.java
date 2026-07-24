@@ -297,7 +297,9 @@ public final class VanillaWeapons {
                             boolean sweepHazard = tile.getType() == com.crackedgames.craftics.core.TileType.VOID
                                 || tile.getType() == com.crackedgames.craftics.core.TileType.DEEP_WATER
                                 || tile.getType() == com.crackedgames.craftics.core.TileType.LAVA
-                                || tile.getType() == com.crackedgames.craftics.core.TileType.WATER;
+                                || tile.getType() == com.crackedgames.craftics.core.TileType.WATER
+                                || tile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW
+                                || tile.getType() == com.crackedgames.craftics.core.TileType.LOW_GROUND;
                             if (sweepHazard && sweepTarget.isHazardImmune()) sweepHazard = false;
                             if (tile.isWalkable() || sweepHazard) {
                                 arena.moveEntity(sweepTarget, sweepKbPos);
@@ -324,6 +326,16 @@ public final class VanillaWeapons {
                                             sweepTarget.stackSoaked(2, 1);
                                             messages.add("\u00a7b" + sweepTarget.getDisplayName() + " splashes into water and is soaked!");
                                         }
+                                        case POWDER_SNOW -> {
+                                            int freezeDmg = sweepTarget.takeDamage(2);
+                                            sweepTarget.stackSlowness(2, 1);
+                                            totalExtra += freezeDmg;
+                                            messages.add("\u00a7b" + sweepTarget.getDisplayName() + " sinks into powder snow!");
+                                        }
+                                        case LOW_GROUND -> {
+                                            sweepTarget.setStunned(true);
+                                            messages.add("\u00a77" + sweepTarget.getDisplayName() + " tumbles into a sunken pit!");
+                                        }
                                         default -> {}
                                     }
                                 }
@@ -347,18 +359,13 @@ public final class VanillaWeapons {
             }
         }
 
-        // Diamond Sword: 30% crit (double damage)
-        Item weapon = player.getMainHandStack().getItem();
-        if (weapon == Items.DIAMOND_SWORD && Math.random() < 0.3) {
-            messages.add("\u00a76CRITICAL HIT! Double damage.");
-            return new WeaponAbility.AttackResult(baseDamage * 2 + totalExtra, messages, extraTargets);
-        }
-
-        // Netherite Sword: execute (triple damage if target below 30% HP)
-        if (weapon == Items.NETHERITE_SWORD && target.getCurrentHp() < target.getMaxHp() * 0.3) {
-            messages.add("\u00a74EXECUTE! Triple damage on wounded target.");
-            return new WeaponAbility.AttackResult(baseDamage * 3 + totalExtra, messages, extraTargets);
-        }
+        // NOTE: the Diamond Sword crit (2x) and Netherite Sword execute (3x) used
+        // to live here, but this method's returned damage() is DISCARDED for the
+        // primary target (CombatManager deals the primary hit from its own
+        // baseDamage, and only reads extraTargets() from this result). So those
+        // multipliers never actually landed. They now live in the real damage
+        // chain in CombatManager (search "Signature tier-weapon multipliers"),
+        // which owns the message + achievement + VFX for both.
 
         return new WeaponAbility.AttackResult(baseDamage + totalExtra, messages, extraTargets);
     }

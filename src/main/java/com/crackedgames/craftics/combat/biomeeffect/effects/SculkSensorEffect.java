@@ -84,6 +84,12 @@ public final class SculkSensorEffect implements BiomeEffect {
         }
 
         ctx.message("§3The sculk stirs - sensors line the dark. Tread carefully.");
+
+        // Deeper and Darker props ride along here rather than in their own biome
+        // effect: a biome's JSON names exactly one effect id, and deep_dark's is
+        // this one. No-ops when the mod isn't installed.
+        com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat
+            .placeArenaProps(ctx);
     }
 
     @Override

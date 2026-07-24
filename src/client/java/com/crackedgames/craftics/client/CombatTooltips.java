@@ -61,6 +61,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.registerDeferred();
         com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.registerDeferred();
         com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.registerDeferred();
+        com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.registerDeferred();
 
         // Artifacts mod compat: replace the entire vanilla/Artifacts tooltip body with
         // Craftics-only lines so the player sees the in-Craftics behaviour, not the
@@ -285,6 +286,21 @@ public class CombatTooltips implements ItemTooltipCallback {
                         // unwrapped they ran off the screen edge.
                         TooltipWrap.addWrapped(lines, "  ",
                             (fullSet ? "\u00a7a" : "\u00a78") + "Full set: " + desc);
+                    }
+
+                    // Warden "Echo" only: name the affinity the set is boosting RIGHT
+                    // NOW. The bonus follows whatever you carry most, so a static
+                    // description can't tell the player where it landed.
+                    if (fullSet && com.crackedgames.craftics.compat.deeperanddarker
+                            .WardenSetEffects.SET_KEY.equals(setKey)) {
+                        com.crackedgames.craftics.combat.DamageType dominant =
+                            com.crackedgames.craftics.compat.deeperanddarker.WardenSetEffects
+                                .dominantAffinity(mc.player);
+                        lines.add(Text.literal(dominant == null
+                            ? "\u00a78  Echo: carry a weapon to focus the bonus"
+                            : "\u00a7b  Echo: +" + com.crackedgames.craftics.compat.deeperanddarker
+                                .WardenSetEffects.DOMINANT_AFFINITY_BONUS + " "
+                                + dominant.color + dominant.displayName));
                     }
 
                     // Hybrid set \u2014 shown when the client wears a qualifying two-material
@@ -907,48 +923,81 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.CROSSBOW) return weaponStatLine(item) + "\n\u00a7bPierce: \u00a77Bolt hits targets behind for 50%\n\u00a77Consumes arrows. Tipped arrows apply effects.\n\u00a76Rocket Crossbow: \u00a77Firework Rocket in off-hand \u2192 3x3 explosive blast (no arrows needed)";
         if (item == Items.TRIDENT) return "\u00a7c" + com.crackedgames.craftics.api.registry.WeaponRegistry.getAttackPower(Items.TRIDENT) + " DMG \u00a77| \u00a73Water\n\u00a77Melee (1 AP) when adjacent.\n\u00a77Throw (2 AP) in straight/diagonal lines.\n\u00a77Thrown trident lodges in ground \u2014 retrieve manually.";
 
+        // ── Utility ──
+        if (item == Items.SHEARS) {
+            return "§a1 AP §7- Cut tall grass, ferns or cobwebs\n"
+                + "§7You keep what you cut and can place it again elsewhere";
+        }
+        if (item == Items.BEEHIVE) {
+            return "§e2 AP §7- Place a hive\n"
+                + "§7Releases an §eallied bee §7every round until destroyed\n"
+                + "§8Silk Touch a wild forest hive to harvest one";
+        }
+        if (item == Items.ARMOR_STAND) {
+            return "§71 AP §7- Place a decoy\n"
+                + "§7Enemies attack the stand instead of you until it breaks";
+        }
+        if (item == Items.OMINOUS_BOTTLE) {
+            return "§51 AP §7- Drink the omen\n"
+                + "§dGuarantees a Trial Chamber after this fight";
+        }
+
+        // ── Deeper and Darker artifacts ──
+        net.minecraft.util.Identifier ddId = net.minecraft.registry.Registries.ITEM.getId(item);
+        if (ddId != null && "deeperdarker".equals(ddId.getNamespace())) {
+            switch (ddId.getPath()) {
+                case "soul_elytra" -> {
+                    return "§32 AP §7- Glide up to §f"
+                        + com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat
+                            .ELYTRA_GLIDE_TILES + " tiles\n"
+                        + "§7Passes §fover §7obstacles, hazards and pits - only the landing matters\n"
+                        + "§8Not consumed";
+                }
+                case "heart_of_the_deep" -> {
+                    return "§b1 AP §7- Pulse\n"
+                        + "§7Drags every §fhidden enemy §7into view and lifts §3Darkness\n"
+                        + "§8Shriek Worms stay revealed; a Stalker can vanish again\n"
+                        + "§8Not consumed";
+                }
+                case "sonorous_staff" -> {
+                    return "§d2 AP §7- Sonic boom §8(Special, range "
+                        + com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat
+                            .SONOROUS_STAFF_RANGE + ")\n"
+                        + "§7Fires a §fline §7through the target, damage falling off with distance\n"
+                        + "§7Hurls the first target back 2 tiles";
+                }
+                default -> { }
+            }
+        }
+
         // ── Food ──
-        if (item == Items.APPLE) return "\u00a7a+2 HP \u00a77| 1 AP";
-        if (item == Items.BREAD) return "\u00a7a+3 HP \u00a77| 1 AP";
-        if (item == Items.COOKED_BEEF) return "\u00a7a+5 HP \u00a77| 1 AP";
-        if (item == Items.COOKED_PORKCHOP) return "\u00a7a+5 HP \u00a77| 1 AP";
-        if (item == Items.COOKED_CHICKEN) return "\u00a7a+3 HP \u00a77| 1 AP";
-        if (item == Items.COOKED_MUTTON) return "\u00a7a+4 HP \u00a77| 1 AP";
-        if (item == Items.COOKED_COD) return "\u00a7a+3 HP \u00a77| 1 AP";
-        if (item == Items.COOKED_SALMON) return "\u00a7a+4 HP \u00a77| 1 AP";
-        if (item == Items.BAKED_POTATO) return "\u00a7a+3 HP \u00a77| 1 AP";
-        if (item == Items.COOKIE) return "\u00a7a+1 HP \u00a77| 1 AP";
-        if (item == Items.PUMPKIN_PIE) return "\u00a7a+4 HP \u00a77| 1 AP";
-        if (item == Items.MELON_SLICE) return "\u00a7a+1 HP \u00a77| 1 AP";
-        if (item == Items.SWEET_BERRIES) return "\u00a7a+1 HP \u00a77| 1 AP";
-        if (item == Items.GLOW_BERRIES) return "\u00a7a+1 HP \u00a77| 1 AP";
+        // Magical foods, whose combat value isn't derived from their nutrition.
+        // Their AP still comes from the shared tier rule so the numbers can't drift.
         if (item == Items.GOLDEN_CARROT) return "\u00a7a+2 HP \u00a77| Free | \u00a7b+1 AP";
-        if (item == Items.GOLDEN_APPLE) return "\u00a7a+8 HP \u00a77| 1 AP | \u00a7e+Absorption";
-        if (item == Items.ENCHANTED_GOLDEN_APPLE) return "\u00a7a+FULL HP \u00a77| 1 AP\n\u00a7e+Absorption IV +Resistance +Regen II";
-        if (item == Items.HONEY_BOTTLE) return "\u00a7a+3 HP \u00a77| 1 AP";
-        if (item == Items.SUSPICIOUS_STEW) return "\u00a7a+4 HP \u00a77| 1 AP";
-        if (item == Items.CHORUS_FRUIT) return "\u00a7a+2 HP \u00a77| 1 AP";
-        if (item == Items.DRIED_KELP) return "\u00a7a+1 HP \u00a77| 1 AP";
-        if (item == Items.MUSHROOM_STEW) return "\u00a7a+4 HP \u00a77| 1 AP";
-        if (item == Items.BEETROOT_SOUP) return "\u00a7a+4 HP \u00a77| 1 AP";
-        if (item == Items.RABBIT_STEW) return "\u00a7a+6 HP \u00a77| 1 AP \u00a77(Best food!)";
-        // Raw meats
-        if (item == Items.BEEF) return "\u00a7a+2 HP \u00a77| 1 AP \u00a78(Raw)";
-        if (item == Items.PORKCHOP) return "\u00a7a+2 HP \u00a77| 1 AP \u00a78(Raw)";
-        if (item == Items.CHICKEN) return "\u00a7a+1 HP \u00a77| 1 AP \u00a78(Raw)";
-        if (item == Items.MUTTON) return "\u00a7a+2 HP \u00a77| 1 AP \u00a78(Raw)";
-        if (item == Items.COD) return "\u00a7a+1 HP \u00a77| 1 AP \u00a78(Raw)";
-        if (item == Items.SALMON) return "\u00a7a+1 HP \u00a77| 1 AP \u00a78(Raw)";
-        if (item == Items.RABBIT) return "\u00a7a+2 HP \u00a77| 1 AP \u00a78(Raw)";
-        if (item == Items.COOKED_RABBIT) return "\u00a7a+3 HP \u00a77| 1 AP";
-        if (item == Items.TROPICAL_FISH) return "\u00a7a+1 HP \u00a77| 1 AP \u00a78(Raw)";
-        if (item == Items.POTATO) return "\u00a7a+1 HP \u00a77| 1 AP \u00a78(Raw)";
-        if (item == Items.CARROT) return "\u00a7a+2 HP \u00a77| 1 AP";
-        if (item == Items.BEETROOT) return "\u00a7a+1 HP \u00a77| 1 AP";
-        // Risky foods
-        if (item == Items.POISONOUS_POTATO) return "\u00a7a+1 HP \u00a77| 1 AP \u00a7c(Risky!)";
-        if (item == Items.SPIDER_EYE) return "\u00a7a+1 HP \u00a77| 1 AP \u00a7c(Risky!)";
-        if (item == Items.ROTTEN_FLESH) return "\u00a7a+2 HP \u00a77| 1 AP \u00a7c(Risky!)";
+        if (item == Items.GOLDEN_APPLE) {
+            return "\u00a7a+8 HP \u00a77| " + com.crackedgames.craftics.combat.ItemUseHandler.getApCost(item)
+                + " AP | \u00a7e+Absorption";
+        }
+        if (item == Items.ENCHANTED_GOLDEN_APPLE) {
+            return "\u00a7a+FULL HP \u00a77| " + com.crackedgames.craftics.combat.ItemUseHandler.getApCost(item)
+                + " AP\n\u00a7e+Absorption IV +Resistance +Regen II";
+        }
+        // Every other edible - vanilla OR modded - is described from its own food
+        // component through the shared formula, so a modded steak gets a real
+        // tooltip instead of none. The "Raw" and "Risky" flags come from the same
+        // source of truth the eat handler uses, so they can't drift out of sync.
+        if (com.crackedgames.craftics.combat.ItemUseHandler.isFood(item)) {
+            int heal = com.crackedgames.craftics.combat.FoodValues.healFor(item);
+            int foodAp = com.crackedgames.craftics.combat.ItemUseHandler.getApCost(item);
+            StringBuilder foodLine = new StringBuilder("\u00a7a+" + heal + " HP \u00a77| " + foodAp + " AP");
+            if (com.crackedgames.craftics.combat.ItemUseHandler.isCampfireCookable(item)) {
+                foodLine.append(" \u00a78(Raw)");
+            }
+            if (com.crackedgames.craftics.combat.ItemUseHandler.isRiskyFood(item)) {
+                foodLine.append(" \u00a7c(Risky!)");
+            }
+            return foodLine.toString();
+        }
         if (item == Items.PUFFERFISH) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 2)\n\u00a7c3 DMG \u00a77| Radius 2 | \u00a73Water\n\u00a73Soaked II \u00a77+ \u00a72Poison I";
 
         // ── Potions ──

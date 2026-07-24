@@ -175,6 +175,7 @@ public class GridTile {
             // still renders if the mod's block is unavailable.
             case BLOOM -> Blocks.PINK_PETALS;
             case GEYSER -> Blocks.MAGMA_BLOCK;
+            case SCULK_JAW -> Blocks.SCULK_SHRIEKER;
             // Stair / elevated default blocks - only used if the GridTile is
             // constructed without an explicit block. ArenaBuilder always
             // passes the real schematic block (e.g. the actual stair block,

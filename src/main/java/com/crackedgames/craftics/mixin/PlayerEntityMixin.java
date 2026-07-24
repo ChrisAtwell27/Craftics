@@ -14,30 +14,25 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(PlayerEntity.class)
 public class PlayerEntityMixin {
 
+    // Only the Move item is undroppable - ordinary items can be dropped freely,
+    // in combat included. (This used to cancel EVERY drop while a combat was
+    // active, which is what made mid-fight inventory management impossible.)
     //? if <=1.21.4 {
     @Inject(method = "dropItem(Lnet/minecraft/item/ItemStack;ZZ)Lnet/minecraft/entity/ItemEntity;",
             at = @At("HEAD"), cancellable = true)
-    private void craftics$blockItemDropDuringCombat(net.minecraft.item.ItemStack stack, boolean throwRandomly,
-                                                     boolean retainOwnership, CallbackInfoReturnable<net.minecraft.entity.ItemEntity> cir) {
-        PlayerEntity player = (PlayerEntity) (Object) this;
-        if (player instanceof ServerPlayerEntity serverPlayer) {
-            var cm = com.crackedgames.craftics.combat.CombatManager.get(serverPlayer);
-            if (cm.isActive()) {
-                cir.setReturnValue(null);
-            }
+    private void craftics$blockMoveItemDrop(net.minecraft.item.ItemStack stack, boolean throwRandomly,
+                                             boolean retainOwnership, CallbackInfoReturnable<net.minecraft.entity.ItemEntity> cir) {
+        if (com.crackedgames.craftics.item.MoveSlotManager.isMoveStack(stack)) {
+            cir.setReturnValue(null);
         }
     }
     //?} else {
     /*@Inject(method = "dropItem(Lnet/minecraft/item/ItemStack;Z)Lnet/minecraft/entity/ItemEntity;",
             at = @At("HEAD"), cancellable = true)
-    private void craftics$blockItemDropDuringCombat(net.minecraft.item.ItemStack stack, boolean throwRandomly,
-                                                     CallbackInfoReturnable<net.minecraft.entity.ItemEntity> cir) {
-        PlayerEntity player = (PlayerEntity) (Object) this;
-        if (player instanceof ServerPlayerEntity serverPlayer) {
-            var cm = com.crackedgames.craftics.combat.CombatManager.get(serverPlayer);
-            if (cm.isActive()) {
-                cir.setReturnValue(null);
-            }
+    private void craftics$blockMoveItemDrop(net.minecraft.item.ItemStack stack, boolean throwRandomly,
+                                             CallbackInfoReturnable<net.minecraft.entity.ItemEntity> cir) {
+        if (com.crackedgames.craftics.item.MoveSlotManager.isMoveStack(stack)) {
+            cir.setReturnValue(null);
         }
     }
     *///?}

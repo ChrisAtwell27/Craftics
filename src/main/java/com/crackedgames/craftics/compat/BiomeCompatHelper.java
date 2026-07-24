@@ -4,6 +4,7 @@ import com.crackedgames.craftics.CrafticsMod;
 import com.crackedgames.craftics.level.BiomeRegistry;
 import com.crackedgames.craftics.level.BiomeTemplate;
 import com.crackedgames.craftics.level.MobPoolEntry;
+import net.minecraft.item.Item;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
 
@@ -226,6 +227,72 @@ public final class BiomeCompatHelper {
 
         replaceBiomePassive(biome, kept.toArray(new MobPoolEntry[0]));
         CrafticsMod.LOGGER.info("[Compat] {}: removed passive {}", biomeId, entityTypeId);
+        return true;
+    }
+
+    /** Rebuild {@code biome} with a new completion-loot pool and re-register it. */
+    private static void replaceBiomeLoot(BiomeTemplate biome, Item[] items, int[] weights) {
+        BiomeTemplate replaced = new BiomeTemplate(
+            biome.biomeId, biome.displayName, biome.startLevel, biome.levelCount,
+            biome.baseWidth, biome.baseHeight, biome.widthGrowth, biome.heightGrowth,
+            biome.floorBlocks, biome.obstacleBlocks,
+            biome.baseObstacleDensity, biome.obstacleDensityGrowth,
+            biome.passiveMobs, biome.hostileMobs, biome.boss,
+            items, weights,
+            biome.enchantmentLootIds, biome.enchantmentLootWeights,
+            biome.nightLevel, biome.environmentId,
+            biome.biomeEffectId, biome.biomeEffectStartLevel);
+        BiomeRegistry.register(replaced);
+    }
+
+    /**
+     * Append an item to a biome's level-completion loot pool, by item id so callers
+     * never need a hard reference to an optional mod's class. The id is resolved
+     * against the live registry and the call is skipped when it isn't there, which
+     * is what lets a compat module list modded loot unconditionally.
+     *
+     * <p>This is the loot counterpart to {@link #appendHostileMob}: biome JSON can
+     * only name items that always exist (an unknown id there is dropped with a load
+     * warning for every user, mod or no mod), so mod-gated loot has to be added at
+     * runtime instead.
+     *
+     * <p>Re-running is safe: an item already in the pool is left alone rather than
+     * added twice, so a datapack reload can't inflate its weight.
+     *
+     * @return true if the item was appended
+     */
+    public static boolean appendLoot(String biomeId, String itemId, int weight) {
+        if (itemId == null || weight <= 0) return false;
+        Item item;
+        try {
+            Identifier id = Identifier.of(itemId);
+            if (!Registries.ITEM.containsId(id)) return false;
+            item = Registries.ITEM.get(id);
+        } catch (Throwable t) {
+            return false;
+        }
+        if (item == null) return false;
+
+        BiomeTemplate biome = findBiome(biomeId);
+        if (biome == null) return false;
+
+        Item[] items = biome.lootItems != null ? biome.lootItems : new Item[0];
+        int[] weights = biome.lootWeights != null ? biome.lootWeights : new int[0];
+        for (Item existing : items) {
+            if (existing == item) return false;
+        }
+
+        Item[] newItems = new Item[items.length + 1];
+        int[] newWeights = new int[items.length + 1];
+        System.arraycopy(items, 0, newItems, 0, items.length);
+        // Weights may be shorter than items if the JSON omitted some; copy what's
+        // there and leave the rest at 0 rather than reading off the end.
+        System.arraycopy(weights, 0, newWeights, 0, Math.min(weights.length, items.length));
+        newItems[items.length] = item;
+        newWeights[items.length] = weight;
+
+        replaceBiomeLoot(biome, newItems, newWeights);
+        CrafticsMod.LOGGER.info("[Compat] {}: +loot {} (weight {})", biomeId, itemId, weight);
         return true;
     }
 

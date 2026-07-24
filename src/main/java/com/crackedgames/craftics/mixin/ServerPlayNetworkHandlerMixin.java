@@ -10,9 +10,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Suppress the Q / Ctrl+Q drop-item key during combat by intercepting the
- * {@link PlayerActionC2SPacket} at the network handler level. We block here
- * instead of inside {@code PlayerEntity} because:
+ * Suppress the Q / Ctrl+Q drop-item key for the Move item by intercepting the
+ * {@link PlayerActionC2SPacket} at the network handler level. Ordinary items are
+ * droppable everywhere, combat included - only the Move item is pinned. We block
+ * here instead of inside {@code PlayerEntity} because:
  *
  *   1. The vanilla method names for the drop helpers vary across yarn versions
  *      (mixins by name break on minor MC updates).
@@ -38,16 +39,13 @@ public abstract class ServerPlayNetworkHandlerMixin {
         // The Move item must never be droppable, in or out of combat, and it's
         // always the held/selected hotbar stack when a drop key is pressed
         // (MoveSlotManager locks it to a hotbar slot).
+        //
+        // Everything ELSE is droppable, including mid-combat: players routinely
+        // need to dump junk to free inventory space during a fight, and the only
+        // stack that must stay put is the Move item itself.
         boolean droppingMoveItem = com.crackedgames.craftics.item.MoveSlotManager.isMoveStack(player.getMainHandStack());
 
-        // Resolve through getActiveCombat (leader-resolved), NOT get(player):
-        // non-leader party members share the leader's CombatManager, and their
-        // own per-player instance is always inactive, so get(player).isActive()
-        // never blocks a non-leader's drop. getActiveCombat never returns null.
-        boolean inActiveCombat = com.crackedgames.craftics.combat.CombatManager
-            .getActiveCombat(player.getUuid()).isActive();
-
-        if (droppingMoveItem || inActiveCombat) {
+        if (droppingMoveItem) {
             ci.cancel();
             // The client optimistically removes the dropped stack from its
             // inventory view before the server packet round-trips. Cancelling

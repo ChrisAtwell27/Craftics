@@ -377,6 +377,11 @@ public class CombatEffects {
         effects.clear();
     }
 
+    /** Remove one specific effect, buff or debuff. Returns true if it was present. */
+    public boolean removeEffect(EffectType type) {
+        return type != null && effects.remove(type) != null;
+    }
+
     /** Remove all negative (debuff) effects, leaving positive buffs intact. */
     public void clearDebuffs() {
         effects.keySet().removeIf(CombatEffects::isDebuff);

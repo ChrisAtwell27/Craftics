@@ -80,9 +80,14 @@ public final class WeaponVfx {
             .shake(0.9f, 8)
             .hitPause(3)
             .floatingText(VfxAnchor.TARGET, "EXECUTE", 0xFFFF2222, 30)
+        // A final soul-fire flourish + deep toll instead of launching a physical
+        // crying-obsidian block. The old launchBlock left a real world block that
+        // landed on the tile - it could stack (only the bottom was mineable) and
+        // forced a crawl stance. Pure VFX now: no lingering terrain.
         .phase(12)
-            .launchBlock(VfxAnchor.TARGET, new Vec3d(0.0, 0.5, 0.0),
-                         Blocks.CRYING_OBSIDIAN.getDefaultState(), 40)
+            .sound(VfxAnchor.TARGET, SoundEvents.BLOCK_RESPAWN_ANCHOR_DEPLETE.value(), 0.9f, 0.6f)
+            .particles(ParticleTypes.SOUL, VfxAnchor.TARGET, 14, new Vec3d(0.4, 0.5, 0.4), 0.06)
+            .ring(VfxAnchor.TARGET, 0.9, ParticleTypes.SOUL_FIRE_FLAME, 12)
         .build();
 
     public static final VfxDescriptor SWORD_SWEEP = VfxDescriptor.builder()

@@ -162,6 +162,10 @@ public enum DamageType {
         int armorDamage = getArmorAffinityHalfPoints(player, type) * DAMAGE_PER_AFFINITY_POINT / 2;
         // Trims, potion effects, and level-up choices are whole affinity points.
         int wholePoints = getTrimBonus(trimScan, type) + getEffectBonus(effects, type);
+        // Warden set "Echo": +2 to whichever type the player carries most, recomputed
+        // here rather than cached so swapping weapons mid-fight moves the bonus live.
+        wholePoints += com.crackedgames.craftics.compat.deeperanddarker.WardenSetEffects
+            .affinityBonus(player, type);
         if (playerStats != null) {
             PlayerProgression.Affinity affinity = mapToAffinity(type);
             if (affinity != null) {

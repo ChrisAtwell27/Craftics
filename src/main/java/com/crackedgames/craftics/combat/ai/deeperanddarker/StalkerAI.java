@@ -33,8 +33,11 @@ public class StalkerAI implements EnemyAI {
 
     /** aiMemory key: monotonically increasing count of this stalker's own turns. */
     private static final String TURN_KEY = "stalker_turn";
-    /** aiMemory key: 1 while the stalker is currently invisible (mid-STALK). */
-    private static final String HIDDEN_KEY = "stalker_hidden";
+    /** aiMemory key: 1 while the stalker is currently invisible (mid-STALK).
+     *  Public so a forced reveal (Heart of the Deep) can clear the same latch.
+     *  Clearing it only exposes the stalker until its next STALK turn - the
+     *  reveal is a window, not a permanent unmasking. */
+    public static final String HIDDEN_KEY = "stalker_hidden";
 
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {

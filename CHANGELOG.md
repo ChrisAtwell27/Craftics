@@ -1,4 +1,81 @@
 ﻿Changelog
+0.3.3
+Deeper and Darker Compatibility
+
+- The Deep Dark is fully overhauled when the Deeper and Darker mod is installed. Its whole enemy roster is replaced with the mod's sculk creatures. Nothing here touches your game if you don't have the mod
+- Shattered are the common melee threat, Sculk Centipedes dart in and back out again while poisoning you, Sculk Leeches drain your life to heal themselves, and Sculk Snappers are slow but lock you in place when they bite
+- Angler Fish can only travel through water, where they are fast and lethal. On dry ground they are harmless, so the danger is stepping into the water with one
+- Shriek Worms are a hidden ambush. They are completely invisible and cannot be targeted until someone walks into their melee range, then they rear up and lash out across three tiles, rooting whoever they hit. They never move
+- The Stalker replaces the Deep Dark's level 4 miniboss. It alternates every other turn between hunting you in the open and vanishing entirely, slipping to a new spot unseen before reappearing from a fresh angle. Sculk leeches trickle in while it stalks
+- New Blooming Caverns hazards: the gloomy cactus deals contact damage and sets you burning, and gloomy geysers erupt when stepped on for Burning II plus a launch of up to three tiles in a random direction
+- Sludges now actually spawn. They were fully built, with slime behaviour and a Soaked hit, but had never been added to any spawn pool, so no player could ever have met one
+
+Deeper and Darker Gear
+
+- Warden and Resonarium gear now has real combat stats. Every piece of it was previously unregistered, which meant a Warden sword swung for bare fist damage. Tiers follow the mod's own smithing recipes: Resonarium upgrades from iron and lands between iron and diamond, Warden upgrades from netherite and sits above it
+- Warden weapons cannot inherit the Netherite Sword's execute, so they get their own edge instead: the sword sweeps into a second enemy far more often, and the axe shatters armor permanently and scales harder with Cleaving
+- The Warden armor set is Echo, and it cuts both ways. Wearing all four pieces keeps you permanently in Darkness, so you fight half blind with everything past two tiles invisible to you and missing from your threat overlay
+- In exchange, Echo grants +2 affinity to whichever damage type you are carrying the most weapons of, and it re-reads your inventory on every single hit. Swap to axes mid fight and the bonus follows you with no re-equip. The armor's own affinity is Physical, deliberately the most generic lane, so it never fights the build the set bonus picks
+- Warden armor is the new armor class ceiling at 8, one above netherite. Resonarium sits at 5, between iron and diamond, and carries Special affinity
+- The Warden tooltip names the affinity it is boosting right now, so you can see where the bonus landed
+
+Deep Dark Props
+
+- Infested Sculk now grows in Deep Dark arenas. Break it and Sculk Leeches and a Shriek Worm boil out of it and throw you backwards. Break it with Silk Touch and it comes away clean with nothing waking up, which finally gives a Silk Touch tool a reason to be in your bag down there
+- Ancient Vases are a straight gamble. Most break open into treasure, including diamonds, emeralds, enchanted golden apples and Warden Carapace, but roughly a third of the time a Stalker unfolds out of the pot instead. Silk Touch takes the vase out whole and unopened, trading the roll for something you can carry home
+- Sculk Jaws lie in the floor and bite anything that walks over them. Every jaw you cross bites, not just the first, so a row of them will end a careless move. The bite also swallows an XP level, and since XP is what pays for enchanting that is a real cost
+- The jaw does not destroy the XP, it holds it. Break the jaw and it coughs back up everything it took from you, so you can eat the loss or spend a turn and an attack getting it back
+- Sculk creatures are immune to jaws, exactly as in the source mod. In a Deep Dark run every enemy is a sculk creature, so the traps only ever work against you
+
+Deep Dark Loot
+
+- Deeper and Darker materials now drop from the biome. Sculk Bone, Soul Dust, Grime Balls, Soul Crystals, Resonarium and Resonarium Plate come from level rewards, with Warden Carapace, Reinforced Echo Shards and the Warden smithing template as the rare tail
+- Every sculk creature now drops something when killed. They previously dropped nothing at all, so the whole roster was a dead end. The Stalker is the reliable source of the Reinforced Echo Shard that gates the Warden tier
+- Modded loot is added at runtime rather than written into the biome file, because an unknown item id in a biome file logs a warning for every player. Nobody without the mod sees anything
+
+Deeper and Darker Artifacts
+
+- Sonorous Staff (2 AP): a ranged Special attack that fires a line through your target and everything behind it. Damage falls off the further down the line an enemy stands, so it rewards lining up a crowd rather than replacing a bow for single targets. The first target is hurled back two tiles
+- Soul Elytra (2 AP): launch and glide up to five tiles, straight over obstacles, hazards and pits. Only the tile you land on has to be solid, which makes it the answer to an arena built around jaws and holes. Not consumed
+- Heart of the Deep (1 AP): pulse, dragging every hidden enemy into view and lifting Darkness from you. Shriek Worms stay revealed for good, but a Stalker can vanish again on its next turn, so it buys a window rather than ending the problem
+
+Food
+
+- Food healing is no longer a fixed list of items. Every edible thing, modded ones included, now heals based on its own hunger and saturation, so a modded steak is worth roughly what it looks like instead of a flat 1 HP with no tooltip
+- Vanilla values are almost entirely unchanged: cooked beef still heals 5, rabbit stew still 6, an apple still 2, a cookie still 1
+- Food now costs AP based on how much it heals. 1 AP normally, 2 AP once it heals 7 or more, 3 AP at 12 or more. Every vanilla food is still a 1 AP snack; the golden apples move to 2
+- Food tooltips are generated from those same numbers, so modded food finally describes itself, and the Raw and Risky warnings come from the same place the eating code does
+
+New Item Uses
+
+- Shears (1 AP): cut tall grass, ferns or cobwebs out of the arena, and you keep what you cut. Cover becomes portable, so you can pull a bush out of a bad spot and drop it somewhere useful
+- Armor Stand (1 AP): plant a decoy. Enemies go for the stand instead of you until it breaks
+- Ominous Bottle (1 AP): drink it to guarantee the next between-level event is a Trial Chamber
+- Beehive (2 AP): set down a hive that releases an allied bee to fight for you every round until it is destroyed
+
+Bee Hives in the Forest
+
+- Wild bee hives now hang in Dark Forest arenas about half the time. While one stands it releases a hostile bee every round, so ignoring it means a slowly growing swarm and the fight pushes you into spending attacks on the hive
+- Break a wild hive with a Silk Touch tool and you keep the hive intact, which you can then place on your own side to spawn bees that fight for you. A forest hazard becomes a reusable summon if you bring the right tool
+
+Enemies
+
+- Enemies no longer stand around doing nothing when they lose track of you. Duck into tall grass and they hunt: they walk to the nearest patch of cover and thrash it open, destroying it in the process. Hiding now buys you time instead of making you untouchable, and the grass you spent is gone for good
+
+Combat Fixes
+
+- The Netherite Sword's execute now actually deals its triple damage against targets below 30% HP. The multiplier was being calculated and then discarded, so the hit only ever landed for its base damage. The Diamond Sword's own critical hit had exactly the same problem and now doubles properly
+- The execute finisher no longer drops a crying obsidian block onto the battlefield. Those could stack on top of each other, left only the bottom block mineable, and forced you into a crawl. It now ends on a soul fire flourish and a deep toll instead
+- Enemies knocked or pulled into powder snow now take freezing damage and are slowed, and enemies shoved into a sunken pit are staggered. Both tiles were being landed on with no effect at all
+- Regular enemies can now be knocked clean off the edge of the arena into the void. Bosses still brace at the edge, so they cannot be shoved off the map
+
+Quality of Life
+
+- Torches and lanterns placed during a fight now actually appear. The light zone was being registered and the item and AP were spent, but the block itself was never placed
+- Items can be dropped on the ground during combat again. Only the Move item stays locked in place
+- Sculk sensors are now ordinary pickaxe-breakable obstacles instead of blocks carrying a health bar. They still paint their range ring and still trigger the darkness and silverfish ambush when you stray too close
+- Home islands sit in the Plains biome instead of the void, so animals and mobs spawn on them normally and you have something to tame and farm. Islands previously used the void biome, which has no spawns at all, so nothing could ever appear. This applies to newly created islands: an existing island keeps whatever biome its chunks were already generated with
+
 0.3.2
 Biome Minibosses
 

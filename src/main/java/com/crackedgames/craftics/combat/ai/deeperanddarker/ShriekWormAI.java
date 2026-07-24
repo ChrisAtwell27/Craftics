@@ -30,8 +30,10 @@ public class ShriekWormAI implements EnemyAI {
 
     /** Fixed reach; the worm never moves, so this is its whole threat radius. */
     private static final int REACH = 3;
-    /** aiMemory key: 1 once the worm has been triggered (revealed) this fight. */
-    private static final String REVEALED_KEY = "worm_revealed";
+    /** aiMemory key: 1 once the worm has been triggered (revealed) this fight.
+     *  Public so a forced reveal (Heart of the Deep) can trip the same latch
+     *  instead of duplicating the hidden-state rules. */
+    public static final String REVEALED_KEY = "worm_revealed";
 
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {

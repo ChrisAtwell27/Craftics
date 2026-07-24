@@ -151,6 +151,7 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.WarpedMovementEffect());
         com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.CrimsonBloomEffect());
         com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.RiverCurrentEffect());
+        com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.ForestHiveEffect());
         com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.init();
         com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.init();
         com.crackedgames.craftics.compat.golemoverhaul.GolemOverhaulCompat.init();
@@ -811,6 +812,7 @@ public class CrafticsMod implements ModInitializer {
                 com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.registerDeferred();
                 com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.registerDeferred();
                 com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.registerDeferred();
+                com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.registerDeferred();
             });
 
         // Load biome definitions from JSON datapacks on server start

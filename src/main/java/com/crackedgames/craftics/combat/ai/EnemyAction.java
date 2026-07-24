@@ -141,6 +141,14 @@ public sealed interface EnemyAction {
         }
     }
 
+    /**
+     * Search a hiding spot: the mob thrashes an adjacent stealth tile (tall grass
+     * or a fern) to flush out whoever might be crouching in it, destroying the
+     * cover in the process. Used when the target is concealed and the mob has no
+     * one it can actually see - it hunts rather than standing around.
+     */
+    record BreakStealthTile(GridPos tile) implements EnemyAction {}
+
     /** Spider ceiling ascend: mob shoots web upward, rises off the grid for 1 turn. */
     record CeilingAscend() implements EnemyAction {}
 

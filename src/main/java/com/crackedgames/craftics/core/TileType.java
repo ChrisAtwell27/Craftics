@@ -32,6 +32,11 @@ public enum TileType {
     // CombatManager.handleMove (same scan the fungus tiles use).
     BLOOM(true, false, 2, false),   // glowing bloom growth - 2 step dmg + Burning on cross
     GEYSER(true, false, 0, false),  // sculk geyser - step-trap: Burning II + random launch up to 3 tiles
+    // Sculk jaw - step-trap that bites for damage AND drains an XP level, which it
+    // holds until the jaw is destroyed. Sculk creatures are immune in the source mod,
+    // and they are here too by omission: no enemy movement path reads this tile, so
+    // only players can ever set it off.
+    SCULK_JAW(true, false, 0, false),
     // Occupants are visually hidden (INVISIBILITY effect) and mobs can't target them
     // except from an adjacent tile. Breakable by attacking the tile for 1 AP.
     TALL_GRASS(true, false, 0, true),

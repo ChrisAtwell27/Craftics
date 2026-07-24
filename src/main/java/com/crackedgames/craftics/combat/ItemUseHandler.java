@@ -88,48 +88,30 @@ public class ItemUseHandler {
         return "§3" + name + " splashed, but hit no enemies.";
     }
 
-    // Food items and their heal values
-    private static final Map<Item, Integer> FOOD_HEAL = Map.ofEntries(
-        Map.entry(Items.APPLE, 2),
-        Map.entry(Items.BREAD, 3),
-        Map.entry(Items.COOKED_BEEF, 5),
-        Map.entry(Items.COOKED_PORKCHOP, 5),
-        Map.entry(Items.COOKED_CHICKEN, 3),
-        Map.entry(Items.COOKED_MUTTON, 4),
-        Map.entry(Items.COOKED_COD, 3),
-        Map.entry(Items.COOKED_SALMON, 4),
-        Map.entry(Items.BAKED_POTATO, 3),
-        Map.entry(Items.COOKIE, 1),
-        Map.entry(Items.PUMPKIN_PIE, 4),
-        Map.entry(Items.MELON_SLICE, 1),
-        Map.entry(Items.SWEET_BERRIES, 1),
-        Map.entry(Items.GLOW_BERRIES, 1),
-        Map.entry(Items.GOLDEN_CARROT, 2),
-        Map.entry(Items.GOLDEN_APPLE, 8),
-        Map.entry(Items.ENCHANTED_GOLDEN_APPLE, 10),
-        Map.entry(Items.HONEY_BOTTLE, 3),
-        Map.entry(Items.SUSPICIOUS_STEW, 4),
-        Map.entry(Items.CHORUS_FRUIT, 2),
-        Map.entry(Items.DRIED_KELP, 1),
-        Map.entry(Items.BEEF, 2),
-        Map.entry(Items.PORKCHOP, 2),
-        Map.entry(Items.CHICKEN, 1),
-        Map.entry(Items.MUTTON, 2),
-        Map.entry(Items.COD, 1),
-        Map.entry(Items.SALMON, 1),
-        Map.entry(Items.RABBIT, 2),
-        Map.entry(Items.COOKED_RABBIT, 3),
-        Map.entry(Items.TROPICAL_FISH, 1),
-        Map.entry(Items.POTATO, 1),
-        Map.entry(Items.POISONOUS_POTATO, 1),
-        Map.entry(Items.CARROT, 2),
-        Map.entry(Items.BEETROOT, 1),
-        Map.entry(Items.MUSHROOM_STEW, 4),
-        Map.entry(Items.BEETROOT_SOUP, 4),
-        Map.entry(Items.RABBIT_STEW, 6),
-        Map.entry(Items.SPIDER_EYE, 1),
-        Map.entry(Items.ROTTEN_FLESH, 2)
+    /**
+     * Edible items that must NOT be routed to the generic eat handler because
+     * they have their own dedicated combat use further down {@link #useItem}'s
+     * dispatch chain. The food branch is checked early, so without this an item
+     * like the pufferfish (a vanilla food AND this mod's tier-2 water throwable)
+     * would be silently eaten instead of thrown.
+     */
+    private static final Set<Item> FOOD_HANDLED_ELSEWHERE = Set.of(
+        Items.PUFFERFISH
     );
+
+    /**
+     * Foods that carry a downside on eating (see the debuff rolls in
+     * {@link #useFood}). Exposed so the tooltip can flag them from the same
+     * source of truth rather than a parallel hardcoded list.
+     */
+    private static final Set<Item> RISKY_FOODS = Set.of(
+        Items.POISONOUS_POTATO, Items.SPIDER_EYE, Items.ROTTEN_FLESH
+    );
+
+    /** True if eating this food can inflict a debuff. */
+    public static boolean isRiskyFood(Item item) {
+        return RISKY_FOODS.contains(item);
+    }
 
     /**
      * Raw food to its campfire-cooked result. Mirrors vanilla's campfire recipes rather
@@ -170,8 +152,14 @@ public class ItemUseHandler {
     /** Base damage a thrown brick deals before affinity/trim/head bonuses. */
     public static final int BRICK_BASE_DAMAGE = 4;
 
+    /**
+     * True if this item should be eaten for HP by the combat food handler. Any
+     * edible item qualifies now (vanilla or modded - see {@link FoodValues}),
+     * minus the handful that have their own dedicated combat use.
+     */
     public static boolean isFood(Item item) {
-        return FOOD_HEAL.containsKey(item) || isArtifactsNonConsumingFood(item);
+        if (FOOD_HANDLED_ELSEWHERE.contains(item)) return false;
+        return FoodValues.isEdible(item) || isArtifactsNonConsumingFood(item);
     }
 
     /** Heal an ally party member by consuming one of the held food stack. Used
@@ -183,9 +171,9 @@ public class ItemUseHandler {
      *  doing the healing, so it's their enchantment that decides how much it's worth. */
     public static String feedAlly(ServerPlayerEntity feeder, ServerPlayerEntity ally, ItemStack stack) {
         Item food = stack.getItem();
-        if (!FOOD_HEAL.containsKey(food)) return null;
+        if (!isFood(food)) return null;
         int medic = HoeEnchantEffects.medicBonus(feeder);
-        int healAmount = FOOD_HEAL.getOrDefault(food, 1) + medic;
+        int healAmount = FoodValues.healFor(food) + medic;
         float maxHealth = ally.getMaxHealth();
         float before = ally.getHealth();
         float newHealth = Math.min(maxHealth, before + healAmount);
@@ -300,13 +288,24 @@ public class ItemUseHandler {
         com.crackedgames.craftics.api.registry.UsableItemEntry registered =
             com.crackedgames.craftics.api.registry.UsableItemRegistry.getOrNull(item);
         if (registered != null) return registered.apCost();
+        // Modded artifacts price themselves; 0 means "not one of theirs".
+        int modded = com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat
+            .apCostFor(item);
+        if (modded > 0) return modded;
         if (item == Items.GOLDEN_CARROT) return 0;
         if (PotterySherdSpells.isPotterySherd(item)) return PotterySherdSpells.getSherdApCost(item);
         if (item == Items.FISHING_ROD) return FISHING_AP_COST;
         if (item == Items.TNT) return 2; // raised from default 1: TNT now deals %-max-HP blast damage
         if (item == Items.MILK_BUCKET) return 3; // clears ALL effects; feed self or an adjacent ally
+        // A hive is a standing reinforcement engine, so it costs more to set up
+        // than a one-shot placeable.
+        if (item == Items.BEEHIVE) return 2;
         if (TWO_AP_ITEMS.contains(item)) return 2;
         if (isArtifactsNonConsumingFood(item)) return 2;
+        // Food costs AP in tiers scaled to how much it heals, so a big heal is a
+        // real commitment rather than a free top-up. Checked after the special
+        // cases above (the golden carrot stays free).
+        if (isFood(item)) return FoodValues.apCostFor(item);
         return 1;
     }
 
@@ -361,6 +360,8 @@ public class ItemUseHandler {
             || isThrowable(item) || isWaterThrowable(item) || item == Items.TNT || item == Items.SHIELD
             || item == Items.MILK_BUCKET || item == Items.BUCKET || item == Items.TOTEM_OF_UNDYING
             || item == Items.COBWEB || item == Items.FLINT_AND_STEEL
+            || item == Items.SHEARS || item == Items.BEEHIVE || item == Items.ARMOR_STAND
+            || item == Items.OMINOUS_BOTTLE
             || isAnyBreedingItem(item) || isFishingRod(item)
             || EXTRA_USABLE.contains(item) || isBanner(item) || isPickaxe(item)
             || item == Items.GOAT_HORN || PotterySherdSpells.isPotterySherd(item);
@@ -383,8 +384,23 @@ public class ItemUseHandler {
         String allyHeal = tryHealAlly(arena, targetTile, item, held);
         if (allyHeal != null) return allyHeal;
 
+        // Modded artifacts can't be `item == Items.X` branches here (the items only
+        // exist when their mod does), so they resolve through their compat module.
+        // Returns null for anything it doesn't own.
+        String modded = com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat
+            .tryUseItem(player, arena, targetTile, item, held);
+        if (modded != null) return modded;
+
         if (item == Items.GOAT_HORN) {
             return useGoatHorn(arena, held);
+        } else if (item == Items.SHEARS) {
+            return useShears(arena, targetTile, held);
+        } else if (item == Items.BEEHIVE) {
+            return useBeehive(arena, targetTile, held);
+        } else if (item == Items.ARMOR_STAND) {
+            return useArmorStand(arena, targetTile, held);
+        } else if (item == Items.OMINOUS_BOTTLE) {
+            return useOminousBottle(player, held);
         } else if (isFood(item)) {
             return useFood(player, held, item);
         } else if (isPotion(item)) {
@@ -518,7 +534,7 @@ public class ItemUseHandler {
             return "§dAte " + displayName + " - healed " + heal + " HP §7(it's eternal!)";
         }
 
-        int healAmount = FOOD_HEAL.getOrDefault(food, 1);
+        int healAmount = FoodValues.healFor(food);
         float maxHealth = player.getMaxHealth();
         float newHealth = Math.min(maxHealth, player.getHealth() + healAmount);
         player.setHealth(newHealth);
@@ -2153,6 +2169,60 @@ public class ItemUseHandler {
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "torch:" + targetTile.x() + ":" + targetTile.z()
             + "|§eLight from torch! Creates a smaller light zone (radius 2) that negates darkness.";
+    }
+
+    // --- Beehive: place a hive that releases one allied bee every round (2 AP) ---
+    private static String useBeehive(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "beehive:" + targetTile.x() + ":" + targetTile.z()
+            + "|§eYou set down the hive! §7It releases an angry bee to fight for you each round.";
+    }
+
+    // --- Armor Stand: a decoy enemies attack instead of you (1 AP) ---
+    private static String useArmorStand(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "armor_stand:" + targetTile.x() + ":" + targetTile.z()
+            + "|§eDecoy planted! §7Enemies will go for the stand instead of you until it breaks.";
+    }
+
+    // --- Ominous Bottle: guarantees the next between-level event is a Trial Chamber (1 AP) ---
+    private static String useOminousBottle(ServerPlayerEntity player, ItemStack stack) {
+        CombatManager cm = CombatManager.getActiveCombat(player.getUuid());
+        EventManager em = cm != null ? cm.getEventManager() : null;
+        if (em == null) return "§7Nothing answers the omen here.";
+        em.setForcedNextEvent(EventType.TRIAL_CHAMBER.toId());
+        stack.decrement(1);
+        return "§5You drink the ominous bottle... §dA Trial Chamber awaits after this fight!";
+    }
+
+    /**
+     * Shears: cut the tall grass, fern or cobweb off a tile and keep what you cut.
+     * The tile reverts to open ground and the player pockets the block, so cover
+     * can be picked up and re-placed somewhere more useful. 1 AP.
+     */
+    private static String useShears(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cThat's outside the arena!";
+        // Cobweb first: it's an overlay ABOVE the tile, so it wins over whatever
+        // the tile itself is.
+        if (arena.hasWebOverlay(targetTile)) {
+            return TILE_EFFECT_PREFIX + "shear_web:" + targetTile.x() + ":" + targetTile.z()
+                + "|§aYou cut the cobweb free. §7(Cobweb collected)";
+        }
+        GridTile tile = arena.getTile(targetTile);
+        if (tile == null) return "§cNothing to cut there!";
+        if (tile.getType() == com.crackedgames.craftics.core.TileType.TALL_GRASS
+                || tile.getType() == com.crackedgames.craftics.core.TileType.TALL_FERN) {
+            return TILE_EFFECT_PREFIX + "shear_grass:" + targetTile.x() + ":" + targetTile.z()
+                + "|§aYou shear the cover away. §7(Collected)";
+        }
+        return "§7Nothing there to shear - aim at tall grass, a fern, or a cobweb.";
     }
 
     // --- Goat Horn: taunt all enemies to target you next turn (1 AP, no consume) ---

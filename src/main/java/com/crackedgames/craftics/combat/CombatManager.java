@@ -2336,6 +2336,25 @@ public class CombatManager {
     private static final int SAND_MINE_LIFETIME = 4;
     private final List<SandMine> activeSandMines = new ArrayList<>();
 
+    // === Bee hives and decoys ==============================================
+    /** Player-placed hive: releases an ALLIED bee each round. */
+    public static final String HIVE_ALLY_ID = "craftics:bee_hive";
+    /** Wild forest hive: releases a HOSTILE bee each round. Silk-touch it for the item. */
+    public static final String HIVE_WILD_ID = "craftics:wild_bee_hive";
+    /** Player-placed armor stand decoy: taunts enemies off the player. */
+    public static final String DECOY_ID = "craftics:decoy_stand";
+    private static final int HIVE_HP = 12;
+    private static final int DECOY_HP = 8;
+    /** Most bees one hive keeps alive at a time, so a long fight can't drown in them. */
+    private static final int HIVE_BEE_CAP = 3;
+    /**
+     * Armor-stand decoys are anchored by a block object for grid/HP purposes, but
+     * rendered by a real armor stand entity. Kept here so the visual can be
+     * discarded the moment the decoy is destroyed rather than lingering as
+     * scenery. Tagged {@code craftics_arena} too, so purgeGhostMobs is a backstop.
+     */
+    private final java.util.Map<Integer, net.minecraft.entity.Entity> decoyVisuals = new java.util.HashMap<>();
+
     /** Elytra flight: blocks above the launch tile the player rises to, out of view. */
     private static final double ELYTRA_FLIGHT_HEIGHT = 14.0;
     /** Elytra flight: ticks spent rising, and ticks spent falling. */
@@ -5000,6 +5019,9 @@ public class CombatManager {
         boolean crossedWarped = false;
         boolean crossedBloom = false;
         GridPos geyserTile = null; // last geyser stepped on this move (launch resolves after the scan)
+        // Every jaw crossed bites, unlike the geyser (one launch per move) - walking a
+        // whole row of them is meant to be ruinous.
+        java.util.List<GridPos> jawTiles = new java.util.ArrayList<>();
         for (GridPos step : path) {
             GridTile stepTile = arena.getTile(step);
             if (stepTile == null) continue;
@@ -5021,8 +5043,12 @@ public class CombatManager {
                     crossedBloom = true;
                 }
                 case GEYSER -> geyserTile = step; // resolved below (needs the launch)
+                case SCULK_JAW -> jawTiles.add(step);
                 default -> { }
             }
+        }
+        for (GridPos jaw : jawTiles) {
+            triggerSculkJaw(jaw);
         }
         if (crossedCrimson) sendMessage("§cThe crimson fungus tears at you - you're bleeding!");
         if (crossedWarped) sendMessage("§5The warped fungus twists your senses - Warped!");
@@ -5487,6 +5513,32 @@ public class CombatManager {
                     net.minecraft.sound.SoundEvents.BLOCK_NETHER_WART_BREAK,
                     net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
                 sendMessage("§aYou clear the fungus. §7(-1 AP)");
+                sendSync();
+                refreshHighlights();
+                return;
+            }
+        }
+
+        // Sculk jaw: same adjacent-click-for-1-AP contract as the fungus above, but
+        // breaking it also refunds whatever XP the jaw has swallowed, so there is a
+        // reason to spend the AP beyond clearing the path.
+        if (clickedTile != null) {
+            GridTile jaw = arena.getTile(clickedTile);
+            if (jaw != null && jaw.getType() == com.crackedgames.craftics.core.TileType.SCULK_JAW) {
+                GridPos pPos = arena.getPlayerGridPos();
+                int chebyshev = Math.max(
+                    Math.abs(pPos.x() - clickedTile.x()),
+                    Math.abs(pPos.z() - clickedTile.z()));
+                if (chebyshev > 1) {
+                    sendMessage("§cMust be adjacent to break the sculk jaw.");
+                    return;
+                }
+                if (apRemaining < 1) {
+                    sendMessage("§cNot enough AP!");
+                    return;
+                }
+                breakSculkJaw(clickedTile);
+                apRemaining -= 1;
                 sendSync();
                 refreshHighlights();
                 return;
@@ -6101,6 +6153,30 @@ public class CombatManager {
                 ? HybridSetEffects.GLADIATOR_CRIT_MULT : HybridSetEffects.NORMAL_CRIT_MULT;
             baseDamage = (int)(baseDamage * critMult);
         }
+
+        // Signature tier-weapon multipliers. These used to live in swordAbility
+        // (VanillaWeapons), whose returned damage is DISCARDED for the primary
+        // target - so the Diamond crit and Netherite execute never actually hit
+        // for extra. Applied here, in the real damage chain, before the hit lands.
+        // The Diamond crit still rolls independently of the Luck crit above (they
+        // can both fire; the weapon's own 30% is a flat property of the sword).
+        boolean diamondCrit = false;
+        if (baseDamage > 0 && weapon == Items.DIAMOND_SWORD && Math.random() < 0.30) {
+            baseDamage *= 2;
+            diamondCrit = true;
+            sendMessage("§6✦ Diamond Crit! §fDouble damage.");
+        }
+        // Netherite execute: triple damage on a target already below 30% HP.
+        // Uses the target's CURRENT (pre-hit) HP - correct here since no damage
+        // has been dealt yet this swing.
+        boolean netheriteExecute = false;
+        if (baseDamage > 0 && weapon == Items.NETHERITE_SWORD
+                && target.getMaxHp() > 0 && target.getCurrentHp() < target.getMaxHp() * 0.3f) {
+            baseDamage *= 3;
+            netheriteExecute = true;
+            sendMessage("§4☠ EXECUTE! §fTriple damage on wounded target.");
+        }
+
         // Kill streak damage multipliers (stack multiplicatively)
         if (killStreak > 0) {
             double streakMult = 1.0;
@@ -6258,6 +6334,8 @@ public class CombatManager {
         final int fBaseDamage = baseDamage;
         final int fWarriorRage = warriorRage;
         final boolean fUsedTriple = usedTriple;
+        final boolean fNetheriteExecute = netheriteExecute;
+        final boolean fDiamondCrit = diamondCrit;
         final double fMobResistMult = mobResistMult;
         final boolean fIsRangedWeapon = isRangedWeapon;
         final boolean fIsTridentThrow = isTridentThrow;
@@ -6705,6 +6783,12 @@ public class CombatManager {
             if (fWeapon == Items.MACE && extraHits > 0) {
                 achievementTracker.recordShockwaveTargets(extraHits);
             }
+            // Diamond crit / Netherite execute moved to the upstream damage chain,
+            // so their achievements are recorded from the flags here (the message-
+            // matching loop below no longer sees them). Execution-kill still needs
+            // the post-hit isAlive() check.
+            if (fDiamondCrit) achievementTracker.recordCrit();
+            if (fNetheriteExecute && !fTarget.isAlive()) achievementTracker.recordExecutionKill();
             // Check ability messages for specific achievement events
             for (String msg : abilityMessages) {
                 if (msg.contains("Sweep!")) achievementTracker.recordSweepTargets(extraHits);
@@ -6837,10 +6921,8 @@ public class CombatManager {
                 com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome outcome;
                 if (fIsTridentThrow) {
                     outcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.THROWN;
-                } else if (vfxWeapon == net.minecraft.item.Items.NETHERITE_SWORD
-                           && fTarget.getMaxHp() > 0
-                           && (fTarget.getCurrentHp() + dealt) <= fTarget.getMaxHp() * 0.3f) {
-                    // Netherite execute: target was at/below 30% HP before this hit
+                } else if (fNetheriteExecute) {
+                    // Netherite execute fired this swing (triple damage already applied upstream).
                     outcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.EXECUTE;
                 } else if (vfxWeapon == net.minecraft.item.Items.MACE
                            && PlayerCombatStats.getEnchantLevel(player.getMainHandStack(), "minecraft:wind_burst") > 0) {
@@ -10430,6 +10512,56 @@ public class CombatManager {
                 sw.setBlockState(floorBp, clearTile != null
                     ? clearTile.getBlockType().getDefaultState()
                     : getBiomeFloorBlock().getDefaultState());
+            } else if ("beehive".equals(effectType) || "armor_stand".equals(effectType)) {
+                // Both are block-backed objects with HP that sit on the field.
+                // The hive keeps releasing allied bees; the stand just soaks
+                // aggro. Flagged ally + taunting so resolveTauntTarget pulls
+                // enemies onto them instead of the player.
+                boolean isHive = "beehive".equals(effectType);
+                GridPos objPos = new GridPos(tx, tz);
+                ServerWorld objWorld = (ServerWorld) player.getEntityWorld();
+                CombatEntity placed = placeBlockObject(
+                    isHive ? HIVE_ALLY_ID : DECOY_ID, objPos,
+                    isHive ? HIVE_HP : DECOY_HP,
+                    -(minibossBlockIdCounter++),
+                    isHive ? net.minecraft.block.Blocks.BEEHIVE : net.minecraft.block.Blocks.STONE,
+                    objWorld);
+                if (placed != null) {
+                    placed.setAlly(true);
+                    placed.setTaunting(true);
+                    if (!isHive) {
+                        // A real armor stand entity reads far better than a stone
+                        // block; the block object is only the grid/HP anchor.
+                        objWorld.setBlockState(arena.gridToBlockPos(objPos),
+                            net.minecraft.block.Blocks.AIR.getDefaultState());
+                        spawnDecoyVisual(placed, objPos, objWorld);
+                    }
+                }
+            } else if ("shear_grass".equals(effectType) || "shear_web".equals(effectType)) {
+                GridPos shearPos = new GridPos(tx, tz);
+                ServerWorld shearWorld = (ServerWorld) player.getEntityWorld();
+                net.minecraft.item.Item cut;
+                if ("shear_web".equals(effectType)) {
+                    arena.clearWebOverlay(shearPos);
+                    shearWorld.setBlockState(arena.gridToBlockPos(shearPos).up(1),
+                        net.minecraft.block.Blocks.AIR.getDefaultState());
+                    cut = Items.COBWEB;
+                } else {
+                    GridTile shorn = arena.getTile(shearPos);
+                    cut = shorn != null && shorn.getType() == TileType.TALL_FERN
+                        ? Items.LARGE_FERN : Items.TALL_GRASS;
+                    if (shorn != null) {
+                        shorn.setType(TileType.NORMAL);
+                        shorn.setBlockType(getBiomeFloorBlock());
+                    }
+                    shearWorld.setBlockState(arena.gridToBlockPos(shearPos),
+                        net.minecraft.block.Blocks.AIR.getDefaultState());
+                }
+                // Hand the player what they cut so cover can be re-placed elsewhere.
+                giveOrDropItem(new ItemStack(cut));
+                shearWorld.playSound(null, arena.gridToBlockPos(shearPos),
+                    net.minecraft.sound.SoundEvents.ENTITY_SHEEP_SHEAR,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.1f);
             } else if ("break".equals(effectType)) {
                 // Pickaxe: convert obstacle to walkable NORMAL tile
                 GridPos breakPos = new GridPos(tx, tz);
@@ -11464,6 +11596,8 @@ public class CombatManager {
             minibossRound++;
             activeMiniboss.onRoundStart(buildMinibossCtx());
         }
+        // Bee hives (player-placed and wild forest ones) release a bee each round.
+        tickBeeHives();
         // Mid-biome weather (sandstorm, ...) pulses on the same round boundary, with its
         // own counter so it can't drift when a miniboss shares the level.
         if (activeBiomeEffect != null) {
@@ -13162,6 +13296,15 @@ public class CombatManager {
             // and follows the rider (it no longer blocks the rider's own movement).
             refreshMountWall();
 
+            // Warden set "Echo": the wearer is permanently shrouded. Refreshed every
+            // turn (for longer than a turn) so the fog-of-war never blinks off during
+            // the enemy phase. Goes through addEffectHooked so addon immunities can
+            // still intercept it like any other Darkness source.
+            if (com.crackedgames.craftics.compat.deeperanddarker.WardenSetEffects.isFullSet(player)) {
+                addEffectHooked(CombatEffects.EffectType.DARKNESS,
+                    com.crackedgames.craftics.compat.deeperanddarker.WardenSetEffects.DARKNESS_TURNS, 0);
+            }
+
             // Hazard tile damage at turn start (must match startPlayerTurn logic)
             GridTile qTurnTile = arena.getTile(arena.getPlayerGridPos());
             if (qTurnTile != null) {
@@ -13409,7 +13552,10 @@ public class CombatManager {
             pendingAction = waterSeek;
         } else if (invisibleToThisEnemy
                 || StealthTiles.isConcealedFrom(arena, currentEnemy.getGridPos(), aiTargetPos, player.getEntityWorld())) {
-            pendingAction = new EnemyAction.Idle();
+            // Target is hidden. Hunt for it instead of standing still: close on the
+            // nearest cover and thrash it open. Losing the grass is the cost of
+            // hiding in it, so stealth buys time rather than permanent safety.
+            pendingAction = searchForHiddenTarget(currentEnemy);
         } else {
             pendingAction = ai.decideAction(currentEnemy, arena, aiTargetPos);
             // Mob-vs-mob predators: downgrade to Idle if the prey is on a stealth
@@ -14052,6 +14198,13 @@ public class CombatManager {
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
+            case EnemyAction.BreakStealthTile bst -> {
+                sendMessage("§7" + currentEnemy.getDisplayName() + " thrashes the undergrowth!");
+                breakStealthTileAt(bst.tile());
+                sendSync();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+            }
             case EnemyAction.PlaceWeb pw -> {
                 // Infinite-pool web_spray/entangle return this directly (campaign
                 // bosses only ever emit it as a BossAbility sub-action) - without
@@ -14536,6 +14689,437 @@ public class CombatManager {
         int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         int[] dir = dirs[(int) (Math.random() * dirs.length)];
         resolveForcedMovement(new EnemyAction.ForcedMovement(-1, dir[0], dir[1], 3));
+    }
+
+    /** Damage a sculk jaw deals when it bites, before defense. */
+    private static final int SCULK_JAW_DAMAGE = 6;
+    /** XP levels a sculk jaw swallows per bite. It keeps them until it is destroyed. */
+    private static final int SCULK_JAW_XP_STEAL = 1;
+    /** Grid tile -> XP levels that jaw is currently holding, refunded when it's broken. */
+    private final java.util.Map<GridPos, Integer> sculkJawHoard = new java.util.HashMap<>();
+
+    /**
+     * Deeper-and-Darker sculk jaw: a step-trap that bites for
+     * {@value #SCULK_JAW_DAMAGE} and swallows {@value #SCULK_JAW_XP_STEAL} XP level.
+     *
+     * <p>The XP is not destroyed, it is <em>held</em> - the jaw hoards what it takes
+     * and coughs the whole pile back up when the tile is destroyed (see
+     * {@link #breakSculkJaw}). That is what makes it a puzzle rather than a pure tax:
+     * XP is real currency here (enchanting and death both spend levels), so you can
+     * eat the loss or spend a turn getting it back.
+     *
+     * <p>Sculk creatures are immune in the source mod, and they are here too, by
+     * omission rather than by check: no enemy movement path reads this tile type, so
+     * only players ever trigger it. Every enemy in an overhauled Deep Dark is sculk,
+     * so that lines up exactly.
+     */
+    private void triggerSculkJaw(GridPos tile) {
+        if (player == null || tile == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos bp = arena.gridToBlockPos(tile);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.SCULK_SOUL,
+            bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 14, 0.25, 0.3, 0.25, 0.02);
+        world.playSound(null, bp,
+            net.minecraft.sound.SoundEvents.BLOCK_SCULK_SHRIEKER_SHRIEK,
+            net.minecraft.sound.SoundCategory.HOSTILE, 0.7f, 1.4f);
+
+        int dealt = damagePlayer(SCULK_JAW_DAMAGE);
+        int levels = Math.min(SCULK_JAW_XP_STEAL, player.experienceLevel);
+        if (levels > 0) {
+            player.addExperienceLevels(-levels);
+            sculkJawHoard.merge(tile, levels, Integer::sum);
+            sendMessage("§3A sculk jaw clamps down! §f" + dealt
+                + " damage and it swallows " + levels + " XP level. §7(Break it to get them back)");
+        } else {
+            sendMessage("§3A sculk jaw clamps down! §f" + dealt + " damage.");
+        }
+    }
+
+    /**
+     * Destroy a sculk jaw tile and return whatever XP it was holding. Called from the
+     * attack path when a player strikes a jaw tile.
+     */
+    private void breakSculkJaw(GridPos tile) {
+        GridTile t = arena.getTile(tile);
+        if (t == null || t.getType() != com.crackedgames.craftics.core.TileType.SCULK_JAW) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos bp = arena.gridToBlockPos(tile);
+        world.setBlockState(bp, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+        world.syncWorldEvent(2001, bp, net.minecraft.block.Block.getRawIdFromState(
+            net.minecraft.block.Blocks.SCULK_SHRIEKER.getDefaultState()));
+        world.playSound(null, bp,
+            net.minecraft.sound.SoundEvents.BLOCK_SCULK_BREAK,
+            net.minecraft.sound.SoundCategory.BLOCKS, 0.8f, 0.9f);
+        t.setType(com.crackedgames.craftics.core.TileType.NORMAL);
+
+        Integer held = sculkJawHoard.remove(tile);
+        if (held != null && held > 0) {
+            player.addExperienceLevels(held);
+            sendMessage("§aThe jaw splits open - you recover " + held + " XP level"
+                + (held == 1 ? "" : "s") + ".");
+        } else {
+            sendMessage("§7The sculk jaw is destroyed.");
+        }
+    }
+
+    /** Put a stack in the player's inventory, dropping it at their feet if full. */
+    private void giveOrDropItem(ItemStack stack) {
+        if (player == null || stack == null || stack.isEmpty()) return;
+        if (!player.getInventory().insertStack(stack)) {
+            player.dropItem(stack, false);
+        }
+    }
+
+    /**
+     * Spawn the visible armor stand for a decoy. The {@link CombatEntity} itself
+     * is a block object (that's what carries HP and the grid slot); this is only
+     * what the player sees, so it is invulnerable and gravity-free.
+     */
+    private void spawnDecoyVisual(CombatEntity decoy, GridPos pos, ServerWorld world) {
+        BlockPos bp = arena.gridToBlockPos(pos);
+        net.minecraft.entity.decoration.ArmorStandEntity stand =
+            new net.minecraft.entity.decoration.ArmorStandEntity(
+                world, bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+        stand.setNoGravity(true);
+        stand.setInvulnerable(true);
+        stand.addCommandTag("craftics_arena");
+        stand.setCustomName(net.minecraft.text.Text.literal("§7Decoy"));
+        world.spawnEntity(stand);
+        decoyVisuals.put(decoy.getEntityId(), stand);
+    }
+
+    /** Discard a destroyed decoy's armor stand, if it had one. */
+    private void clearDecoyVisual(CombatEntity entity) {
+        net.minecraft.entity.Entity visual = decoyVisuals.remove(entity.getEntityId());
+        if (visual != null) visual.discard();
+    }
+
+    /**
+     * Once-per-round hive tick: every living hive on the field releases one bee.
+     * A player-placed hive ({@link #HIVE_ALLY_ID}) releases an ally that fights
+     * for the party; a wild forest hive ({@link #HIVE_WILD_ID}) releases a hostile
+     * one. Each hive keeps at most {@link #HIVE_BEE_CAP} of its bees alive, so a
+     * long fight doesn't drown in them and the hive stays worth breaking.
+     */
+    private void tickBeeHives() {
+        if (arena == null || player == null) return;
+        List<CombatEntity> hives = new ArrayList<>();
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive()) continue;
+            String id = e.getEntityTypeId();
+            if (HIVE_ALLY_ID.equals(id) || HIVE_WILD_ID.equals(id)) hives.add(e);
+        }
+        if (hives.isEmpty()) return;
+
+        for (CombatEntity hive : hives) {
+            boolean allied = HIVE_ALLY_ID.equals(hive.getEntityTypeId());
+            // Count this hive's own live bees against the cap.
+            int liveBees = 0;
+            for (CombatEntity e : enemies) {
+                if (e.isAlive() && "minecraft:bee".equals(e.getEntityTypeId())
+                        && e.isAlly() == allied) {
+                    liveBees++;
+                }
+            }
+            if (liveBees >= HIVE_BEE_CAP) continue;
+
+            GridPos spot = findOpenTileNear(hive.getGridPos());
+            if (spot == null) continue;
+            CombatEntity bee = spawnRaidReinforcement("minecraft:bee", spot, 4, 2, 0, 1);
+            if (bee == null) continue;
+            if (allied) bee.setAlly(true);
+            ServerWorld hw = (ServerWorld) player.getEntityWorld();
+            BlockPos bp = arena.gridToBlockPos(spot);
+            hw.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER,
+                bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 8, 0.3, 0.3, 0.3, 0.02);
+            hw.playSound(null, bp, net.minecraft.sound.SoundEvents.ENTITY_BEE_LOOP,
+                net.minecraft.sound.SoundCategory.NEUTRAL, 0.6f, 1.0f);
+            sendMessage(allied
+                ? "§eA bee buzzes out of your hive to help!"
+                : "§cA bee swarms out of the hive!");
+        }
+    }
+
+    /** Entity id for the Deeper-and-Darker infested sculk prop. */
+    public static final String INFESTED_SCULK_ID = "craftics:infested_sculk";
+    /** Entity id for the Deeper-and-Darker ancient vase prop. */
+    public static final String ANCIENT_VASE_ID = "craftics:ancient_vase";
+    /** HP of the infested sculk block - soft, so it dies to a single careless swing. */
+    public static final int INFESTED_SCULK_HP = 10;
+    /** HP of the ancient vase - deliberately brittle, it is pottery. */
+    public static final int ANCIENT_VASE_HP = 6;
+
+    /**
+     * Resolve a destroyed Deeper-and-Darker prop. No-op for anything else, so this is
+     * safe to call for every kill.
+     *
+     * <p>Both props are gambles resolved at the moment of breaking:
+     * <ul>
+     *   <li><b>Infested sculk</b> erupts with Sculk Leeches and a Shriek Worm and
+     *       shoves the breaker back, unless they used Silk Touch - which is exactly
+     *       the source mod's {@code PREVENTS_INFESTED_SCULK_SPAWNS} contract, and
+     *       makes a Silk Touch tool worth carrying into the Deep Dark.</li>
+     *   <li><b>Ancient vase</b> pays out treasure, or bursts open with a Stalker.
+     *       Silk Touch does not help here: the mod lets you take the vase itself
+     *       intact instead, so that is what we hand over.</li>
+     * </ul>
+     */
+    private void breakDeepDarkProp(CombatEntity entity) {
+        if (entity == null) return;
+        String id = entity.getEntityTypeId();
+        boolean infested = INFESTED_SCULK_ID.equals(id);
+        boolean vase = ANCIENT_VASE_ID.equals(id);
+        if (!infested && !vase) return;
+
+        GridPos pos = entity.getGridPos();
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos bp = arena.gridToBlockPos(pos);
+        // spawnBlockObject painted a block here; nothing else clears it on death.
+        world.setBlockState(bp, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+
+        boolean silk = PlayerCombatStats.getEnchantLevel(
+            player.getMainHandStack(), "minecraft:silk_touch") > 0;
+
+        if (infested) {
+            if (silk) {
+                giveOrDropItem(new ItemStack(Items.SCULK));
+                sendMessage("§aSilk Touch: the sculk comes away clean - nothing wakes up.");
+                return;
+            }
+            com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat
+                .eruptInfestedSculk(this, pos);
+            return;
+        }
+
+        com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat
+            .openAncientVase(this, pos, silk);
+    }
+
+    /**
+     * Spawn a hostile at or near {@code around} for a compat prop's ambush. Public so
+     * compat modules can drive their own break effects without reaching into combat
+     * internals. Returns null when there is nowhere to put it.
+     */
+    public CombatEntity spawnPropAmbusher(String entityTypeId, GridPos around,
+                                          int hp, int atk, int def, int range) {
+        GridPos spot = arena.isOccupied(around) ? findOpenTileNear(around) : around;
+        if (spot == null) return null;
+        return spawnRaidReinforcement(entityTypeId, spot, hp, atk, def, range);
+    }
+
+    /** Hand a stack to the player (or drop it at their feet). Public for compat props. */
+    public void givePropLoot(ItemStack stack) {
+        giveOrDropItem(stack);
+    }
+
+    /** Send a combat message. Public for compat props. */
+    public void propMessage(String message) {
+        sendMessage(message);
+    }
+
+    /** Shove the player away from {@code from} by {@code tiles}. Public for compat props. */
+    public void shovePlayerFrom(GridPos from, int tiles) {
+        GridPos p = arena.getPlayerGridPos();
+        if (p == null || from == null) return;
+        int dx = Integer.signum(p.x() - from.x());
+        int dz = Integer.signum(p.z() - from.z());
+        if (dx == 0 && dz == 0) dx = 1;
+        resolveForcedMovement(new EnemyAction.ForcedMovement(-1, dx, dz, tiles));
+    }
+
+    /** The world this fight is running in. Public for compat props. */
+    public ServerWorld propWorld() {
+        return (ServerWorld) player.getEntityWorld();
+    }
+
+    /** Block position of a grid tile. Public for compat props. */
+    public BlockPos propBlockPos(GridPos pos) {
+        return arena.gridToBlockPos(pos);
+    }
+
+    /**
+     * Heart of the Deep's pulse: drag every hidden enemy back into view and lift the
+     * Darkness from the whole party.
+     *
+     * <p>Reveal works by tripping each AI's own hidden-state latch rather than by
+     * forcing {@code setInvisible(false)} alone - otherwise the AI would simply
+     * re-hide itself on its next turn and the pulse would look broken. The two latches
+     * behave differently on purpose: a shriek worm's is a one-way trigger so it stays
+     * revealed for good, while a stalker's only clears its current vanish, so it can
+     * still slip away again on its next stalk turn.
+     *
+     * @return the number of enemies dragged into view
+     */
+    public int pulseReveal() {
+        int revealed = 0;
+        for (CombatEntity e : enemies) {
+            if (e == null || !e.isAlive() || e.isAlly()) continue;
+            boolean wasHidden = false;
+            if (com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat
+                    .SHRIEK_WORM.equals(e.getEntityTypeId())
+                    && e.getAiMemory(com.crackedgames.craftics.combat.ai.deeperanddarker
+                        .ShriekWormAI.REVEALED_KEY, 0) == 0) {
+                e.setAiMemory(com.crackedgames.craftics.combat.ai.deeperanddarker
+                    .ShriekWormAI.REVEALED_KEY, 1);
+                wasHidden = true;
+            }
+            if (e.getAiMemory(com.crackedgames.craftics.combat.ai.deeperanddarker
+                    .StalkerAI.HIDDEN_KEY, 0) == 1) {
+                e.setAiMemory(com.crackedgames.craftics.combat.ai.deeperanddarker
+                    .StalkerAI.HIDDEN_KEY, 0);
+                wasHidden = true;
+            }
+            if (e.getMobEntity() != null && e.getMobEntity().isInvisible()) {
+                e.getMobEntity().setInvisible(false);
+                wasHidden = true;
+            }
+            if (wasHidden) revealed++;
+        }
+        // Clearing Darkness is the other half: the pulse is the answer to a Deep Dark
+        // that hides things from you, whether by mob or by effect.
+        combatEffects.removeEffect(CombatEffects.EffectType.DARKNESS);
+        sendSync();
+        refreshHighlights();
+        return revealed;
+    }
+
+    /**
+     * Soul Elytra glide: launch the player to {@code target}, passing OVER everything
+     * between. Unlike a normal move this ignores obstacles, hazards and void along the
+     * way - only the landing tile has to be sound - which is what makes it worth an
+     * artifact slot in arenas built around pits and jaws.
+     *
+     * @return null on success, or a player-facing reason it couldn't launch
+     */
+    public String glideTo(GridPos target, int maxTiles) {
+        if (target == null) return "§cNeed to target a tile!";
+        GridPos from = arena.getPlayerGridPos();
+        if (from == null) return "§cCan't launch from here.";
+        int dist = Math.max(Math.abs(target.x() - from.x()), Math.abs(target.z() - from.z()));
+        if (dist == 0) return "§cPick a tile to glide to.";
+        if (dist > maxTiles) return "§cToo far! The elytra carries you " + maxTiles + " tiles.";
+        if (!arena.isInBounds(target)) return "§cThat's outside the arena.";
+        if (arena.isOccupied(target)) return "§cSomething is already standing there.";
+        GridTile landing = arena.getTile(target);
+        if (landing == null || !landing.isWalkable()) return "§cNothing to land on there.";
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos fromBp = arena.gridToBlockPos(from);
+        BlockPos toBp = arena.gridToBlockPos(target);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL,
+            fromBp.getX() + 0.5, fromBp.getY() + 0.8, fromBp.getZ() + 0.5, 20, 0.3, 0.4, 0.3, 0.05);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME,
+            toBp.getX() + 0.5, toBp.getY() + 0.6, toBp.getZ() + 0.5, 18, 0.3, 0.3, 0.3, 0.03);
+        world.playSound(null, toBp, net.minecraft.sound.SoundEvents.ITEM_ELYTRA_FLYING,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.3f);
+
+        arena.setPlayerGridPos(target);
+        player.requestTeleport(toBp.getX() + 0.5, toBp.getY(), toBp.getZ() + 0.5);
+        sendSync();
+        refreshHighlights();
+        return null;
+    }
+
+    /**
+     * Breaking a wild forest hive with a Silk Touch tool yields the hive itself,
+     * turning a hazard you had to clear into a beehive you can place on your own
+     * side. Without Silk Touch the hive is simply destroyed, so the tool choice
+     * is the whole decision.
+     */
+    private void dropHiveOnSilkTouch(CombatEntity entity) {
+        if (player == null || entity == null) return;
+        if (!HIVE_WILD_ID.equals(entity.getEntityTypeId())) return;
+        if (PlayerCombatStats.getEnchantLevel(
+                player.getMainHandStack(), "minecraft:silk_touch") <= 0) {
+            return;
+        }
+        giveOrDropItem(new ItemStack(Items.BEEHIVE));
+        sendMessage("§a✦ Silk Touch! §7You harvest the hive intact.");
+    }
+
+    /**
+     * What a mob does when its target is hidden (in tall grass, or invisible) and
+     * it has nothing it can actually see. Instead of standing still it hunts:
+     *
+     * <ol>
+     *   <li>Adjacent to a stealth tile? Thrash it - that breaks the cover and
+     *       flushes out anyone inside.</li>
+     *   <li>Otherwise walk toward the nearest stealth tile on the field, since
+     *       that's the only place the target could be hiding.</li>
+     *   <li>No cover left anywhere? Wander, so it's still searching rather than
+     *       frozen.</li>
+     * </ol>
+     */
+    private EnemyAction searchForHiddenTarget(CombatEntity hunter) {
+        GridPos from = hunter.getGridPos();
+        net.minecraft.world.World world = player != null ? player.getEntityWorld() : null;
+
+        GridPos nearest = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                GridPos p = new GridPos(x, z);
+                if (!StealthTiles.isStealthTile(arena, p, world)) continue;
+                int d = Math.max(Math.abs(p.x() - from.x()), Math.abs(p.z() - from.z()));
+                if (d < bestDist) { bestDist = d; nearest = p; }
+            }
+        }
+
+        // Nothing left to search - keep moving so the mob still reads as hunting.
+        if (nearest == null) {
+            return com.crackedgames.craftics.combat.ai.AIUtils.wander(hunter, arena);
+        }
+        // Already next to cover: tear it open.
+        if (bestDist <= 1) {
+            return new EnemyAction.BreakStealthTile(nearest);
+        }
+        // Close in on the nearest patch of cover.
+        List<GridPos> path = Pathfinding.findPathSized(
+            arena, from, nearest, hunter.getMoveSpeed(), hunter);
+        if (path.isEmpty()) {
+            return com.crackedgames.craftics.combat.ai.AIUtils.wander(hunter, arena);
+        }
+        return new EnemyAction.Move(path);
+    }
+
+    /**
+     * Destroy the stealth cover on a tile: clears both grass/fern block halves,
+     * resets the tile so its occupant stops being hidden, and plays the break
+     * feedback. Shared by the player's 1-AP grass break and the enemy search.
+     */
+    private void breakStealthTileAt(GridPos pos) {
+        if (arena == null || player == null || pos == null) return;
+        ServerWorld sw = (ServerWorld) player.getEntityWorld();
+        BlockPos floorBlock = arena.gridToBlockPos(pos);
+        BlockPos lowerPos = floorBlock.up(1);
+        BlockPos upperPos = floorBlock.up(2);
+        net.minecraft.block.BlockState broken = sw.getBlockState(lowerPos);
+        sw.setBlockState(lowerPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+        sw.setBlockState(upperPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+        GridTile tile = arena.getTile(pos);
+        if (tile != null) tile.setType(TileType.NORMAL);
+        sw.spawnParticles(new net.minecraft.particle.BlockStateParticleEffect(
+                net.minecraft.particle.ParticleTypes.BLOCK, broken),
+            lowerPos.getX() + 0.5, lowerPos.getY() + 0.5, lowerPos.getZ() + 0.5,
+            10, 0.3, 0.3, 0.3, 0.1);
+        sw.playSound(null, lowerPos, net.minecraft.sound.SoundEvents.BLOCK_GRASS_BREAK,
+            net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
+    }
+
+    /** A free, walkable tile adjacent to {@code around} (8-dir), or null. */
+    private GridPos findOpenTileNear(GridPos around) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                GridPos p = new GridPos(around.x() + dx, around.z() + dz);
+                if (!arena.isInBounds(p) || arena.isOccupied(p)) continue;
+                GridTile t = arena.getTile(p);
+                if (t == null || !t.isWalkable()) continue;
+                if (p.equals(arena.getPlayerGridPos())) continue;
+                return p;
+            }
+        }
+        return null;
     }
 
     /** Tick sand-mine lifetimes at end of player turn; arm fresh mines and expire old ones. */
@@ -17974,6 +18558,12 @@ public class CombatManager {
         boolean obstacle;
         boolean atFloorLevel; // honey/slime sit IN the floor (trap), not on top of it
         switch (effectType) {
+            // Light sources: placed at body level (Y+1), tile stays walkable. These
+            // ALSO register a light zone in the caller (torch r2, lantern/campfire r3)
+            // to hold back Darkness - but the physical block was never placed, so the
+            // AP + item were consumed with nothing to show. Placed now.
+            case "torch"         -> { block = Blocks.TORCH;         obstacle = false; atFloorLevel = false; }
+            case "lantern"       -> { block = Blocks.LANTERN;       obstacle = false; atFloorLevel = false; }
             case "campfire"      -> { block = Blocks.CAMPFIRE;      obstacle = false; atFloorLevel = false; }
             case "scaffold"      -> { block = Blocks.SCAFFOLDING;   obstacle = false; atFloorLevel = false; }
             case "spore_blossom" -> { block = Blocks.SPORE_BLOSSOM; obstacle = false; atFloorLevel = false; }
@@ -20695,11 +21285,20 @@ public class CombatManager {
             boolean candidateHazard = false;
             boolean candidateWall = false;
             boolean candidateCactus = false;
-            for (int fx = 0; fx < sizeX && !candidateWall; fx++) {
+            boolean candidateEdgeVoid = false;
+            for (int fx = 0; fx < sizeX && !candidateWall && !candidateEdgeVoid; fx++) {
                 for (int fz = 0; fz < sizeZ; fz++) {
                     GridPos fp = new GridPos(candidate.x() + fx, candidate.z() + fz);
 
                     if (!arena.isInBounds(fp)) {
+                        // Pushed off the arena edge into the surrounding void. A
+                        // non-immune mob falls to its death (there's no tile to
+                        // land on out here); a hazard-immune boss just stops at
+                        // the wall as before.
+                        if (!enemy.isHazardImmune()) {
+                            candidateEdgeVoid = true;
+                            break;
+                        }
                         candidateWall = true;
                         wallLabel = "arena wall";
                         break;
@@ -20733,10 +21332,20 @@ public class CombatManager {
                         continue;
                     }
 
-                    if (tile.getType() == com.crackedgames.craftics.core.TileType.VOID
-                        || tile.getType() == com.crackedgames.craftics.core.TileType.DEEP_WATER
-                        || tile.getType() == com.crackedgames.craftics.core.TileType.WATER
-                        || tile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+                    // Sink/hazard tiles the mob is shoved INTO (and affected by),
+                    // not stopped in front of. Matches GridArena.getEntityY's sink
+                    // set so the mob both visually drops AND takes the tile's
+                    // effect: VOID (fall to death), DEEP_WATER (drown), WATER
+                    // (soak), LAVA (burn), POWDER_SNOW (freeze), LOW_GROUND (a
+                    // sunken pit - lands one level down). A hazard-immune mob (a
+                    // boss) treats them as a wall and stops at the edge instead.
+                    TileType tt = tile.getType();
+                    if (tt == com.crackedgames.craftics.core.TileType.VOID
+                        || tt == com.crackedgames.craftics.core.TileType.DEEP_WATER
+                        || tt == com.crackedgames.craftics.core.TileType.WATER
+                        || tt == com.crackedgames.craftics.core.TileType.LAVA
+                        || tt == com.crackedgames.craftics.core.TileType.POWDER_SNOW
+                        || tt == com.crackedgames.craftics.core.TileType.LOW_GROUND) {
                         if (enemy.isHazardImmune()) {
                             candidateWall = true;
                             wallLabel = "hazard edge";
@@ -20752,6 +21361,24 @@ public class CombatManager {
                         break;
                     }
                 }
+            }
+
+            if (candidateEdgeVoid) {
+                // Shoved clean off the arena edge. There's no tile out there to
+                // move onto, so fling the mob toward the edge visually and kill
+                // it outright - a void fall, same fate as an in-arena VOID tile.
+                ServerWorld voidWorld = (ServerWorld) player.getEntityWorld();
+                if (enemy.getMobEntity() != null) {
+                    BlockPos edgeBp = arena.gridToBlockPos(candidate);
+                    enemy.getMobEntity().requestTeleport(
+                        edgeBp.getX() + 0.5, edgeBp.getY() - 3.0, edgeBp.getZ() + 0.5);
+                    voidWorld.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+                        edgeBp.getX() + 0.5, edgeBp.getY(), edgeBp.getZ() + 0.5, 20, 0.4, 0.4, 0.4, 0.3);
+                }
+                enemy.takeDamage(enemy.getCurrentHp() + 100);
+                sendMessage("§4" + enemy.getDisplayName() + " is knocked off the edge into the void!");
+                killEnemy(enemy);
+                return startPos;
             }
 
             if (candidateWall) {
@@ -20856,6 +21483,22 @@ public class CombatManager {
                         case WATER -> {
                             enemy.stackSoaked(2, 1);
                             sendMessage("§b" + enemy.getDisplayName() + " splashes into water! Soaked!");
+                        }
+                        case POWDER_SNOW -> {
+                            // Shoved into powder snow: freezing damage + Slowness,
+                            // matching the tile's freeze hazard for anything that
+                            // sinks into it.
+                            int freezeDmg = enemy.takeDamage(2);
+                            enemy.stackSlowness(2, 1);
+                            sendMessage("§b" + enemy.getDisplayName() + " sinks into powder snow for "
+                                + freezeDmg + " freezing damage!");
+                            if (!enemy.isAlive()) killEnemy(enemy);
+                        }
+                        case LOW_GROUND -> {
+                            // A sunken pit: no innate damage, but the drop staggers
+                            // the mob (brief stun) as it tumbles a level down.
+                            enemy.setStunned(true);
+                            sendMessage("§7" + enemy.getDisplayName() + " tumbles into a sunken pit!");
                         }
                         default -> {}
                     }
@@ -22137,6 +22780,15 @@ public class CombatManager {
 
     private void killEnemy(CombatEntity enemy) {
         enemy.takeDamage(9999);
+        // A destroyed decoy's armor stand must go with it.
+        clearDecoyVisual(enemy);
+        // Silk Touch on a wild hive hands over the hive itself, so a forest
+        // obstacle becomes a reusable ally-summoning tool.
+        dropHiveOnSilkTouch(enemy);
+        // Deeper-and-Darker props: infested sculk erupts, the vase either pays out
+        // or bursts. Both consult the breaker's Silk Touch, so this must run on the
+        // kill path where the weapon is still known.
+        breakDeepDarkProp(enemy);
         // Roll equipment drops on direct kills too (DOTs are handled by checkAndHandleDeath).
         // Mirror clones (Void Walker decoys) never drop loot -they now have real HP, so a
         // hazard-knockback kill routes through killEnemy instead of the dispel path; mirror
@@ -27615,7 +28267,11 @@ public class CombatManager {
                 .add(Items.PRISMARINE_SHARD, 5).add(Items.PRISMARINE_CRYSTALS, 3)
                 .add(Items.COD, 2);
 
-            default -> null;
+            // Modded rosters can't be case labels here (the ids only exist when the
+            // mod does), so they resolve through their compat module instead. Returns
+            // null for anything it doesn't own, which is the same as no drops.
+            default -> com.crackedgames.craftics.compat.deeperanddarker
+                .DeeperAndDarkerCompat.mobDrops(entityTypeId);
         };
         return pool != null ? pool.roll(1, 2, 1, 3) : List.of();
     }

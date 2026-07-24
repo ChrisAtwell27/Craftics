@@ -747,6 +747,7 @@ public class CrafticsClient implements ClientModInitializer {
                 com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
                 com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.registerDeferred();
                 com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.registerDeferred();
+                com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.registerDeferred();
             });
 
         // Resolve keybind conflicts at startup. CLIENT_STARTED runs after every

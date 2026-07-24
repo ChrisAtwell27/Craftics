@@ -30,11 +30,22 @@ public final class IslandDimensions {
             //?} else {
             /*var biomeRegistry = server.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.BIOME);
             *///?}
+            // The terrain is still generated empty (all island content is pasted at
+            // fixed coords), but the BIOME is Plains rather than the_void. The void
+            // biome has no spawn entries at all, so islands were permanently barren:
+            // no passive animals, nothing to tame or farm. Plains gives the island
+            // normal overworld spawning, grass/sky colour and ambience.
             RuntimeWorldConfig config = new RuntimeWorldConfig()
                 .setDimensionType(net.minecraft.world.dimension.DimensionTypes.OVERWORLD)
-                .setGenerator(new VoidChunkGenerator(biomeRegistry))
+                .setGenerator(new VoidChunkGenerator(
+                    biomeRegistry, net.minecraft.world.biome.BiomeKeys.PLAINS))
                 .setDifficulty(net.minecraft.world.Difficulty.NORMAL)
-                .setShouldTickTime(true);
+                .setShouldTickTime(true)
+                // The lobby overworld turns mob spawning OFF (it's a void hub and
+                // nothing should wander it), and Fantasy mirrors the overworld's
+                // game rules into runtime worlds by default. Islands must opt back
+                // IN explicitly or the Plains biome above would still spawn nothing.
+                .setGameRule(net.minecraft.world.GameRules.DO_MOB_SPAWNING, true);
             handle = Fantasy.get(server).getOrOpenPersistentWorld(
                 Identifier.of("craftics", "island/" + owner.toString().toLowerCase()), config);
             HANDLES.put(owner, handle);
