@@ -41,6 +41,11 @@ public enum TileType {
     // CombatManager.handleMove (same scan the fungus tiles use).
     BLOOM(true, false, 2, false),   // glowing bloom growth - 2 step dmg + Burning on cross
     GEYSER(true, false, 0, false),  // sculk geyser - step-trap: Burning II + random launch up to 3 tiles
+    // Ice. Walkable, but stepping onto it does not stop you: you keep sliding along
+    // your direction of travel across every consecutive ice tile and one more, which
+    // makes it free distance in a straight line and a liability next to a pit. The
+    // counterpart to MUD, which stops movement instead of extending it.
+    ICE(true, false, 0, false),
     // Sculk jaw - step-trap that bites for damage AND drains an XP level, which it
     // holds until the jaw is destroyed. Sculk creatures are immune in the source mod,
     // and they are here too by omission: no enemy movement path reads this tile, so

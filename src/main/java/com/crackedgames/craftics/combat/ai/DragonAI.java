@@ -5,11 +5,8 @@ import com.crackedgames.craftics.combat.ai.boss.BossAI;
 import com.crackedgames.craftics.combat.ai.boss.BossWarning;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
-import com.crackedgames.craftics.core.GridTile;
-import com.crackedgames.craftics.core.TileType;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -17,12 +14,32 @@ import java.util.List;
  *
  * ─── Attack State (default) ────────────────────────────────────────────
  *  Dragon is off-stage. Each turn it telegraphs one attack:
- *   • Breath Wave - spawns a 3-wide wave of fire at one arena edge that
- *     advances 3 tiles per turn autonomously. Damages anyone it touches.
- *     Runs independently: the boss can keep attacking while waves move.
- *   • Breath Cross - highlights player's row AND column, resolves as fire.
- *   • Swoop - highlights a 3-wide corridor, resolves as area damage + fire.
- *  After a cycle of attacks, dragon perches.
+ *   • Breath Wave - lights a 3-wide line at the arena edge nearest the player.
+ *   • Breath Cross - the player's full row AND column.
+ *   • Swoop - a 3-wide corridor the full length of the arena.
+ *  All three are telegraphed a turn ahead, and the tiles they warn are exactly
+ *  the tiles they damage and exactly the tiles they set alight. After a cycle
+ *  of attacks, the dragon perches.
+ *
+ * ─── Fire model ───────────────────────────────────────────────────────
+ *  The dragon does NOT paint a shape of flame terrain and let it time out. It
+ *  lights its footprint through the arena's burn cycle
+ *  ({@link EnemyAction.IgniteTiles}), which spreads a ring per turn, collapses
+ *  each tile to magma behind the front, and burns it out. So the shape the
+ *  player dodges is only where the fire STARTS - it keeps growing after the
+ *  turn it landed on.
+ *
+ *  <p>It lights SOUL fire, which needs no fuel: it crosses bare stone and eats
+ *  through walls, where ordinary fire would stop at the first tile with nothing
+ *  to burn. It also sets anyone standing in it to Burning III rather than II.
+ *  Nothing caps the spread; it is bounded by the arena edge and by its own wake,
+ *  since a tile that has just burned refuses to catch again while it cools.
+ *
+ *  <p>Note this arena does NOT scar. End stone and obsidian are not fuel, and
+ *  {@code igniteTile} reads non-fuel ground as restoring - it comes back as
+ *  itself with a short cooldown rather than burning to permanent ash the way a
+ *  grass arena does. So the front can only advance into ground it has not
+ *  reached yet, but ground behind it does eventually become flammable again.
  *
  * ─── Perch State (2 turns P1, 3 turns P2) ─────────────────────────────
  *  Dragon visible + targetable on a cluster of centre tiles:
@@ -53,72 +70,6 @@ public class DragonAI extends BossAI {
     private State lastReportedState = State.ATTACKING;
     public boolean hasStateChanged() { return state != lastReportedState; }
     public void acknowledgeStateChange() { lastReportedState = state; }
-
-    // ─── Breath Wave system ──────────────────────────────────────────────
-    // Waves are persistent hazards that advance every turn regardless of
-    // the boss's own action. CombatManager calls tickWaves() each turn.
-
-    /** A single advancing fire wave. */
-    public static class BreathWave {
-        public final boolean horizontal; // true = moves along Z, false = moves along X
-        public final int baseOffset;     // fixed axis offset (start of the 3-wide strip)
-        public final int direction;      // +1 or -1
-        public int frontPos;             // current leading-edge position on the moving axis
-        public final int damage;
-        public final int fireDuration;
-
-        public BreathWave(boolean horizontal, int baseOffset, int direction,
-                          int startPos, int damage, int fireDuration) {
-            this.horizontal = horizontal;
-            this.baseOffset = baseOffset;
-            this.direction = direction;
-            this.frontPos = startPos;
-            this.damage = damage;
-            this.fireDuration = fireDuration;
-        }
-    }
-
-    private final List<BreathWave> activeWaves = new ArrayList<>();
-
-    /** Get the active waves for CombatManager to tick. */
-    public List<BreathWave> getActiveWaves() { return activeWaves; }
-
-    /**
-     * Advance all active waves by 3 tiles, place fire, damage the player if
-     * they stand in the wave's path. Called by CombatManager each turn start.
-     * Returns the set of tiles that were set on fire this tick (for particles).
-     */
-    public List<GridPos> tickWaves(GridArena arena) {
-        List<GridPos> burnedTiles = new ArrayList<>();
-        Iterator<BreathWave> it = activeWaves.iterator();
-        while (it.hasNext()) {
-            BreathWave wave = it.next();
-            boolean anyInBounds = false;
-            for (int step = 0; step < 3; step++) {
-                int pos = wave.frontPos + wave.direction * step;
-                for (int d = 0; d < 3; d++) {
-                    GridPos tile;
-                    if (wave.horizontal) {
-                        tile = new GridPos(wave.baseOffset + d, pos);
-                    } else {
-                        tile = new GridPos(pos, wave.baseOffset + d);
-                    }
-                    if (!arena.isInBounds(tile)) continue;
-                    anyInBounds = true;
-                    burnedTiles.add(tile);
-                    GridTile gt = arena.getTile(tile);
-                    if (gt != null) {
-                        gt.setTemporaryType(TileType.FIRE, wave.fireDuration);
-                    }
-                }
-            }
-            wave.frontPos += wave.direction * 3;
-            if (!anyInBounds) {
-                it.remove(); // wave has left the arena
-            }
-        }
-        return burnedTiles;
-    }
 
     // ─── Phase transitions ────────────────────────────────────────────────
 
@@ -189,52 +140,53 @@ public class DragonAI extends BossAI {
     // ─── Attack builders ──────────────────────────────────────────────
 
     /**
-     * Spawn a breath wave - a 3-wide wall of fire that starts at the arena
-     * edge nearest the player and advances 3 tiles per turn toward the opposite
-     * edge. No telegraph: the wave IS the warning (the player sees fire tiles
-     * marching toward them). The wave ticks independently via tickWaves().
+     * Breathe a line of soul fire along the arena edge nearest the player, and leave it
+     * there. The line does not march - the burn cycle spreads it, a ring per turn, so what
+     * started as a 3-wide strip at the far wall arrives as an advancing field.
+     *
+     * <p>Telegraphed like every other dragon attack. The old marching wave went unwarned on
+     * the argument that the fire WAS the warning, but that only held while it was a wall of
+     * flame crossing the arena in plain sight. A single line that lands and then creeps has
+     * nothing to see on the turn it lands, so it gets a highlight like the rest.
      */
     private EnemyAction spawnBreathWave(CombatEntity self, GridArena arena, GridPos playerPos) {
         int w = arena.getWidth();
         int h = arena.getHeight();
         int dmg = self.getAttackPower() + (isPhaseTwo() ? 3 : 0);
-        int fireDuration = isPhaseTwo() ? 5 : 3;
 
-        // Alternate horizontal and vertical waves
+        // Alternate the axis the breath sweeps along, so consecutive waves don't stack the
+        // same edge and leave one half of the arena permanently safe.
         boolean horizontal = !lastWaveHorizontal;
         lastWaveHorizontal = horizontal;
 
-        int baseOffset, startPos, direction;
+        // 3 wide, centred on the player, laid flat against whichever edge they're nearest -
+        // the fire has the least ground to cross to reach them.
+        List<GridPos> line = new ArrayList<>();
         if (horizontal) {
-            // Wave moves along Z axis, 3-wide along X centred on player
-            baseOffset = Math.max(0, Math.min(w - 3, playerPos.x() - 1));
-            // Start from the edge closest to the player
-            if (playerPos.z() < h / 2) {
-                startPos = 0;
-                direction = 1;
-            } else {
-                startPos = h - 1;
-                direction = -1;
-            }
+            int baseX = Math.max(0, Math.min(w - 3, playerPos.x() - 1));
+            int edgeZ = playerPos.z() < h / 2 ? 0 : h - 1;
+            for (int d = 0; d < 3; d++) addIfInBounds(arena, line, new GridPos(baseX + d, edgeZ));
         } else {
-            // Wave moves along X axis, 3-wide along Z centred on player
-            baseOffset = Math.max(0, Math.min(h - 3, playerPos.z() - 1));
-            if (playerPos.x() < w / 2) {
-                startPos = 0;
-                direction = 1;
-            } else {
-                startPos = w - 1;
-                direction = -1;
-            }
+            int baseZ = Math.max(0, Math.min(h - 3, playerPos.z() - 1));
+            int edgeX = playerPos.x() < w / 2 ? 0 : w - 1;
+            for (int d = 0; d < 3; d++) addIfInBounds(arena, line, new GridPos(edgeX, baseZ + d));
         }
+        if (line.isEmpty()) return new EnemyAction.Idle();
 
-        activeWaves.add(new BreathWave(horizontal, baseOffset, direction, startPos, dmg, fireDuration));
+        EnemyAction resolve = new EnemyAction.CompositeAction(List.of(
+            new EnemyAction.TileAreaAttack(line, line.get(line.size() / 2), dmg, "dragon_breath"),
+            new EnemyAction.IgniteTiles(line, true)
+        ));
 
-        // No Idle - the wave spawns and the boss still gets to act next turn.
-        // Return a message-only action: the wave will be ticked by CombatManager.
-        // We use an Idle here but the attack cycle counter already incremented,
-        // so the next chooseAbility call picks the next attack in rotation.
+        pendingWarning = new BossWarning(
+            self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
+            line, 1, resolve, 0xFF3AB0FF);
         return new EnemyAction.Idle();
+    }
+
+    /** Add {@code t} to {@code out} when the arena actually has that tile. */
+    private static void addIfInBounds(GridArena arena, List<GridPos> out, GridPos t) {
+        if (arena.isInBounds(t)) out.add(t);
     }
 
     private EnemyAction telegraphSwoop(CombatEntity self, GridArena arena, GridPos playerPos) {
@@ -264,11 +216,14 @@ public class DragonAI extends BossAI {
         }
 
         int dmg = self.getAttackPower() + (isPhaseTwo() ? 3 : 0);
-        int fireDuration = isPhaseTwo() ? 5 : 3;
 
+        // Warned, damaged, lit - one and the same list. The dragon's body passes down the
+        // entire corridor, so the entire corridor hits and the entire corridor catches; the
+        // player is owed a telegraph that means exactly what it shows. TileAreaAttack also
+        // guarantees one hit per victim, so the wide footprint can't stack on anyone.
         EnemyAction resolve = new EnemyAction.CompositeAction(List.of(
-            new EnemyAction.AreaAttack(playerPos, 0, dmg, "dragon_swoop"),
-            new EnemyAction.CreateTerrain(warningTiles, TileType.FIRE, fireDuration)
+            new EnemyAction.TileAreaAttack(warningTiles, playerPos, dmg, "dragon_swoop"),
+            new EnemyAction.IgniteTiles(warningTiles, true)
         ));
 
         pendingWarning = new BossWarning(
@@ -282,13 +237,14 @@ public class DragonAI extends BossAI {
         cross.addAll(getRowTiles(arena, playerPos.z()));
         cross.addAll(getColumnTiles(arena, playerPos.x()));
 
-        int fireDuration = isPhaseTwo() ? 5 : 3;
         int dmg = self.getAttackPower() + (isPhaseTwo() ? 3 : 0);
 
+        // The breath sweeps the full row and column, so the full row and column catch. The
+        // telegraph is the footprint - every tile it paints burns.
         EnemyAction resolve = new EnemyAction.CompositeAction(List.of(
             new EnemyAction.LineAttack(new GridPos(0, playerPos.z()), 1, 0, arena.getWidth(), dmg),
             new EnemyAction.LineAttack(new GridPos(playerPos.x(), 0), 0, 1, arena.getHeight(), dmg),
-            new EnemyAction.CreateTerrain(cross, TileType.FIRE, fireDuration)
+            new EnemyAction.IgniteTiles(cross, true)
         ));
 
         pendingWarning = new BossWarning(

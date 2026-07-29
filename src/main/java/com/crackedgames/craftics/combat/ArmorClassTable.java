@@ -78,6 +78,26 @@ public final class ArmorClassTable {
      * The material prefix of an armor item's registry ID (e.g. {@code "iron"} from
      * {@code iron_helmet}), or {@code null} if the item is not an armor piece.
      */
+    /**
+     * Flat damage reduction a FULL four-piece set of {@code material} grants, on top of
+     * its Armor Class. AC is a chance to avoid a hit entirely; this is the small,
+     * guaranteed bite taken out of the hits that do land, so armor is never completely
+     * useless against an enemy that out-scales your dodge.
+     *
+     * <p>Derived from the material's {@link #baseAC} rather than hand-tabled, so it
+     * cannot drift out of step with the AC ladder and so registered/modded materials
+     * get a sensible value for free. {@code B - 2} lands exactly on the intended
+     * spread: leather and gold give nothing, chainmail 1, iron and copper 2, diamond 4,
+     * netherite 5.
+     *
+     * <p>Gold gives none by design - it is the Gambler set, priced for crit and
+     * emeralds rather than protection, and sits at leather's base value.
+     */
+    public static int fullSetDefense(String material) {
+        if (material == null) return 0;
+        return Math.max(0, resolveBaseAC(material) - 2);
+    }
+
     public static String materialOf(Item item) {
         if (item == null) return null;
         String path = Registries.ITEM.getId(item).getPath();

@@ -208,6 +208,8 @@ public class GuideBookData {
             new Page("Enemy Defense & Your Deflect",
                 "Enemy DEF reduces the damage they take per hit (capped - high DEF never makes them immune).\n\n" +
                 "Your Armor Class (AC) instead gives a chance for enemies to MISS you entirely. The higher your AC compared to the attacker's strength, the more often they whiff.\n\n" +
+                "Worn armor ALSO shaves a small flat amount off every enemy hit that does land, so a bad dodge roll still isn't the same as wearing nothing. Full sets: Leather 0, Gold 0, Chainmail 1, Iron/Copper 2, Diamond 4, Netherite 5. A hit always deals at least 1.\n\n" +
+                "That reduction is deliberately small - AC is still where armor does its real work. It does not apply to hazards like lava or sculk jaws, which bite for full.\n\n" +
                 "Hover any enemy to inspect its live stats in the panel.")
         )));
         basics.add(new Entry("Tile Types", "minecraft:grass_block", List.of(

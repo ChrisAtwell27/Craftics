@@ -70,6 +70,32 @@ public class PlayerCombatStats {
         return Math.max(0, ac);
     }
 
+    /**
+     * Flat damage reduction from worn armor, applied to hits that get past the AC dodge
+     * roll. Armor's main job is still AC; this is the floor under it, so a player in
+     * full diamond is never taking identical damage to a player in nothing just because
+     * the dodge missed.
+     *
+     * <p>Accumulated in quarter-sets and divided once at the end, the same shape as
+     * {@link DamageType#affinityFromCounts}. Each worn piece contributes a quarter of
+     * its material's {@link ArmorClassTable#fullSetDefense}, so a full set pays exactly
+     * the table value and a mixed set averages smoothly instead of each material
+     * flooring to zero on its own.
+     *
+     * <p>Full-set totals: leather 0, gold 0, chainmail 1, iron/copper 2, diamond 4,
+     * netherite 5.
+     */
+    public static int getArmorDefense(ServerPlayerEntity player) {
+        if (player == null) return 0;
+        int quarters = 0;
+        for (EquipmentSlot slot : new EquipmentSlot[]{
+                EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            String material = ArmorClassTable.armorSetKeyOf(player.getEquippedStack(slot).getItem());
+            if (material != null) quarters += ArmorClassTable.fullSetDefense(material);
+        }
+        return quarters / 4;
+    }
+
     /** Crossbow uses special rook pattern - return -1 to signal unlimited cardinal range. */
     public static final int RANGE_CROSSBOW_ROOK = -1;
 

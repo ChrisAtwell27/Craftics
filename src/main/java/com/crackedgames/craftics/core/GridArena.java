@@ -170,6 +170,12 @@ public class GridArena {
         // their in-world block never moves, so relocating the grid entry would desync the
         // target and make them impossible to hit. Refuse the move.
         if (entity.isImmovable()) return false;
+        // Background bosses are parked off the arena and hand-registered onto a block of
+        // tiles that has nothing to do with their gridPos, which is only a sentinel. A move
+        // would strip exactly one tile (the sentinel) out of that registration and then add
+        // whatever tile it walked to, leaving the boss both half-registered where it belongs
+        // AND standing on the floor somewhere it should never be. Nothing may relocate them.
+        if (entity.isBackgroundBoss()) return false;
         if (!canOccupy(entity, newPos)) return false;
         // Remove from all old tiles
         for (GridPos tile : getOccupiedTiles(entity)) {

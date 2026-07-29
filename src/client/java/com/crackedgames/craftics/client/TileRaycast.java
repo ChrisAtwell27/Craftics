@@ -190,17 +190,34 @@ public class TileRaycast {
     }
 
     /**
-     * Ray-test the bounding boxes of mobs and players inside the arena and
+     * How far beyond the arena footprint the entity pick still looks, in blocks. Wide enough
+     * to cover a boss parked off the stage (the Wailing Revenant hovers ten blocks past the
+     * front edge). Entities out here are only ever pickable if they are combat enemies with
+     * registered arena tiles, so widening the net cannot make scenery clickable.
+     */
+    private static final int OFF_STAGE_PICK_MARGIN = 16;
+
+    /**
+     * Ray-test the bounding boxes of mobs and players in and around the arena and
      * return the grid tile of the nearest one hit, or {@code null}. Hits
      * farther away than {@code maxDistSq} (the nearest block hit) are ignored
      * so entities can't be picked through walls.
+     *
+     * <p>An enemy does not have to be standing on the grid to be picked. A boss parked off
+     * the stage is registered onto a block of arena tiles that acts as its targeting surface,
+     * and clicking its body resolves to the registered tile NEAREST THE PLAYER - the one that
+     * gives the shot its best chance of being in range. Without this the only way to shoot
+     * the Wailing Revenant was to click a bare patch of floor on the front row and know that
+     * the ghast hovering ten blocks past the edge was somehow "there".
      */
     private static GridPos pickEntityTile(MinecraftClient client, Vec3d start, Vec3d end,
                                           double maxDistSq, int originX, int originY, int originZ,
                                           int arenaW, int arenaH) {
         net.minecraft.util.math.Box arenaBox = new net.minecraft.util.math.Box(
-            originX - 1, originY, originZ - 1,
-            originX + arenaW + 1, originY + 5, originZ + arenaH + 1);
+            originX - OFF_STAGE_PICK_MARGIN, originY - OFF_STAGE_PICK_MARGIN,
+            originZ - OFF_STAGE_PICK_MARGIN,
+            originX + arenaW + OFF_STAGE_PICK_MARGIN, originY + OFF_STAGE_PICK_MARGIN,
+            originZ + arenaH + OFF_STAGE_PICK_MARGIN);
 
         net.minecraft.entity.Entity best = null;
         double bestDistSq = maxDistSq;
@@ -212,6 +229,14 @@ public class TileRaycast {
             // hover-pickable via its (unrendered) body - that would leak its
             // position through the target highlight.
             if (CombatState.isEnemyHiddenByDarkness(e.getId())) continue;
+            // Outside the footprint, only a registered combat enemy may be picked. The
+            // margin above sweeps in whatever else happens to be standing near the arena,
+            // and a stray cow closer to the camera than the boss must not win the ray and
+            // then resolve to nothing.
+            if (!onArenaFootprint(e, originX, originZ, arenaW, arenaH)
+                    && registeredTileNearestPlayer(client, e.getId()) == null) {
+                continue;
+            }
             var hit = e.getBoundingBox().expand(0.08).raycast(start, end);
             if (hit.isEmpty()) continue;
             double distSq = start.squaredDistanceTo(hit.get());
@@ -226,8 +251,39 @@ public class TileRaycast {
         int gz = (int) Math.floor(best.getZ()) - originZ;
         if (gx < 0 || gx >= arenaW || gz < 0 || gz >= arenaH
             || !CombatState.isInPolygon(gx, gz)) {
-            return null;
+            // Body is off the grid: fall back to its registered targeting tiles.
+            return registeredTileNearestPlayer(client, best.getId());
         }
         return new GridPos(gx, gz);
+    }
+
+    /** True if the entity's own position lands on a real tile of the arena. */
+    private static boolean onArenaFootprint(net.minecraft.entity.Entity e,
+                                            int originX, int originZ, int arenaW, int arenaH) {
+        int gx = (int) Math.floor(e.getX()) - originX;
+        int gz = (int) Math.floor(e.getZ()) - originZ;
+        return gx >= 0 && gx < arenaW && gz >= 0 && gz < arenaH && CombatState.isInPolygon(gx, gz);
+    }
+
+    /**
+     * The arena tile registered to {@code entityId} that is closest to the player, or null if
+     * this entity has no registered tiles. Manhattan distance, matching the metric the server
+     * uses for ranged reach, so the tile this returns is the one most likely to be in range.
+     */
+    private static GridPos registeredTileNearestPlayer(MinecraftClient client, int entityId) {
+        GridPos playerPos = ClientGridHelper.getPlayerGridPos(client);
+        GridPos best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (var entry : CombatState.getEnemyGridMap().entrySet()) {
+            if (entry.getValue() == null || entry.getValue() != entityId) continue;
+            GridPos tile = entry.getKey();
+            int dist = playerPos == null ? 0
+                : Math.abs(playerPos.x() - tile.x()) + Math.abs(playerPos.z() - tile.z());
+            if (best == null || dist < bestDist) {
+                best = tile;
+                bestDist = dist;
+            }
+        }
+        return best;
     }
 }

@@ -387,16 +387,17 @@
          ================================================================ -->
     <h2 id="armor-class">Armor Class &amp; Dodge</h2>
     <p>
-      Your defense against enemy attacks is <strong>Armor Class (AC)</strong>. AC does not reduce
-      damage. Instead, it gives you a chance to <strong>dodge</strong> an attack entirely. A
-      dodged attack deals zero damage; an attack that lands deals its full flat damage. Dodging is
-      meant to be an uncommon, lucky break, not a wall you hide behind.
+      Your main defense against enemy attacks is <strong>Armor Class (AC)</strong>. AC itself does
+      not reduce damage - it gives you a chance to <strong>dodge</strong> an attack entirely. A
+      dodged attack deals zero damage. Dodging is meant to be an uncommon, lucky break, not a wall
+      you hide behind. An attack that lands deals its full damage minus the small
+      <a href="#armor-class">flat DEF</a> your armor provides.
     </p>
     <div class="formula">
       dodge% = clamp(diff&sup2; / 3 + diff, 3, 60) &nbsp; where &nbsp; diff = max(0, AC &minus; enemyAttack)
     </div>
     <p>
-      Every enemy attack rolls a d100 against this chance. The curve is smooth and slightly accelerating, so small AC advantages give modest dodge while large advantages compound. Dodge has a <strong>3% floor</strong> (even badly outmatched armor occasionally saves you) and a <strong>60% cap</strong> (dodge never becomes a guaranteed wall). A landed hit deals the enemy's full attack value with no damage reduction, so staying geared matters.
+      Every enemy attack rolls a d100 against this chance. The curve is smooth and slightly accelerating, so small AC advantages give modest dodge while large advantages compound. Dodge has a <strong>3% floor</strong> (even badly outmatched armor occasionally saves you) and a <strong>60% cap</strong> (dodge never becomes a guaranteed wall). A landed hit deals the enemy's full attack value less your armor's flat DEF, so staying geared matters on both counts.
     </p>
 
     <h3>How Armor Class Is Built</h3>
@@ -408,16 +409,40 @@
     </ul>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Material</th><th>Base B</th><th>Full Set AC</th></tr></thead>
+        <thead><tr><th>Material</th><th>Base B</th><th>Full Set AC</th><th>Full Set DEF</th></tr></thead>
         <tbody>
-          <tr><td>Leather</td><td>2</td><td>7</td></tr>
-          <tr><td>Chainmail / Gold</td><td>3</td><td>11</td></tr>
-          <tr><td>Iron / Copper</td><td>4</td><td>13</td></tr>
-          <tr><td>Diamond</td><td>6</td><td>19</td></tr>
-          <tr><td>Netherite</td><td>7</td><td>23</td></tr>
+          <tr><td>Leather</td><td>2</td><td>7</td><td>0</td></tr>
+          <tr><td>Gold</td><td>2</td><td>7</td><td>0</td></tr>
+          <tr><td>Chainmail</td><td>3</td><td>11</td><td>1</td></tr>
+          <tr><td>Iron / Copper</td><td>4</td><td>13</td><td>2</td></tr>
+          <tr><td>Diamond</td><td>6</td><td>19</td><td>4</td></tr>
+          <tr><td>Netherite</td><td>7</td><td>23</td><td>5</td></tr>
         </tbody>
       </table>
     </div>
+    <h3>Flat Defense</h3>
+    <p>
+      Worn armor also grants a small <strong>flat damage reduction</strong> on every enemy hit that
+      gets past the dodge roll. AC decides whether a hit lands; DEF decides how much it costs you
+      when it does, so failing a dodge in full diamond is no longer identical to failing one in
+      nothing. It is deliberately small - AC remains where armor does its real work.
+    </p>
+    <div class="formula">
+      Full Set DEF = max(0, B &minus; 2) &nbsp;&middot;&nbsp; each worn piece contributes a quarter,
+      summed then divided once
+    </div>
+    <p>
+      Because the quarters are summed before dividing, a mixed set averages smoothly rather than
+      each material rounding to nothing on its own: two diamond plus two iron gives
+      <code>(4+4+2+2)/4 = 3</code>. A hit always deals <strong>at least 1</strong> damage, so DEF is
+      mitigation and never immunity. Gold gives none by design - it is the Gambler set, priced for
+      crit and emeralds rather than protection.
+    </p>
+    <p>
+      DEF applies to <em>enemy attacks only</em>. Environmental damage - lava, sculk jaws, geysers,
+      your own bed or end crystal - bypasses it entirely and bites for full.
+    </p>
+
     <p>
       Mixed armor sums each piece independently. On top of worn armor, AC also gains: the
       <strong>Defense</strong> stat (+1 per point), <strong>Protection</strong> enchants (+1 per 2
@@ -789,7 +814,7 @@
           <tr><td>Totem of Undying</td><td>1</td><td>Full heal + Regeneration + Absorption</td></tr>
           <tr><td>Lava Bucket</td><td>1</td><td>Creates lava tile (3 fire damage/turn)</td></tr>
           <tr><td>Campfire</td><td>1</td><td>Heal 1 HP/turn when adjacent</td></tr>
-          <tr><td>Anvil</td><td>1</td><td>5 damage</td></tr>
+          <tr><td>Anvil</td><td>1</td><td>Half the target's max HP (min 10). Wears to chipped (1/3), then damaged (1/4), then breaks. Special: 10% per point to avoid wear, at every stage</td></tr>
           <tr><td>Honey Block</td><td>1</td><td>Enemies lose all movement stepping on it</td></tr>
           <tr><td>Powder Snow</td><td>1</td><td>1 damage + stun</td></tr>
           <tr><td>Jukebox</td><td>2</td><td>Buff all allies +1 speed</td></tr>

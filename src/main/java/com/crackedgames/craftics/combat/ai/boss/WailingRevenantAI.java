@@ -32,7 +32,12 @@ import java.util.List;
  * Abilities:
  * - Fireball Barrage (P1: 2-turn CD, P2: 1-turn): 3 (P2: 5) fireball projectiles at z=1.
  * - Raining Fireballs (P1: 3-turn CD, P2: 2-turn): Half the arena warned, 5 (P2: 7) dmg each.
- * - Magma Rows (P1: 3-turn CD, P2: 2-turn): 1 (P2: 3) rows turn to magma for 2 turns.
+ * - Soul Ember (P1: 3-turn CD, P2: 2-turn): drops 1 (P2: 3) burning embers on random tiles.
+ *   Each is a SINGLE tile that catches and is then left to the arena - soul sand and soul
+ *   soil are both fuel AND a vanilla soul base, so an ember lit here comes up blue on its own
+ *   and the burn cycle carries it outward a ring per turn. The valley floor also restores
+ *   after burning instead of scarring to ash, so the fire sweeps the arena and the arena
+ *   grows back, which is what makes a seed-and-spread attack fair to drop here.
  * - Summon Wither Skeletons (P1: 4-turn CD, P2: 3-turn): 2 (P2: 3), max 4 (P2: 6).
  *
  * Phase 2 - "Requiem" (≤50% HP): Faster cooldowns, more fireballs, higher rain damage,
@@ -41,13 +46,31 @@ import java.util.List;
 public class WailingRevenantAI extends BossAI {
     @Override public int getGridSize() { return 2; } // Overridden at runtime by CombatManager
 
+    /**
+     * The ghast never moves, not even on a telegraph turn.
+     *
+     * <p>From the fourth biome onward CombatManager stops letting a boss idle through the
+     * turn it spends charging a warning, and asks it for a movement action to run alongside
+     * the telegraph. The inherited answer is "walk toward the player", which for this boss
+     * is catastrophic: it hovers OUTSIDE the arena and is hand-registered onto the whole
+     * front row, with a sentinel gridPos of (0, 0) that is not where it is. Walking it moved
+     * the mob onto the arena floor in the corner, so from its second turn on the stationary
+     * artillery boss was standing on the stage next to you, meleeable, with its reflected
+     * fireball counterplay reduced to a formality. Soul sand valley is well past that
+     * ordinal, so this fired every single fight.
+     */
+    @Override
+    public EnemyAction getChargingAdvanceAction(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return new EnemyAction.Idle();
+    }
+
     private static final int ATTACK_COUNT = 4;
     private int nextAttackIndex = 0;
 
     private static final String CD_BARRAGE = "fireball_barrage";
     private static final String CD_RAIN = "raining_fireballs";
     private static final String CD_SUMMON = "summon_skeletons";
-    private static final String CD_MAGMA = "magma_rows";
+    private static final String CD_MAGMA = "soul_ember";
 
     private static final int MAX_FIREBALLS_P1 = 8;
     private static final int MAX_FIREBALLS_P2 = 12;
@@ -123,15 +146,30 @@ public class WailingRevenantAI extends BossAI {
         return new EnemyAction.Idle();
     }
 
+    /**
+     * Drop burning embers on single tiles and let the valley do the rest.
+     *
+     * <p>This used to paint whole rows of {@link TileType#FIRE} terrain that timed out after
+     * two turns. Two things were wrong with that. Painted flame terrain never joins the burn
+     * cycle, so it re-seeded its neighbours every turn it stayed up, never collapsed to magma
+     * and never left the cooldown that stops ground relighting. And it came out ORANGE while
+     * everything it spread to came out blue - soul sand is fuel, so the spread caught, and
+     * {@code burnsSoulFire} then flipped each spread tile to soul fire. The seed was the only
+     * tile in the whole burn that wasn't soul fire.
+     *
+     * <p>An ember fixes both. One tile, lit through the burn cycle, blue from the start,
+     * spreading a ring per turn on its own and burning itself out. The ghast lobs a coal, not
+     * a carpet.
+     */
     private EnemyAction tryMagma(CombatEntity self, GridArena arena) {
         if (isOnCooldown(CD_MAGMA)) return null;
-        int rowCount = isPhaseTwo() ? 3 : 1;
-        List<GridPos> magmaTiles = getRandomRows(arena, rowCount);
-        if (magmaTiles.isEmpty()) return null;
+        int emberCount = isPhaseTwo() ? 3 : 1;
+        List<GridPos> emberTiles = getRandomPlayableTiles(arena, emberCount);
+        if (emberTiles.isEmpty()) return null;
         setCooldown(CD_MAGMA, isPhaseTwo() ? 2 : 3);
         pendingWarning = new BossWarning(
             self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
-            magmaTiles, 1, new EnemyAction.CreateTerrain(magmaTiles, TileType.FIRE, 2), 0xFFFF6600
+            emberTiles, 1, new EnemyAction.IgniteTiles(emberTiles, true, "soul_ember"), 0xFF3AB0FF
         );
         return new EnemyAction.Idle();
     }
@@ -184,25 +222,5 @@ public class WailingRevenantAI extends BossAI {
         }
         Collections.shuffle(candidates);
         return candidates.subList(0, Math.min(count, candidates.size()));
-    }
-
-    /**
-     * Random full rows excluding row 0 (boss) and the last row.
-     */
-    private List<GridPos> getRandomRows(GridArena arena, int rowCount) {
-        List<Integer> rowCandidates = new ArrayList<>();
-        for (int z = 1; z < arena.getHeight() - 1; z++) {
-            rowCandidates.add(z);
-        }
-        Collections.shuffle(rowCandidates);
-
-        List<GridPos> tiles = new ArrayList<>();
-        int picked = 0;
-        for (int row : rowCandidates) {
-            if (picked >= rowCount) break;
-            tiles.addAll(getRowTiles(arena, row));
-            picked++;
-        }
-        return tiles;
     }
 }

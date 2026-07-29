@@ -107,6 +107,32 @@ public sealed interface EnemyAction {
     /** Create or transform terrain tiles for a duration (0 = permanent). */
     record CreateTerrain(List<GridPos> tiles, TileType terrainType, int duration) implements EnemyAction {}
 
+    /**
+     * Strike a light on the listed tiles and hand them to the arena's own burn cycle, rather
+     * than painting flame terrain that sits for a fixed duration.
+     * <p>
+     * The difference from {@code CreateTerrain(tiles, FIRE/SOUL_FIRE, n)} is what happens
+     * NEXT. Painted flame terrain keeps its own duration, re-seeding its neighbours every
+     * single turn it stays up, and never enters the burn cycle - so it never collapses to
+     * magma, never burns out, and never leaves the cooldown behind that stops ground from
+     * relighting. These tiles do all of that: flames, then magma, then ash or restored
+     * ground, spreading one ring per turn while the flames are up and going out on their own.
+     * <p>
+     * That makes this the right shape for an attack that lands an IMPACT SITE and lets the
+     * fire do the rest. A boss lights a line; the arena carries it.
+     *
+     * @param soulFire true to light soul fire (needs no fuel, so it crosses bare ground and
+     *                 eats through walls), false for ordinary fire, which only spreads along
+     *                 a fuel chain and stops at the first tile with nothing to burn
+     * @param effectName optional VFX tag for HOW the fire arrives - "soul_ember" drops a
+     *                   visible ember out of the sky onto each tile. Null means the tile
+     *                   simply catches, which is what a breath weapon that already has its
+     *                   own impact VFX wants
+     */
+    record IgniteTiles(List<GridPos> tiles, boolean soulFire, String effectName) implements EnemyAction {
+        public IgniteTiles(List<GridPos> tiles, boolean soulFire) { this(tiles, soulFire, null); }
+    }
+
     /** Place cobweb overlays on the listed tiles for {@code duration} turns.
      *  Unlike {@link CreateTerrain}, the cobweb is placed at floor+1 (so the
      *  floor stays intact underneath) and goes through the arena's web-overlay

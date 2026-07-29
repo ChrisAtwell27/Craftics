@@ -59,7 +59,8 @@ public final class FlammableTiles {
         // Already burning or non-flammable terrain types. EXIT is structural - burning
         // away the way out would be able to strand the party.
         if (t.isFlames() || t == TileType.LAVA || t == TileType.WATER
-            || t == TileType.DEEP_WATER || t == TileType.VOID) {
+            || t == TileType.DEEP_WATER || t == TileType.VOID
+            || t == TileType.POWDER_SNOW) {
             return false;
         }
         // Stealth plants always burn.
@@ -110,7 +111,13 @@ public final class FlammableTiles {
         TileType t = tile.getType();
         if (t.isFlames()) return false;           // already alight
         return t != TileType.LAVA && t != TileType.WATER
-            && t != TileType.DEEP_WATER && t != TileType.VOID;
+            && t != TileType.DEEP_WATER && t != TileType.VOID
+            // Powder snow is not ground a flame can stand on. It is not fuel either, so
+            // without this it fell through to "any tile that isn't water or void" and
+            // accepted a light: the flame block could not survive above it so nothing was
+            // ever visible, but the tile still entered the burn cycle and then happily
+            // spread fire to its neighbours.
+            && t != TileType.POWDER_SNOW;
     }
 
     /**

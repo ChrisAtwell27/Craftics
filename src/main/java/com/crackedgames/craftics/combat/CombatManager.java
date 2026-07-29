@@ -2479,9 +2479,36 @@ public class CombatManager {
                 // their column would bury an adjacent void/pit/water tile in cobblestone.
                 GridTile neighbour = arena.getTile(new GridPos(gridCenter.x() + dx, gridCenter.z() + dz));
                 if (neighbour != null && isOpenOrHazardTile(neighbour.getType())) continue;
-                setArenaBlock(w, center.add(dx, 0, dz), net.minecraft.block.Blocks.COBBLESTONE, true);
+                // Skip neighbours that are already hanging over open air. On an arena whose
+                // floor is a platform above a real drop, there is no gap to seal here - the
+                // cobble would simply hang in the void, visibly stuck to the underside of the
+                // neighbouring floor block.
+                BlockPos side = center.add(dx, 0, dz);
+                if (opensIntoDeepVoid(w, side)) continue;
+                setArenaBlock(w, side, net.minecraft.block.Blocks.COBBLESTONE, true);
             }
         }
+    }
+
+    /** How far below a spot we probe before calling the space under it real void. Deeper
+     *  than the 2-block shaft {@link #digVoidPit} carves, so a dug hole is never mistaken
+     *  for one. */
+    private static final int DEEP_VOID_PROBE = 3;
+
+    /**
+     * True when the column under {@code pos} is already open for {@link #DEEP_VOID_PROBE}
+     * blocks - i.e. the arena floor here is a platform suspended over a real drop rather
+     * than ground with rock beneath it.
+     *
+     * <p>Pit digging assumes it is carving into solid ground, so it seals the sides and
+     * caps the bottom. On a suspended floor both of those are wrong: there is nothing to
+     * seal against, and the cap is a false bottom floating in the void.
+     */
+    private boolean opensIntoDeepVoid(ServerWorld w, BlockPos pos) {
+        for (int i = 1; i <= DEEP_VOID_PROBE; i++) {
+            if (!w.getBlockState(pos.down(i)).isAir()) return false;
+        }
+        return true;
     }
 
     /** Tile types that are deliberately open or hazardous and must NOT be filled in
@@ -2533,14 +2560,27 @@ public class CombatManager {
         BlockPos pitFloor = floor.down();             // floorY-1 (old dip floor -> now open void)
         BlockPos bottom   = pitFloor.down();          // floorY-2 (black concrete bottom)
 
+        // Decide BEFORE anything is placed: is there real ground under this arena, or is
+        // the floor a platform over open void? Probed from the old dip floor, so the first
+        // block tested is where the concrete cap would go. A procedurally built arena has
+        // stone at floorY-1 and bedrock at floorY-2, so it answers "solid" and keeps the
+        // original behaviour; only a thin pasted schematic with nothing under it answers
+        // "suspended".
+        boolean suspended = opensIntoDeepVoid(w, pitFloor);
+
         // Open the shaft: clear overlay, floor, and the old dip floor.
         setArenaBlock(w, overlay,  net.minecraft.block.Blocks.AIR, false);
         setArenaBlock(w, floor,    net.minecraft.block.Blocks.AIR, false);
         setArenaBlock(w, pitFloor, net.minecraft.block.Blocks.AIR, false);
-        // Black concrete bottom, cobblestone walls on both interior layers.
-        setArenaBlock(w, bottom, net.minecraft.block.Blocks.BLACK_CONCRETE, false);
+        // Black concrete bottom and cobblestone walls, but only where the hole is being
+        // carved into solid ground. Over a real drop the arena already IS void underneath,
+        // so a concrete slab two blocks down is a false bottom hanging in mid air and the
+        // side walls have nothing to seal against.
+        if (!suspended) {
+            setArenaBlock(w, bottom, net.minecraft.block.Blocks.BLACK_CONCRETE, false);
+            wallRingWithCobble(w, bottom, pos);
+        }
         wallRingWithCobble(w, pitFloor, pos);
-        wallRingWithCobble(w, bottom, pos);
 
         tile.setType(com.crackedgames.craftics.core.TileType.VOID);
         tile.setBlockType(net.minecraft.block.Blocks.AIR);
@@ -2786,6 +2826,15 @@ public class CombatManager {
         if (attacker != null && actual > 0) {
             int resist = combatEffects.getResistanceBonus();
             if (resist > 0) actual = Math.max(1, actual - resist);
+        }
+
+        // Worn armor: a small flat reduction on top of the AC dodge roll, so gear that
+        // failed to make you miss still counts for something. Same shape as Resistance
+        // above - always leaves at least 1 damage, and enemy hits only, so hazards
+        // (lava, sculk jaws, your own bed) keep the full bite they were tuned for.
+        if (attacker != null && actual > 0) {
+            int armorDef = PlayerCombatStats.getArmorDefense(player);
+            if (armorDef > 0) actual = Math.max(1, actual - armorDef);
         }
 
         // Grudgeplate chestplate: remember the last enemy to actually land a hit on the
@@ -3152,6 +3201,9 @@ public class CombatManager {
         this.arena = arena;
         this.levelDef = levelDef;
         this.enemies = new ArrayList<>();
+        // Bed anchors are scoped to a single arena. endCombat clears this too; doing it
+        // here as well means an abnormal exit can't leak a tile into the next room.
+        this.bedRespawnAnchor = null;
         // Begin tallying loot for this fight so the victory screen can show
         // everything collected. Records all current participants.
         {
@@ -5126,6 +5178,21 @@ public class CombatManager {
             triggerGeyser(geyserTile);
         }
 
+        // Ice: if the move ENDED on ice, keep going. Resolved here rather than per-step
+        // so a path that merely crosses a corner of the rink isn't hijacked mid-route -
+        // only actually stopping on ice slides you. Same placement as the geyser launch,
+        // which is the established "the move relocated you" seam.
+        GridPos landed = path.get(path.size() - 1);
+        GridTile landedTile = arena.getTile(landed);
+        if (landedTile != null
+                && landedTile.getType() == com.crackedgames.craftics.core.TileType.ICE
+                && path.size() >= 2) {
+            GridPos prev = path.get(path.size() - 2);
+            slideOnIce(landed,
+                Integer.signum(landed.x() - prev.x()),
+                Integer.signum(landed.z() - prev.z()));
+        }
+
         // Check if leaving water to land
         GridTile endTile = arena.getTile(path.get(path.size() - 1));
 
@@ -5899,6 +5966,21 @@ public class CombatManager {
                     net.minecraft.sound.SoundEvents.ENTITY_ENDERMAN_TELEPORT,
                     net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.2f);
             }
+        }
+
+        // A boss that isn't standing on the arena cannot be reached by hand. The whole shape
+        // of these fights is that the boss is out of melee reach on purpose - the Wailing
+        // Revenant hovers beyond the front edge and is answered with reflected fireballs and
+        // arrows, not by walking up to it. Its registered tiles are a targeting surface, not
+        // a body: they sit on the arena floor only so there is something to aim at, and
+        // measuring melee reach against them let you stand on the front row and punch a ghast
+        // hovering ten blocks off the edge. Checked before the range block so it holds for
+        // every weapon, including the paths below that skip range validation entirely.
+        if (target.isBackgroundBoss()
+                && !PlayerCombatStats.isBow(player) && !isTridentWeapon(weapon)) {
+            sendMessage("§c" + target.getDisplayName()
+                + " is out of reach! §7Use a bow, a crossbow, or turn its own fire back on it.");
+            return;
         }
 
         // Range check (scaffold tile grants +1 range for ranged) -trident range already validated above.
@@ -7843,6 +7925,9 @@ public class CombatManager {
 
     private void checkAndHandleDeath(CombatEntity entity) {
         if (!entity.isAlive() && !entity.isDeathProcessed()) {
+            // Crystals killed by a DoT tick, splash or a stray AoE never reach
+            // killEnemy, so the blast has to be claimed here too. Guarded once-only.
+            tryDetonateEndCrystal(entity);
             // Credit this kill to the current turn-holder if no more specific
             // damager was recorded. Threading killer-uuid through every
             // takeDamage call site would be invasive; this default captures
@@ -10577,6 +10662,31 @@ public class CombatManager {
             GridPos tntPos = new GridPos(tx, tz);
             primePendingTnt(tntPos, "§e§lTNT placed! §r§7It will explode at the start of next round!");
         }
+        else if (result.startsWith(ItemUseHandler.CHORUS_PREFIX)) {
+            int healed = 0;
+            try {
+                healed = Integer.parseInt(result.substring(ItemUseHandler.CHORUS_PREFIX.length()));
+            } catch (NumberFormatException ignored) {}
+            chorusHop(healed);
+        }
+        // Bed: anchor in the overworld, bomb in the nether/end.
+        else if (result.startsWith(ItemUseHandler.BED_PREFIX)) {
+            String data = result.substring(ItemUseHandler.BED_PREFIX.length());
+            String[] parts = data.split(",");
+            GridPos bedPos = new GridPos(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]));
+            net.minecraft.block.Block bedBlock = net.minecraft.block.Blocks.RED_BED;
+            if (parts.length > 2) {
+                net.minecraft.item.Item bedItem = net.minecraft.registry.Registries.ITEM
+                    .get(net.minecraft.util.Identifier.of(parts[2]));
+                if (bedItem instanceof net.minecraft.item.BlockItem bi) bedBlock = bi.getBlock();
+            }
+            boolean isAnchor = bedBlock == net.minecraft.block.Blocks.RESPAWN_ANCHOR;
+            if (isExplosiveSleepItem(isAnchor)) {
+                detonateBed(bedPos, bedBlock);
+            } else {
+                placeBedAnchor(bedPos, bedBlock);
+            }
+        }
         else if (!hasDeferredHandler(result)) {
             sendMessage(result);
         }
@@ -10631,6 +10741,48 @@ public class CombatManager {
                             net.minecraft.block.Blocks.AIR.getDefaultState());
                         spawnDecoyVisual(placed, objPos, objWorld);
                     }
+                }
+            } else if ("end_crystal".equals(effectType)) {
+                // 1 HP: any hit pops it. The crystal is not a wall you chew through,
+                // it is a trigger you choose the moment for. Left non-ally so enemies
+                // ignore it entirely - placeBlockObject marks it scenery, so it can
+                // never keep a room from clearing either.
+                GridPos xPos = new GridPos(tx, tz);
+                ServerWorld xWorld = (ServerWorld) player.getEntityWorld();
+                CombatEntity crystal = placeBlockObject(END_CRYSTAL_ID, xPos, 1,
+                    -(minibossBlockIdCounter++), net.minecraft.block.Blocks.AIR, xWorld);
+                if (crystal != null) spawnEndCrystalVisual(crystal, xPos, xWorld);
+            } else if (effectType.startsWith("ice_")) {
+                placeIceTile(new GridPos(tx, tz), effectType.substring("ice_".length()));
+            } else if ("grow_cover".equals(effectType)
+                    || effectType.startsWith("place_cover_")) {
+                GridPos coverPos = new GridPos(tx, tz);
+                boolean fern = effectType.endsWith("_fern");
+                GridTile coverTile = arena.getTile(coverPos);
+                ServerWorld coverWorld = (ServerWorld) player.getEntityWorld();
+                if (coverTile != null) {
+                    coverTile.setType(fern ? TileType.TALL_FERN : TileType.TALL_GRASS);
+                    net.minecraft.block.Block plant = fern
+                        ? net.minecraft.block.Blocks.LARGE_FERN
+                        : net.minecraft.block.Blocks.TALL_GRASS;
+                    coverTile.setBlockType(plant);
+                    // Cover is a two-block plant sitting in the Y+1 overlay, matching
+                    // what the shear path clears.
+                    BlockPos lower = arena.gridToBlockPos(coverPos);
+                    coverWorld.setBlockState(lower, plant.getDefaultState()
+                        .with(net.minecraft.block.TallPlantBlock.HALF,
+                            net.minecraft.block.enums.DoubleBlockHalf.LOWER),
+                        net.minecraft.block.Block.NOTIFY_LISTENERS);
+                    coverWorld.setBlockState(lower.up(), plant.getDefaultState()
+                        .with(net.minecraft.block.TallPlantBlock.HALF,
+                            net.minecraft.block.enums.DoubleBlockHalf.UPPER),
+                        net.minecraft.block.Block.NOTIFY_LISTENERS);
+                    coverWorld.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER,
+                        lower.getX() + 0.5, lower.getY() + 0.6, lower.getZ() + 0.5,
+                        12, 0.3, 0.4, 0.3, 0.02);
+                    coverWorld.playSound(null, lower,
+                        net.minecraft.sound.SoundEvents.BLOCK_GRASS_PLACE,
+                        net.minecraft.sound.SoundCategory.BLOCKS, 0.9f, 1.1f);
                 }
             } else if ("shear_grass".equals(effectType) || "shear_web".equals(effectType)) {
                 GridPos shearPos = new GridPos(tx, tz);
@@ -10691,6 +10843,14 @@ public class CombatManager {
                 // Pickaxe on a sunken pit: deepen it into a VOID hole. Keep
                 // cobblestone interior walls and lay a black-concrete bottom.
                 digVoidPit(new GridPos(tx, tz));
+            } else if ("soul_fire".equals(effectType)) {
+                // Dragon's breath. SOUL_SPREAD, not STRUCK: dragon-origin soul fire
+                // needs no fuel and carries through obstacles, and igniteTile's
+                // ensureSoulBase lays the soul soil the flame has to stand on.
+                GridPos soulPos = new GridPos(tx, tz);
+                if (!igniteTile(soulPos, Ignition.SOUL_SPREAD)) {
+                    sendMessage("§7The breath won't take hold there.");
+                }
             } else if ("fire".equals(effectType)) {
                 // Flint & steel / fire charge on open ground: start a real burn that
                 // spreads and scorches, rather than pasting a permanent hazard tile.
@@ -10820,6 +10980,36 @@ public class CombatManager {
                         for (CombatEntity e : enemies) {
                             if (e.getEntityId() == entityId && e.isAlive() && e.isAlly()) {
                                 e.heal(healAmount);
+                                break;
+                            }
+                        }
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+            if (buffData.startsWith("wolfarmor:")) {
+                String[] p = buffData.split(":");
+                if (p.length >= 3) {
+                    try {
+                        int entityId = Integer.parseInt(p[1]);
+                        int def = Integer.parseInt(p[2]);
+                        for (CombatEntity e : enemies) {
+                            if (e.getEntityId() == entityId && e.isAlive() && e.isAlly()) {
+                                e.setDefenseBoost(def);
+                                break;
+                            }
+                        }
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+            if (buffData.startsWith("blind:")) {
+                String[] p = buffData.split(":");
+                if (p.length >= 3) {
+                    try {
+                        int entityId = Integer.parseInt(p[1]);
+                        int turns = Integer.parseInt(p[2]);
+                        for (CombatEntity e : enemies) {
+                            if (e.getEntityId() == entityId && e.isAlive() && !e.isAlly()) {
+                                e.stackBlinded(turns);
                                 break;
                             }
                         }
@@ -13446,7 +13636,6 @@ public class CombatManager {
             // Advance fire AFTER existing temporary tiles decay, so a tile lit
             // this tick keeps its full burn duration instead of losing a turn.
             tickFire();
-            tickDragonBreathWaves();
             tickTidecallerWave();
             detonatePendingTnts();
 
@@ -14394,6 +14583,12 @@ public class CombatManager {
             }
             case EnemyAction.CreateTerrain ct -> {
                 resolveCreateTerrain(ct);
+                sendSync();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+            }
+            case EnemyAction.IgniteTiles ignite -> {
+                resolveIgniteTiles(ignite);
                 sendSync();
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
@@ -15643,6 +15838,7 @@ public class CombatManager {
             case EnemyAction.AreaAttack aa -> resolveAreaAttack(aa);
             case EnemyAction.TileAreaAttack ta -> resolveTileAreaAttack(ta);
             case EnemyAction.CreateTerrain ct -> resolveCreateTerrain(ct);
+            case EnemyAction.IgniteTiles ignite -> resolveIgniteTiles(ignite);
             case EnemyAction.PlaceWeb pw -> resolvePlaceWeb(pw);
             case EnemyAction.LineAttack la -> resolveLineAttack(la);
             case EnemyAction.ModifySelf ms -> resolveModifySelf(currentEnemy, ms);
@@ -16435,6 +16631,13 @@ public class CombatManager {
     }
 
     /**
+     * Damage a reflected fireball deals to a boss. Flat, not a share of max HP: this is the
+     * counterplay against a boss that cannot be reached on foot, and it has to stay worth the
+     * setup no matter how far the biome scaling and the HP multiplier have pushed the boss.
+     */
+    private static final int REFLECTED_FIREBALL_BOSS_DAMAGE = 50;
+
+    /**
      * Resolve a projectile impact -AOE explosion for fireballs, wither effect for skulls.
      */
     private void resolveProjectileImpact(CombatEntity projectile, GridPos impactPos) {
@@ -16514,8 +16717,12 @@ public class CombatManager {
                         checkAndHandleDeath(e);
                         continue;
                     }
-                    // Redirected fireballs deal 1/20 of the boss's max HP as damage
-                    int fireDmg = (redirected && e.isBoss()) ? Math.max(1, e.getMaxHp() / 20) : damage;
+                    // A reflected fireball is the intended answer to a boss you cannot walk up
+                    // to, so it hits like one. A flat number rather than a fraction of max HP:
+                    // boss health scales with biome progress and the HP multiplier, so 1/20 of
+                    // max meant the counterplay got weaker in exactly the fights where it was
+                    // the only counterplay, and the reflect never felt worth the setup.
+                    int fireDmg = (redirected && e.isBoss()) ? REFLECTED_FIREBALL_BOSS_DAMAGE : damage;
                     int dealt = e.takeDamage(fireDmg);
                     if (redirected && e.isBoss()) {
                         sendMessage("§6§l  Reflected fireball slams into " + e.getDisplayName() + " for " + dealt + "!");
@@ -17059,6 +17266,18 @@ public class CombatManager {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME, cx, cy + 0.5, cz, 20, spread, 1.0, spread, 0.02);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE, cx, cy, cz, 8, spread, 0.5, spread, 0.01);
             }
+            // === Ender Dragon ===
+            // The breath's own colours. These used to be spawned by the marching-wave tick;
+            // the wave is gone and the breath resolves as a normal tile-area hit now, so the
+            // look lives here instead of vanishing into the generic explosion fallback.
+            case "dragon_breath", "dragon_swoop" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.DRAGON_BREATH,
+                    cx, cy - 0.2, cz, 18, spread, 0.4, spread, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+                    cx, cy, cz, 12, spread, 0.5, spread, 0.05);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME,
+                    cx, cy + 0.2, cz, 10, spread, 0.5, spread, 0.02);
+            }
             // === Frostbound Huntsman ===
             case "blizzard" -> {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE, cx, cy + 1.0, cz, 25, spread, 1.2, spread, 0.03);
@@ -17392,6 +17611,7 @@ public class CombatManager {
     private void paintTileBlock(ServerWorld world, GridPos pos, GridTile tile) {
         BlockPos floor = tileFloorPos(pos);
         if (tile.getType().isFlames()) {
+            ensureSoulBase(world, floor, tile.getType());
             world.setBlockState(floor.up(1), tile.getBlockType().getDefaultState(),
                 net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
             return;
@@ -17407,6 +17627,32 @@ public class CombatManager {
             return;
         }
         world.setBlockState(floor, tile.getBlockType().getDefaultState());
+    }
+
+    /**
+     * Scorch a tile's floor into soul soil when soul fire is about to stand on it, unless the
+     * ground is already soul sand or soul soil.
+     *
+     * <p>Vanilla will not let soul fire exist anywhere else. {@code SoulFireBlock.canPlaceAt}
+     * is exactly {@code isSoulBase(state below)} - the {@code SOUL_FIRE_BASE_BLOCKS} tag, i.e.
+     * soul sand and soul soil - and {@code SoulFireBlock.getStateForNeighborUpdate} returns
+     * AIR the moment that check fails. {@code FORCE_STATE} gets the flame in, but it does not
+     * keep it: the first neighbour update to reach the tile deletes it, and every floor repaint
+     * on an adjacent tile sends one (the non-flame branch below writes with the default
+     * NOTIFY_NEIGHBORS flags). The flame would land, vanish within a tick or two, and leave
+     * nothing but its particles - soul fire that looks like a particle effect because that is
+     * all that survived.
+     *
+     * <p>So give it legal footing. Every route out of a burn repaints the floor from the tile's
+     * own record - flames collapse to an EMBER magma block, {@link #finishBurn} lays ash or
+     * restores the original block, {@link #tickTemporaryTerrain} repaints on expiry - so the
+     * soul soil is only ever the substrate under a live flame and reverts without extra
+     * bookkeeping. It reads right, too: soul fire scorches ground into soul soil.
+     */
+    private void ensureSoulBase(ServerWorld world, BlockPos floor, TileType flames) {
+        if (flames != TileType.SOUL_FIRE) return;
+        if (net.minecraft.block.SoulFireBlock.isSoulBase(world.getBlockState(floor))) return;
+        world.setBlockState(floor, Blocks.SOUL_SOIL.getDefaultState());
     }
 
     /**
@@ -17486,6 +17732,42 @@ public class CombatManager {
             if (igniteTile(pos, Ignition.SPREAD)) ignited++;
         }
         return ignited;
+    }
+
+    /**
+     * Resolve an {@link EnemyAction.IgniteTiles} - an enemy lighting an impact site and
+     * leaving the rest to the arena. The listed tiles enter the burn cycle exactly as a
+     * struck light does, so they spread a ring per turn, collapse to magma, and burn out on
+     * their own schedule instead of holding a painted shape for a fixed count of turns.
+     *
+     * <p>Soul ignition goes in as {@link Ignition#SOUL_SPREAD} rather than STRUCK: the flame
+     * came off a dragon, not a flint, so it carries the blue fire onto ground that has no
+     * fuel and through standing walls. Tiles that are already burning, still cooling down, or
+     * burnt to ash refuse quietly - {@link #igniteTile} owns those rules and nothing here
+     * should second-guess them.
+     */
+    private void resolveIgniteTiles(EnemyAction.IgniteTiles ignite) {
+        if (ignite.tiles() == null || ignite.tiles().isEmpty()) return;
+        Ignition kind = ignite.soulFire() ? Ignition.SOUL_SPREAD : Ignition.STRUCK;
+        int lit = 0;
+        int dropped = 0;
+        for (GridPos pos : ignite.tiles()) {
+            if (!igniteTile(pos, kind)) continue;
+            lit++;
+            // Show HOW the fire arrived, for the attacks that care. Staggered per tile so a
+            // multi-ember volley scatters down the sky instead of falling in lockstep. Only
+            // tiles that actually caught get an ember - a mote falling onto ground that
+            // refused to light would be a lie about where the burn is.
+            if ("soul_ember".equals(ignite.effectName())) {
+                com.crackedgames.craftics.vfx.boss.BossAttackVfx.fallingEmber(
+                    (ServerWorld) player.getEntityWorld(), arena, currentEnemy, pos, dropped * 3);
+                dropped++;
+            }
+        }
+        if (lit > 0 && currentEnemy != null) {
+            sendMessage((ignite.soulFire() ? "§b  " : "§6  ") + currentEnemy.getDisplayName()
+                + " sets " + lit + " tile" + (lit == 1 ? "" : "s") + " alight!");
+        }
     }
 
     /**
@@ -18745,92 +19027,11 @@ public class CombatManager {
     }
 
     /**
-     * Advance all active dragon breath waves. Each wave moves 3 tiles per turn,
-     * placing fire and damaging the player if they stand in the path. Waves run
-     * autonomously -the dragon can keep choosing attacks while waves march.
-     */
-    private void tickDragonBreathWaves() {
-        if (player == null || arena == null) return;
-        for (CombatEntity e : enemies) {
-            if (!e.isAlive() || !e.isBoss()) continue;
-            EnemyAI ai = resolveAi(e);
-            if (!(ai instanceof com.crackedgames.craftics.combat.ai.DragonAI dragonAi)) continue;
-            if (dragonAi.getActiveWaves().isEmpty()) continue;
-
-            List<GridPos> burned = dragonAi.tickWaves(arena);
-            if (burned.isEmpty()) continue;
-
-            ServerWorld world = (ServerWorld) player.getEntityWorld();
-
-            // Update world blocks for the newly-fired tiles
-            for (GridPos pos : burned) {
-                GridTile tile = arena.getTile(pos);
-                if (tile == null) continue;
-                BlockPos bp = tileFloorPos(pos);
-                paintTileBlock(world, pos, tile);
-
-                // Dragon breath particles on the wave front
-                world.spawnParticles(net.minecraft.particle.ParticleTypes.DRAGON_BREATH,
-                    bp.getX() + 0.5, bp.getY() + 0.8, bp.getZ() + 0.5,
-                    5, 0.3, 0.4, 0.3, 0.03);
-                world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
-                    bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5,
-                    3, 0.2, 0.3, 0.2, 0.05);
-            }
-
-            // Damage EVERY party member standing on a burned tile, not just the host.
-            // Previously the wave only checked arena.getPlayerGridPos() so teammates
-            // walked through the fire wall unharmed. Each victim is routed via the
-            // this.player swap for correct per-victim dodge/armor/effects/death.
-            java.util.Set<GridPos> burnedSet = new java.util.HashSet<>(burned);
-            java.util.List<ServerPlayerEntity> waveVictims = new java.util.ArrayList<>();
-            if (partyPlayers.size() > 1) {
-                for (ServerPlayerEntity member : partyPlayers) {
-                    if (member == null || member.isRemoved() || member.isDisconnected()) continue;
-                    if (deadPartyMembers.contains(member.getUuid())) continue;
-                    if (burnedSet.contains(gridPosOf(member))) waveVictims.add(member);
-                }
-            } else if (burnedSet.contains(arena.getPlayerGridPos())) {
-                waveVictims.add(player);
-            }
-            int waveDmg = e.getAttackPower() + (dragonAi.isDragonPhaseTwo() ? 3 : 0);
-            boolean gameOverFromWave = false;
-            for (ServerPlayerEntity victim : waveVictims) {
-                ServerPlayerEntity savedWavePlayer = this.player;
-                boolean waveSwapped = victim != savedWavePlayer;
-                if (waveSwapped) { this.player = victim; retargetEffectsToCurrentPlayer(); }
-                boolean victimDied = false;
-                try {
-                    int actual = damagePlayer(waveDmg);
-                    sendMessage("§5§l⌇ Dragon breath wave hits "
-                        + (waveSwapped ? victim.getName().getString() : "you") + " for " + actual + " damage!");
-                    world.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
-                        victim.getX(), victim.getY() + 1.0, victim.getZ(),
-                        5, 0.3, 0.3, 0.3, 0.01);
-                    if (getPlayerHp() <= 0) {
-                        victimDied = true;
-                        handlePlayerDeathOrGameOver();
-                        gameOverFromWave = (partyPlayers.size() <= 1 || !active);
-                    }
-                } finally {
-                    if (!victimDied) { this.player = savedWavePlayer; retargetEffectsToCurrentPlayer(); }
-                }
-                if (gameOverFromWave) { sendSync(); return; }
-            }
-            if (!waveVictims.isEmpty()) sendSync();
-
-            // Sound effect for the advancing wave
-            world.playSound(null, player.getBlockPos(),
-                net.minecraft.sound.SoundEvents.ENTITY_ENDER_DRAGON_GROWL,
-                net.minecraft.sound.SoundCategory.HOSTILE, 0.5f, 1.5f);
-        }
-    }
-
-    /**
      * Advance the Tidecaller's tidal wave. The wave is a full-width, 3-thick band of water
      * that marches 3 tiles per turn from one end of the arena to the other and then is gone.
-     * It runs autonomously (same pattern as the dragon's breath waves) so the Tidecaller
-     * keeps acting while it sweeps.
+     * It runs autonomously so the Tidecaller keeps acting while it sweeps. (The dragon used
+     * to march its breath the same way; its fire now seeds the arena's own burn cycle and
+     * spreads from there, so this is the last of the hand-marched waves.)
      *
      * <p>It deals NO damage. Anyone the band catches is CARRIED the same 3 tiles the wave
      * moved, via the shared forced-movement resolver, so a blocked destination fails safe
@@ -19241,6 +19442,432 @@ public class CombatManager {
             }
         }
         return false;
+    }
+
+    /** Tile of the most recently placed bed, or null. Overworld fights only. */
+    private GridPos bedRespawnAnchor = null;
+
+    /** Entity id for a player-placed end crystal. */
+    public static final String END_CRYSTAL_ID = "craftics:end_crystal";
+    /** Blast radius (manhattan) and damage of an end crystal, by distance. */
+    private static final int[] CRYSTAL_FLAT = {14, 10, 6, 3};
+    private static final double[] CRYSTAL_PCT = {0.35, 0.24, 0.15, 0.08};
+    /** Live end-crystal display entities, keyed by their block-object entity id. */
+    private final java.util.Map<Integer, net.minecraft.entity.Entity> crystalVisuals = new java.util.HashMap<>();
+
+    /**
+     * Give a placed end crystal a real end-crystal entity to look at. The block object
+     * is only the grid anchor and HP; this is what the player actually sees and aims at.
+     * Mirrors {@link #spawnDecoyVisual}'s split for the armor stand.
+     */
+    private void spawnEndCrystalVisual(CombatEntity anchor, GridPos pos, ServerWorld world) {
+        try {
+            BlockPos bp = arena.gridToBlockPos(pos);
+            net.minecraft.entity.decoration.EndCrystalEntity vis =
+                new net.minecraft.entity.decoration.EndCrystalEntity(world,
+                    bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+            vis.setShowBottom(false);
+            vis.setInvulnerable(true); // it dies with its anchor, never to stray damage
+            world.spawnEntity(vis);
+            crystalVisuals.put(anchor.getEntityId(), vis);
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.warn("end crystal visual failed: {}", e.getMessage());
+        }
+    }
+
+    /** Remove a destroyed crystal's display entity. Safe to call for non-crystals. */
+    private void clearEndCrystalVisual(CombatEntity entity) {
+        net.minecraft.entity.Entity vis = crystalVisuals.remove(entity.getEntityId());
+        if (vis != null) vis.discard();
+    }
+
+    /** Crystals that have already gone off, so the two death sinks can't double-blast. */
+    private final Set<Integer> detonatedCrystals = new HashSet<>();
+
+    /**
+     * Detonate {@code entity} if it is a live end crystal that hasn't gone off yet.
+     * Called from BOTH death paths - {@code killEnemy} for direct kills and
+     * {@code checkAndHandleDeath} for damage-over-time and splash - because a crystal
+     * has to fire no matter which one claims it, and must fire exactly once.
+     */
+    private void tryDetonateEndCrystal(CombatEntity entity) {
+        if (entity == null || !END_CRYSTAL_ID.equals(entity.getEntityTypeId())) return;
+        if (!detonatedCrystals.add(entity.getEntityId())) return;
+        detonateEndCrystal(entity);
+    }
+
+    /**
+     * Detonate a destroyed end crystal. Called from the death paths, so it fires no
+     * matter what killed it - a player shot, a stray AoE, or an enemy standing on top
+     * of it. That is the point: once it is on the board, anything that touches it sets
+     * it off, including things the player did not plan for.
+     */
+    private void detonateEndCrystal(CombatEntity crystal) {
+        GridPos center = crystal.getGridPos();
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos bp = arena.gridToBlockPos(center);
+        clearEndCrystalVisual(crystal);
+
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION_EMITTER,
+            bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 2, 0.8, 0.5, 0.8, 0.0);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
+            bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 40, 1.5, 1.0, 1.5, 0.15);
+        world.playSound(null, bp,
+            net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+            net.minecraft.sound.SoundCategory.BLOCKS, 1.8f, 1.2f);
+        sendMessage("§d§l✷ THE END CRYSTAL DETONATES! ✷");
+
+        int hit = 0;
+        int total = 0;
+        for (CombatEntity e : new ArrayList<>(enemies)) {
+            if (!e.isAlive() || e.isAlly() || e == crystal) continue;
+            int dist = Math.abs(e.getGridPos().x() - center.x())
+                     + Math.abs(e.getGridPos().z() - center.z());
+            if (dist >= CRYSTAL_FLAT.length) continue;
+            total += applySpecialUtilityDamage(e,
+                CRYSTAL_FLAT[dist] + e.percentMaxHpDamage(CRYSTAL_PCT[dist]));
+            hit++;
+            if (!e.isAlive()) checkAndHandleDeath(e);
+        }
+
+        // The player is not exempt. Standing next to your own crystal when it goes is
+        // the mistake the item is built around.
+        GridPos self = arena.getPlayerGridPos();
+        if (self != null) {
+            int d = Math.abs(self.x() - center.x()) + Math.abs(self.z() - center.z());
+            if (d < CRYSTAL_FLAT.length) {
+                int dealt = damagePlayer(CRYSTAL_FLAT[d]);
+                sendMessage("§cThe blast catches you for " + dealt + "! §7(HP: " + getPlayerHp() + ")");
+            }
+        }
+        if (hit > 0) sendMessage("§6Caught §c" + hit + "§6 enemies for §c" + total + "§6 total.");
+        sendSync();
+        refreshHighlights();
+    }
+
+    /**
+     * Lay down ice. All three variants make the same sliding tile; {@code kind} only
+     * decides how much of it there is and whether it lasts.
+     */
+    private void placeIceTile(GridPos target, String kind) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        boolean blue = "blue".equals(kind);
+        boolean melts = "plain".equals(kind);
+        net.minecraft.block.Block block = blue ? net.minecraft.block.Blocks.BLUE_ICE
+            : (melts ? net.minecraft.block.Blocks.ICE : net.minecraft.block.Blocks.PACKED_ICE);
+
+        java.util.List<GridPos> tiles = new java.util.ArrayList<>();
+        tiles.add(target);
+        if (blue) {
+            // Lay the runway pointing AWAY from the player, so it extends the line the
+            // player is already looking down rather than doubling back onto them.
+            GridPos self = arena.getPlayerGridPos();
+            int dx = 1, dz = 0;
+            if (self != null && !self.equals(target)) {
+                dx = Integer.signum(target.x() - self.x());
+                dz = Integer.signum(target.z() - self.z());
+                if (dx == 0 && dz == 0) dx = 1;
+            }
+            GridPos next = target;
+            for (int i = 1; i < com.crackedgames.craftics.combat.ItemUseHandler.BLUE_ICE_LENGTH; i++) {
+                next = new GridPos(next.x() + dx, next.z() + dz);
+                if (!arena.isInBounds(next)) break;
+                GridTile t = arena.getTile(next);
+                if (t == null || !t.isWalkable()) break;
+                tiles.add(next);
+            }
+        }
+
+        for (GridPos p : tiles) {
+            GridTile t = arena.getTile(p);
+            if (t == null) continue;
+            if (melts) {
+                // Melting ice is a temporary terrain change, which reverts on its own.
+                t.setTemporaryType(com.crackedgames.craftics.core.TileType.ICE,
+                    com.crackedgames.craftics.combat.ItemUseHandler.ICE_MELT_ROUNDS);
+            } else {
+                t.setType(com.crackedgames.craftics.core.TileType.ICE);
+            }
+            t.setBlockType(block);
+            BlockPos floorBp = arena.gridToBlockPos(p).down();
+            world.setBlockState(floorBp, block.getDefaultState());
+        }
+        world.playSound(null, arena.gridToBlockPos(target),
+            net.minecraft.sound.SoundEvents.BLOCK_GLASS_PLACE,
+            net.minecraft.sound.SoundCategory.BLOCKS, 0.9f, 1.3f);
+    }
+
+    /**
+     * Slide whatever just stepped onto ice. Movement continues along {@code (dx,dz)}
+     * over every consecutive ice tile and one tile past the end, so ice is free
+     * distance in a straight line - and a straight line you do not get to stop in.
+     *
+     * <p>Routed through {@link #resolveForcedMovement} so a slide that ends in lava,
+     * a pit or off the edge resolves exactly like any other shove. That is the whole
+     * risk: laying ice next to a hazard is a trap for both sides.
+     */
+    private void slideOnIce(GridPos from, int dx, int dz) {
+        if (dx == 0 && dz == 0) return;
+        int run = 0;
+        GridPos scan = from;
+        // Count the ice ahead, capped so a pathological all-ice arena can't loop long.
+        while (run < 16) {
+            GridPos next = new GridPos(scan.x() + dx, scan.z() + dz);
+            if (!arena.isInBounds(next)) break;
+            GridTile t = arena.getTile(next);
+            if (t == null || t.getType() != com.crackedgames.craftics.core.TileType.ICE) break;
+            scan = next;
+            run++;
+        }
+        // +1 carries you off the far end onto whatever is past the ice.
+        int distance = run + 1;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos bp = arena.gridToBlockPos(from);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE,
+            bp.getX() + 0.5, bp.getY() + 0.3, bp.getZ() + 0.5, 14, 0.4, 0.1, 0.4, 0.03);
+        world.playSound(null, bp, net.minecraft.sound.SoundEvents.BLOCK_GLASS_STEP,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 0.7f);
+        sendMessage("§bYou slide across the ice!");
+        resolveForcedMovement(new EnemyAction.ForcedMovement(-1, dx, dz, distance));
+    }
+
+    /**
+     * Chorus fruit hop: throw the player to a random safe tile. Random on purpose -
+     * an ender pearl is the tool you aim, this is the one you gamble on.
+     */
+    private void chorusHop(int healed) {
+        java.util.List<GridPos> candidates = new java.util.ArrayList<>();
+        GridPos cur = arena.getPlayerGridPos();
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                GridPos p = new GridPos(x, z);
+                if (p.equals(cur) || arena.isOccupied(p)) continue;
+                GridTile t = arena.getTile(p);
+                if (t == null || !t.isSafeForSpawn()) continue;
+                candidates.add(p);
+            }
+        }
+        if (candidates.isEmpty()) {
+            sendMessage("§5You eat the chorus fruit. §7+" + healed
+                + " HP, but there's nowhere to be thrown to.");
+            return;
+        }
+        GridPos dest = candidates.get((int) (Math.random() * candidates.size()));
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos fromBp = arena.gridToBlockPos(cur);
+        BlockPos toBp = arena.gridToBlockPos(dest);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+            fromBp.getX() + 0.5, fromBp.getY() + 1.0, fromBp.getZ() + 0.5, 30, 0.4, 0.6, 0.4, 0.3);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+            toBp.getX() + 0.5, toBp.getY() + 1.0, toBp.getZ() + 0.5, 30, 0.4, 0.6, 0.4, 0.3);
+        world.playSound(null, toBp, net.minecraft.sound.SoundEvents.ITEM_CHORUS_FRUIT_TELEPORT,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        arena.setPlayerGridPos(dest);
+        player.requestTeleport(toBp.getX() + 0.5, toBp.getY(), toBp.getZ() + 0.5);
+        sendMessage("§5The chorus fruit throws you across the arena! §7+" + healed + " HP");
+        sendSync();
+        refreshHighlights();
+    }
+
+    /**
+     * True when a bed placed here explodes instead of marking a spawn: the Nether and
+     * End campaign regions, matching the vanilla rule that a bed you cannot sleep in
+     * blows up.
+     *
+     * <p>Reads the campaign region of the biome rather than the world's dimension key,
+     * because every arena physically runs inside an island runtime dimension - the
+     * world is never literally {@code minecraft:the_nether}.
+     */
+    public boolean isExplosiveBedRegion() {
+        return isExplosiveSleepItem(false);
+    }
+
+    /**
+     * Whether a sleep-item detonates here instead of doing its job. Both items follow
+     * the same vanilla rule - each works only in its own home region and explodes
+     * everywhere else - so the two differ by one string:
+     * <ul>
+     *   <li>Bed: home is the Overworld, explodes in the Nether and the End.</li>
+     *   <li>Respawn Anchor: home is the Nether, explodes in the Overworld and the End.</li>
+     * </ul>
+     * An unknown or missing region counts as Overworld, matching the fallback the
+     * event roller already uses, so a modded campaign region can't make beds explode.
+     */
+    public boolean isExplosiveSleepItem(boolean isRespawnAnchor) {
+        String home = isRespawnAnchor ? "nether" : "overworld";
+        return !home.equals(currentRegionId());
+    }
+
+    /** Campaign region id of the biome being fought, defaulting to {@code overworld}. */
+    private String currentRegionId() {
+        if (!(levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld)) {
+            return "overworld";
+        }
+        BiomeTemplate biome = gld.getBiomeTemplate();
+        if (biome == null) return "overworld";
+        var region = com.crackedgames.craftics.level.campaign.CampaignManager.regionOf(biome.biomeId);
+        return region == null ? "overworld" : region.id();
+    }
+
+    /**
+     * Place a bed as the party's respawn anchor. The most recent bed wins, so a player
+     * can move the anchor by spending another bed.
+     */
+    private void placeBedAnchor(GridPos tile, net.minecraft.block.Block bedBlock) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        paintBed(world, tile, bedBlock);
+        bedRespawnAnchor = tile;
+        world.playSound(null, arena.gridToBlockPos(tile),
+            net.minecraft.sound.SoundEvents.BLOCK_WOOL_PLACE,
+            net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 0.9f);
+        boolean anchor = bedBlock == net.minecraft.block.Blocks.RESPAWN_ANCHOR;
+        sendMessage((anchor ? "§b§lRespawn anchor set! " : "§b§lBed placed! ")
+            + "§r§7If a totem revives you, you'll come back beside it instead of where you fell.");
+    }
+
+    /**
+     * Render the bed. Both halves are placed so it reads as a bed rather than a stray
+     * half-block, with {@code NOTIFY_LISTENERS} rather than a full update so BedBlock's
+     * own neighbour logic never decides the pair is broken and pops it. Falls back to a
+     * lone foot when there is no room for the head.
+     */
+    private void paintBed(ServerWorld world, GridPos tile, net.minecraft.block.Block bedBlock) {
+        BlockPos bp = arena.gridToBlockPos(tile);
+        net.minecraft.block.BlockState foot = bedBlock.getDefaultState();
+        // A respawn anchor is a single ordinary block - only real beds are two-part.
+        if (!(bedBlock instanceof net.minecraft.block.BedBlock)) {
+            world.setBlockState(bp, foot, net.minecraft.block.Block.NOTIFY_LISTENERS);
+            return;
+        }
+        for (net.minecraft.util.math.Direction dir : net.minecraft.util.math.Direction.Type.HORIZONTAL) {
+            BlockPos headPos = bp.offset(dir);
+            if (!world.getBlockState(headPos).isAir()) continue;
+            try {
+                net.minecraft.block.BlockState f = foot
+                    .with(net.minecraft.block.HorizontalFacingBlock.FACING, dir)
+                    .with(net.minecraft.block.BedBlock.PART,
+                        net.minecraft.block.enums.BedPart.FOOT);
+                net.minecraft.block.BlockState h = f.with(net.minecraft.block.BedBlock.PART,
+                    net.minecraft.block.enums.BedPart.HEAD);
+                world.setBlockState(bp, f, net.minecraft.block.Block.NOTIFY_LISTENERS);
+                world.setBlockState(headPos, h, net.minecraft.block.Block.NOTIFY_LISTENERS);
+                return;
+            } catch (Exception ignored) {
+                break; // fall through to the single-block placement
+            }
+        }
+        world.setBlockState(bp, foot, net.minecraft.block.Block.NOTIFY_LISTENERS);
+    }
+
+    /**
+     * Move a just-resurrected player to a tile touching their bed. Called from both
+     * totem paths, AFTER the revive has already happened - this never grants a life,
+     * it only changes where a life that was already paid for is spent.
+     *
+     * <p>Silently does nothing when there is no bed or nothing free around it, because
+     * a failure here must never interrupt a resurrection.
+     */
+    private void relocateToBedAnchor() {
+        if (bedRespawnAnchor == null || arena == null) return;
+        GridPos cur = arena.getPlayerGridPos();
+        if (cur == null) return;
+
+        java.util.List<GridPos> candidates = new java.util.ArrayList<>();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue; // the bed's own tile
+                GridPos p = new GridPos(bedRespawnAnchor.x() + dx, bedRespawnAnchor.z() + dz);
+                if (!arena.isInBounds(p)) continue;
+                if (arena.isOccupied(p) && !p.equals(cur)) continue;
+                GridTile t = arena.getTile(p);
+                if (t == null || !t.isSafeForSpawn()) continue;
+                candidates.add(p);
+            }
+        }
+        if (candidates.isEmpty()) {
+            sendMessage("§7Your bed is hemmed in - you revive where you fell.");
+            return;
+        }
+
+        java.util.List<GridPos> enemyPositions = new java.util.ArrayList<>();
+        for (CombatEntity e : enemies) {
+            if (e.isAlive() && !e.isAlly()) enemyPositions.add(e.getGridPos());
+        }
+        // Reuse the totem's own safest-tile pick so "beside the bed" still means the
+        // side away from whatever killed you.
+        GridPos dest = MoreTotemsEffects.safestTile(candidates, enemyPositions);
+        if (dest == null) dest = candidates.get(0);
+        if (dest.equals(cur)) return;
+
+        arena.setPlayerGridPos(dest);
+        BlockPos bp = arena.gridToBlockPos(dest);
+        player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+        sendMessage("§b§lYou wake beside your bed. §r§7Pulled clear of where you fell.");
+    }
+
+    // Bed blast, Nether/End only. Reaches one tile further than TNT and hits far harder,
+    // with the percent-of-max-HP terms doing the real work against the region's 150+ HP
+    // enemies. Index = manhattan distance from the bed.
+    private static final int[] BED_BLAST_FLAT = {12, 8, 5, 3};
+    private static final double[] BED_BLAST_PCT = {0.40, 0.28, 0.18, 0.10};
+    /** What the blast does to the player, who is always inside it by design. */
+    private static final int[] BED_SELF_DAMAGE = {14, 10, 6, 3};
+
+    /**
+     * Detonate a bed instantly. Unlike TNT there is no fuse, so nothing gets to walk out
+     * of the blast - but the bed has to be placed adjacent to the player (enforced in
+     * {@code ItemUseHandler.useBed}), so the player is always standing in it too. That
+     * trade is the whole item: guaranteed damage, paid for in your own HP.
+     */
+    private void detonateBed(GridPos center, net.minecraft.block.Block bedBlock) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos bp = arena.gridToBlockPos(center);
+
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION_EMITTER,
+            bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 3, 1.0, 0.5, 1.0, 0.0);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
+            bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 40, 2.0, 1.2, 2.0, 0.08);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+            bp.getX() + 0.5, bp.getY() + 1.5, bp.getZ() + 0.5, 25, 1.8, 1.2, 1.8, 0.04);
+        world.playSound(null, bp,
+            net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+            net.minecraft.sound.SoundCategory.BLOCKS, 2.0f, 0.6f);
+
+        sendMessage("§c§l✸ THE BED EXPLODES! ✸");
+
+        int enemiesHit = 0;
+        int totalDamage = 0;
+        for (CombatEntity enemy : new ArrayList<>(enemies)) {
+            if (!enemy.isAlive() || enemy.isAlly()) continue;
+            int dist = Math.abs(enemy.getGridPos().x() - center.x())
+                     + Math.abs(enemy.getGridPos().z() - center.z());
+            if (dist >= BED_BLAST_FLAT.length) continue;
+            int dmg = BED_BLAST_FLAT[dist] + enemy.percentMaxHpDamage(BED_BLAST_PCT[dist]);
+            totalDamage += applySpecialUtilityDamage(enemy, dmg);
+            enemiesHit++;
+            if (!enemy.isAlive()) checkAndHandleDeath(enemy);
+        }
+
+        // The player is in their own blast. Routed through damagePlayer so armour and
+        // Resistance apply, and so a self-kill resolves like any other death (including
+        // letting a totem catch it).
+        GridPos self = arena.getPlayerGridPos();
+        if (self != null) {
+            int selfDist = Math.abs(self.x() - center.x()) + Math.abs(self.z() - center.z());
+            if (selfDist < BED_SELF_DAMAGE.length) {
+                int selfDealt = damagePlayer(BED_SELF_DAMAGE[selfDist]);
+                sendMessage("§cThe blast catches you for " + selfDealt
+                    + "! §7(HP: " + getPlayerHp() + ")");
+            }
+        }
+
+        if (enemiesHit > 0) {
+            sendMessage("§6Caught §c" + enemiesHit + "§6 enemies for §c" + totalDamage + "§6 total.");
+        } else {
+            sendMessage("§7Nothing was close enough to catch the blast.");
+        }
+        sendSync();
+        refreshHighlights();
     }
 
     /**
@@ -22149,6 +22776,30 @@ public class CombatManager {
                     }
                 }
             }
+
+            // Ice: a shove that ends on ice doesn't end there. Re-enter the same push
+            // with exactly the length of the ice run ahead, so the enemy carries on to
+            // the far edge and one tile past it - which is how you feed something into
+            // a pit it would never have walked into. Guarded on isAlive so a hazard
+            // that just killed it isn't followed by a slide, and the recursion is
+            // bounded because each pass consumes the ice it just crossed.
+            GridTile landedOn = arena.getTile(landingPos);
+            if (enemy.isAlive() && !hitWall && !hitHazard
+                    && landedOn != null
+                    && landedOn.getType() == com.crackedgames.craftics.core.TileType.ICE) {
+                int run = 0;
+                GridPos scan = landingPos;
+                while (run < 16) {
+                    GridPos next = new GridPos(scan.x() + dx, scan.z() + dz);
+                    if (!arena.isInBounds(next)) break;
+                    GridTile t = arena.getTile(next);
+                    if (t == null || t.getType() != com.crackedgames.craftics.core.TileType.ICE) break;
+                    scan = next;
+                    run++;
+                }
+                sendMessage("§b" + enemy.getDisplayName() + " skids across the ice!");
+                return knockEnemyBack(enemy, dx, dz, run + 1);
+            }
         }
 
         // Hemorrhage enchant (sword): being knocked around detonates the target's Bleed - the
@@ -22504,6 +23155,10 @@ public class CombatManager {
         player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
             net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE, 800, 0));
 
+        // A bed placed this fight redirects where the revive lands. Runs before the
+        // particles so the totem burst plays at the destination, not at the corpse.
+        relocateToBedAnchor();
+
         // Visual + audio feedback. Wrapped so a particle/sound failure can't
         // block the resurrection -the player must always be saved if a totem
         // was consumed.
@@ -22570,6 +23225,11 @@ public class CombatManager {
             }
             default -> label = "Totem";
         }
+
+        // After the totem's own effect, so an explicitly placed bed overrides the
+        // Teleporting Totem's safest-tile pick. The bed is a deliberate choice the
+        // player spent a turn on; the totem's teleport is a default.
+        relocateToBedAnchor();
 
         try {
             ServerWorld world = (ServerWorld) player.getEntityWorld();
@@ -23448,6 +24108,8 @@ public class CombatManager {
         // or bursts. Both consult the breaker's Silk Touch, so this must run on the
         // kill path where the weapon is still known.
         breakDeepDarkProp(enemy);
+        // A destroyed end crystal goes off, whatever destroyed it.
+        tryDetonateEndCrystal(enemy);
         // Roll equipment drops on direct kills too (DOTs are handled by checkAndHandleDeath).
         // Mirror clones (Void Walker decoys) never drop loot -they now have real HP, so a
         // hazard-knockback kill routes through killEnemy instead of the dispel path; mirror
@@ -29063,6 +29725,20 @@ public class CombatManager {
         // Void Walker rifts -combat ended, stop rendering them.
         clearVoidRifts();
 
+        // The bed anchor is per-fight: the next arena is a different room, so a stale
+        // tile from the last one would teleport a revived player somewhere arbitrary.
+        bedRespawnAnchor = null;
+        // Undetonated crystals leave a floating display entity behind if we don't.
+        try {
+            for (net.minecraft.entity.Entity vis : crystalVisuals.values()) {
+                if (vis != null) vis.discard();
+            }
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.warn("endCombat: crystal visual cleanup failed: {}", e.getMessage());
+        }
+        crystalVisuals.clear();
+        detonatedCrystals.clear();
+
         try {
             // Clean up any undetonated TNT blocks
             if (!pendingTnts.isEmpty() && player != null) {
@@ -29711,6 +30387,10 @@ public class CombatManager {
                 if (!enemy.isAlive() || enemy.isMountWall() || highlighted.contains(enemy)) continue;
 
                 if (enemy.isBackgroundBoss()) {
+                    // Melee can never reach an off-stage boss (see the guard in handleAttack),
+                    // so don't paint its tiles red for a melee weapon. The highlight promising
+                    // a hit the server then refuses is worse than no highlight at all.
+                    if (!isRanged && range != PlayerCombatStats.RANGE_CROSSBOW_ROOK) continue;
                     // Background boss: check range to any of its registered tiles
                     boolean inRange = false;
                     java.util.List<GridPos> bossTiles = new java.util.ArrayList<>();
@@ -30334,7 +31014,24 @@ public class CombatManager {
         BlockPos wallPos = fillsPit
             ? arena.gridToBlockPos(targetTile).down()   // floorY - the tile's new floor
             : arena.gridToBlockPos(targetTile);         // floorY+1 - body-height wall
-        world.setBlockState(wallPos, wallBlock.getDefaultState(), 3);
+
+        // Sand, gravel and concrete powder fall the instant they receive a block update,
+        // and a pit fill is placed over an open shaft with nothing underneath it. Left
+        // alone the block drops straight through the hole it was meant to bridge, and the
+        // grid and the world disagree from then on: the tile reads as walkable NORMAL
+        // floor while the block that made it walkable is gone, so the next placement is
+        // treated as a wall and marks a tile the player sees as open ground as an
+        // obstacle. Give it footing first, then place without neighbour updates.
+        if (wallBlock instanceof net.minecraft.block.FallingBlock) {
+            BlockPos support = wallPos.down();
+            if (!WallBlocks.providesStandingSurface(world.getBlockState(support), world, support)) {
+                setArenaBlock(world, support, wallBlock, false);
+            }
+        }
+        // setArenaBlock writes with NOTIFY_LISTENERS|FORCE_STATE rather than a full update,
+        // so nothing here can kick a falling block loose, and it snapshots the prior state
+        // so the arena still restores cleanly.
+        setArenaBlock(world, wallPos, wallBlock, false);
 
         if (fillsPit) {
             // Retype the tile permanently for this fight, the same way a pickaxe dig

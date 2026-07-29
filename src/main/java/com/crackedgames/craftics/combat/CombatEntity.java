@@ -153,6 +153,7 @@ public class CombatEntity {
     public int getAttackBoost() { return attackBoost; }
     public void setAttackBoost(int boost) { this.attackBoost = boost; }
     public void setDefenseBoost(int boost) { this.defenseBoost = boost; }
+    public int getDefenseBoost() { return defenseBoost; }
     public void setRangeOverride(int r) { this.rangeOverride = r; }
     public boolean isAlive() { return alive; }
     /** Footprint width in tiles along the grid X axis. */

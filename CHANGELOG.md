@@ -1,4 +1,56 @@
 ﻿Changelog
+0.3.4
+Soul Fire Off Soul Ground
+
+- Soul fire is a real block anywhere now. Outside a soul sand valley it was only ever a puff of blue particles, because the game itself deletes a soul flame the moment it notices there is no soul sand or soul soil beneath it: the flame was placed, the floor was wrong, and the next thing to disturb that tile wiped it out. It now scorches the ground it lands on into soul soil first, so it has footing it is allowed to stand on and it stays lit
+- The scorched ground lasts only as long as the flame does and reverts on its own as the tile burns down to magma and then back to whatever it started as. None of this showed before because soul fire could previously begin nowhere except on soul ground, the one floor that was already correct, and everything new that lights soul fire elsewhere depends on it
+
+The Ender Dragon
+
+- Every one of the dragon's flame attacks is soul fire now.
+- The breath no longer paints a patch of fire that sits for a few turns and times out. It lights the ground and hands it to the arena, so the fire spreads outward a ring per turn, collapses to magma behind the front and burns itself out. The shape you dodge is only where the fire starts
+- Breath Wave was a wall of flame that marched three tiles a turn under its own power. It now breathes a line of soul fire along the edge nearest you and lets the fire do the walking, so it arrives more slowly and does not stop coming. It is telegraphed now too, having been the one dragon attack with no warning at all: fair enough as a visible wall crossing the arena, not fair at all as a line that lands quietly and then creeps
+- Every dragon attack now warns, damages and burns exactly the same tiles, where the tiles it set alight used to be only a part of what it had warned you about. The Swoop also hits the whole corridor it warns rather than only the single tile you were standing on, so anyone else caught in the lane no longer watches the dragon pass straight over them and take nothing
+- The breath has its own colours on impact instead of a generic burst: dragon's breath, portal motes and soul flame
+
+The Wailing Revenant
+
+- Magma Rows is now Soul Ember. Instead of turning whole rows of the arena into fire that expired after two turns, it drops a single burning ember, three once it is enraged, and leaves the rest to the fire. The ember falls out of the sky trailing soul flame and ash and flares as it lands, with several falling staggered rather than in step
+- That also fixes something you could watch happen: the rows it painted came up orange while every tile the fire spread to from them came up blue, because soul sand catches as soul fire on its own. The seed was the only tile in the whole burn that was the wrong colour
+- Soul sand valley is the one arena where this is a fair thing to drop, since its floor rebuilds itself after burning instead of scarring to ash, so the fire sweeps the room and the room grows back
+- The ghast stays off the stage now. From its second turn onward it had been walking into the corner of the arena and fighting you from there, which quietly dismantled the entire fight: a boss built to hover out of reach and be answered at range was standing next to you, hittable with a sword, while the reflected fireball that is supposed to be the whole point of the encounter became a formality. Nothing can relocate a boss that fights from off the stage any more, whatever tries
+- You cannot melee it, and you can now click it. The tiles it owns along the front row are an aiming surface rather than a body, but reach was being measured against them, so standing on the front row let you punch a ghast hovering ten blocks past the edge, and melee weapons no longer light those tiles up as attackable either. Clicking the ghast's own body now shoots it, using whichever of its tiles is nearest you, since the game had only ever looked for click targets on the arena floor and one tile past it
+- Reflected fireballs hit it for a flat 50. They used to deal a twentieth of its maximum health, which meant the harder the fight scaled the weaker its one real counterplay became
+
+Armor Defense
+
+- Armor now gives a small flat damage reduction on top of Armor Class, so failing a dodge in full diamond is no longer identical to failing one in nothing. Full sets: Leather 0, Gold 0, Chainmail 1, Iron and Copper 2, Diamond 4, Netherite 5. Gold gives none by design, since it is the Gambler set and is priced for crits rather than protection
+- A hit always deals at least 1, and only enemy attacks are reduced, so lava, sculk jaws and your own bed still bite for full. Mixed sets average smoothly because each piece contributes a quarter and the total is divided once at the end, so two diamond plus two iron gives 3. The values derive from each material's existing AC base rather than a second table, so modded armor is covered automatically
+- Armor tooltips now show the set's defense, and the guidebook and combat docs cover it
+
+New Item Uses
+
+- Bed (2 AP): in the Overworld it is a respawn anchor. It does not grant a revive, but if a Totem of Undying triggers you come back beside the bed instead of where you fell, which turns a totem from a one turn reprieve into a real escape. The game picks the side furthest from enemies, and if the bed is hemmed in you simply revive where you fell. Any color works, including modded ones
+- Bed in the Nether and End (2 AP): explodes instantly instead, reaching a tile further than TNT and hitting far harder, with most of its damage scaled to the target's max health. It has to be placed next to you, so you are always standing in your own blast. TNT can be lobbed anywhere and only costs a round of fuse, so without that the bed would simply be a better bomb
+- Respawn Anchor (2 AP): the same item from the other side, anchoring in the Nether and exploding in the Overworld and End. Both now share one rule: each works only in its home region and detonates everywhere else
+- End Crystal (2 AP): sits inert until something destroys it, then detonates across 3 tiles scaled to enemy max health. It is the only bomb where you pick the moment, so the play is to place it in a choke, let them gather, and pop it from range. Anything can set it off, including your own splash damage, and the blast catches you like everything else
+- Dragon's Breath (1 AP): leaves soul fire on the target tile with soul soil scorched underneath. It goes in as dragon fire rather than a struck light, so it needs no fuel and takes hold on ground a flint and steel would refuse, then burns and spreads like any other soul fire
+- Bone Meal (1 AP): grows tall grass on bare ground. Cover was the one part of the stealth loop that could only ever run down, since grass hid you, shears harvested it and enemies tore it up, but nothing ever made more of it
+- Tall Grass and Large Fern (1 AP): can now actually be placed. Shears have been handing them to you since they were added, but combat had no branch for putting them back down, so harvested cover was a one way trip
+- Ink Sac (1 AP): blinds one enemy for 2 turns, and a blinded enemy fumbles its turn and deals no damage. A cheap single target skip button for whatever is about to hit hardest, matched to the Tentacled Totem's duration
+- Chorus Fruit (1 AP): heals, then throws you to a random safe tile. The destination is random rather than aimed on purpose, which keeps it a panic button instead of a better ender pearl. It was previously treated as ordinary food and did nothing else
+- Ice, Packed Ice and Blue Ice: all place a sliding tile, and stopping on ice does not stop you. You carry on to the end of the ice and one tile past it. Ice melts to water after 3 rounds, packed ice is permanent, and blue ice (2 AP) lays a 3 tile runway. Enemies shoved onto ice skid too, and slides resolve like any other shove, so one ending in lava or off a ledge does exactly that
+- Wolf Armor (1 AP): +3 defense on one wolf ally for the rest of the fight. Wolves only, one set each
+
+Fixes
+
+- Powder snow can no longer be lit. It is not fuel, but the check for what can hold a flame only refused water, lava and open void, so powder snow fell through and accepted a light. The flame could not survive standing on it so nothing was ever visible, but the tile still joined the burn cycle and spread fire to its neighbours from a fire you could not see. It now refuses every source, including soul fire and dragon's breath
+- Sand, gravel and other falling blocks now actually stay where you put them when filling a void. They were being placed with a full block update, so the block fell straight through the hole it was meant to bridge. The tile still read as walkable ground while the block that made it walkable was gone, which is why filling a void produced a sunken pit instead of level floor
+- That also fixes the follow-up: because the first block had vanished, placing a second one was treated as building a wall rather than finishing the fill, so a tile that looked like plain ground was silently marked an obstacle and blocked movement and line of sight
+- Digging into an arena that is a thin platform over open void no longer manufactures scenery that is not there. It was sealing the sides with cobblestone, which left blocks visibly stuck to the underside of neighbouring floor tiles, and capping the shaft with the black concrete void marker two blocks down, which is a false bottom hanging in the drop. Arenas built on solid ground are unaffected and still get both
+- The anvil's "Special: 10% per point to avoid wear" line only appeared on the damaged anvil, though the save has always been rolled for every condition. It now shows on all three, including the two stages where sparing the wear is worth the most
+- Corrected two errors in the combat docs: the anvil was listed as a flat 5 damage rather than half the target's max health, and gold armor was listed at base 3 alongside chainmail when it has been base 2 since it became the Gambler set
+
 0.3.3
 Fire
 
@@ -51,17 +103,14 @@ Deeper and Darker Gear
 
 - Warden and Resonarium gear now has real combat stats. Every piece of it was previously unregistered, which meant a Warden sword swung for bare fist damage. Tiers follow the mod's own smithing recipes: Resonarium upgrades from iron and lands between iron and diamond, Warden upgrades from netherite and sits above it
 - Warden weapons cannot inherit the Netherite Sword's execute, so they get their own edge instead: the sword sweeps into a second enemy far more often, and the axe shatters armor permanently and scales harder with Cleaving
-- The Warden armor set is Echo, and it cuts both ways. Wearing all four pieces keeps you permanently in Darkness, so you fight half blind with everything past two tiles invisible to you and missing from your threat overlay
-- In exchange, Echo grants +2 affinity to whichever damage type you are carrying the most weapons of, and it re-reads your inventory on every single hit. Swap to axes mid fight and the bonus follows you with no re-equip. The armor's own affinity is Physical, deliberately the most generic lane, so it never fights the build the set bonus picks
+- The Warden armor set is Echo, and it cuts both ways. Wearing all four pieces keeps you permanently in Darkness, so you fight half blind with everything past two tiles invisible to you and missing from your threat overlay. In exchange it grants +2 affinity to whichever damage type you are carrying the most weapons of, re-read on every single hit, so swapping to axes mid fight moves the bonus with no re-equip. Its own affinity is Physical, deliberately the most generic lane, so it never fights the build the set bonus picks, and the tooltip names whichever affinity it is boosting right now
 - Warden armor is the new armor class ceiling at 8, one above netherite. Resonarium sits at 5, between iron and diamond, and carries Special affinity
-- The Warden tooltip names the affinity it is boosting right now, so you can see where the bonus landed
 
 Deep Dark Props
 
 - Infested Sculk now grows in Deep Dark arenas. Break it and Sculk Leeches and a Shriek Worm boil out of it and throw you backwards. Break it with Silk Touch and it comes away clean with nothing waking up, which finally gives a Silk Touch tool a reason to be in your bag down there
 - Ancient Vases are a straight gamble. Most break open into treasure, including diamonds, emeralds, enchanted golden apples and Warden Carapace, but roughly a third of the time a Stalker unfolds out of the pot instead. Silk Touch takes the vase out whole and unopened, trading the roll for something you can carry home
-- Sculk Jaws lie in the floor and bite anything that walks over them. Every jaw you cross bites, not just the first, so a row of them will end a careless move. The bite also swallows an XP level, and since XP is what pays for enchanting that is a real cost
-- The jaw does not destroy the XP, it holds it. Break the jaw and it coughs back up everything it took from you, so you can eat the loss or spend a turn and an attack getting it back
+- Sculk Jaws lie in the floor and bite anything that walks over them. Every jaw you cross bites, not just the first, so a row of them will end a careless move. The bite also swallows an XP level, and since XP is what pays for enchanting that is a real cost, but the jaw only holds it: break the jaw and it coughs back up everything it took, so you can eat the loss or spend a turn getting it back
 - Sculk creatures are immune to jaws, exactly as in the source mod. In a Deep Dark run every enemy is a sculk creature, so the traps only ever work against you
 
 Deep Dark Loot

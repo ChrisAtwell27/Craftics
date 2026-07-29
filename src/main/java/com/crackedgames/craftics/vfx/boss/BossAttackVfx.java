@@ -229,6 +229,63 @@ public final class BossAttackVfx {
             .build(), ctx);
     }
 
+    /** How high above the floor a dropped ember starts its fall, in blocks. */
+    private static final double EMBER_FALL_HEIGHT = 7.0;
+
+    /** How many descending motes the fall is drawn with. Two ticks apart each. */
+    private static final int EMBER_FALL_STEPS = 4;
+
+    /**
+     * A single burning ember falling out of the sky onto one tile and catching.
+     *
+     * <p>For attacks that light ONE tile and leave the rest to the fire itself. The whole
+     * point of a seed-and-spread attack is that the thing which lands is small, so it needs
+     * to be legible as a discrete object falling rather than as fire simply appearing - the
+     * player should be able to see where the burn started and count outward from it.
+     *
+     * <p>Drawn as a streak from high above down to the tile, four motes descending along it
+     * two ticks apart, then a landing burst and a ring. Fast on purpose (about half a
+     * second): the tile is already alight when this starts, because the burn is game state
+     * and resolves the instant the action does, so the fall has to read as the cause rather
+     * than dawdle after the effect.
+     *
+     * @param delayTicks stagger between embers when several drop at once, so a phase-2
+     *                   volley falls as a scatter instead of three identical columns
+     */
+    public static void fallingEmber(ServerWorld world, GridArena arena,
+                                    CombatEntity boss, GridPos tile, int delayTicks) {
+        if (world == null || arena == null || tile == null) return;
+        VfxContext ctx = contextFor(world, arena, boss, tile);
+        int base = Math.max(0, delayTicks);
+        VfxAnchor high = new VfxAnchor.AtGridTile(tile.x(), tile.z(), EMBER_FALL_HEIGHT);
+        VfxAnchor ground = new VfxAnchor.AtGridTile(tile.x(), tile.z(), 0.2);
+
+        VfxDescriptor.Builder ember = VfxDescriptor.builder();
+        // The streak: one line of soul flame from the sky to the tile, laid down flat (no
+        // arc) so it reads as a drop rather than a lobbed shot.
+        ember.phase(base)
+            .sound(high, SoundEvents.ENTITY_GHAST_SHOOT, 0.4f, 1.7f)
+            .trail(high, ground, ParticleTypes.SOUL_FIRE_FLAME, ParticleTypes.SMOKE, 14, 0.0);
+
+        // The ember itself, stepping down the streak so the eye has something to follow.
+        for (int step = 1; step <= EMBER_FALL_STEPS; step++) {
+            double y = EMBER_FALL_HEIGHT * (1.0 - (double) step / EMBER_FALL_STEPS);
+            VfxAnchor at = new VfxAnchor.AtGridTile(tile.x(), tile.z(), y);
+            ember.phase(base + step * 2)
+                .particles(ParticleTypes.SOUL_FIRE_FLAME, at, 6, new Vec3d(0.08, 0.12, 0.08), 0.01)
+                .particles(ParticleTypes.ASH, at, 3, new Vec3d(0.12, 0.15, 0.12), 0.0);
+        }
+
+        // Landing: it hits, it flares, it catches.
+        ember.phase(base + EMBER_FALL_STEPS * 2 + 1)
+            .sound(ground, SoundEvents.ITEM_FIRECHARGE_USE, 0.7f, 1.4f)
+            .particles(ParticleTypes.SOUL_FIRE_FLAME, ground, 20, new Vec3d(0.3, 0.15, 0.3), 0.05)
+            .particles(ParticleTypes.SOUL, ground, 8, new Vec3d(0.25, 0.1, 0.25), 0.02)
+            .ring(ground, 0.7, ParticleTypes.SOUL_FIRE_FLAME, 12);
+
+        Vfx.play(world, ember.build(), ctx);
+    }
+
     /** One-line player-facing hint for what a telegraphed ability is about to
      *  do, derived from its category - "prepares fire_pillar!" tells you the
      *  name; this tells you how to survive it. */

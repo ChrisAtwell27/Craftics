@@ -240,6 +240,15 @@ public class CombatTooltips implements ItemTooltipCallback {
             lines.add(Text.literal("\u00a7f  Armor Class: +" + armorAC));
 
             String setKey = com.crackedgames.craftics.combat.ArmorClassTable.armorSetKeyOf(item);
+            // Flat DEF is a whole-set number, so quote it as the set total rather than a
+            // per-piece figure that would round to nothing on its own.
+            if (setKey != null) {
+                int setDef = com.crackedgames.craftics.combat.ArmorClassTable.fullSetDefense(setKey);
+                if (setDef > 0) {
+                    lines.add(Text.literal("\u00a7f  Defense: \u00a77-" + setDef
+                        + " damage from hits that land \u00a78(full set)"));
+                }
+            }
             if (setKey != null) {
                 com.crackedgames.craftics.combat.DamageType[] types =
                     com.crackedgames.craftics.combat.DamageType.values();
@@ -941,6 +950,74 @@ public class CombatTooltips implements ItemTooltipCallback {
             return "§51 AP §7- Drink the omen\n"
                 + "§dGuarantees a Trial Chamber after this fight";
         }
+        if (item == Items.RESPAWN_ANCHOR) {
+            return "§b2 AP §7- Depends where you are\n"
+                + "§cNether: §fplace a respawn anchor\n"
+                + "§8  A Totem revives you beside it instead of where you fell\n"
+                + "§8  Does NOT give a revive - you still need the totem\n"
+                + "§cOverworld / End: §fexplodes instantly\n"
+                + "§8  Must be placed next to you, and the blast catches you too";
+        }
+        if (item == Items.END_CRYSTAL) {
+            return "§d2 AP §7- Place a crystal\n"
+                + "§7Detonates when §fdestroyed§7, not on a timer - you pick the moment\n"
+                + "§8Blast reaches 3 tiles and scales with enemy max HP\n"
+                + "§cAnything can set it off, and it will catch you too";
+        }
+        if (item == Items.DRAGON_BREATH) {
+            return "§51 AP §7- Pour it out\n"
+                + "§7Leaves §fsoul fire §7on the tile, on soul soil it scorches itself\n"
+                + "§8Needs no fuel and takes hold on ground a flint won't light\n"
+                + "§8Burns and spreads like any soul fire once it's lit";
+        }
+        if (item == Items.BONE_MEAL) {
+            return "§a1 AP §7- Grow cover\n"
+                + "§7Sprouts tall grass on bare ground. Crouch in it to break line of sight\n"
+                + "§8Shears cut it back up so you can move it";
+        }
+        if (item == Items.TALL_GRASS || item == Items.LARGE_FERN) {
+            return "§a1 AP §7- Plant cover\n"
+                + "§7Puts down cover you cut earlier with shears";
+        }
+        if (item == Items.INK_SAC) {
+            return "§81 AP §7- Throw in their eyes\n"
+                + "§7Blinds one enemy for "
+                + com.crackedgames.craftics.combat.ItemUseHandler.INK_SAC_BLIND_TURNS
+                + " turns - it fumbles and deals §fno damage";
+        }
+        if (item == Items.CHORUS_FRUIT) {
+            return "§51 AP §7- Eat and vanish\n"
+                + "§7Heals, then throws you to a §frandom §7safe tile\n"
+                + "§8You don't choose where - it's a panic button, not a pearl";
+        }
+        if (com.crackedgames.craftics.combat.ItemUseHandler.isIceItem(item)) {
+            String extra = item == Items.BLUE_ICE
+                ? "§b2 AP §7- Lay a "
+                    + com.crackedgames.craftics.combat.ItemUseHandler.BLUE_ICE_LENGTH
+                    + "-tile runway §8(permanent)"
+                : (item == Items.PACKED_ICE
+                    ? "§b1 AP §7- One slippery tile §8(permanent)"
+                    : "§b1 AP §7- One slippery tile §8(melts to water in "
+                        + com.crackedgames.craftics.combat.ItemUseHandler.ICE_MELT_ROUNDS
+                        + " rounds)");
+            return extra + "\n"
+                + "§7Stop on ice and you keep sliding to the end of it, and one tile past\n"
+                + "§cWorks on enemies shoved onto it too - and slides go into pits";
+        }
+        if (item == Items.WOLF_ARMOR) {
+            return "§a1 AP §7- Armor a wolf\n"
+                + "§7+" + com.crackedgames.craftics.combat.ItemUseHandler.WOLF_ARMOR_DEFENSE
+                + " DEF on one wolf ally for the rest of the fight\n"
+                + "§8Wolves only, one set each";
+        }
+        if (com.crackedgames.craftics.combat.ItemUseHandler.isBed(item)) {
+            return "§b2 AP §7- Depends where you are\n"
+                + "§7Overworld: §fplace a respawn anchor\n"
+                + "§8  A Totem revives you beside the bed instead of where you fell\n"
+                + "§8  Does NOT give a revive - you still need the totem\n"
+                + "§cNether / End: §fexplodes instantly\n"
+                + "§8  Must be placed next to you, and the blast catches you too";
+        }
 
         // ── Deeper and Darker artifacts ──
         net.minecraft.util.Identifier ddId = net.minecraft.registry.Registries.ITEM.getId(item);
@@ -1066,8 +1143,12 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.RECOVERY_COMPASS) return "\u00a76Passive: \u00a77Consumed on death\n\u00a77Saves your full inventory one time instead of losing it";
         if (item == Items.BUNDLE) return "\u00a7ePassive: \u00a77Auto-collects loot\n\u00a77Combat drops go into the bundle first\n\u00a77Keeps your inventory organized";
         if (item == Items.BELL) return "\u00a762 AP \u00a77- Ring at target tile\n\u00a77Stuns ALL enemies within 2 tiles";
-        if (item == Items.ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cHalf the target's max HP\n\u00a77Wears to a chipped anvil on use\n\u00a7b1 AP \u00a77- Click empty ground or yourself to open the anvil";
-        if (item == Items.CHIPPED_ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cA third of the target's max HP\n\u00a77Wears to a damaged anvil on use\n\u00a7b1 AP \u00a77- Click empty ground or yourself to open the anvil";
+        // The Special conserve save is rolled by rollSpecialConserveAnvil for EVERY
+        // anvil condition, so all three tooltips carry the line. It used to appear only
+        // on the damaged anvil, which hid the perk on the two stages where it saves the
+        // most value.
+        if (item == Items.ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cHalf the target's max HP\n\u00a77Wears to a chipped anvil on use\n\u00a7dSpecial: 10% per point to avoid wear\n\u00a7b1 AP \u00a77- Click empty ground or yourself to open the anvil";
+        if (item == Items.CHIPPED_ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cA third of the target's max HP\n\u00a77Wears to a damaged anvil on use\n\u00a7dSpecial: 10% per point to avoid wear\n\u00a7b1 AP \u00a77- Click empty ground or yourself to open the anvil";
         if (item == Items.DAMAGED_ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cA quarter of the target's max HP\n\u00a77Shatters on use\n\u00a7dSpecial: 10% per point to avoid wear\n\u00a7b1 AP \u00a77- Click empty ground or yourself to open the anvil";
         if (item == Items.HONEY_BLOCK) return "\u00a7e1 AP \u00a77- Place sticky trap\n\u00a77Enemies that step on it lose all movement";
         if (item == Items.SLIME_BLOCK) return "\u00a7a1 AP \u00a77- Place bouncy wall\n\u00a77Blocks movement and knocks adjacent enemies back when they end their turn beside it";

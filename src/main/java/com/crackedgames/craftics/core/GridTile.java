@@ -181,6 +181,9 @@ public class GridTile {
             case BLOOM -> Blocks.PINK_PETALS;
             case GEYSER -> Blocks.MAGMA_BLOCK;
             case SCULK_JAW -> Blocks.SCULK_SHRIEKER;
+            // Fallback only: the placing item sets the real block, so a tile from
+            // packed/blue ice keeps its own texture.
+            case ICE -> Blocks.ICE;
             // Stair / elevated default blocks - only used if the GridTile is
             // constructed without an explicit block. ArenaBuilder always
             // passes the real schematic block (e.g. the actual stair block,

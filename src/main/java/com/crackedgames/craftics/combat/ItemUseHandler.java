@@ -121,7 +121,12 @@ public class ItemUseHandler {
      * would be silently eaten instead of thrown.
      */
     private static final Set<Item> FOOD_HANDLED_ELSEWHERE = Set.of(
-        Items.PUFFERFISH
+        Items.PUFFERFISH,
+        // Chorus fruit is a real food, but its combat identity is the teleport. The
+        // food branch sits above its own branch in the dispatch chain, so without
+        // this it would be quietly eaten for a couple of HP and never throw anyone.
+        // useChorusFruit still applies the food heal, so nothing is lost.
+        Items.CHORUS_FRUIT
     );
 
     /**
@@ -321,6 +326,13 @@ public class ItemUseHandler {
         if (PotterySherdSpells.isPotterySherd(item)) return PotterySherdSpells.getSherdApCost(item);
         if (item == Items.FISHING_ROD) return FISHING_AP_COST;
         if (item == Items.TNT) return 2; // raised from default 1: TNT now deals %-max-HP blast damage
+        // Same price as TNT in both roles: a bigger bomb you have to stand next to,
+        // or the anchor that turns a totem into a real escape.
+        if (isBed(item) || item == Items.RESPAWN_ANCHOR) return 2;
+        // A bomb whose timing you control is worth the same as one you can't.
+        if (item == Items.END_CRYSTAL) return 2;
+        // Blue ice lays three tiles, so it costs more than the single-tile two.
+        if (item == Items.BLUE_ICE) return 2;
         if (item == Items.MILK_BUCKET) return 3; // clears ALL effects; feed self or an adjacent ally
         // A hive is a standing reinforcement engine, so it costs more to set up
         // than a one-shot placeable.
@@ -387,7 +399,12 @@ public class ItemUseHandler {
             || item == Items.MILK_BUCKET || item == Items.BUCKET || item == Items.TOTEM_OF_UNDYING
             || item == Items.COBWEB || item == Items.FLINT_AND_STEEL
             || item == Items.SHEARS || item == Items.BEEHIVE || item == Items.ARMOR_STAND
-            || item == Items.OMINOUS_BOTTLE
+            || item == Items.OMINOUS_BOTTLE || isBed(item) || item == Items.RESPAWN_ANCHOR
+            || item == Items.END_CRYSTAL || item == Items.BONE_MEAL
+            || item == Items.DRAGON_BREATH
+            || item == Items.TALL_GRASS || item == Items.LARGE_FERN
+            || item == Items.INK_SAC || item == Items.CHORUS_FRUIT
+            || isIceItem(item) || item == Items.WOLF_ARMOR
             || isAnyBreedingItem(item) || isFishingRod(item)
             || EXTRA_USABLE.contains(item) || isBanner(item) || isPickaxe(item)
             || item == Items.GOAT_HORN || PotterySherdSpells.isPotterySherd(item);
@@ -455,6 +472,26 @@ public class ItemUseHandler {
             return useMilkBucket(player, held);
         } else if (item == Items.TNT) {
             return useTNT(player, arena, targetTile, held);
+        } else if (isBed(item) || item == Items.RESPAWN_ANCHOR) {
+            return useBed(player, arena, targetTile, held);
+        } else if (item == Items.END_CRYSTAL) {
+            return useEndCrystal(arena, targetTile, held);
+        } else if (item == Items.DRAGON_BREATH) {
+            return useDragonBreath(player, arena, targetTile, held);
+        } else if (item == Items.BONE_MEAL) {
+            return useBoneMeal(arena, targetTile, held);
+        } else if (item == Items.TALL_GRASS || item == Items.LARGE_FERN) {
+            return usePlaceCover(arena, targetTile, held, item);
+        } else if (item == Items.INK_SAC) {
+            return useInkSac(player, arena, targetTile, held);
+        } else if (item == Items.CHORUS_FRUIT) {
+            // MUST stay ahead of isFood: chorus fruit carries a real FoodComponent, so
+            // the generic food branch would otherwise eat it and drop the teleport.
+            return useChorusFruit(player, held);
+        } else if (isIceItem(item)) {
+            return useIce(player, arena, targetTile, held, item);
+        } else if (item == Items.WOLF_ARMOR) {
+            return useWolfArmor(arena, targetTile, held);
         } else if (item == Items.COBWEB) {
             return useCobweb(player, arena, targetTile, held);
         } else if (item == Items.SHIELD) {
@@ -825,6 +862,7 @@ public class ItemUseHandler {
         if (isPotion(item)) return true; // drink, splash and lingering all conserve
         if (item == Items.GOAT_HORN) return true;
         if (item == Items.FIRE_CHARGE || item == Items.WIND_CHARGE) return true;
+        if (item == Items.DRAGON_BREATH) return true;
         if (item == Items.SNOWBALL || item == Items.EGG || item == Items.ENDER_PEARL) return true;
         return isBanner(item);
     }
@@ -1424,6 +1462,254 @@ public class ItemUseHandler {
         return TNT_PREFIX + targetTile.x() + "," + targetTile.z();
     }
 
+    /**
+     * Any bed, of any colour, including modded ones - matched by block type rather
+     * than by listing the 16 vanilla items.
+     */
+    public static boolean isBed(Item item) {
+        return item instanceof net.minecraft.item.BlockItem bi
+            && bi.getBlock() instanceof net.minecraft.block.BedBlock;
+    }
+
+    /**
+     * Bed. What it does depends entirely on where the fight is, which mirrors vanilla:
+     * a bed you can sleep in marks where you come back, and a bed you can't detonates.
+     *
+     * <p><b>Overworld:</b> placed anywhere in the arena as a respawn anchor. It does
+     * NOT grant a revive - it only redirects one you already paid for, moving a Totem
+     * of Undying resurrection from where you fell to a tile beside the bed. Placing it
+     * far from the fight is the whole point: a totem that revives you at half HP inside
+     * the same pile that just killed you usually just delays the death.
+     *
+     * <p><b>Nether / End:</b> detonates instantly and violently. It must be placed
+     * ADJACENT to you, so you are always standing inside your own blast - that is the
+     * cost that keeps it from being a strictly better TNT (which can be lobbed anywhere
+     * in the arena and merely has a fuse).
+     *
+     * <p>Region is resolved by {@code CombatManager} from the prefix, since only it
+     * knows the campaign region the current biome belongs to.
+     */
+    private static String useBed(ServerPlayerEntity player, GridArena arena,
+                                 GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
+
+        CombatManager cm = CombatManager.getActiveCombat(player.getUuid());
+        if (cm == null) return "§7Nothing happens here.";
+
+        if (cm.isExplosiveSleepItem(stack.getItem() == Items.RESPAWN_ANCHOR)) {
+            GridPos self = arena.getPlayerGridPos();
+            if (self != null) {
+                int cheb = Math.max(Math.abs(self.x() - targetTile.x()),
+                                    Math.abs(self.z() - targetTile.z()));
+                if (cheb > 1) {
+                    return "§cYou have to be right on top of it. §7Place it next to you"
+                        + " - and mind the blast.";
+                }
+            }
+        } else if (arena.isOccupied(targetTile)) {
+            return "§cSomething is standing there!";
+        }
+
+        // Read the id BEFORE decrementing: emptying the stack turns getItem() into AIR.
+        String blockId = net.minecraft.registry.Registries.ITEM.getId(stack.getItem()).toString();
+        stack.decrement(1);
+        return BED_PREFIX + targetTile.x() + "," + targetTile.z() + "," + blockId;
+    }
+
+    /**
+     * Dragon's Breath: pour it out to leave a single soul fire on the target tile,
+     * with soul soil laid under it so the flame has legal footing.
+     *
+     * <p>Goes in as {@code SOUL_SPREAD} rather than a struck light, which is what the
+     * arena already calls dragon-origin soul fire (see {@code resolveIgniteTiles}) -
+     * the flame came off a dragon, not a flint, so it needs no fuel and burns through
+     * ground and standing obstacles that would turn a flint and steel away. The soul
+     * soil is not laid by hand here: {@code ensureSoulBase} in the burn path owns that,
+     * so the substrate reverts with the burn instead of being left behind.
+     */
+    private static String useDragonBreath(ServerPlayerEntity player, GridArena arena,
+                                          GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        // Caster-toolkit consumable, so it conserves on the Special perk like a fire
+        // charge or an ender pearl rather than always being spent.
+        consumeSpecialItem(player, stack);
+        return TILE_EFFECT_PREFIX + "soul_fire:" + targetTile.x() + ":" + targetTile.z()
+            + "|§5You pour out the dragon's breath. §7Soul fire takes hold.";
+    }
+
+    /** The three ice blocks, which all place the same sliding tile but differ in reach and lifespan. */
+    public static boolean isIceItem(Item item) {
+        return item == Items.ICE || item == Items.PACKED_ICE || item == Items.BLUE_ICE;
+    }
+
+    /** Tiles of runway Blue Ice lays down, in a line away from the player. */
+    public static final int BLUE_ICE_LENGTH = 3;
+    /** Rounds plain Ice lasts before melting into water. */
+    public static final int ICE_MELT_ROUNDS = 3;
+
+    /**
+     * Ice, Packed Ice, Blue Ice. All three lay down the same sliding tile - anything
+     * that walks on will keep going to the end of the ice and one tile past it - so
+     * what separates them is footprint and lifespan, not effect:
+     * <ul>
+     *   <li><b>Ice</b>: one tile, melts to water after {@value #ICE_MELT_ROUNDS} rounds.
+     *       Cheap and temporary, and the puddle it leaves still applies Soaked.</li>
+     *   <li><b>Packed Ice</b>: one tile, permanent.</li>
+     *   <li><b>Blue Ice</b>: a {@value #BLUE_ICE_LENGTH}-tile runway laid away from you,
+     *       permanent. The long slide is the point - it is the one that can carry
+     *       something clean off a ledge.</li>
+     * </ul>
+     */
+    private static String useIce(ServerPlayerEntity player, GridArena arena,
+                                 GridPos targetTile, ItemStack stack, Item item) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
+
+        String kind = item == Items.BLUE_ICE ? "blue" : (item == Items.PACKED_ICE ? "packed" : "plain");
+        stack.decrement(1);
+        String label = switch (kind) {
+            case "blue" -> "§bYou lay a run of blue ice. §7Anything crossing it slides the whole way.";
+            case "packed" -> "§bPacked ice set down. §7Slippery, and it won't melt.";
+            default -> "§bIce set down. §7Slippery - it'll melt in "
+                + ICE_MELT_ROUNDS + " rounds.";
+        };
+        return TILE_EFFECT_PREFIX + "ice_" + kind + ":" + targetTile.x() + ":" + targetTile.z()
+            + "|" + label;
+    }
+
+    /**
+     * End Crystal: a bomb you place but do not arm. It just sits there until something
+     * destroys it, then detonates hard on everything around it.
+     *
+     * <p>This is the third distinct bomb in the game and deliberately does not overlap
+     * the other two: TNT is placed anywhere and goes off on a fuse you cannot change,
+     * a bed goes off instantly but only next to you. The crystal is the one where
+     * <em>you</em> pick the moment, by choosing when to shoot it - so the play is to
+     * place it in a choke, let enemies gather, then pop it from range.
+     */
+    private static String useEndCrystal(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
+        if (arena.isOccupied(targetTile)) return "§cSomething is standing there!";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "end_crystal:" + targetTile.x() + ":" + targetTile.z()
+            + "|§dEnd crystal placed. §7It detonates when destroyed - break it when they're close.";
+    }
+
+    /**
+     * Bone Meal: grow tall grass on bare ground, creating cover where there was none.
+     *
+     * <p>This is the verb the stealth loop was missing. Tall grass already hides you,
+     * shears already harvest it, and enemies already hunt and thrash it - but nothing
+     * could make more of it, so cover was a strictly finite resource that only ever
+     * ran down.
+     */
+    private static String useBoneMeal(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        GridTile tile = arena.getTile(targetTile);
+        if (tile == null) return "§cTarget out of bounds!";
+        if (tile.getType() == com.crackedgames.craftics.core.TileType.TALL_GRASS
+                || tile.getType() == com.crackedgames.craftics.core.TileType.TALL_FERN) {
+            return "§7Something already grows there.";
+        }
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "grow_cover:" + targetTile.x() + ":" + targetTile.z()
+            + "|§aGrass bursts up out of the ground. §7Cover you can crouch in.";
+    }
+
+    /**
+     * Place tall grass or a large fern that was cut earlier with shears.
+     *
+     * <p>Without this the shears were a one-way trip: they handed back a block the
+     * combat dispatch had no branch for, so harvested cover could never actually be
+     * put back down.
+     */
+    private static String usePlaceCover(GridArena arena, GridPos targetTile,
+                                        ItemStack stack, Item item) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        GridTile tile = arena.getTile(targetTile);
+        if (tile == null) return "§cTarget out of bounds!";
+        if (tile.getType() == com.crackedgames.craftics.core.TileType.TALL_GRASS
+                || tile.getType() == com.crackedgames.craftics.core.TileType.TALL_FERN) {
+            return "§7Something already grows there.";
+        }
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
+        stack.decrement(1);
+        String kind = item == Items.LARGE_FERN ? "fern" : "grass";
+        return TILE_EFFECT_PREFIX + "place_cover_" + kind + ":" + targetTile.x() + ":" + targetTile.z()
+            + "|§aYou plant the cover back down.";
+    }
+
+    /**
+     * Turns an ink sac blinds for. Matched to the Tentacled Totem's blind, which is
+     * the existing yardstick for this effect - the totem blinds every enemy at once,
+     * so a single-target throwable holding the same duration is the cheap version of
+     * the same trick rather than a stronger one.
+     */
+    public static final int INK_SAC_BLIND_TURNS = 2;
+
+    /**
+     * Ink Sac: thrown in an enemy's face. A blinded enemy fumbles its turn and deals
+     * no damage, so this is a cheap, single-target skip button for whatever is about
+     * to hit hardest.
+     */
+    private static String useInkSac(ServerPlayerEntity player, GridArena arena,
+                                    GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive() || enemy.isAlly()) return "§cNo enemy at target!";
+        String reach = validateThrowReach(arena, enemy);
+        if (reach != null) return reach;
+        consumeSpecialItem(player, stack);
+        return ALLY_BUFF_PREFIX + "blind:" + enemy.getEntityId() + ":" + INK_SAC_BLIND_TURNS
+            + "|§8Ink bursts over " + enemy.getDisplayName() + " - it can barely see!";
+    }
+
+    /**
+     * Chorus Fruit: eat it, heal like the food it is, and get thrown to a random safe
+     * tile. The landing spot is genuinely random rather than chosen, which is what
+     * keeps it from being a better Ender Pearl - it is a panic button, not a
+     * repositioning tool.
+     */
+    private static String useChorusFruit(ServerPlayerEntity player, ItemStack stack) {
+        int heal = FoodValues.healFor(Items.CHORUS_FRUIT);
+        float newHealth = Math.min(player.getMaxHealth(), player.getHealth() + heal);
+        player.setHealth(newHealth);
+        stack.decrement(1);
+        return CHORUS_PREFIX + heal;
+    }
+
+    /** Defense the wolf armor grants for the rest of the fight. */
+    public static final int WOLF_ARMOR_DEFENSE = 3;
+
+    /**
+     * Wolf Armor: strap it onto a wolf ally for a permanent defense bump. Only fits a
+     * wolf, exactly as in vanilla, and only one set per animal.
+     */
+    private static String useWolfArmor(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        CombatEntity ally = arena.getOccupant(targetTile);
+        if (ally == null || !ally.isAlive() || !ally.isAlly()) return "§cAim at one of your allies!";
+        if (!"minecraft:wolf".equals(ally.getEntityTypeId())) {
+            return "§cWolf armor only fits a wolf.";
+        }
+        if (ally.getDefenseBoost() >= WOLF_ARMOR_DEFENSE) {
+            return "§7" + ally.getDisplayName() + " is already armored.";
+        }
+        stack.decrement(1);
+        return ALLY_BUFF_PREFIX + "wolfarmor:" + ally.getEntityId() + ":" + WOLF_ARMOR_DEFENSE
+            + "|§a" + ally.getDisplayName() + " is armored! §7+" + WOLF_ARMOR_DEFENSE + " DEF";
+    }
+
     // --- Cobweb: slows an enemy (stuns for 1 turn) ---
     private static String useCobweb(ServerPlayerEntity player, GridArena arena,
                                      GridPos targetTile, ItemStack stack) {
@@ -1674,6 +1960,10 @@ public class ItemUseHandler {
     public static final String MOUNT_PREFIX = "§aMOUNT:";
     /** Prefix for TNT placement - CombatManager tracks the tile for delayed detonation. */
     public static final String TNT_PREFIX = "§6TNT:";
+    /** Prefix for bed placement - CombatManager decides anchor vs detonation by region. */
+    public static final String BED_PREFIX = "§cBED:";
+    /** Prefix for a chorus-fruit hop - CombatManager owns the random relocation. */
+    public static final String CHORUS_PREFIX = "§5CHORUS:";
 
     /** Mobs that can be mounted in combat (require a saddle). */
     private static final Set<String> MOUNTABLE_MOBS = Set.of(
