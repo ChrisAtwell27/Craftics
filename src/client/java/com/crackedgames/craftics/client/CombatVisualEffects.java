@@ -204,6 +204,42 @@ public class CombatVisualEffects {
         shakeIntensity = Math.max(shakeIntensity, intensity);
     }
 
+    /** Directional kick riding on top of the random shake, and how fast it decays per tick. */
+    private static float kickX = 0f;
+    private static float kickZ = 0f;
+    private static final float KICK_DECAY = 0.62f;
+
+    /**
+     * A shake that knows which way the blow came from: the camera is punched ALONG the hit
+     * direction and settles back, instead of only jittering in place. Random shake says "impact",
+     * a directional kick says "impact from over there" - which matters in a tactical view where
+     * the hit can land off in a corner.
+     *
+     * @param dirX,dirZ world-space direction from attacker to target (need not be normalized)
+     */
+    public static void triggerDirectionalShake(double dirX, double dirZ, float intensity) {
+        try {
+            if (!com.crackedgames.craftics.CrafticsMod.CONFIG.screenShakeOnHit()) return;
+            if (com.crackedgames.craftics.CrafticsMod.CONFIG.disableCameraShake()) return;
+        } catch (Exception ignored) {}
+        double len = Math.sqrt(dirX * dirX + dirZ * dirZ);
+        if (len > 0.001) {
+            kickX = (float) (dirX / len) * intensity;
+            kickZ = (float) (dirZ / len) * intensity;
+        }
+        shakeIntensity = Math.max(shakeIntensity, intensity * 0.5f);
+    }
+
+    /**
+     * The heavy-hit punctuation: a bright flash plus a couple of frozen frames.
+     * {@code HitPauseState} already gates every per-tick effect advance, so the freeze reads as
+     * the whole scene catching its breath on the blow rather than just a visual overlay.
+     */
+    public static void flashCrit() {
+        flashWithColor(0x66FFFFFF, 5);
+        com.crackedgames.craftics.client.vfx.HitPauseState.freeze(2);
+    }
+
     public static float getShakeOffsetX() { return shakeOffsetX; }
     public static float getShakeOffsetZ() { return shakeOffsetZ; }
 
@@ -260,6 +296,16 @@ public class CombatVisualEffects {
             shakeOffsetX = 0f;
             shakeOffsetZ = 0f;
         }
+        // The directional kick settles on its own timeline and rides on top of the jitter.
+        if (Math.abs(kickX) > 0.005f || Math.abs(kickZ) > 0.005f) {
+            shakeOffsetX += kickX;
+            shakeOffsetZ += kickZ;
+            kickX *= KICK_DECAY;
+            kickZ *= KICK_DECAY;
+        } else {
+            kickX = 0f;
+            kickZ = 0f;
+        }
 
         Iterator<FloatingText> it = activeTexts.iterator();
         while (it.hasNext()) {
@@ -277,6 +323,12 @@ public class CombatVisualEffects {
         // Depth scales with effect level so stacking the effect visibly encroaches further
         // into the screen.
         if (CombatState.isInCombat()) {
+            // Enemy-turn framing: a soft dark vignette closes in while they act. Drawn before
+            // the status vignettes so Blindness/Darkness still read as the stronger signal.
+            int turnPressure = TurnFramingFx.vignetteAlpha();
+            if (turnPressure > 0) {
+                drawVignette(ctx, screenW, screenH, 0x000000, turnPressure, 0.34f);
+            }
             int blind = CombatState.getBlindnessLevel();
             if (blind > 0) {
                 drawVignette(ctx, screenW, screenH, 0x000000,

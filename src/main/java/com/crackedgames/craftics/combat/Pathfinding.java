@@ -412,9 +412,65 @@ public class Pathfinding {
                     open.add(neighbor);
                 }
             }
+
+            // Bosses vault gaps to keep the chase honest (see canVaultGaps).
+            if (canVaultGaps(self)) {
+                for (GridPos dir : DIRECTIONS) {
+                    addVaultEdges(arena, self, current, currentG, to, closed, cameFrom, gScore, open,
+                        maxSteps, hasBoat, ignoreObstacles, aquatic, dir);
+                }
+            }
         }
 
         return List.of();
+    }
+
+    /**
+     * Whether this mover can leap the gaps it cannot walk through.
+     *
+     * <p>Bosses only, and deliberately so. A pit dug in front of an ordinary mob is a wall, and
+     * that's a real tactic the player paid AP for; letting every skeleton hop it would delete the
+     * pickaxe's whole purpose. A boss is the fight's pressure - it should not be stopped for the
+     * rest of the fight by a two-block trench, or by the arena splitting itself in half.
+     */
+    private static boolean canVaultGaps(CombatEntity self) {
+        return self != null && self.isBoss();
+    }
+
+    /** Widest gap a boss will leap, in tiles. */
+    private static final int BOSS_MAX_GAP = 2;
+
+    /**
+     * Add "leap over the gap" A* edges from {@code current} in one direction.
+     *
+     * <p>Modelled exactly like the player's jump edges: an ordinary graph edge to the tile past
+     * the gap, priced above walking, so A* only takes it when going around is genuinely worse. A
+     * boss may clear a void pit or a lava channel; it may not land in one.
+     */
+    private static void addVaultEdges(GridArena arena, CombatEntity self, GridPos current, int currentG,
+                                      GridPos to, Set<GridPos> closed, Map<GridPos, GridPos> cameFrom,
+                                      Map<GridPos, Integer> gScore, PriorityQueue<GridPos> open,
+                                      int maxSteps, boolean hasBoat, boolean ignoreObstacles,
+                                      boolean aquatic, GridPos dir) {
+        for (int gap = 1; gap <= BOSS_MAX_GAP; gap++) {
+            boolean clear = true;
+            for (int g = 1; g <= gap && clear; g++) {
+                GridPos over = new GridPos(current.x() + dir.x() * g, current.z() + dir.z() * g);
+                if (!arena.isInBounds(over) || !isJumpableGap(arena, over)) clear = false;
+            }
+            if (!clear) continue;
+
+            GridPos land = new GridPos(current.x() + dir.x() * (gap + 1),
+                                       current.z() + dir.z() * (gap + 1));
+            if (!arena.isInBounds(land) || closed.contains(land)) continue;
+            var landTile = arena.getTile(land);
+            if (landTile == null || !landTile.isWalkableEx(hasBoat, ignoreObstacles, aquatic)) continue;
+            if (isJumpableGap(arena, land)) continue;              // never end a leap in the pit
+            if (!land.equals(to) && isBlockedBy(arena, land, self, false)) continue;
+            if (land.equals(to) && isBlockedBy(arena, land, self)) continue;
+
+            relax(open, gScore, cameFrom, current, land, currentG + gap + 1, maxSteps);
+        }
     }
 
     private static List<GridPos> reconstructPath(Map<GridPos, GridPos> cameFrom, GridPos end,
@@ -824,6 +880,40 @@ public class Pathfinding {
                     cameFrom.put(neighbor, current);
                     gScore.put(neighbor, tentativeG);
                     open.add(neighbor);
+                }
+            }
+
+            // Big bosses leap gaps too - the 2x2 ones are exactly the fights a trench would
+            // otherwise stall out. Every anchor the footprint passes over must be clearable, and
+            // the whole footprint has to fit on the far side.
+            if (canVaultGaps(self)) {
+                for (GridPos dir : DIRECTIONS) {
+                    for (int gap = 1; gap <= BOSS_MAX_GAP; gap++) {
+                        boolean clear = true;
+                        for (int g = 1; g <= gap && clear; g++) {
+                            GridPos over = new GridPos(current.x() + dir.x() * g, current.z() + dir.z() * g);
+                            for (GridPos ft : GridArena.getOccupiedTiles(over, sizeX, sizeZ)) {
+                                if (!arena.isInBounds(ft)) { clear = false; break; }
+                                var oTile = arena.getTile(ft);
+                                boolean passable = isJumpableGap(arena, ft)
+                                    || (oTile != null && oTile.isWalkableEx(false, ignoreObstacles, false));
+                                if (!passable) { clear = false; break; }
+                            }
+                        }
+                        if (!clear) continue;
+
+                        GridPos land = new GridPos(current.x() + dir.x() * (gap + 1),
+                                                   current.z() + dir.z() * (gap + 1));
+                        if (closed.contains(land)) continue;
+                        if (!canPlaceSizedEntity(arena, land, sizeX, sizeZ, self, false, ignoreObstacles)) continue;
+                        int tentativeG = currentG + gap + 1;
+                        if (tentativeG > maxSteps) continue;
+                        if (tentativeG < gScore.getOrDefault(land, Integer.MAX_VALUE)) {
+                            cameFrom.put(land, current);
+                            gScore.put(land, tentativeG);
+                            open.add(land);
+                        }
+                    }
                 }
             }
         }

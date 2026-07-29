@@ -293,8 +293,10 @@ public class CombatInputHandler {
                         CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), entityId
                     ));
                     hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.ATTACKED);
-                } else if (client.world != null && isBreakableGrassAt(client, tilePos)) {
-                    // Tall grass / large fern - server resolves the break with AP cost.
+                } else if (client.world != null
+                        && (isBreakableGrassAt(client, tilePos) || isDousableFireAt(client, tilePos))) {
+                    // Tall grass / large fern, or flames to beat out - server resolves
+                    // either with the AP cost.
                     ClientPlayNetworking.send(new CombatActionPayload(
                         CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), -1
                     ));
@@ -432,6 +434,22 @@ public class CombatInputHandler {
     }
 
     /**
+     * True when the tile is alight. Flames live in the same Y+1 slot the stealth plants do,
+     * and are put out by attacking them for 1 AP - so the click has to reach the server as an
+     * ATTACK rather than being swallowed as "No enemy on that tile!".
+     */
+    private static boolean isDousableFireAt(MinecraftClient client, GridPos tilePos) {
+        if (client.world == null || tilePos == null) return false;
+        int wx = CombatState.getArenaOriginX() + tilePos.x();
+        int wy = CombatState.getArenaOriginY() + 1;
+        int wz = CombatState.getArenaOriginZ() + tilePos.z();
+        net.minecraft.block.BlockState state =
+            client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy, wz));
+        return state.isOf(net.minecraft.block.Blocks.FIRE)
+            || state.isOf(net.minecraft.block.Blocks.SOUL_FIRE);
+    }
+
+    /**
      * True if {@code tilePos} is inside the held weapon's attack footprint when
      * aimed at that tile (damage or effect layer). Lets the player click an
      * empty highlighted tile to fire an AoE that catches enemies off the
@@ -483,9 +501,12 @@ public class CombatInputHandler {
 
     private static boolean isPickaxeMineGesture(MinecraftClient client, GridPos tilePos) {
         if (client.player == null) return false;
-        net.minecraft.item.Item held = client.player.getMainHandStack().getItem();
-        String path = net.minecraft.registry.Registries.ITEM.getId(held).getPath();
-        if (!path.endsWith("_pickaxe")) return false;
+        // Same definition the server's mine path uses, so the gesture never fires an
+        // ACTION_MINE the server will reject (or swallow a click it would have accepted).
+        if (!com.crackedgames.craftics.combat.ItemUseHandler
+                .isPickaxe(client.player.getMainHandStack().getItem())) {
+            return false;
+        }
         // Walkable tiles (the move set) should continue to fire MOVE. Anything else is
         // either out-of-range or an obstacle - let the server decide.
         java.util.Set<GridPos> moveTiles = CombatState.getMoveTiles();

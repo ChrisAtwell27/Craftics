@@ -38,8 +38,10 @@ public abstract class CameraLockMixin {
         if (CombatState.isInCombat() || CombatState.isCinematicActive()) {
             setRotation(CombatState.getCombatYaw(), CombatState.getCombatPitch());
 
-            // Use smooth focus zoom/position instead of static arena center
-            float distance = CombatState.getCameraFocusZoom();
+            // Use smooth focus zoom/position instead of static arena center. The turn-framing
+            // scale leans the camera in while the enemies act and releases on the player's turn.
+            float distance = CombatState.getCameraFocusZoom()
+                * com.crackedgames.craftics.client.TurnFramingFx.zoomScale();
             double pitchRad = Math.toRadians(CombatState.getCombatPitch());
             double yawRad = Math.toRadians(CombatState.getCombatYaw());
 

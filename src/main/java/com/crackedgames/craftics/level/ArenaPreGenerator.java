@@ -290,9 +290,12 @@ public class ArenaPreGenerator {
                 if (floor.isAir()) {
                     BlockPos belowPos = new BlockPos(ox + x, oy - 1, oz + z);
                     BlockState below = world.getBlockState(belowPos);
-                    // Count as void only if below is empty too - a shallow pit
-                    // (LOW_GROUND) with solid ground 1 block down is fine.
-                    if (below.isAir() || !below.getFluidState().isEmpty()) {
+                    // Count as void only if nothing standable is below - a shallow pit
+                    // (LOW_GROUND) with solid ground 1 block down is fine. Collision-free
+                    // dressing (rail, pressure plate, single snow layer) is NOT ground,
+                    // matching ArenaBuilder's pit-depth scan.
+                    if (!com.crackedgames.craftics.combat.WallBlocks
+                            .providesStandingSurface(below, world, belowPos)) {
                         voidTiles++;
                     }
                 }

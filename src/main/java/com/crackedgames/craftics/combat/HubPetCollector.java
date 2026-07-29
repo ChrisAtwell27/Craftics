@@ -84,6 +84,12 @@ public class HubPetCollector {
                 typeId, mob.getUuid(), nbt, allyEntry, ownerUuid, saddledMount));
             toDiscard.add(mob);
 
+            // Career log of distinct species tamed - the Pet Collector achievement counts
+            // species, not animals, so five wolves are still one entry.
+            com.crackedgames.craftics.achievement.AchievementManager.recordCollected(
+                player, com.crackedgames.craftics.achievement.AchievementManager.COL_PET_SPECIES,
+                typeId);
+
             CrafticsMod.LOGGER.info("Party mob joining combat: {} ({}){}",
                 mob.getName().getString(), typeId, saddledMount ? " [saddled mount]" : "");
         }

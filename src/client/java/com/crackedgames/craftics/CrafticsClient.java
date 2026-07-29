@@ -210,7 +210,26 @@ public class CrafticsClient implements ClientModInitializer {
                                 payload.entityId(), payload.valueA(), false);
                             CombatVisualEffects.flashAttack();
                             float shakeAmount = Math.min(1.0f, payload.valueA() / 8.0f) * 0.6f + 0.15f;
-                            CombatVisualEffects.triggerShake(shakeAmount);
+                            // Kick the camera ALONG the blow when we know where it landed, so a
+                            // hit in the far corner reads as coming from over there rather than
+                            // as a generic rattle. Falls back to the plain jitter otherwise.
+                            var hitEntity = context.client().world != null
+                                ? context.client().world.getEntityById(payload.entityId()) : null;
+                            if (hitEntity != null && context.client().player != null) {
+                                CombatVisualEffects.triggerDirectionalShake(
+                                    hitEntity.getX() - context.client().player.getX(),
+                                    hitEntity.getZ() - context.client().player.getZ(),
+                                    shakeAmount * 0.5f);
+                            } else {
+                                CombatVisualEffects.triggerShake(shakeAmount);
+                            }
+                            // Heavy blows punctuate: a bright flash and a couple of frozen frames.
+                            boolean heavy = payload.valueA() >= 8;
+                            if (heavy) CombatVisualEffects.flashCrit();
+                            if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
+                                com.crackedgames.craftics.client.ArenaFxRenderer.spawnImpact(
+                                    payload.targetX(), payload.targetZ(), heavy);
+                            }
                             // Vanilla red hurt flash: Craftics bypasses mob.damage() so
                             // we set hurtTime directly on the client entity. The renderer
                             // reads hurtTime > 0 to apply the overlay; base tick decrements
@@ -231,6 +250,11 @@ public class CrafticsClient implements ClientModInitializer {
                         // Movement-only turns light up the act-order strip too;
                         // previously only attacks marked the acting unit.
                         CombatState.noteActingEnemy(payload.entityId());
+                        // Dust where they land, so a move has weight instead of a silent slide.
+                        if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
+                            com.crackedgames.craftics.client.ArenaAmbientFx.stepDust(
+                                context.client(), payload.targetX(), payload.targetZ());
+                        }
                     }
                     case com.crackedgames.craftics.network.CombatEventPayload.EVENT_DIED -> {
                         CombatVisualEffects.spawnDeathTextAtEntity(
@@ -251,6 +275,9 @@ public class CrafticsClient implements ClientModInitializer {
                         if (payload.valueA() == com.crackedgames.craftics.network.CombatEventPayload.BOSS_MOMENT_PHASE_TWO) {
                             CombatVisualEffects.triggerShakeTimed(0.55f, 12);
                             CombatVisualEffects.flashWithColor(0x55AA0000, 14); // dark red surge
+                            // The arena itself turns on you: the fog floods red and the walls
+                            // crowd in for the rest of the phase-two entrance.
+                            com.crackedgames.craftics.client.CrafticsFog.setMood(0x8C1A16, 0.7f, 6000L);
                         } else if (payload.valueA() == com.crackedgames.craftics.network.CombatEventPayload.BOSS_MOMENT_DEFEATED) {
                             // The boss-corpse spectacle always plays. The "BOSS DEFEATED"
                             // celebration (freeze-frame punch, banner, victory toll) only fires
@@ -258,6 +285,9 @@ public class CrafticsClient implements ClientModInitializer {
                             // a banner could linger over a fight that's still going.
                             CombatVisualEffects.triggerShakeTimed(0.7f, 16);
                             CombatVisualEffects.flashWithColor(0x55FFAA00, 18); // golden boss-corpse flash
+                            // The pressure lifts: the banks wash gold-white and fall back,
+                            // undoing whatever the phase-two mood did to them.
+                            com.crackedgames.craftics.client.CrafticsFog.setMood(0xFFE9B8, 1.5f, 4000L);
                             if (payload.valueB() == 1) {
                                 com.crackedgames.craftics.client.vfx.HitPauseState.freeze(4);
                                 CombatVisualEffects.showBanner("§l☠ BOSS DEFEATED ☠", 0xFFFFC030, 34);
@@ -324,6 +354,12 @@ public class CrafticsClient implements ClientModInitializer {
             context.client().execute(() -> {
                 CombatState.setInCombat(false);
                 CombatVisualEffects.resetOverlays();
+                // Whatever mood the fight left the fog in dies with the fight, so the next
+                // arena doesn't open under the last boss's red.
+                com.crackedgames.craftics.client.CrafticsFog.clearMood();
+                com.crackedgames.craftics.client.TurnFramingFx.reset();
+                com.crackedgames.craftics.client.ArenaFxRenderer.reset();
+                com.crackedgames.craftics.client.ArenaAmbientFx.reset();
                 com.crackedgames.craftics.client.vfx.EntityBounceState.clear();
                 context.client().options.getBobView().setValue(previousBobView);
                 context.client().options.getChatScale().setValue(previousChatScale);
@@ -729,6 +765,11 @@ public class CrafticsClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.hints.HintHudRenderer());
         CombatTooltips.register();
         TileOverlayRenderer.register();
+        // Stylized cloud sea around arenas/scenes. Registered after the tile overlay so its
+        // translucent sheets draw over the ground highlights, not under them.
+        com.crackedgames.craftics.client.CloudSeaRenderer.register();
+        // Contact shadows, hit rings and the sculk pulse - ground-level readability.
+        com.crackedgames.craftics.client.ArenaFxRenderer.register();
         com.crackedgames.craftics.client.PartyLabelRenderer.register();
         com.crackedgames.craftics.client.TesterLabelRenderer.register();
         com.crackedgames.craftics.client.EffectIconRenderer.register();
@@ -778,6 +819,9 @@ public class CrafticsClient implements ClientModInitializer {
             // Hard-stop the soundtrack so it never bleeds onto the title screen.
             com.crackedgames.craftics.client.music.MusicManager.stopAll();
             CombatVisualEffects.resetOverlays();
+            // Drop the eased arena fog band so the title screen / next world renders at
+            // full view distance instead of inheriting the last fight's closed-in fog.
+            com.crackedgames.craftics.client.CrafticsFog.reset();
             com.crackedgames.craftics.client.guide.GuideBookData.resetToDefaults();
             com.crackedgames.craftics.client.PartyLabelRenderer.clear();
             // Parked barter-stepper context and live bounce offsets are session
@@ -790,9 +834,14 @@ public class CrafticsClient implements ClientModInitializer {
                 client.options.getChatScale().setValue(previousChatScale);
                 client.options.getChatWidth().setValue(previousChatWidth);
                 client.options.setPerspective(Perspective.FIRST_PERSON);
-                if (!client.mouse.isCursorLocked()) {
-                    client.mouse.lockCursor();
-                }
+                // DISCONNECT fires on the NETTY thread. Mouse.lockCursor calls setScreen
+                // internally, which is render-thread only - doing it here logged a
+                // "will likely follow a crash" warning and is a real crash risk on the way out.
+                client.execute(() -> {
+                    if (!client.mouse.isCursorLocked()) {
+                        client.mouse.lockCursor();
+                    }
+                });
             }
             traderScreenOpened = false;
         });
@@ -933,6 +982,8 @@ public class CrafticsClient implements ClientModInitializer {
 
             TransitionOverlay.tick();
             CombatVisualEffects.tick();
+            com.crackedgames.craftics.client.TurnFramingFx.tick();
+            com.crackedgames.craftics.client.ArenaAmbientFx.tick(client);
             CombatState.tickCameraFocus();
             CombatAnimations.tick();
             CombatInputHandler.tick(client);

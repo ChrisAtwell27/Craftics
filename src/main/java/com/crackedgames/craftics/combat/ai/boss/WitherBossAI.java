@@ -39,6 +39,19 @@ public class WitherBossAI extends BossAI {
     private static final int MAX_SKELETONS_P1 = 4;
     private static final int MAX_SKELETONS_P2 = 6;
 
+    /** Every tile the boss's 2x2 body currently covers. */
+    private static List<GridPos> footprintTiles(CombatEntity self) {
+        List<GridPos> tiles = new ArrayList<>();
+        GridPos base = self.getGridPos();
+        if (base == null) return tiles;
+        for (int dx = 0; dx < self.getSizeX(); dx++) {
+            for (int dz = 0; dz < self.getSizeZ(); dz++) {
+                tiles.add(new GridPos(base.x() + dx, base.z() + dz));
+            }
+        }
+        return tiles;
+    }
+
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
         self.setEnraged(true);
@@ -133,6 +146,11 @@ public class WitherBossAI extends BossAI {
                     List<GridPos> fireTrail = new ArrayList<>(
                         chargePath.subList(0, chargePath.size() - 1));
                     chargeActions.add(new EnemyAction.CreateTerrain(fireTrail, TileType.FIRE, 1));
+                    // The fire clears; the rot doesn't. A charge is the Wither drawing a
+                    // permanent scar across the arena - the fire says "not this turn", the decay
+                    // underneath says "not this fight". Same fairness guard: the landing tile is
+                    // excluded, so there's always clean ground to melee it from.
+                    chargeActions.add(new EnemyAction.CreateTerrain(fireTrail, TileType.DECAY, 0));
                 }
                 EnemyAction chargeComposite = chargeActions.size() == 1
                     ? chargeActions.get(0)
@@ -154,10 +172,18 @@ public class WitherBossAI extends BossAI {
         int decayRadius = isPhaseTwo() ? 4 : 3;
         EnemyAction decay = new EnemyAction.AreaAttack(
             myPos, decayRadius, 2, "wither_decay");
+        // WITHERING GROUND: the aura damages, but the ground the Wither actually OCCUPIES rots
+        // for good. Deliberately its footprint and not the whole aura radius - a 3-4 tile radius
+        // converting every turn would rot the entire arena inside four rounds and leave the
+        // player nowhere to stand at all. Tied to the boss's body instead, it means the Wither
+        // paints its own history across the board: chase it and you fight on ruined ground,
+        // kite it and you hand it the room.
+        EnemyAction rot = new EnemyAction.CreateTerrain(footprintTiles(self), TileType.DECAY, 0);
         if (dist <= 1) {
             // In melee, hit the player AND tick the aura.
             return new EnemyAction.CompositeAction(List.of(
                 decay,
+                rot,
                 new EnemyAction.Attack(self.getAttackPower())
             ));
         }
@@ -165,9 +191,11 @@ public class WitherBossAI extends BossAI {
         // boss closes the gap instead of standing still firing pulses.
         EnemyAction approach = meleeOrApproach(self, arena, playerPos, 0);
         if (approach instanceof EnemyAction.Idle) {
-            return decay;
+            return new EnemyAction.CompositeAction(List.of(decay, rot));
         }
-        return new EnemyAction.CompositeAction(List.of(decay, approach));
+        // Rot BEFORE the step, so the tiles it leaves behind are the ones it was standing on -
+        // decaying after the move would poison where it is going instead of where it has been.
+        return new EnemyAction.CompositeAction(List.of(decay, rot, approach));
     }
 
 }

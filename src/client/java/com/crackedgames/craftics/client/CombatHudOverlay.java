@@ -915,6 +915,18 @@ public class CombatHudOverlay implements HudRenderCallback {
                 "\u00a77Attack to clear it (1 AP), or hit from adjacent.");
         }
 
+        // Open flames - a burning tile, placed at body height above an intact floor.
+        if (above == net.minecraft.block.Blocks.SOUL_FIRE) {
+            return new TileTooltipInfo("§b§lSoul Fire",
+                "§fStand in it and you catch §cBurning III§f - longer every turn you stay.",
+                "§7Needs no fuel - spreads to any tile it touches. Attack it to smother it (1 AP).");
+        }
+        if (above == net.minecraft.block.Blocks.FIRE) {
+            return new TileTooltipInfo("§6§lFire",
+                "§fStand in it and you catch §cBurning II§f - longer every turn you stay.",
+                "§7Spreads each turn, then burns to magma and ash. Attack it to beat it out (1 AP).");
+        }
+
         // Cactus - damaging obstacle.
         if (above == net.minecraft.block.Blocks.CACTUS) {
             return new TileTooltipInfo("\u00a72\u00a7lCactus",
@@ -942,6 +954,14 @@ public class CombatHudOverlay implements HudRenderCallback {
             return new TileTooltipInfo("\u00a76\u00a7lMud",
                 "\u00a7fEach mud tile crossed has a 50% chance to stop you there.",
                 "\u00a77Left by the jungle rain. Dries when the level resets.");
+        }
+
+        // Withered ground - the permanent rot the Wither leaves behind it. Soul soil is only
+        // ever this hazard inside an arena.
+        if (floor == net.minecraft.block.Blocks.SOUL_SOIL) {
+            return new TileTooltipInfo("§8§lWithered Ground",
+                "§fSaps 2 HP and applies Wither when you step on it.",
+                "§7Permanent. The Wither rots every tile it stands on - don't follow it.");
         }
 
         // Sculk boundary - the sculk-sensor range ring (deep dark). Blocks.SCULK marks the
@@ -1013,10 +1033,18 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
 
         // Air at the floor level (and nothing blocking above) - sunken pit
-        // (solid below) or void (nothing below).
-        if (floor.getDefaultState().isAir()) {
-            net.minecraft.block.Block below = world.getBlockState(floorPos.down()).getBlock();
-            if (!below.getDefaultState().isAir()) {
+        // (standing surface below) or void (nothing to land on). A rail / pressure plate /
+        // single snow layer in the cell counts as air here: it has no collision, so it is
+        // dressing over the real surface, not a floor (see WallBlocks#providesStandingSurface).
+        net.minecraft.block.BlockState floorState = world.getBlockState(floorPos);
+        boolean unsupportedFloor = floorState.getFluidState().isEmpty()
+            && !floorState.isOf(net.minecraft.block.Blocks.POWDER_SNOW)
+            && !com.crackedgames.craftics.combat.WallBlocks
+                .providesStandingSurface(floorState, world, floorPos);
+        if (floor.getDefaultState().isAir() || unsupportedFloor) {
+            net.minecraft.util.math.BlockPos belowPos = floorPos.down();
+            if (com.crackedgames.craftics.combat.WallBlocks
+                    .providesStandingSurface(world.getBlockState(belowPos), world, belowPos)) {
                 return new TileTooltipInfo("\u00a77\u00a7lSunken Pit",
                     "\u00a7fLower terrain. Walkable.",
                     "\u00a77Stand here for slight cover from line-of-sight checks.");

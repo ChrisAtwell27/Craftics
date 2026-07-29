@@ -42,6 +42,20 @@ public class WardenAI extends BossAI {
     private static final String CD_DARKNESS = "darkness_pulse";
     private static final String CD_SHRIEKER = "sculk_shrieker";
     private static final String CD_STOMP = "tremor_stomp";
+    private static final String CD_FISSURE = "fissure";
+
+    /** Turn the first fissure opens - late enough that the fight has a shape to ruin. */
+    private static final int FISSURE_FIRST_TURN = 4;
+    /** Rounds between fissures. Phase 2 halves it. */
+    private static final int FISSURE_COOLDOWN = 6;
+    /** How wide the crack is, and how much wider it gets in phase two. */
+    private static final int FISSURE_WIDTH = 2;
+    private static final int FISSURE_WIDTH_P2 = 3;
+    /** Damage to anything standing on the crack when it opens. */
+    private static final int FISSURE_DAMAGE = 6;
+
+    /** Rows/columns already cracked, so a second fissure doesn't reopen the same ground. */
+    private final List<Integer> fissureLines = new ArrayList<>();
 
     // Vibration tracking
     private GridPos vibrationTarget = null;
@@ -95,6 +109,50 @@ public class WardenAI extends BossAI {
         }
     }
 
+    /**
+     * Pick where the arena tears.
+     *
+     * <p>The crack runs the full span of the board on the axis the player is FURTHEST along, so
+     * it cuts between them and the space they have most of - the retreat, not the wall they're
+     * already backed against. It's offset a couple of tiles to the player's side of centre for
+     * the same reason, and never laid on a line that's already cracked or on the Warden's own
+     * footprint (a boss that drops itself into the void is a comedy, not a threat).
+     *
+     * <p>Returns an empty list when there's nowhere sensible left to split, which retires the
+     * ability naturally on a board that's already in pieces.
+     */
+    private List<GridPos> planFissure(GridArena arena, GridPos playerPos) {
+        int w = arena.getWidth();
+        int h = arena.getHeight();
+        int width = isPhaseTwo() ? FISSURE_WIDTH_P2 : FISSURE_WIDTH;
+
+        // Split across the LONGER axis so the crack actually reaches both edges.
+        boolean splitOnZ = h >= w;
+        int span = splitOnZ ? h : w;
+        int playerLine = splitOnZ ? playerPos.z() : playerPos.x();
+        if (span < width + 4) return List.of();   // too cramped to lose a band of floor
+
+        // Two tiles off the player, toward the middle: close enough to matter this turn, far
+        // enough that they aren't simply standing on the whole thing when it opens.
+        int centre = playerLine + (playerLine > span / 2 ? -2 : 2);
+        int start = Math.max(1, Math.min(span - width - 1, centre - width / 2));
+
+        List<GridPos> crack = new ArrayList<>();
+        for (int line = start; line < start + width; line++) {
+            if (fissureLines.contains(line)) return List.of();   // don't re-crack the same ground
+            for (int i = 0; i < (splitOnZ ? w : h); i++) {
+                GridPos pos = splitOnZ ? new GridPos(i, line) : new GridPos(line, i);
+                var tile = arena.getTile(pos);
+                if (tile == null) continue;
+                if (tile.getType() == TileType.VOID) continue;    // already open
+                crack.add(pos);
+            }
+        }
+        if (crack.isEmpty()) return List.of();
+        for (int line = start; line < start + width; line++) fissureLines.add(line);
+        return crack;
+    }
+
     @Override
     protected EnemyAction chooseAbility(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
@@ -144,6 +202,30 @@ public class WardenAI extends BossAI {
 
         int distToTarget = self.minDistanceTo(effectiveTarget);
         int distToPlayer = self.minDistanceTo(playerPos);
+
+        // FISSURE - the Warden splits the arena.
+        //
+        // A thin ground attack asks "are you standing here?", and one step answers it. This asks
+        // something the player can't step out of: a band of floor across the whole board drops
+        // out permanently, and the arena they've been fighting in is now two arenas. Cover on the
+        // wrong side is gone, the party can be cut from each other, and the ground they retreat
+        // over stops existing. Bosses vault gaps (see Pathfinding#canVaultGaps), so this traps
+        // the player, never the Warden.
+        //
+        // Telegraphed a turn ahead like every other boss ability - standing on the crack when it
+        // opens costs damage, but the tile is lost either way.
+        int fissureCooldown = isPhaseTwo() ? FISSURE_COOLDOWN / 2 : FISSURE_COOLDOWN;
+        if (getTurnCounter() >= FISSURE_FIRST_TURN && !isOnCooldown(CD_FISSURE)) {
+            List<GridPos> crack = planFissure(arena, playerPos);
+            if (!crack.isEmpty()) {
+                setCooldown(CD_FISSURE, fissureCooldown);
+                // The "fissure" effect name is what turns these tiles to VOID in the resolver -
+                // the damage is incidental, the hole is the attack.
+                return new EnemyAction.BossAbility("fissure",
+                    new EnemyAction.TileAreaAttack(crack, myPos, FISSURE_DAMAGE, "fissure"),
+                    crack);
+            }
+        }
 
         // Darkness Pulse - AoE around the player that blinds them. Telegraphed so the
         // player sees it coming and can reposition out of the warning tiles.

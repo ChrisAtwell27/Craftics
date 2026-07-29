@@ -101,6 +101,33 @@ public final class WallBlocks {
         return !aboveState.getCollisionShape(world, abovePos, ShapeContext.absent()).isEmpty();
     }
 
+    /**
+     * True when a block can be STOOD ON - it has a real collision surface, so an entity
+     * resting on top of it stays put instead of dropping through.
+     *
+     * <p>Rails, redstone wire, pressure plates, buttons, torches, flowers, cobwebs and a
+     * single snow layer are all <em>blocks</em> in the registry but have an EMPTY collision
+     * shape: floor dressing laid over whatever actually carries the weight. Counting one as
+     * a floor is the "rail over a pit" bug - the scan saw a non-air block one below the
+     * arena floor, typed the tile as a walkable sunken pit, and the player then fell
+     * straight through the rail into the 2-deep void it was lying over. Snow layers already
+     * behave the way this predicate describes, which is the model to match: the walkable
+     * surface is the top of the first block with real collision, dressing above it is
+     * cosmetic.
+     *
+     * <p>Fluids have an empty collision shape too, so water/lava read as unsupported here.
+     * Callers classify WATER / DEEP_WATER / LAVA from the fluid state before consulting
+     * this, and a waterlogged slab/stair still reports true off its own collision box.
+     *
+     * <p>This is the same collision test {@code CombatManager.hasSolidFloorAt} uses for the
+     * live fall-death check, so build-time classification and runtime physics agree.
+     */
+    public static boolean providesStandingSurface(BlockState state, BlockView world, BlockPos pos) {
+        if (state.isAir()) return false;
+        if (state.isSolidBlock(world, pos)) return true;
+        return !state.getCollisionShape(world, pos, ShapeContext.absent()).isEmpty();
+    }
+
     private static boolean isTallOrHinged(Block block) {
         return block instanceof net.minecraft.block.DoorBlock
             || block instanceof net.minecraft.block.TrapdoorBlock

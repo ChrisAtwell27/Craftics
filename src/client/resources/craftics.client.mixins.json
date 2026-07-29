@@ -4,6 +4,7 @@
   "package": "com.crackedgames.craftics.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "ArenaFogMixin",
     "AttackSuppressMixin",
     "BipedAnimMixin",
     "CameraLockMixin",

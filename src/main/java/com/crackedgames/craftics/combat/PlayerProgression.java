@@ -72,6 +72,36 @@ public class PlayerProgression extends PersistentState {
         public boolean pendingAffinityChoice = false;
         private final Set<String> achievements = new HashSet<>();
 
+        /**
+         * Career-long "which distinct things have you seen" log, keyed by collection name
+         * (trim patterns applied, trim materials used, pet species tamed, ...).
+         *
+         * <p>The COLLECTION achievements ask about history, not current state - "apply 5
+         * different trim patterns" can't be answered by looking at what someone happens to be
+         * wearing right now - so the distinct values have to outlive the run that saw them.
+         */
+        private final Map<String, Set<String>> collections = new HashMap<>();
+
+        /** Record one entry in a collection. Returns the collection's new distinct size. */
+        public int recordCollected(String collection, String value) {
+            if (collection == null || value == null || value.isEmpty()) return 0;
+            Set<String> set = collections.computeIfAbsent(collection, k -> new HashSet<>());
+            set.add(value);
+            return set.size();
+        }
+
+        /** How many distinct entries this collection has logged. */
+        public int collectedCount(String collection) {
+            Set<String> set = collections.get(collection);
+            return set == null ? 0 : set.size();
+        }
+
+        /** True when this exact entry has been logged before. */
+        public boolean hasCollected(String collection, String value) {
+            Set<String> set = collections.get(collection);
+            return set != null && set.contains(value);
+        }
+
         public PlayerStats() {
             for (Stat s : Stat.values()) {
                 statPoints.put(s, 0);
@@ -277,6 +307,19 @@ public class PlayerProgression extends PersistentState {
             }
             sb.append('|');
             sb.append(String.join(",", achievements));
+            // Section 5: collection log. Deliberately appended LAST and read with a length
+            // guard on the other side, so a save written before this existed still loads -
+            // it just comes back with an empty log.
+            sb.append('|');
+            {
+                boolean first = true;
+                for (Map.Entry<String, Set<String>> e : collections.entrySet()) {
+                    if (e.getValue().isEmpty()) continue;
+                    if (!first) sb.append(';');
+                    sb.append(e.getKey()).append('=').append(String.join(",", e.getValue()));
+                    first = false;
+                }
+            }
             return sb.toString();
         }
 
@@ -287,6 +330,8 @@ public class PlayerProgression extends PersistentState {
             String bossPart = sections.length > 1 ? sections[1] : "";
             String affinityPart = sections.length > 2 ? sections[2] : "";
             String achievementPart = sections.length > 3 ? sections[3] : "";
+            // Section 5 only exists on saves written since the collection log was added.
+            String collectionPart = sections.length > 4 ? sections[4] : "";
 
             String[] parts = statPart.split(":");
             if (parts.length >= 2) {
@@ -325,6 +370,19 @@ public class PlayerProgression extends PersistentState {
                     if (!trimmed.isEmpty()) {
                         ps.achievements.add(trimmed);
                     }
+                }
+            }
+            if (!collectionPart.isEmpty()) {
+                for (String entry : collectionPart.split(";")) {
+                    int eq = entry.indexOf('=');
+                    if (eq <= 0) continue;
+                    String key = entry.substring(0, eq).trim();
+                    Set<String> values = new HashSet<>();
+                    for (String v : entry.substring(eq + 1).split(",")) {
+                        String trimmed = v.trim();
+                        if (!trimmed.isEmpty()) values.add(trimmed);
+                    }
+                    if (!key.isEmpty() && !values.isEmpty()) ps.collections.put(key, values);
                 }
             }
             // Heal point counters for saves from older versions or any path that

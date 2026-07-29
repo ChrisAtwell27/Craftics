@@ -690,6 +690,38 @@ public class CombatManager {
 
     private CombatAchievementTracker achievementTracker = new CombatAchievementTracker();
 
+    /** Record a damage type dealt by something other than a swung weapon (thrown consumables,
+     *  item abilities). Kept as a narrow forwarder rather than exposing the tracker itself. */
+    public void recordDamageTypeUsed(DamageType type) {
+        if (achievementTracker != null) achievementTracker.recordDamageTypeUsed(type);
+    }
+
+    /**
+     * Log the player's current gear into their career collections for the COLLECTION
+     * achievements: every trim pattern and material they're wearing, plus the armor set.
+     * A full four-piece matching trim also settles COLLECT_FULL_SET on the spot.
+     */
+    private void recordLoadoutCollections() {
+        if (player == null || activeTrimScan == null) return;
+        for (var e : activeTrimScan.patternCounts().entrySet()) {
+            AchievementManager.recordCollected(player,
+                AchievementManager.COL_TRIM_PATTERNS, e.getKey());
+            // Four pieces sharing one pattern is a complete matching set.
+            if (e.getValue() >= 4) {
+                AchievementManager.checkFullTrimSet(player, e.getKey(), e.getValue());
+            }
+        }
+        for (String material : activeTrimScan.materialCounts().keySet()) {
+            AchievementManager.recordCollected(player,
+                AchievementManager.COL_TRIM_MATERIALS, material);
+        }
+        String armorSet = PlayerCombatStats.getArmorSet(player);
+        if (armorSet != null && !armorSet.isEmpty()) {
+            AchievementManager.recordCollected(player,
+                AchievementManager.COL_ARMOR_SETS, armorSet);
+        }
+    }
+
     private EventManager eventManager;
     // Server handle retained across endCombat() so music can be routed to the run's
     // players during event interludes (when `player`/party tracking are cleared).
@@ -1957,10 +1989,12 @@ public class CombatManager {
                         arena.getOrigin().getX() + p.x(),
                         arena.getOrigin().getY(),
                         arena.getOrigin().getZ() + p.z());
-                    if (type == TileType.CRIMSON_FUNGUS || type == TileType.WARPED_FUNGUS) {
-                        // Fungus is a PLANT, not a floor block: place it at Y+1 (where the player
-                        // stands, like a cobweb) and leave the biome floor untouched below. A plant
-                        // painted at floor-Y would have no support and fail to render.
+                    if (type == TileType.CRIMSON_FUNGUS || type == TileType.WARPED_FUNGUS
+                            || type.isFlames()) {
+                        // Fungus is a PLANT and fire is a flame - neither is a floor block: place
+                        // them at Y+1 (where the player stands, like a cobweb) and leave the biome
+                        // floor untouched below. Painted at floor-Y they'd have no support and
+                        // fail to render.
                         tw.setBlockState(floorBp.up(1), t.getBlockType().getDefaultState(),
                             net.minecraft.block.Block.NOTIFY_ALL);
                     } else {
@@ -3138,6 +3172,10 @@ public class CombatManager {
         this.activeTrimScan = TrimEffects.scan(player);
         this.activeCombatEffects = activeTrimScan.getCombatEffects();
         this.effectContext = new com.crackedgames.craftics.api.CombatEffectContext(player, arena, combatEffects, activeTrimScan);
+        // Log the loadout the player walked in with - trim patterns, trim materials and armor
+        // set - against their career collections. Combat start is the natural sampling point:
+        // it's the moment the mod already reads the whole loadout anyway.
+        recordLoadoutCollections();
         syncAddonBonuses();
         fireEffectHook(h -> h.onCombatStart(effectContext));
         this.apRemaining += activeTrimScan.get(TrimEffects.Bonus.AP);
@@ -3193,6 +3231,12 @@ public class CombatManager {
         // unintended environmental changes during turn-based combat
         ((ServerWorld) player.getWorld()).getGameRules()
             .get(net.minecraft.world.GameRules.RANDOM_TICK_SPEED).set(0, player.getServer());
+
+        // Disable vanilla fire ticking. Flame tiles are placed blocks on a turn timer -
+        // vanilla would burn them out (or spread them) on its own schedule, in real time,
+        // between turns. Fire spread here is entirely ours.
+        ((ServerWorld) player.getWorld()).getGameRules()
+            .get(net.minecraft.world.GameRules.DO_FIRE_TICK).set(false, player.getServer());
 
         this.playerMounted = false;
         this.mountMob = null;
@@ -4784,7 +4828,7 @@ public class CombatManager {
         }
         com.crackedgames.craftics.core.TileType tt = gridTile.getType();
         boolean instakill = tt == com.crackedgames.craftics.core.TileType.LAVA
-            || tt == com.crackedgames.craftics.core.TileType.FIRE
+            || tt.isFlames()
             || tt == com.crackedgames.craftics.core.TileType.VOID
             || (tt == com.crackedgames.craftics.core.TileType.DEEP_WATER
                 && !CombatEntity.isAquatic(ally.getEntityTypeId()));
@@ -4950,6 +4994,29 @@ public class CombatManager {
             } else {
                 sendMessage("§cCan't reach that tile!");
             }
+            return;
+        }
+
+        // Last-mile reality check: does the destination actually hold weight in the live world?
+        //
+        // The grid is authoritative for movement, but a fight edits terrain constantly - pickaxe
+        // pits, void digs, ground fills, placed walls expiring, mined obstacles - and every one
+        // of those paths has to remember to retype the tile. Miss once and the grid says
+        // "walkable" over a hole: the player strolls in, drops to the bottom of a pit, and their
+        // grid position is somewhere they physically are not. Rather than trust every editor to
+        // stay honest, verify the destination here and self-heal the tile when it lies.
+        if (!worldSupportsStanding(target)) {
+            GridTile lying = arena.getTile(target);
+            if (lying != null && lying.isWalkable()) {
+                lying.setType(com.crackedgames.craftics.core.TileType.VOID);
+                lying.setBlockType(Blocks.AIR);
+                CrafticsMod.LOGGER.warn(
+                    "Tile {} claimed walkable ({}) but has no floor in the world - retyped VOID",
+                    target, lying.getType());
+                sendSync();
+                refreshHighlights();
+            }
+            sendMessage("§cThere's nothing to stand on there!");
             return;
         }
 
@@ -5196,9 +5263,7 @@ public class CombatManager {
             // Silent -client optimistically sends ACTION_MINE for any obstacle click
             return;
         }
-        net.minecraft.item.Item weapon = player.getMainHandStack().getItem();
-        String path = net.minecraft.registry.Registries.ITEM.getId(weapon).getPath();
-        if (!path.endsWith("_pickaxe")) {
+        if (!ItemUseHandler.isPickaxe(player.getMainHandStack().getItem())) {
             sendMessage("§cNeed a pickaxe to mine!");
             return;
         }
@@ -5400,6 +5465,38 @@ public class CombatManager {
             return;
         }
 
+        // Beating out flames: attacking a fire or soul fire tile puts it out for 1 AP,
+        // exactly like clearing tall grass. The counter-play to a spreading burn - stamp
+        // out the front tile by tile before it reaches you, or cut a firebreak through it.
+        // Claims the click the same way stealth tiles do, so an out-of-range attempt gives
+        // an actionable hint instead of "No valid target!".
+        if (clickedTile != null) {
+            GridTile flames = arena.getTile(clickedTile);
+            if (flames != null && flames.getType().isFlames()) {
+                boolean soul = flames.getType() == TileType.SOUL_FIRE;
+                GridPos pPos = arena.getPlayerGridPos();
+                // Chebyshev, and zero counts: you can stamp out the tile you are standing
+                // in, which is the one you most want gone.
+                int reach = Math.max(
+                    Math.abs(pPos.x() - clickedTile.x()),
+                    Math.abs(pPos.z() - clickedTile.z()));
+                if (reach > 1) {
+                    sendMessage("§cMust be adjacent to beat out the flames.");
+                    return;
+                }
+                if (apRemaining < 1) {
+                    sendMessage("§cNot enough AP!");
+                    return;
+                }
+                apRemaining -= 1;
+                douseFire(clickedTile);
+                sendMessage(soul ? "§bYou smother the soul fire." : "§7You beat out the flames.");
+                sendSync();
+                refreshHighlights();
+                return;
+            }
+        }
+
         // Tall grass / large fern breaking: any held weapon breaks it for 1 AP.
         // Removes both block halves and resets the tile type so the stealth
         // effect clears on the next tick. Stealth tiles always claim the click -
@@ -5445,11 +5542,9 @@ public class CombatManager {
                     && player.getMainHandStack().getItem() != Items.BOW
                     && player.getMainHandStack().getItem() != Items.CROSSBOW;
                 if (fireSword) {
-                    clicked.setTemporaryType(com.crackedgames.craftics.core.TileType.FIRE,
-                        FlammableTiles.FIRE_BURN_TURNS);
-                    sw.setBlockState(floorBlock, clicked.getBlockType().getDefaultState(), 3);
+                    igniteTile(clickedTile, Ignition.STRUCK);
                     sw.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
-                        floorBlock.getX() + 0.5, floorBlock.getY() + 0.5, floorBlock.getZ() + 0.5,
+                        floorBlock.getX() + 0.5, floorBlock.getY() + 1.2, floorBlock.getZ() + 0.5,
                         12, 0.3, 0.3, 0.3, 0.02);
                     sw.playSound(null, floorBlock,
                         net.minecraft.sound.SoundEvents.ITEM_FLINTANDSTEEL_USE,
@@ -7276,8 +7371,7 @@ public class CombatManager {
     private boolean isRocketWall(GridPos pos) {
         if (!arena.isInBounds(pos)) return false;
         var tile = arena.getTile(pos);
-        return tile != null && !tile.isWalkable()
-            && tile.getType() != com.crackedgames.craftics.core.TileType.FIRE;
+        return tile != null && !tile.isWalkable() && !tile.getType().isFlames();
     }
 
     /** Pick the first live non-ally enemy on the diagonal tile or either
@@ -7768,6 +7862,7 @@ public class CombatManager {
                 if (transformStackLayer(entity)) return;
             }
             entity.markDeathProcessed();
+            markBurningOnDeath(entity);
 
             // A burrowed boss can still die underground to a DOT that was ticking before it dug
             // in. Clear the flag at the universal death sink so no death route can leave a
@@ -10482,7 +10577,7 @@ public class CombatManager {
             GridPos tntPos = new GridPos(tx, tz);
             primePendingTnt(tntPos, "§e§lTNT placed! §r§7It will explode at the start of next round!");
         }
-        else {
+        else if (!hasDeferredHandler(result)) {
             sendMessage(result);
         }
         // Tile effects (lava, campfire, honey, banner, scaffold)
@@ -10596,6 +10691,13 @@ public class CombatManager {
                 // Pickaxe on a sunken pit: deepen it into a VOID hole. Keep
                 // cobblestone interior walls and lay a black-concrete bottom.
                 digVoidPit(new GridPos(tx, tz));
+            } else if ("fire".equals(effectType)) {
+                // Flint & steel / fire charge on open ground: start a real burn that
+                // spreads and scorches, rather than pasting a permanent hazard tile.
+                GridPos firePos = new GridPos(tx, tz);
+                if (!igniteTile(firePos, Ignition.STRUCK)) {
+                    sendMessage("§7There's nothing there to catch.");
+                }
             } else {
                 GridPos effectPos = new GridPos(tx, tz);
                 // Banner: store color- and bonus-tagged form so the aura is visually
@@ -10656,7 +10758,6 @@ public class CombatManager {
                 if (effectTile != null) {
                     if ("water".equals(effectType)) effectTile.setType(TileType.WATER);
                     else if ("lava".equals(effectType)) effectTile.setType(TileType.LAVA);
-                    else if ("fire".equals(effectType)) effectTile.setType(TileType.FIRE);
                     else if ("powder_snow".equals(effectType)) effectTile.setType(TileType.POWDER_SNOW);
                 }
 
@@ -10736,6 +10837,9 @@ public class CombatManager {
                     }
                 } catch (NumberFormatException ignored) {}
             }
+            if (buffData.equals("echo")) {
+                echoReturnArmed.add(player.getUuid());
+            }
             if (parts.length > 1) sendMessage(parts[1]);
         }
         // Fishing result -strip prefix, display the catch message
@@ -10780,6 +10884,10 @@ public class CombatManager {
             if (hornMsg[0] != null && !hornMsg[0].isEmpty()) {
                 sendMessage(hornMsg[0]);
             }
+            // Horn Collector counts distinct variants. Sounding one is the proof you have it -
+            // the tracker's recordHornUsed had existed for this and was never called by anything.
+            achievementTracker.recordHornUsed(hornId);
+            AchievementManager.recordCollected(player, AchievementManager.COL_HORNS, hornId);
         }
 
         // Check if any enemy died from the item use (egg damage, etc.)
@@ -10808,6 +10916,22 @@ public class CombatManager {
 
         sendSync();
         refreshHighlights();
+    }
+
+    /**
+     * True when an item-use result carries a prefix that a LATER block in handleUseItem parses
+     * and messages itself. Those results are machine-readable payloads, not chat lines: the
+     * catch-all else used to print them verbatim, so every one of these items dumped its raw
+     * "§eTILE:lava:3:5|GIVE:bucket|..." payload into chat and then printed the real message
+     * again right under it. Most obvious on the echo shard, whose only visible effect WAS the
+     * message - so it read as "does nothing but say it activated, twice".
+     */
+    private static boolean hasDeferredHandler(String result) {
+        return result.startsWith(ItemUseHandler.TILE_EFFECT_PREFIX)
+            || result.startsWith(ItemUseHandler.ALLY_BUFF_PREFIX)
+            || result.startsWith(ItemUseHandler.FISHING_PREFIX)
+            || result.startsWith(ItemUseHandler.ANVIL_DROP_PREFIX)
+            || result.startsWith(ItemUseHandler.HORN_EFFECT_PREFIX);
     }
 
     /**
@@ -11223,7 +11347,59 @@ public class CombatManager {
         }
     }
 
+    /** Where each party member stood when their current turn began - the echo shard's anchor. */
+    private final java.util.Map<java.util.UUID, GridPos> turnStartGridPos = new java.util.HashMap<>();
+
+    /** Members who spent an echo shard this turn and snap back to their anchor when it ends. */
+    private final java.util.Set<java.util.UUID> echoReturnArmed = new java.util.HashSet<>();
+
+    /**
+     * Echo shard payoff: snap the acting player back to the tile they started the turn on.
+     * Charge in, swing, and rewind out of reach - the shard buys a free disengage rather than
+     * a second move budget. Silently no-ops if the anchor is gone, blocked, or already home.
+     */
+    private void resolveEchoReturn() {
+        if (player == null || arena == null) return;
+        if (!echoReturnArmed.remove(player.getUuid())) return;
+
+        GridPos anchor = turnStartGridPos.get(player.getUuid());
+        if (anchor == null || !arena.isInBounds(anchor)) {
+            sendMessage("§5The echo fades - there's nothing to return to.");
+            return;
+        }
+        if (anchor.equals(arena.getPlayerGridPos())) {
+            sendMessage("§5The echo settles - you never left.");
+            return;
+        }
+        GridTile dest = arena.getTile(anchor);
+        if (dest == null || !dest.isWalkable() || arena.isOccupied(anchor)) {
+            sendMessage("§5The echo can't reach - something holds the ground you started on.");
+            return;
+        }
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos from = player.getBlockPos();
+        arena.setPlayerGridPos(anchor);
+        BlockPos to = arena.gridToBlockPos(anchor);
+        player.requestTeleport(to.getX() + 0.5, arena.getEntityY(anchor), to.getZ() + 0.5);
+        player.setVelocity(0, 0, 0);
+        player.velocityModified = true;
+        player.fallDistance = 0;
+        broadcastPlayerPositionToOthers(player);
+
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.SCULK_SOUL,
+            from.getX() + 0.5, from.getY() + 1.0, from.getZ() + 0.5, 18, 0.3, 0.5, 0.3, 0.02);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.SCULK_SOUL,
+            to.getX() + 0.5, to.getY() + 1.0, to.getZ() + 0.5, 18, 0.3, 0.5, 0.3, 0.02);
+        world.playSound(null, to, net.minecraft.sound.SoundEvents.BLOCK_SCULK_CATALYST_BLOOM,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.9f, 1.1f);
+        sendMessage("§5Echo! You snap back to (" + anchor.x() + "," + anchor.z() + ").");
+        sendSync();
+        refreshHighlights();
+    }
+
     private void handleEndTurn() {
+        resolveEchoReturn();
         turnIdleTicks = 0; // the turn is ending; the next holder starts fresh
         if (!killedThisTurn && killStreak > 0) {
             killStreak = 0;
@@ -11283,6 +11459,11 @@ public class CombatManager {
     private int consumePendingMomentumAp() {
         // Per-turn enchant state rides the same turn-start call: Momentum re-arms, Phantom
         // Edge gets its stealth-preserved attacks back, Tag Team's free swap resets.
+        // The echo shard's anchor is stamped here too - this is the one place every
+        // turn-start path (round start, co-op turn switch) reliably passes through.
+        if (player != null && arena != null) {
+            turnStartGridPos.put(player.getUuid(), arena.getPlayerGridPos());
+        }
         momentumProcThisTurn = false;
         phantomEdgeUsesThisTurn = 0;
         tagTeamUsedThisTurn = false;
@@ -11308,7 +11489,7 @@ public class CombatManager {
     private void applyTerraform(GridPos targetTile, TileType priorType, String castResult) {
         if (targetTile == null || arena == null || priorType == null || player == null) return;
         if (castResult != null && castResult.startsWith(ItemUseHandler.TILE_EFFECT_PREFIX)) return;
-        if (priorType != TileType.FIRE && priorType != TileType.WATER
+        if (!priorType.isFlames() && priorType != TileType.WATER
                 && priorType != TileType.LOW_GROUND) return;
         if (CrafticsEnchantments.level(player, CrafticsEnchantments.TERRAFORM) <= 0) return;
         GridTile tile = arena.getTile(targetTile);
@@ -11324,10 +11505,13 @@ public class CombatManager {
         sw.setBlockState(bp.down(), tile.getBlockType().getDefaultState());
 
         String what = switch (priorType) {
-            case FIRE -> "The flames are doused";
+            case FIRE, SOUL_FIRE -> "The flames are doused";
             case WATER -> "The water drains away";
             default -> "The sunken ground fills in";
         };
+        // Terraform douses a burn outright, so the tile must leave the burn cycle too -
+        // otherwise the state machine would repaint magma over the ground it just cleared.
+        burningTiles.remove(targetTile);
         sw.spawnParticles(net.minecraft.particle.ParticleTypes.COMPOSTER,
             bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 14, 0.35, 0.3, 0.35, 0.05);
         sw.playSound(null, bp, net.minecraft.sound.SoundEvents.ITEM_HOE_TILL,
@@ -11468,12 +11652,12 @@ public class CombatManager {
                 int lavaDmg = damagePlayer(10);
                 sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
                 if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
-            } else if (turnTile.getType() == com.crackedgames.craftics.core.TileType.FIRE
+            } else if (turnTile.getType().isFlames()
                     && !combatEffects.hasFireResistance()
                     && !PlayerCombatStats.wearsHead(player, Items.PIGLIN_HEAD)) {
-                int fireDmg = damagePlayer(4);
-                sendMessage("§6  Standing on magma! " + fireDmg + " damage! (HP: " + getPlayerHp() + ")");
-                if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
+                // Standing in the flames sets you alight instead of dealing flat damage -
+                // the burn is the threat, and staying put extends it turn after turn.
+                applyFireTileBurnToPlayer(turnTile.getType());
             }
 
             if (turnTile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW
@@ -11946,7 +12130,16 @@ public class CombatManager {
         if (arena != null && fallDeathGraceTicks <= 0
                 && phase != CombatPhase.PLAYER_DYING && phase != CombatPhase.GAME_OVER) {
             int arenaFloorY = arena.getOrigin().getY();
-            if (player.getY() < arenaFloorY - 2) {
+            // The lowest LEGITIMATE standing height in an arena is arenaFloorY itself - that's
+            // where a LOW_GROUND dip, water, lava and powder snow all put you. Anything below
+            // that is a hole.
+            //
+            // This used to require arenaFloorY - 2, which a pickaxe-dug void pit never reaches:
+            // digVoidPit caps the shaft with black concrete at floorY-2, so its floor is at
+            // floorY-1 and whoever fell in just STOOD there - alive, two blocks down, their grid
+            // position somewhere else entirely. Enemies kept attacking the desynced position
+            // until something finally killed them.
+            if (player.getY() < arenaFloorY - 0.5) {
                 // Move the player's GRID position too, not just their entity: the tile they fell
                 // through is a void obstacle and is not somewhere they can be standing. Leaving
                 // the grid on it desyncs move highlights, attack range, and enemy pathing from
@@ -12421,13 +12614,35 @@ public class CombatManager {
                 }
             }
 
-            // Fire / magma-block tile damage on move -4 damage when stepping on it.
-            // Phase 2 Molten King makes these permanent, so step damage is the main threat.
-            if (landingTile != null
-                    && landingTile.getType() == com.crackedgames.craftics.core.TileType.FIRE
+            // Walking into a flame tile sets you alight (Burning II, extending any burn
+            // already running). The magma a burnt-out tile leaves behind is a separate
+            // EMBER tile and bites through the MAGMA_BLOCK check in the per-turn pass.
+            if (landingTile != null && landingTile.getType().isFlames()
                     && !combatEffects.hasFireResistance()) {
-                int fireDmg = damagePlayer(4);
-                sendMessage("§6  Scorched by magma for " + fireDmg + " damage!");
+                applyFireTileBurnToPlayer(landingTile.getType());
+            }
+
+            // Frost: the blizzard's rime. Leather boots keep it off you, exactly like powder
+            // snow, so the cold-weather counter-gear works consistently across both hazards.
+            // TileType has always described FROST as "Blizzard applies Frozen risk on step" -
+            // until now nothing applied anything and the tile was pure decoration.
+            if (landingTile != null
+                    && landingTile.getType() == com.crackedgames.craftics.core.TileType.FROST
+                    && !hasLeatherBoots() && !playerMounted) {
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 1, 0);
+                player.setFrozenTicks(Math.max(player.getFrozenTicks(), 80));
+                sendMessage("§b  Rime underfoot - you slip and slow down.");
+            }
+
+            // Withered ground: the rot the Wither leaves behind. Bites on ENTRY rather than per
+            // turn, so crossing the boss's trail costs you and camping on it does not stack -
+            // this is meant to shrink the board, not to punish a player who has run out of
+            // clean tiles to stand on. Wither bypasses Fire Resistance by design.
+            if (landingTile != null
+                    && landingTile.getType() == com.crackedgames.craftics.core.TileType.DECAY) {
+                int decayDmg = damagePlayer(landingTile.getType().damageOnStep);
+                addEffectHooked(CombatEffects.EffectType.WITHER, 2, 0);
+                sendMessage("§8  The withered ground saps you for " + decayDmg + "!");
                 if (getPlayerHp() <= 0) {
                     sendSync();
                     handlePlayerDeathOrGameOver();
@@ -13228,9 +13443,9 @@ public class CombatManager {
             attackedWithoutShieldThisTurn = false;
 
             tickTemporaryTerrain();
-            // Spread fire AFTER existing temporary tiles decay, so a tile lit
+            // Advance fire AFTER existing temporary tiles decay, so a tile lit
             // this tick keeps its full burn duration instead of losing a turn.
-            tickFireSpread();
+            tickFire();
             tickDragonBreathWaves();
             tickTidecallerWave();
             detonatePendingTnts();
@@ -13314,6 +13529,10 @@ public class CombatManager {
                     int lavaDmg = damagePlayer(10);
                     sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
                     if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
+                } else if (qTurnTile.getType().isFlames()
+                        && !combatEffects.hasFireResistance()
+                        && !PlayerCombatStats.wearsHead(player, Items.PIGLIN_HEAD)) {
+                    applyFireTileBurnToPlayer(qTurnTile.getType());
                 }
                 if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW
                         && !hasLeatherBoots() && !playerMounted) {
@@ -13861,7 +14080,7 @@ public class CombatManager {
                 for (int i = 0; i < swoopPath.size(); i++) {
                     var stile = arena.getTile(swoopPath.get(i));
                     if (stile != null && !stile.isWalkable()
-                            && stile.getType() != com.crackedgames.craftics.core.TileType.FIRE) {
+                            && !stile.getType().isFlames()) {
                         swoopBlockedAt = i;
                         break;
                     }
@@ -16515,6 +16734,56 @@ public class CombatManager {
                 checkAndHandleDeath(e);
             }
         }
+
+        // The Warden's fissure: the damage above is incidental, the HOLE is the attack. Carve
+        // the struck tiles into a permanent void so the arena is genuinely smaller from here on.
+        if ("fissure".equals(ta.effectName())) {
+            carveFissure(impact);
+        }
+    }
+
+    /**
+     * Tear the listed tiles out of the arena floor for good.
+     *
+     * <p>Built out of the same shape a pickaxe-dug void has - floor and sub-floor cleared, black
+     * concrete capping the bottom - so everything that already understands a pit understands
+     * this one: the tile scan, the fall-death check, enemy pathing, and the client's own
+     * walkability read all agree without special cases.
+     *
+     * <p>Anything standing on a tile as it opens is dropped by the normal fall handling rather
+     * than being killed here, so ledgegrip, totems and the survivor rescue all still get their
+     * say. Bosses vault gaps (see {@code Pathfinding#canVaultGaps}), so a fissure narrows the
+     * player's options without walling the boss off from the fight.
+     */
+    private void carveFissure(java.util.Set<GridPos> tiles) {
+        if (arena == null || tiles.isEmpty()) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        for (GridPos pos : tiles) {
+            if (!arena.isInBounds(pos)) continue;
+            GridTile tile = arena.getTile(pos);
+            if (tile == null || tile.getType() == TileType.VOID) continue;
+
+            BlockPos overlay = arena.gridToBlockPos(pos);   // floorY+1
+            BlockPos floor = overlay.down();                // floorY
+            BlockPos pitFloor = floor.down();               // floorY-1
+            BlockPos bottom = pitFloor.down();              // floorY-2, capped like every pit
+            setArenaBlock(world, overlay, net.minecraft.block.Blocks.AIR, false);
+            setArenaBlock(world, floor, net.minecraft.block.Blocks.AIR, false);
+            setArenaBlock(world, pitFloor, net.minecraft.block.Blocks.AIR, false);
+            setArenaBlock(world, bottom, net.minecraft.block.Blocks.BLACK_CONCRETE, false);
+
+            tile.setType(TileType.VOID);
+            tile.setBlockType(net.minecraft.block.Blocks.AIR);
+
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                floor.getX() + 0.5, floor.getY(), floor.getZ() + 0.5, 8, 0.3, 0.4, 0.3, 0.02);
+        }
+        world.playSound(null, arena.gridToBlockPos(tiles.iterator().next()),
+            net.minecraft.sound.SoundEvents.BLOCK_DEEPSLATE_BREAK,
+            net.minecraft.sound.SoundCategory.BLOCKS, 1.4f, 0.4f);
+        sendMessage("§8§lThe ground tears open!");
+        sendSync();
+        refreshHighlights();
     }
 
     /** True when any tile of {@code e}'s footprint is in {@code tiles}. */
@@ -17050,74 +17319,418 @@ public class CombatManager {
     /**
      * Resolve terrain creation/transformation.
      */
+    // === Fire =================================================================
+    // A lit tile is a real flame block at Y+1 sitting on an intact floor, and it runs a
+    // three-stage burn: flames -> magma -> burned out. The stage countdown lives HERE, in
+    // burningTiles, not in GridTile.turnsRemaining: tickTemporaryTerrain runs before the
+    // fire tick and would expire a one-turn FIRE tile back to its original block before we
+    // ever got to advance it. Instead each stage is pinned with a long temporary duration
+    // (BURN_HOLD_TURNS) so the tile stays put until this system moves it on, while still
+    // counting as temporary terrain that endCombat restores. The ORIGINAL type/block is
+    // captured by the first setTemporaryType and survives every later stage, because
+    // setTemporaryType only re-captures when the tile isn't already temporary.
+
+    /** Where a burning tile is in its lifecycle. */
+    private enum BurnStage { FLAMES, MAGMA }
+
     /**
-     * Ignite any flammable tiles among {@code tiles} (tall grass/fern, cactus,
-     * wood/leaf/wool obstacles, etc.) into temporary FIRE tiles that burn down
-     * and spread on later turns (see tickFireSpread). Called by fire-based
-     * attacks -Fire Aspect cone, bow Flame, fire knockback -so any flammable
-     * obstacle caught in the attack is set alight. Returns the count ignited.
+     * What is lighting a tile. Only the fuel requirement differs, and only one of the three
+     * has one: fuel decides whether a fire SPREADS, not whether it can burn at all.
      */
-    private int igniteFlammableTiles(Iterable<GridPos> tiles) {
-        if (arena == null || player == null) return 0;
-        ServerWorld world = (ServerWorld) player.getEntityWorld();
-        int ignited = 0;
-        for (GridPos pos : tiles) {
-            if (!arena.isInBounds(pos)) continue;
-            GridTile tile = arena.getTile(pos);
-            if (tile == null || !FlammableTiles.isFlammable(tile)) continue;
-            // Clear any standing block (tall grass/fern occupy Y+1) so the
-            // obstacle is visibly burned away, then set the floor to FIRE.
-            BlockPos floor = new BlockPos(
-                arena.getOrigin().getX() + pos.x(),
-                arena.getOrigin().getY(),
-                arena.getOrigin().getZ() + pos.z());
+    private enum Ignition {
+        /** Ordinary fire reaching the next tile. The fuel chain - stops where fuel runs out. */
+        SPREAD,
+        /** Soul fire reaching the next tile. Needs no fuel and carries the blue flame with it. */
+        SOUL_SPREAD,
+        /** A player striking a light by hand. Needs no fuel; the ground picks the flame. */
+        STRUCK
+    }
+
+    /** @param restores tile comes back as itself (netherrack) rather than burning to dirt. */
+    private record BurnState(BurnStage stage, int turnsLeft, boolean restores) {}
+
+    /** Long enough that tickTemporaryTerrain never expires a stage out from under us,
+     *  short of permanent so endCombat's temporary-terrain restore still claims the tile. */
+    private static final int BURN_HOLD_TURNS = 9999;
+
+    /** Tiles mid-burn, in ignition order. */
+    private final java.util.LinkedHashMap<GridPos, BurnState> burningTiles = new java.util.LinkedHashMap<>();
+
+    /**
+     * Tiles that finished burning and refuse to catch light again yet, by turns remaining.
+     * Ground that comes back as itself gets a short cooldown; ground that burnt to ash is
+     * entered at {@link #SPENT_FOREVER} and never leaves - its fuel is gone for this fight.
+     */
+    private final java.util.HashMap<GridPos, Integer> fireproofTiles = new java.util.HashMap<>();
+
+    /** Cooldown value meaning "this tile has nothing left to burn". Never decremented. */
+    private static final int SPENT_FOREVER = Integer.MAX_VALUE;
+
+    /** Floor-level BlockPos for a grid tile. The flame overlay is this {@code .up(1)},
+     *  which is also what {@code arena.gridToBlockPos} returns. */
+    private BlockPos tileFloorPos(GridPos pos) {
+        return new BlockPos(
+            arena.getOrigin().getX() + pos.x(),
+            arena.getOrigin().getY(),
+            arena.getOrigin().getZ() + pos.z());
+    }
+
+    /** Remove the flame block above a tile, leaving anything else at Y+1 alone. */
+    private void clearFlameOverlay(ServerWorld world, BlockPos floor) {
+        var above = world.getBlockState(floor.up(1));
+        if (above.isOf(Blocks.FIRE) || above.isOf(Blocks.SOUL_FIRE)) {
             world.setBlockState(floor.up(1), Blocks.AIR.getDefaultState(),
                 net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
-            world.setBlockState(floor.up(2), Blocks.AIR.getDefaultState(),
+        }
+    }
+
+    /**
+     * Paint a tile's current block into the world. FIRE goes into the Y+1 overlay slot with
+     * the floor left intact (it is a placed flame, not a floor material); every other type
+     * paints at floor Y and clears any flame that was standing there.
+     */
+    private void paintTileBlock(ServerWorld world, GridPos pos, GridTile tile) {
+        BlockPos floor = tileFloorPos(pos);
+        if (tile.getType().isFlames()) {
+            world.setBlockState(floor.up(1), tile.getBlockType().getDefaultState(),
                 net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
-            tile.setTemporaryType(TileType.FIRE, FlammableTiles.FIRE_BURN_TURNS);
-            world.setBlockState(floor, tile.getBlockType().getDefaultState());
-            world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
-                floor.getX() + 0.5, floor.getY() + 0.5, floor.getZ() + 0.5,
-                10, 0.3, 0.3, 0.3, 0.02);
-            ignited++;
+            return;
+        }
+        clearFlameOverlay(world, floor);
+        if (tile.getType() == TileType.OBSTACLE) {
+            // Walls stand in the obstacle layer (Y+1), same slot placeObstacleTile uses, with
+            // the floor left alone underneath. Matters when soul fire has eaten a stone wall
+            // and the tile restores: painted at floor Y the wall would come back as a paving
+            // slab and the tile would read as blocked with nothing visibly there.
+            world.setBlockState(floor.up(1), tile.getBlockType().getDefaultState(),
+                net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+            return;
+        }
+        world.setBlockState(floor, tile.getBlockType().getDefaultState());
+    }
+
+    /**
+     * Set one tile alight, if it has anything left to burn. Clears whatever was standing on
+     * it (tall grass, a log obstacle) so the fuel is visibly consumed, drops a flame block
+     * at Y+1, and enters the tile into the burn cycle.
+     *
+     * @param kind where the flame came from, which decides whether fuel is required
+     * @return true if the tile was ignited
+     */
+    private boolean igniteTile(GridPos pos, Ignition kind) {
+        if (arena == null || player == null || pos == null) return false;
+        if (!arena.isInBounds(pos)) return false;
+        // The cooldown is the ONE thing soul fire respects: a tile that has already burned
+        // gets its turn off, or a soul fire would sit on the same ground relighting it
+        // forever and the front would never actually go out.
+        if (fireproofTiles.containsKey(pos)) return false;   // still cooling down
+        if (burningTiles.containsKey(pos)) return false;     // already alight
+        GridTile tile = arena.getTile(pos);
+        if (tile == null) return false;
+
+        boolean fuel = FlammableTiles.isFlammable(tile);
+        if (!fuel) {
+            // Fuel decides whether a fire SPREADS, not whether it can exist. Ordinary fire
+            // spreading is a fuel chain and stops here; a struck light or soul fire does not
+            // need any. What all three still refuse is ground that can't hold a flame at all
+            // (void, water, lava) and permanent walls - the same blocks a pickaxe refuses.
+            if (kind == Ignition.SPREAD) return false;
+            if (tile.isPermanent() || !FlammableTiles.canHoldFlame(tile)) return false;
+            // A hand-struck light goes on the GROUND. Soul fire is the only thing that eats
+            // through a standing wall, so a non-fuel obstacle turns a strike away - otherwise
+            // flint and steel would quietly become a wall-removal tool.
+            if (kind == Ignition.STRUCK && !tile.isWalkable()) return false;
+        }
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos floor = tileFloorPos(pos);
+        // Read from the floor block BEFORE the tile is overwritten - once the burn starts,
+        // getBlockType() is the fire/magma of whatever stage the tile is in. Soul ground
+        // burns blue, and so does anything soul fire spread to. Ground that was never fuel
+        // rebuilds itself rather than being scorched to dirt: soul fire eating a stone
+        // arena should leave stone behind, not a field of soil.
+        boolean restores = !fuel || FlammableTiles.restoresAfterBurning(tile.getBlockType());
+        boolean soul = kind == Ignition.SOUL_SPREAD
+            || FlammableTiles.burnsSoulFire(tile.getBlockType());
+        // Burn away the fuel standing on the tile (grass halves, a log, a fence) before
+        // the flame takes its place at Y+1.
+        world.setBlockState(floor.up(1), Blocks.AIR.getDefaultState(),
+            net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+        world.setBlockState(floor.up(2), Blocks.AIR.getDefaultState(),
+            net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+
+        tile.setTemporaryType(soul ? TileType.SOUL_FIRE : TileType.FIRE, BURN_HOLD_TURNS);
+        paintTileBlock(world, pos, tile);
+        burningTiles.put(pos, new BurnState(BurnStage.FLAMES,
+            soul ? FlammableTiles.SOUL_FIRE_BURN_TURNS : FlammableTiles.FIRE_BURN_TURNS,
+            restores));
+
+        world.spawnParticles(soul ? net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME
+                : net.minecraft.particle.ParticleTypes.FLAME,
+            floor.getX() + 0.5, floor.getY() + 1.2, floor.getZ() + 0.5,
+            10, 0.3, 0.3, 0.3, 0.02);
+        // Anything already standing in the new flames catches immediately rather than
+        // waiting a full round for the next fire tick.
+        applyFireTileBurn(pos);
+        return true;
+    }
+
+    /**
+     * Ignite any flammable tiles among {@code tiles}. Called by fire-based attacks - Fire
+     * Aspect cone, bow Flame, fire knockback, flint &amp; steel, fire charges - so any
+     * flammable ground or obstacle caught in the attack is set alight. Returns the count.
+     */
+    private int igniteFlammableTiles(Iterable<GridPos> tiles) {
+        int ignited = 0;
+        for (GridPos pos : tiles) {
+            if (igniteTile(pos, Ignition.SPREAD)) ignited++;
         }
         return ignited;
     }
 
     /**
-     * Per-turn fire propagation. Every active FIRE tile spreads to its
-     * orthogonally-adjacent flammable tiles, igniting them as fresh FIRE tiles
-     * (which burn down and spread further on subsequent turns). Spread is
-     * computed from a snapshot so newly-lit tiles don't chain across the whole
-     * arena in a single turn. Called once per round from the turn tick.
+     * Advance every burning tile one turn, then spread from the tiles that were still
+     * showing flames. Order matters and is the whole feel of the mechanic:
+     *
+     * <ol>
+     *   <li>flames spread outward to adjacent flammable tiles,</li>
+     *   <li>those flames collapse into a magma block for one more turn,</li>
+     *   <li>the magma finishes burning - to dirt, or back to netherrack with a
+     *       short cooldown before it can catch again.</li>
+     * </ol>
+     *
+     * <p>Spread is computed from a snapshot taken before any stage advances, so a tile lit
+     * this turn doesn't chain across the whole arena in a single round. Boss-placed FIRE
+     * terrain seeds the spread too, but keeps its own duration instead of joining the
+     * cycle - a telegraphed hazard is meant to clear itself, not scar the floor.
      */
-    private void tickFireSpread() {
+    private void tickFire() {
         if (arena == null || player == null) return;
-        java.util.List<GridPos> sources = new java.util.ArrayList<>();
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+        var cooling = fireproofTiles.entrySet().iterator();
+        while (cooling.hasNext()) {
+            var entry = cooling.next();
+            if (entry.getValue() == SPENT_FOREVER) continue;  // burnt to ash; never relights
+            int left = entry.getValue() - 1;
+            if (left <= 0) cooling.remove(); else entry.setValue(left);
+        }
+
+        // Snapshot the flame front before anything moves, tagging each source with whether it
+        // is soul fire. The tag has to be taken NOW: by the time the spread runs, these tiles
+        // have already collapsed to EMBER and their type no longer says which flame they were.
+        java.util.LinkedHashMap<GridPos, Boolean> flameFront = new java.util.LinkedHashMap<>();
         for (int x = 0; x < arena.getWidth(); x++) {
             for (int z = 0; z < arena.getHeight(); z++) {
-                GridTile tile = arena.getTile(x, z);
-                if (tile != null && tile.getType() == TileType.FIRE) {
-                    sources.add(new GridPos(x, z));
+                GridTile t = arena.getTile(x, z);
+                if (t != null && t.getType().isFlames()) {
+                    flameFront.put(new GridPos(x, z), t.getType() == TileType.SOUL_FIRE);
                 }
             }
         }
-        if (sources.isEmpty()) return;
-        java.util.LinkedHashSet<GridPos> toIgnite = new java.util.LinkedHashSet<>();
-        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-        for (GridPos src : sources) {
-            for (int[] d : dirs) {
-                GridPos n = new GridPos(src.x() + d[0], src.z() + d[1]);
-                if (!arena.isInBounds(n)) continue;
-                GridTile nt = arena.getTile(n);
-                if (nt != null && FlammableTiles.isFlammable(nt)) toIgnite.add(n);
+
+        // Advance the tiles that were already burning.
+        int burnedOut = 0;
+        for (GridPos pos : new java.util.ArrayList<>(burningTiles.keySet())) {
+            BurnState state = burningTiles.get(pos);
+            GridTile tile = arena.getTile(pos);
+            if (tile == null) { burningTiles.remove(pos); continue; }
+            int left = state.turnsLeft() - 1;
+            if (left > 0) {
+                burningTiles.put(pos, new BurnState(state.stage(), left, state.restores()));
+                continue;
+            }
+            if (state.stage() == BurnStage.FLAMES) {
+                // Flames collapse into the magma block they leave behind.
+                tile.setTemporaryType(TileType.EMBER, BURN_HOLD_TURNS);
+                paintTileBlock(world, pos, tile);
+                burningTiles.put(pos, new BurnState(BurnStage.MAGMA,
+                    FlammableTiles.MAGMA_TURNS, state.restores()));
+                BlockPos floor = tileFloorPos(pos);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                    floor.getX() + 0.5, floor.getY() + 1.1, floor.getZ() + 0.5,
+                    6, 0.3, 0.2, 0.3, 0.01);
+            } else {
+                burningTiles.remove(pos);
+                finishBurn(world, pos, tile, state.restores());
+                burnedOut++;
             }
         }
-        int spread = igniteFlammableTiles(toIgnite);
-        if (spread > 0) {
-            sendMessage("§6The fire spreads to " + spread + " more tile" + (spread == 1 ? "" : "s") + "!");
+
+        // Spread from the snapshot. Each candidate remembers whether ANY adjacent source was
+        // soul fire - soul wins the tie, because a tile touched by both should take the flame
+        // that doesn't care whether there's fuel there.
+        java.util.LinkedHashMap<GridPos, Boolean> toIgnite = new java.util.LinkedHashMap<>();
+        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (var src : flameFront.entrySet()) {
+            for (int[] d : dirs) {
+                GridPos n = new GridPos(src.getKey().x() + d[0], src.getKey().z() + d[1]);
+                if (!arena.isInBounds(n)) continue;
+                toIgnite.merge(n, src.getValue(), (a, b) -> a || b);
+            }
         }
+        int spread = 0;
+        int soulSpread = 0;
+        for (var candidate : toIgnite.entrySet()) {
+            if (!igniteTile(candidate.getKey(),
+                    candidate.getValue() ? Ignition.SOUL_SPREAD : Ignition.SPREAD)) continue;
+            spread++;
+            if (candidate.getValue()) soulSpread++;
+        }
+        if (spread > 0) {
+            sendMessage((soulSpread == spread ? "§bThe soul fire spreads to " : "§6The fire spreads to ")
+                + spread + " more tile" + (spread == 1 ? "" : "s") + "!");
+        }
+        if (burnedOut > 0) {
+            sendMessage("§8" + burnedOut + " tile" + (burnedOut == 1 ? "" : "s")
+                + " burned out to ash.");
+        }
+
+        // Mobs standing in the flames catch once per round. Players are handled on their own
+        // turn instead (turn-start hazard check + stepping into a tile), so a party member
+        // never eats two applications for one round spent in the same fire.
+        for (GridPos pos : flameFront.keySet()) {
+            GridTile t = arena.getTile(pos);
+            if (t == null || !t.getType().isFlames()) continue;
+            CombatEntity occupant = arena.getOccupant(pos);
+            if (occupant != null) applyFireTileBurn(occupant, t.getType());
+        }
+    }
+
+    /**
+     * Settle a tile that has finished burning - whether it ran its course or was put out
+     * early. Ground that comes back as itself is restored and gets a short cooldown; anything
+     * else is left as scorched dirt and retired for the fight.
+     *
+     * @param restores the burn's own record of whether this ground rebuilds itself, captured
+     *                 at ignition while the original floor block was still readable
+     */
+    private void finishBurn(ServerWorld world, GridPos pos, GridTile tile, boolean restores) {
+        if (restores) {
+            // Nether ground comes back as itself, then shrugs off fire for a turn so
+            // neighbouring flames can't relight the same tile forever.
+            tile.setTurnsRemaining(1);
+            tile.tickTurn();
+            fireproofTiles.put(pos, FlammableTiles.NETHERRACK_COOLDOWN_TURNS + 1);
+        } else {
+            // Burned out: scorched dirt for the rest of the fight. Still held as temporary
+            // terrain so endCombat hands the arena back unscarred.
+            tile.setTemporaryType(TileType.NORMAL, BURN_HOLD_TURNS);
+            tile.setBlockType(Blocks.DIRT);
+            // Retired for the rest of the fight. Bare dirt isn't fuel, so ordinary fire
+            // would leave it alone anyway - this is what stops SOUL fire, which needs no
+            // fuel, from re-consuming ground it has already burnt to ash.
+            fireproofTiles.put(pos, SPENT_FOREVER);
+        }
+        paintTileBlock(world, pos, tile);
+    }
+
+    /**
+     * Beat out the flames on a tile. The fuel is already gone - it was consumed the moment
+     * the tile caught - so dousing lands the tile straight on its burnt-out state instead of
+     * rewinding it: scorched ground that will not catch again, skipping the magma stage the
+     * fire would otherwise have left behind. That is the point of putting it out early.
+     *
+     * <p>Boss-placed fire is not part of the burn cycle and has no fuel record, so it is
+     * simply expired back to the terrain it was painted over.
+     *
+     * @return true if there were flames here to put out
+     */
+    private boolean douseFire(GridPos pos) {
+        if (arena == null || player == null || pos == null) return false;
+        GridTile tile = arena.getTile(pos);
+        if (tile == null || !tile.getType().isFlames()) return false;
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos floor = tileFloorPos(pos);
+        BurnState state = burningTiles.remove(pos);
+        if (state != null) {
+            finishBurn(world, pos, tile, state.restores());
+        } else {
+            tile.setTurnsRemaining(1);
+            tile.tickTurn();
+            paintTileBlock(world, pos, tile);
+        }
+
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+            floor.getX() + 0.5, floor.getY() + 1.1, floor.getZ() + 0.5,
+            18, 0.35, 0.3, 0.35, 0.01);
+        world.playSound(null, floor, net.minecraft.sound.SoundEvents.BLOCK_FIRE_EXTINGUISH,
+            net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
+        return true;
+    }
+
+    /**
+     * Set alight everything standing on a flame tile. Used where the fire arrives at the
+     * victim rather than the victim walking into it (a thrown fire charge, a spreading front
+     * reaching an occupied tile), so both the mob and any party member on the tile catch.
+     */
+    private void applyFireTileBurn(GridPos pos) {
+        if (arena == null || pos == null) return;
+        GridTile tile = arena.getTile(pos);
+        TileType flames = tile != null ? tile.getType() : TileType.FIRE;
+        CombatEntity occupant = arena.getOccupant(pos);
+        if (occupant != null) applyFireTileBurn(occupant, flames);
+
+        for (ServerPlayerEntity member : allCombatPlayers()) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            if (!pos.equals(gridPosOf(member))) continue;
+
+            ServerPlayerEntity saved = this.player;
+            boolean swapped = member != saved;
+            if (swapped) { this.player = member; retargetEffectsToCurrentPlayer(); }
+            try {
+                applyFireTileBurnToPlayer(flames);
+            } finally {
+                if (swapped) { this.player = saved; retargetEffectsToCurrentPlayer(); }
+            }
+        }
+    }
+
+    /** Burning level a flame tile inflicts: soul fire runs one level hotter than fire. */
+    private static int burnLevelFor(TileType flames) {
+        return flames == TileType.SOUL_FIRE
+            ? FlammableTiles.SOUL_BURN_LEVEL : FlammableTiles.BURN_LEVEL;
+    }
+
+    /**
+     * Burn the acting player for standing in flames: Burning II (III in soul fire) for two
+     * turns, EXTENDING any burn already running rather than refreshing it, so staying in the
+     * fire goes 2 turns -&gt; 4 turns -&gt; 6 turns instead of being pinned at two.
+     */
+    private void applyFireTileBurnToPlayer(TileType flames) {
+        if (player == null || combatEffects.hasFireResistance()) return;
+        int level = burnLevelFor(flames);
+        // addEffect REPLACES the timer, so the extension has to be summed in here. The
+        // LEVEL takes the max rather than the new value: stepping from soul fire into
+        // ordinary fire must not cool a Burning III back down to II.
+        int turns = FlammableTiles.BURN_TURNS
+            + combatEffects.getTurnsRemaining(CombatEffects.EffectType.BURNING);
+        level = Math.max(level,
+            combatEffects.getAmplifier(CombatEffects.EffectType.BURNING) + 1);
+        if (addEffectHooked(CombatEffects.EffectType.BURNING, turns, level - 1)) {
+            sendMessage((flames == TileType.SOUL_FIRE
+                    ? "§b  You're standing in soul fire! §cBurning "
+                    : "§6  You're standing in the fire! §cBurning ")
+                + "I".repeat(Math.max(1, level)) + " for "
+                + combatEffects.getTurnsRemaining(CombatEffects.EffectType.BURNING) + " turns.");
+        }
+    }
+
+    /** Mob/ally half of the fire-tile burn: same rule, same extend-don't-refresh behaviour
+     *  ({@link CombatEntity#stackBurning} already adds turns, so only the level is pinned). */
+    private void applyFireTileBurn(CombatEntity victim, TileType flames) {
+        if (victim == null || !victim.isAlive() || victim.isFireImmune()) return;
+        int level = burnLevelFor(flames);
+        int before = victim.getBurningTurns();
+        victim.stackBurning(FlammableTiles.BURN_TURNS, 0);
+        if (victim.getBurningTurns() == before) return; // soaked / immune - nothing caught
+        victim.setBurningAmplifier(Math.max(victim.getBurningAmplifier(), level - 1));
+        sendMessage((flames == TileType.SOUL_FIRE
+                ? "§b" + victim.getDisplayName() + " is standing in soul fire! §cBurning "
+                : "§6" + victim.getDisplayName() + " is standing in the fire! §cBurning ")
+            + "I".repeat(Math.max(1, level)) + ".");
     }
 
     /**
@@ -17133,7 +17746,7 @@ public class CombatManager {
         int duration = ct.duration();
         if (currentEnemy != null && currentEnemy.isBoss() && duration <= 0) {
             TileType tt = ct.terrainType();
-            if (tt == TileType.FIRE || tt == TileType.LAVA) {
+            if (tt.isFlames() || tt == TileType.LAVA) {
                 // Prevent permanent trap patterns from boss lava/magma; always decay.
                 duration = 3;
             } else if (tt == TileType.OBSTACLE || tt == TileType.VOID
@@ -17187,6 +17800,9 @@ public class CombatManager {
             }
             if (snowyIceWall) {
                 world.setBlockState(bp.up(), Blocks.PACKED_ICE.getDefaultState());
+            } else if (ct.terrainType().isFlames()) {
+                // Flames are placed at Y+1 on top of an intact floor, not painted onto it.
+                paintTileBlock(world, pos, tile);
             } else {
                 world.setBlockState(bp, tile.getBlockType().getDefaultState());
                 // Snow-layer overlays can hide newly-created obstacle terrain in
@@ -18114,9 +18730,12 @@ public class CombatManager {
                             continue;
                         }
                         // Temporary wall-style obstacle terrain is rendered in the
-                        // obstacle layer (Y+1); clear it when the tile restores.
+                        // obstacle layer (Y+1); clear it when the tile restores. Flames
+                        // live in that same slot, so an expiring boss fire clears too.
                         if (before == TileType.OBSTACLE) {
                             world.setBlockState(bp.up(), Blocks.AIR.getDefaultState());
+                        } else if (before.isFlames()) {
+                            clearFlameOverlay(world, bp);
                         }
                         world.setBlockState(bp, tile.getBlockType().getDefaultState());
                     }
@@ -18147,11 +18766,8 @@ public class CombatManager {
             for (GridPos pos : burned) {
                 GridTile tile = arena.getTile(pos);
                 if (tile == null) continue;
-                BlockPos bp = new BlockPos(
-                    arena.getOrigin().getX() + pos.x(),
-                    arena.getOrigin().getY(),
-                    arena.getOrigin().getZ() + pos.z());
-                world.setBlockState(bp, tile.getBlockType().getDefaultState());
+                BlockPos bp = tileFloorPos(pos);
+                paintTileBlock(world, pos, tile);
 
                 // Dragon breath particles on the wave front
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.DRAGON_BREATH,
@@ -19426,7 +20042,7 @@ public class CombatManager {
         for (int i = 0; i < path.size(); i++) {
             var tile = arena.getTile(path.get(i));
             if (tile != null && !tile.isWalkable()
-                    && tile.getType() != com.crackedgames.craftics.core.TileType.FIRE) {
+                    && !tile.getType().isFlames()) {
                 path = new ArrayList<>(path.subList(0, i));
                 sendMessage("§7" + currentEnemy.getDisplayName() + " slams into the obstacle!");
                 break;
@@ -19687,6 +20303,11 @@ public class CombatManager {
                 return;
             }
 
+            // Fire tile: walking through the flames sets the enemy alight
+            if (enemyLandingTile != null && enemyLandingTile.getType().isFlames()) {
+                applyFireTileBurn(currentEnemy, enemyLandingTile.getType());
+            }
+
             // Lava tile: 10 damage when enemy steps on it
             if (enemyLandingTile != null
                     && enemyLandingTile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
@@ -19730,11 +20351,12 @@ public class CombatManager {
                     && currentEnemy.getAiKey().contains("revenant")) {
                 GridTile trailTile = arena.getTile(next);
                 if (trailTile != null && trailTile.isWalkable()) {
-                    trailTile.setType(TileType.FIRE);
-                    trailTile.setTurnsRemaining(3);
+                    // setTemporaryType, not setType+setTurnsRemaining: the latter records FIRE
+                    // as the tile's OWN restore type, so the trail never burned back out.
+                    trailTile.setTemporaryType(TileType.FIRE, 3);
                     BlockPos firePos = arena.gridToBlockPos(next);
                     ServerWorld fireWorld = (ServerWorld) player.getEntityWorld();
-                    fireWorld.setBlockState(firePos, trailTile.getBlockType().getDefaultState());
+                    paintTileBlock(fireWorld, next, trailTile);
                     fireWorld.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
                         firePos.getX() + 0.5, firePos.getY() + 0.2, firePos.getZ() + 0.5,
                         3, 0.15, 0.05, 0.15, 0.01);
@@ -20994,6 +21616,29 @@ public class CombatManager {
      * standing on it. A genuine pit has air laid at the floor, so this returns false for those
      * and the lethal path still runs.
      */
+    /**
+     * True when the live world can actually hold someone standing on this tile.
+     *
+     * <p>Two legal footings: a surface at the arena floor (NORMAL and every hazard type that
+     * stands at floor height) or one block down (LOW_GROUND). Fluids count - water and lava tiles
+     * are walkable-with-consequences, not holes - and so does anything the tile scan would accept
+     * as a standing surface, which keeps this in agreement with
+     * {@code WallBlocks#providesStandingSurface} and with the classification in ArenaBuilder.
+     */
+    private boolean worldSupportsStanding(GridPos pos) {
+        if (arena == null || pos == null) return true;   // no arena to check against - allow
+        if (!(player.getEntityWorld() instanceof ServerWorld sw)) return true;
+        BlockPos floor = arena.gridToBlockPos(pos).down();   // the floor BLOCK, not the feet
+        BlockPos below = floor.down();
+        return supportsOrFluid(sw, floor) || supportsOrFluid(sw, below);
+    }
+
+    private boolean supportsOrFluid(ServerWorld sw, BlockPos pos) {
+        net.minecraft.block.BlockState state = sw.getBlockState(pos);
+        if (!state.getFluidState().isEmpty()) return true;   // water/lava tiles are their own type
+        return WallBlocks.providesStandingSurface(state, sw, pos);
+    }
+
     private boolean hasSolidFloorAt(GridPos pos) {
         if (arena == null || !(player.getEntityWorld() instanceof ServerWorld sw)) return false;
         BlockPos stand = arena.gridToBlockPos(pos); // feet at origin.getY() + 1
@@ -21831,6 +22476,11 @@ public class CombatManager {
         net.minecraft.item.ItemStack totem = findTotemStack();
         if (totem == null) return false;
 
+        // A revive can fire from inside the death animation, which set invulnerability to keep
+        // the 1-HP clamp honest. Drop it before either revive path runs, or the resurrected
+        // player walks away untouchable.
+        player.setInvulnerable(false);
+
         String moddedPath = com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.totemPath(totem.getItem());
         if (moddedPath != null) {
             return consumeModdedTotem(totem, moddedPath);
@@ -22205,6 +22855,11 @@ public class CombatManager {
 
         // Clamp player health so vanilla death screen doesn't trigger
         player.setHealth(1);
+        // ...and make that clamp hold. At 1 HP ANY damage landing during the animation kills for
+        // real - an enemy's attack resolving the same tick, a poison tick, an evoker's fangs -
+        // and the vanilla death screen opens on top of a combat still running its death
+        // sequence, which strands the whole fight. Cleared in handleGameOver and on any revive.
+        player.setInvulnerable(true);
 
         // Death sound -deep bass hit
         player.getWorld().playSound(null, player.getBlockPos(),
@@ -22373,6 +23028,9 @@ public class CombatManager {
     private void handleGameOver() {
         phase = CombatPhase.GAME_OVER;
         lastXpLevelsLost.clear();
+        // Release the death-animation invulnerability (see startPlayerDeathAnimation) now that
+        // the fight is resolving - leaving it set would follow the player out of the arena.
+        if (player != null) player.setInvulnerable(false);
         // Sound: defeat
         if (player != null) {
             player.getWorld().playSound(null, player.getBlockPos(),
@@ -22779,6 +23437,7 @@ public class CombatManager {
     }
 
     private void killEnemy(CombatEntity enemy) {
+        markBurningOnDeath(enemy);
         enemy.takeDamage(9999);
         // A destroyed decoy's armor stand must go with it.
         clearDecoyVisual(enemy);
@@ -23032,8 +23691,17 @@ public class CombatManager {
             // Skip drops for creepers that self-exploded (rewards killing them properly)
             if (enemy.isSelfExploded()) continue;
             List<ServerPlayerEntity> killerOnly = resolveKillerRecipients(enemy);
+            List<ItemStack> displayDrops = null;
             for (ServerPlayerEntity recipient : killerOnly) {
                 List<ItemStack> drops = getMobDrops(enemy.getEntityTypeId());
+                // Burned to death = already cooked. Applied per roll so the meat that
+                // actually lands in the bag is the meat announced in chat.
+                if (enemy.wasBurningOnDeath()) drops = cookDropsOverFire(drops);
+                // Snapshot copies: deliverLoot consumes the stacks it is handed.
+                if (displayDrops == null) {
+                    displayDrops = new ArrayList<>();
+                    for (ItemStack d : drops) displayDrops.add(d.copy());
+                }
                 for (ItemStack drop : drops) {
                     if (drop.isEmpty() || drop.getCount() <= 0) continue;
                     if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
@@ -23042,8 +23710,10 @@ public class CombatManager {
                     deliverLoot(recipient, drop, lootOverflow);
                 }
             }
-            // Broadcast a representative message (leader's perspective)
-            List<ItemStack> displayDrops = getMobDrops(enemy.getEntityTypeId());
+            // Broadcast a representative message (leader's perspective). Reuses the FIRST
+            // recipient's actual roll: rolling a fresh set here announced items nobody was
+            // given, and would have advertised raw meat for a kill that handed out cooked.
+            if (displayDrops == null) displayDrops = getMobDrops(enemy.getEntityTypeId());
             for (ItemStack drop : displayDrops) {
                 if (drop.isEmpty() || drop.getCount() <= 0) continue;
                 sendMessage("§e+ " + drop.getCount() + "x " + drop.getName().getString());
@@ -28070,6 +28740,33 @@ public class CombatManager {
             origin.getX(), origin.getY(), origin.getZ(), w, h, yaw, mask);
     }
 
+    /**
+     * Record whether a mob was on fire as it died, so {@link #cookDropsOverFire} can hand
+     * back cooked meat instead of raw. Reads both the turn-based Burning DoT and the vanilla
+     * fire visual, since fire tiles, Fire Aspect and fire charges each set a different one.
+     */
+    private static void markBurningOnDeath(CombatEntity enemy) {
+        if (enemy == null || enemy.wasBurningOnDeath()) return;
+        if (enemy.getBurningTurns() > 0
+                || (enemy.getMobEntity() != null && enemy.getMobEntity().isOnFire())) {
+            enemy.setBurningOnDeath(true);
+        }
+    }
+
+    /**
+     * An animal that burns to death is already cooked. Swaps every raw food in its drops for
+     * the campfire result, using the same recipe table the campfire itself does, and leaves
+     * everything else (leather, wool, bones) untouched.
+     */
+    private static List<ItemStack> cookDropsOverFire(List<ItemStack> drops) {
+        List<ItemStack> out = new ArrayList<>(drops.size());
+        for (ItemStack drop : drops) {
+            Item cooked = ItemUseHandler.campfireResult(drop.getItem());
+            out.add(cooked != null ? new ItemStack(cooked, drop.getCount()) : drop);
+        }
+        return out;
+    }
+
     private static List<ItemStack> getMobDrops(String entityTypeId) {
         LootPool pool = switch (entityTypeId) {
             // === Passive mobs ===
@@ -28295,6 +28992,8 @@ public class CombatManager {
                 .get(net.minecraft.world.GameRules.FREEZE_DAMAGE).set(true, player.getServer());
             ((ServerWorld) player.getWorld()).getGameRules()
                 .get(net.minecraft.world.GameRules.RANDOM_TICK_SPEED).set(3, player.getServer());
+            ((ServerWorld) player.getWorld()).getGameRules()
+                .get(net.minecraft.world.GameRules.DO_FIRE_TICK).set(true, player.getServer());
         }
 
         // === CRITICAL: clear persistent flags FIRST ===
@@ -28554,7 +29253,19 @@ public class CombatManager {
                 for (int x = 0; x < arena.getWidth(); x++) {
                     for (int z = 0; z < arena.getHeight(); z++) {
                         GridTile tile = arena.getTile(x, z);
-                        if (tile == null || tile.getTurnsRemaining() <= 0) continue;
+                        if (tile == null) continue;
+                        if (tile.getTurnsRemaining() <= 0) {
+                            // A FIRE tile with no countdown was placed permanently (a boss
+                            // ability with duration 0). Its flame still has to come out of
+                            // the Y+1 slot, or the cached arena re-scans it as terrain.
+                            if (tile.getType().isFlames()) {
+                                clearFlameOverlay(restoreWorld, new BlockPos(
+                                    arena.getOrigin().getX() + x,
+                                    arena.getOrigin().getY(),
+                                    arena.getOrigin().getZ() + z));
+                            }
+                            continue;
+                        }
                         // Force the decay to completion so blockType resets to the
                         // stored restoreBlockType (preserving biome-specific floor).
                         tile.setTurnsRemaining(1);
@@ -28566,6 +29277,10 @@ public class CombatManager {
                         if (tile.getType() == TileType.OBSTACLE) {
                             restoreWorld.setBlockState(bp.up(), Blocks.AIR.getDefaultState());
                         }
+                        // Flames live at Y+1, so a tile still burning when the fight ends
+                        // would leave a stray fire block behind for the cached arena to
+                        // re-scan as terrain on the next visit.
+                        clearFlameOverlay(restoreWorld, bp);
                         restoreWorld.setBlockState(bp, tile.getBlockType().getDefaultState());
                     }
                 }
@@ -28573,6 +29288,10 @@ public class CombatManager {
         } catch (Exception e) {
             CrafticsMod.LOGGER.warn("endCombat: temporary terrain restore failed: {}", e.getMessage());
         }
+        burningTiles.clear();
+        fireproofTiles.clear();
+        turnStartGridPos.clear();
+        echoReturnArmed.clear();
 
         // Restore every player-placed combat block (water/lava, powder snow,
         // campfire/scaffold/spore/bell/jukebox/sponge/honey/slime, banner,
@@ -28617,6 +29336,13 @@ public class CombatManager {
         pendingVictory = null;
         // Reset for the next combat -the pet disposition is undecided again.
         petsRescued = false;
+        // Last line of defence on the death-animation invulnerability: however this fight ended,
+        // nobody leaves it untouchable.
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p != null && p.isInvulnerable() && !p.isCreative() && !p.isSpectator()) {
+                p.setInvulnerable(false);
+            }
+        }
 
         CrafticsMod.LOGGER.info("Combat ended.");
     }
@@ -29585,8 +30311,19 @@ public class CombatManager {
             return;
         }
         GridTile gridTile = arena.getTile(targetTile);
-        if (gridTile == null || gridTile.getType() != com.crackedgames.craftics.core.TileType.NORMAL) {
-            sendMessage("§cCan only place walls on flat ground.");
+        if (gridTile == null) {
+            sendMessage("§cCan't place a block there.");
+            return;
+        }
+        com.crackedgames.craftics.core.TileType tileType = gridTile.getType();
+        // A void hole or sunken dip takes the block at GROUND level (floorY) instead of at
+        // body level (floorY+1): the tile becomes plain walkable floor, flush with the rest
+        // of the arena, so a block is a bridge here rather than a wall. Placing again on the
+        // now-NORMAL tile builds the usual wall on top of the fill.
+        boolean fillsPit = tileType == com.crackedgames.craftics.core.TileType.VOID
+            || tileType == com.crackedgames.craftics.core.TileType.LOW_GROUND;
+        if (tileType != com.crackedgames.craftics.core.TileType.NORMAL && !fillsPit) {
+            sendMessage("§cCan only place blocks on flat ground or into a pit.");
             return;
         }
 
@@ -29594,23 +30331,36 @@ public class CombatManager {
         net.minecraft.block.Block wallBlock = blockItem.getBlock();
 
         ServerWorld world = (ServerWorld) player.getEntityWorld();
-        BlockPos wallPos = arena.gridToBlockPos(targetTile);
+        BlockPos wallPos = fillsPit
+            ? arena.gridToBlockPos(targetTile).down()   // floorY - the tile's new floor
+            : arena.gridToBlockPos(targetTile);         // floorY+1 - body-height wall
         world.setBlockState(wallPos, wallBlock.getDefaultState(), 3);
 
-        arena.markVfxObstacle(targetTile);
-        arena.markPlacedWall(targetTile, stack.getItem(), WallBlocks.WALL_DURATION_TURNS);
+        if (fillsPit) {
+            // Retype the tile permanently for this fight, the same way a pickaxe dig
+            // retypes one (see digSunkenPit / digVoidPit). Deliberately NOT registered as
+            // a placed wall: a bridge that expired on the wall timer would drop whoever
+            // stood on it into the void. The arena reset restores the original terrain.
+            gridTile.setType(com.crackedgames.craftics.core.TileType.NORMAL);
+            gridTile.setBlockType(wallBlock);
+        } else {
+            arena.markVfxObstacle(targetTile);
+            arena.markPlacedWall(targetTile, stack.getItem(), WallBlocks.WALL_DURATION_TURNS);
+        }
 
         apRemaining -= 1;
         stack.decrement(1);
 
         world.playSound(null, wallPos,
             net.minecraft.sound.SoundEvents.BLOCK_STONE_PLACE,
-            net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.1f);
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, fillsPit ? 0.9f : 1.1f);
         world.spawnParticles(new net.minecraft.particle.BlockStateParticleEffect(
                 net.minecraft.particle.ParticleTypes.BLOCK, wallBlock.getDefaultState()),
             wallPos.getX() + 0.5, wallPos.getY() + 0.5, wallPos.getZ() + 0.5,
             8, 0.3, 0.3, 0.3, 0.05);
-        sendMessage("§7◫ Wall placed! (" + WallBlocks.WALL_DURATION_TURNS + " turns)");
+        sendMessage(fillsPit
+            ? "§7▭ Ground filled! The tile is safe to walk on."
+            : "§7◫ Wall placed! (" + WallBlocks.WALL_DURATION_TURNS + " turns)");
         sendSync();
         refreshHighlights();
     }

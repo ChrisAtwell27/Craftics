@@ -1014,7 +1014,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == net.minecraft.item.Items.BROWN_EGG) return "\u00a7b1 AP \u00a77- Throw at enemy\n\u00a7c3 DMG \u00a77- warm variant egg";
         *///?}
         if (item == Items.ENDER_PEARL) return "\u00a751 AP \u00a77- Click any empty tile\n\u00a75Teleport instantly! \u00a7c(Costs 2 HP)";
-        if (item == Items.FIRE_CHARGE) return "\u00a761 AP \u00a77- Ranged fire attack\n\u00a7c4 DMG \u00a77+ sets enemy on fire";
+        if (item == Items.FIRE_CHARGE) return "\u00a761 AP \u00a77- Ranged fire attack\n\u00a7c4 DMG \u00a77+ sets enemy on fire\n\u00a77Aimed at empty flammable ground, it lights the tile instead";
         if (item == Items.BRICK) return "\u00a771 AP \u00a77- Throw at enemy (range 4)\n\u00a7c"
             + com.crackedgames.craftics.combat.ItemUseHandler.BRICK_BASE_DAMAGE
             + " DMG \u00a77| \u00a76Blunt \u00a77- scales with Blunt affinity";
@@ -1056,7 +1056,9 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.MILK_BUCKET) return "\u00a7f3 AP \u00a77- Clears ALL status effects (good and bad)\n\u00a77Drink it yourself, or feed an adjacent ally. Returns the bucket.";
         if (item == Items.TNT) return "\u00a7c2 AP \u00a77- Place TNT on target tile\n\u00a7eExplodes next round!\n\u00a7c8/5/3 + 24/15/9% max HP \u00a77in AoE (distance-based)\n\u00a7cSelf-damage 6/4/2 if within 2 tiles!";
         if (item == Items.COBWEB) return "\u00a771 AP \u00a77- Throw at enemy\n\u00a77Stuns target \u2014 they skip next turn";
-        if (item == Items.FLINT_AND_STEEL) return "\u00a761 AP \u00a77- Set enemy on fire\n\u00a7c2 DMG \u00a77+ burns for 5 seconds\n\u00a77Uses durability";
+        if (item == Items.FLINT_AND_STEEL) return "\u00a761 AP \u00a77- Set enemy on fire\n\u00a7c2 DMG \u00a77+ \u00a7cBurning \u00a77for "
+            + com.crackedgames.craftics.combat.ItemUseHandler.FLINT_BURN_TURNS
+            + " turns\n\u00a77Strike an already-burning target to fan it: \u00a77+1 turn each time\n\u00a77Or light an adjacent flammable tile - the fire spreads\n\u00a77Uses durability";
         if (item == Items.FISHING_ROD) return "\u00a7b3 AP \u00a77- Cast into adjacent water tile\n\u00a77Random loot! Fish, treasure, rare items\n\u00a77Must stand next to water";
         if (item == Items.SADDLE) return "\u00a7e\u00a7lMount Item\n\u00a77Tame a horse/donkey/camel with its\n\u00a77breeding item + saddle for +3 Speed!";
         if (item == Items.SPYGLASS) return "\u00a7e2 AP \u00a77- Mark an enemy\n\u00a7dMarked\u00a77: takes \u00a7c2x damage\u00a77 (\u00a7c1.5x\u00a77 bosses) this turn and next\n\u00a77Only one enemy can be marked at a time. Also reveals its stats.";
@@ -1092,9 +1094,9 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.LAVA_BUCKET) return "\u00a761 AP \u00a77- Place lava on tile\n\u00a77Enemies on it take 3 fire DMG/turn";
         if (item == Items.BUCKET) return "\u00a7e1 AP \u00a77- Scoop up a liquid tile\n\u00a77Removes a water, lava, or powder snow tile and fills the bucket";
 
-        // Pickaxes
-        if (item == Items.WOODEN_PICKAXE || item == Items.STONE_PICKAXE || item == Items.IRON_PICKAXE
-            || item == Items.DIAMOND_PICKAXE || item == Items.GOLDEN_PICKAXE || item == Items.NETHERITE_PICKAXE)
+        // Pickaxes - the shared definition, so a modded pickaxe advertises what it can do
+        // instead of showing nothing while the tool works perfectly well.
+        if (com.crackedgames.craftics.combat.ItemUseHandler.isPickaxe(item))
             return "\u00a771 AP \u00a77- Break adjacent obstacle\n\u00a77Makes blocked tile walkable\n\u00a77Uses durability";
 
         // ── Armor ──

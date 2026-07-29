@@ -352,6 +352,71 @@ public class AchievementManager {
      */
     public static void checkCollections(ServerPlayerEntity player, int emeraldCount) {
         if (emeraldCount >= 100) grant(player, Achievement.COLLECT_EMERALDS);
+        checkGearCollections(player);
+    }
+
+    /** Collection log keys. Values are persisted per player in {@code PlayerProgression}. */
+    public static final String COL_TRIM_PATTERNS = "trim_patterns";
+    public static final String COL_TRIM_MATERIALS = "trim_materials";
+    public static final String COL_PET_SPECIES = "pet_species";
+    public static final String COL_HORNS = "horns";
+    public static final String COL_ARMOR_SETS = "armor_sets";
+
+    /** How many distinct entries each collection achievement wants. */
+    private static final int TRIM_PATTERNS_NEEDED = 5;
+    private static final int TRIM_MATERIALS_NEEDED = 5;
+    private static final int PET_SPECIES_NEEDED = 5;
+    private static final int HORN_VARIANTS_NEEDED = 8;
+    private static final int ARMOR_SETS_NEEDED = 7;
+
+    /**
+     * Log one entry against a player's career collection and grant anything it completes.
+     *
+     * <p>Every COLLECTION achievement except emeralds and the armory asks about HISTORY - trims
+     * applied, species tamed, horns found - which can't be read off the player's current
+     * inventory. Callers record as the thing happens; this decides whether that was the fifth
+     * distinct one.
+     */
+    public static void recordCollected(ServerPlayerEntity player, String collection, String value) {
+        if (player == null || value == null || value.isEmpty()) return;
+        PlayerProgression prog = PlayerProgression.get((ServerWorld) player.getEntityWorld());
+        PlayerProgression.PlayerStats stats = prog.getStats(player);
+        if (stats.hasCollected(collection, value)) return;   // nothing new, nothing to save
+        stats.recordCollected(collection, value);
+        prog.saveStats(player);
+        checkGearCollections(player);
+    }
+
+    /** Grant any gear/collection achievement whose distinct-count threshold is now met. */
+    public static void checkGearCollections(ServerPlayerEntity player) {
+        if (player == null) return;
+        PlayerProgression prog = PlayerProgression.get((ServerWorld) player.getEntityWorld());
+        PlayerProgression.PlayerStats stats = prog.getStats(player);
+        if (stats.collectedCount(COL_TRIM_PATTERNS) >= TRIM_PATTERNS_NEEDED) {
+            grant(player, Achievement.COLLECT_TRIMS);
+        }
+        if (stats.collectedCount(COL_TRIM_MATERIALS) >= TRIM_MATERIALS_NEEDED) {
+            grant(player, Achievement.COLLECT_MATERIALS);
+        }
+        if (stats.collectedCount(COL_PET_SPECIES) >= PET_SPECIES_NEEDED) {
+            grant(player, Achievement.COLLECT_PETS);
+        }
+        if (stats.collectedCount(COL_HORNS) >= HORN_VARIANTS_NEEDED) {
+            grant(player, Achievement.COLLECT_HORNS);
+        }
+        if (stats.collectedCount(COL_ARMOR_SETS) >= ARMOR_SETS_NEEDED) {
+            grant(player, Achievement.COLLECT_WARDROBE);
+        }
+    }
+
+    /**
+     * Full matching trim set: all four armor pieces trimmed with the SAME pattern. Checked off
+     * the live loadout because - unlike the others - this one genuinely is about what you are
+     * wearing right now.
+     */
+    public static void checkFullTrimSet(ServerPlayerEntity player, String pattern, int piecesWithPattern) {
+        if (player == null || piecesWithPattern < 4) return;
+        grant(player, Achievement.COLLECT_FULL_SET);
     }
 
     /**

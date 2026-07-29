@@ -226,9 +226,9 @@ public class GuideBookData {
                     "Step into tall grass or ferns to become Hidden: enemies can't target you unless adjacent. Break line of sight, escape ranged mobs, set up ambushes. Bushes can be broken for 1 AP."))),
             new Page("Building & Fire", "", List.of(
                 new Box("minecraft:cobblestone", "Placed Walls", "4 turns",
-                    "Any plain full-cube block in your inventory can be placed as a temporary wall. Funnel enemies, block charges, cover retreats."),
+                    "Any plain full-cube block in your inventory can be placed as a temporary wall. Funnel enemies, block charges, cover retreats. Aim at a void or sunken tile instead and the block drops to ground level, bridging the hole into safe footing for the rest of the fight - a second block then walls it off as normal."),
                 new Box("minecraft:flint_and_steel", "Fire Spread", "",
-                    "Burning tiles ignite adjacent flammable obstacles each turn. Lava, fire cones and fire trails can turn a forest arena into a hazard zone - for both sides.")))
+                    "Flint and steel lights an adjacent tile; a fire charge lights one at range. You can set a light on any open ground, fuel or not - a fire on bare stone simply burns where it stands and goes nowhere. Flames sit on the ground like a placed block and spread to every flammable tile next to them each turn - wood, leaves, plants, and living ground: grass, mycelium, moss. Bare earth and stone don't catch - dirt, sand, gravel and stone floors have nothing to give. A tile that has burned collapses into magma for a turn, then to ash, and is spent for the rest of the fight. Netherrack and soul ground come back as themselves instead, fireproof for a turn. Stand in the flames and you take Burning II for 2 turns, and every extra turn in the fire adds 2 more.\n\nOn soul sand or soul soil it burns blue instead, and soul fire plays by different rules: it needs no fuel at all. It takes stone, sand, gravel, anything it touches, and carries itself onward - only water, lava, open void and ground still cooling from an earlier burn turn it away. It also holds its flames a turn longer than fire and inflicts Burning III. It burns both sides.\n\nAttack a burning tile to beat the flames out for 1 AP, the same way you clear tall grass - stamp out the front before it reaches you, or cut a firebreak through it. The ground is left scorched either way; you're buying the tiles behind it, not the one you put out.")))
         )));
         basics.add(new Entry("Weapons & AP", "minecraft:diamond_sword", List.of(
             new Page("Attack Costs (AP)",
@@ -1501,7 +1501,9 @@ public class GuideBookData {
                 new Box("minecraft:hay_block", "Hay Bale", "",
                     "Heal an adjacent ally."),
                 new Box("minecraft:cobblestone", "Any Full Block", "4 turns",
-                    "Placed as a temporary wall."))),
+                    "Placed as a temporary wall. On a void or sunken tile it fills the hole "
+                    + "into safe ground for the rest of the fight instead - place again to "
+                    + "raise a wall on top."))),
             new Page("Light Sources (vs Darkness)",
                 "Essential against The Hollow King - in darkness his minions hit harder, and his Phase 2 darkness is permanent.", List.of(
                 new Box("minecraft:torch", "Torch", "radius 2",

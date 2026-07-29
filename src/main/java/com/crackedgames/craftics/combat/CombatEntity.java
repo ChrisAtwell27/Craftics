@@ -382,6 +382,15 @@ public class CombatEntity {
     public boolean isSelfExploded() { return selfExploded; }
     public void setSelfExploded(boolean v) { this.selfExploded = v; }
 
+    /**
+     * Whether this mob was alight when it died. Snapshotted at the kill rather than read at
+     * loot time: burning ticks down every round, and drops are handed out after the fight,
+     * by which point the fire that cooked the animal has long since gone out.
+     */
+    private boolean burningOnDeath = false;
+    public boolean wasBurningOnDeath() { return burningOnDeath; }
+    public void setBurningOnDeath(boolean v) { this.burningOnDeath = v; }
+
     private boolean stunned = false;
     public boolean isStunned() { return stunned; }
     public void setStunned(boolean s) {
@@ -795,14 +804,26 @@ public class CombatEntity {
     // Duration refreshes to longer value, intensity stacks up to cap
     private static final int MAX_EFFECT_AMPLIFIER = 999;
 
+    /**
+     * Floor on how long a damage-over-time effect can be applied for. A one-turn DoT is a
+     * status icon that flickers and vanishes: the victim sees it land and sees it gone, and
+     * whatever fiction put it there (a torch to the face, a poison nick) reads as having done
+     * nothing. Nothing applies a DoT for one turn - the floor is enforced here rather than at
+     * each of the two dozen call sites so a new source can't reintroduce it.
+     *
+     * <p>Only DoTs are floored. One-turn stuns and control effects are meaningful at that
+     * length, because "skip your next turn" happens whether or not the timer survives it.
+     */
+    public static final int MIN_DOT_TURNS = 2;
+
     public void stackWither(int turns, int ampIncrease) {
-        witherTurns = Math.max(witherTurns, turns);
+        witherTurns = Math.max(MIN_DOT_TURNS, Math.max(witherTurns, turns));
         witherAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, witherAmplifier + ampIncrease);
         witherPeakTurns = Math.max(witherPeakTurns, witherTurns);
     }
 
     public void stackPoison(int turns, int ampIncrease) {
-        poisonTurns = Math.max(poisonTurns, turns);
+        poisonTurns = Math.max(MIN_DOT_TURNS, Math.max(poisonTurns, turns));
         poisonAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, poisonAmplifier + ampIncrease);
     }
 
@@ -825,7 +846,7 @@ public class CombatEntity {
         // configured max effect duration so it can't run away.
         var cfg = com.crackedgames.craftics.CrafticsMod.CONFIG;
         int maxDur = cfg != null ? cfg.maxCombatEffectDuration() : 10;
-        burningTurns = Math.min(maxDur, burningTurns + turns);
+        burningTurns = Math.min(maxDur, Math.max(MIN_DOT_TURNS, burningTurns + turns));
         burningAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, burningAmplifier + ampIncrease);
     }
 

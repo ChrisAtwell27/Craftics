@@ -364,7 +364,7 @@ public abstract class BossAI implements EnemyAI {
             GridPos next = new GridPos(current.x() + dx, current.z() + dz);
             if (!arena.isInBounds(next)) break;
             if (arena.getTile(next) != null && !arena.getTile(next).isWalkable()
-                    && arena.getTile(next).getType() != com.crackedgames.craftics.core.TileType.FIRE) {
+                    && !arena.getTile(next).getType().isFlames()) {
                 break; // hit obstacle
             }
             path.add(next);

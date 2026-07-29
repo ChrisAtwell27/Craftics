@@ -92,7 +92,13 @@ public class CombatEffects {
     }
 
     public void addEffect(EffectType type, int turns, int amplifier) {
-        int finalTurns = Math.min(turns, maxEffectDuration());
+        // Same floor the mob side enforces (CombatEntity.MIN_DOT_TURNS): a one-turn DoT
+        // flickers and vanishes, so nothing is allowed to apply one. Stuns and control
+        // effects are untouched - they do their job on the turn they land.
+        int requested = isDamageOverTime(type)
+            ? Math.max(com.crackedgames.craftics.combat.CombatEntity.MIN_DOT_TURNS, turns)
+            : turns;
+        int finalTurns = Math.min(requested, maxEffectDuration());
         ActiveEffect prev = effects.get(type);
         ActiveEffect next = new ActiveEffect(type, finalTurns, amplifier);
         // When stacking the SAME effect, keep the highest peak the player has
@@ -242,6 +248,22 @@ public class CombatEffects {
     public boolean hasEffect(EffectType type) {
         ActiveEffect e = effects.get(type);
         return e != null && !e.isFrozen();
+    }
+
+    /** Turns left on an active effect, or 0 when it isn't running (or is still frozen).
+     *  Lets callers that EXTEND a duration (fire tiles re-applying Burning) read what is
+     *  already there instead of overwriting it - {@link #addEffect} replaces the timer. */
+    public int getTurnsRemaining(EffectType type) {
+        ActiveEffect e = effects.get(type);
+        return e != null && !e.isFrozen() ? Math.max(0, e.turnsRemaining) : 0;
+    }
+
+    /** Amplifier of an active effect (0 = level I), or -1 when it isn't running. Lets a
+     *  re-application take the MAX level instead of overwriting a stronger stack with a
+     *  weaker one - stepping out of soul fire into ordinary fire must not cool a burn down. */
+    public int getAmplifier(EffectType type) {
+        ActiveEffect e = effects.get(type);
+        return e != null && !e.isFrozen() ? e.amplifier : -1;
     }
 
     public int getSpeedBonus() {
@@ -400,6 +422,15 @@ public class CombatEffects {
             }
         }
         return null;
+    }
+
+    /** True for the effects that deal damage on a per-turn tick, and so need a duration
+     *  long enough to actually tick. See the floor applied in {@link #addEffect}. */
+    public static boolean isDamageOverTime(EffectType type) {
+        return switch (type) {
+            case POISON, WITHER, BURNING, BLEEDING -> true;
+            default -> false;
+        };
     }
 
     /** True if {@code type} is a harmful effect (removed by a cleanse). */

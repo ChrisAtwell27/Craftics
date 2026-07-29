@@ -80,7 +80,7 @@ public final class VanillaWeapons {
         if (!arena.isInBounds(pos)) return false;
         var tile = arena.getTile(pos);
         return tile != null && !tile.isWalkable()
-            && tile.getType() != com.crackedgames.craftics.core.TileType.FIRE;
+            && !tile.getType().isFlames();
     }
 
     public static void registerAll() {

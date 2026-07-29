@@ -112,6 +112,22 @@ public class CombatAchievementTracker {
         weaponTypesUsed.add(DamageType.fromWeapon(weapon));
     }
 
+    /**
+     * Record a damage type dealt by something that isn't a held weapon - thrown consumables,
+     * item abilities, anything whose type can't be read back off an {@link Item} through the
+     * weapon registry.
+     *
+     * <p>Without this, those hits were invisible to every achievement that asks "which damage
+     * types did you use?": a run fought purely with water throwables read as using NO type at
+     * all, which silently disqualified the water-only runs those achievements exist to reward.
+     */
+    public void recordDamageTypeUsed(DamageType type) {
+        if (type == null) return;
+        usedAnyWeapon = true;
+        usedFistsOnly = false;
+        weaponTypesUsed.add(type);
+    }
+
     public void recordPlayerDealtDamage() {
         playerDealtDirectDamage = true;
     }

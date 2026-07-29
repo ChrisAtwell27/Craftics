@@ -293,12 +293,22 @@ public class ArenaBuilder {
                     continue;
                 }
 
-                // Air at floor level - check depth to distinguish shallow pit from void
-                if (floorState.isAir() || floorBlock == Blocks.VOID_AIR) {
+                // Air (or non-supporting floor dressing) at floor level - check depth to
+                // distinguish shallow pit from void. A rail / snow layer / pressure plate
+                // laid in a pit is NOT a floor: it has no collision, so the surface is
+                // whatever sits under it (see WallBlocks#providesStandingSurface). Fluids
+                // are excluded because water/lava/powder snow also report no collision and
+                // are already classified as their own hazard tiles above.
+                boolean unsupportedFloor = floorState.getFluidState().isEmpty()
+                    && floorBlock != Blocks.POWDER_SNOW
+                    && !com.crackedgames.craftics.combat.WallBlocks
+                        .providesStandingSurface(floorState, world, floorPos);
+                if (floorState.isAir() || floorBlock == Blocks.VOID_AIR || unsupportedFloor) {
                     BlockPos belowPos = new BlockPos(floorX + x, floorY - 1, floorZ + z);
                     net.minecraft.block.BlockState belowState = world.getBlockState(belowPos);
-                    if (!belowState.isAir() && belowState.getFluidState().isEmpty()) {
-                        // Solid block 1 below = shallow pit (LOW_GROUND)
+                    if (com.crackedgames.craftics.combat.WallBlocks
+                            .providesStandingSurface(belowState, world, belowPos)) {
+                        // Standing surface 1 below = shallow pit (LOW_GROUND)
                         tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.LOW_GROUND, belowState.getBlock());
                     } else {
                         tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.VOID, Blocks.AIR);
@@ -665,13 +675,28 @@ public class ArenaBuilder {
                         Blocks.LAVA);
                 }
 
-                // Air at floor level - check depth for shallow pit vs void
+                // Air (or non-supporting floor dressing) at floor level - check depth for
+                // shallow pit vs void. Rails / snow layers / plates have no collision, so
+                // they never count as the pit's floor (see WallBlocks#providesStandingSurface).
                 if (finalTiles[x][z].isWalkable()) {
                     Block floorBlock = floorState.getBlock();
-                    if (floorState.isAir() || floorBlock == Blocks.VOID_AIR) {
+                    boolean airFloor = floorState.isAir() || floorBlock == Blocks.VOID_AIR;
+                    // Dressing-only floor (rail, pressure plate, single snow layer): no
+                    // collision, so it holds nobody up - treat the cell as empty and read
+                    // the real surface from below. Restricted to plain NORMAL tiles so the
+                    // hazard/feature types resolved above (water, lava, powder snow, spore,
+                    // tall grass, stairs...) keep their classification.
+                    boolean unsupportedFloor = !airFloor
+                        && finalTiles[x][z].getType() == com.crackedgames.craftics.core.TileType.NORMAL
+                        && floorState.getFluidState().isEmpty()
+                        && floorBlock != Blocks.POWDER_SNOW
+                        && !com.crackedgames.craftics.combat.WallBlocks
+                            .providesStandingSurface(floorState, world, floorPos);
+                    if (airFloor || unsupportedFloor) {
                         BlockPos belowPos = new BlockPos(floorX + x, floorY - 1, floorZ + z);
                         net.minecraft.block.BlockState belowState = world.getBlockState(belowPos);
-                        if (!belowState.isAir() && belowState.getFluidState().isEmpty()) {
+                        if (com.crackedgames.craftics.combat.WallBlocks
+                                .providesStandingSurface(belowState, world, belowPos)) {
                             finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.LOW_GROUND,
                                 belowState.getBlock());
                         } else {
@@ -794,6 +819,29 @@ public class ArenaBuilder {
         if (!diskSchemCandidates.isEmpty()) {
             CrafticsMod.LOGGER.info("Found {} disk .schem candidate(s) for biome '{}': {}",
                 diskSchemCandidates.size(), biomeId, diskSchemCandidates);
+            // Drop arenas built out of mods this install doesn't have. Every block from a
+            // missing mod loads as AIR, and an arena full of holes isn't just cosmetically
+            // wrong: gaps in the floor classify as VOID, i.e. invisible instant-death pits.
+            // Filtering here lets the bundled vanilla arenas below take over, which is what a
+            // player without the mod should be getting anyway.
+            List<java.nio.file.Path> loadable = new ArrayList<>();
+            for (java.nio.file.Path candidate : diskSchemCandidates) {
+                java.util.Set<String> missing = SchemLoader.missingMods(candidate);
+                if (missing.isEmpty()) {
+                    loadable.add(candidate);
+                } else {
+                    CrafticsMod.LOGGER.warn("Skipping arena {}: needs missing mod(s) {}",
+                        candidate.getFileName(), missing);
+                }
+            }
+            if (loadable.isEmpty()) {
+                CrafticsMod.LOGGER.warn("All {} disk arena(s) for biome '{}' need mods that aren't "
+                    + "installed - falling back to the bundled arenas",
+                    diskSchemCandidates.size(), biomeId);
+            }
+            diskSchemCandidates = loadable;
+        }
+        if (!diskSchemCandidates.isEmpty()) {
             java.nio.file.Path chosenSchem = diskSchemCandidates.get(biomeLevelIndex % diskSchemCandidates.size());
             boolean preserveGround = isBoss || biomeId.startsWith("trial_chamber");
             return loadAndPlaceSchem(world, chosenSchem, ox, oy, oz, w, h, tiles, biomeId, preserveGround);

@@ -238,8 +238,9 @@ public final class Abilities {
 
     /**
      * Applies a status effect to the target using the appropriate stacking method.
-     * Not all {@link CombatEffects.EffectType} values have a direct stacking method on
-     * {@link CombatEntity}; unsupported types are silently ignored (see TODO below).
+     * Most {@link CombatEffects.EffectType} values map to a stacking method on
+     * {@link CombatEntity}; anything still unmapped logs a warning rather than resolving as a
+     * silent no-op, so an addon can tell the difference between "applied" and "ignored".
      */
     public static WeaponAbilityHandler applyEffect(CombatEffects.EffectType type, int turns, int amplifier) {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
@@ -275,11 +276,24 @@ public final class Abilities {
                                 + " is disoriented for " + turns + " turn(s).");
                     }
                 }
-                // TODO: WEAKNESS and other types that reduce attack require
-                //   target.stackDefensePenalty() or target.setAttackPenalty() which do not
-                //   match a generic EffectType cleanly, implement case-by-case as needed.
+                // WEAKNESS has no stack* method because it isn't a counter - it's a flat attack
+                // penalty with its own timer. Applied here as the strongest of the existing and
+                // incoming penalty (so a weaker re-application can't overwrite a stronger one)
+                // with the longer of the two durations, which is how the stack* helpers behave.
+                case WEAKNESS -> {
+                    int penalty = Math.max(1, amplifier + 1);
+                    target.setAttackPenalty(Math.max(target.getAttackPenalty(), penalty));
+                    target.setAttackPenaltyTurns(Math.max(target.getAttackPenaltyTurns(), turns));
+                    messages.add("§8Weakened! " + target.getDisplayName()
+                            + " hits for " + penalty + " less for " + turns + " turn(s).");
+                }
                 default -> {
-                    // Effect type not yet supported via direct CombatEntity method - no-op.
+                    // Anything still unmapped is a genuine gap rather than a silent success:
+                    // log it once so an addon author sees why their effect did nothing instead
+                    // of chasing a no-op through their own code.
+                    com.crackedgames.craftics.CrafticsMod.LOGGER.warn(
+                        "Abilities.applyEffect: no CombatEntity mapping for effect type {} - "
+                        + "the ability resolved but applied nothing", type);
                 }
             }
             return new WeaponAbility.AttackResult(baseDamage, messages, List.of());

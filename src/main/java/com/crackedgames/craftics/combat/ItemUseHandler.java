@@ -49,6 +49,11 @@ public class ItemUseHandler {
         }
 
         stack.decrement(1);
+        // These throwables ARE the player's water damage. The achievement tracker reads types
+        // off held weapons through the registry, which can't see a thrown pufferfish, so a
+        // water-only run never registered as having dealt Water damage at all.
+        CombatManager waterCombat = CombatManager.getActiveCombat(player.getUuid());
+        if (waterCombat != null) waterCombat.recordDamageTypeUsed(DamageType.WATER);
         int hitCount = 0;
         StringBuilder msg = new StringBuilder();
         // Multi-tile entities appear once per occupied tile in getOccupants(); track
@@ -61,8 +66,12 @@ public class ItemUseHandler {
             // damage or status it; the heart must be destroyed instead.
             if (CombatManager.isInvulnerableCreaking(enemy)) continue;
             if (enemy.minDistanceTo(targetTile) <= radius) {
-                // Deal Water-type damage (assume Water type is handled in takeDamage or add a param if needed)
-                int dealt = enemy.takeDamage(waterDamage); // TODO: Pass Water type if needed
+                // Water-TYPED damage, not raw. takeDamage knows nothing about damage types, so
+                // the resistance table has to be applied here the way every other typed hit does
+                // it - otherwise a drowned shrugging off water and a blaze melting to it both
+                // took the same flat number, and the splash quietly ignored the whole system.
+                int dealt = enemy.takeDamage(MobResistances.applyResistance(
+                    enemy.getEntityTypeId(), DamageType.WATER, waterDamage));
                 // Apply Soaked
                 enemy.stackSoaked(soakedLevel, soakedLevel);
                 // Apply Poison if pufferfish
@@ -80,8 +89,24 @@ public class ItemUseHandler {
                 msg.append("§b").append(enemy.getDisplayName()).append(" -").append(dealt).append("HP ");
             }
         }
-        // Visual/sound feedback (optional)
-        // TODO: Add splash particles and water sound
+        // Splash feedback, drawn over the whole affected radius rather than just the centre so
+        // the player can see exactly which tiles the throw covered.
+        if (player.getEntityWorld() instanceof ServerWorld sw) {
+            BlockPos centre = arena.gridToBlockPos(targetTile);
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (Math.abs(dx) + Math.abs(dz) > radius) continue;
+                    sw.spawnParticles(net.minecraft.particle.ParticleTypes.SPLASH,
+                        centre.getX() + dx + 0.5, centre.getY() + 0.6, centre.getZ() + dz + 0.5,
+                        6, 0.3, 0.2, 0.3, 0.05);
+                }
+            }
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.FALLING_WATER,
+                centre.getX() + 0.5, centre.getY() + 1.2, centre.getZ() + 0.5,
+                18, 0.6, 0.4, 0.6, 0.02);
+            sw.playSound(null, centre, net.minecraft.sound.SoundEvents.ENTITY_PLAYER_SPLASH,
+                net.minecraft.sound.SoundCategory.PLAYERS, 0.9f, 1.1f);
+        }
         if (hitCount > 0) {
             return "§3" + name + " splashed " + hitCount + "! " + msg.toString().trim();
         }
@@ -334,9 +359,10 @@ public class ItemUseHandler {
         Items.LIGHT_BLUE_BANNER, Items.MAGENTA_BANNER, Items.PINK_BANNER,
         Items.BROWN_BANNER, Items.GRAY_BANNER, Items.LIGHT_GRAY_BANNER,
         Items.LIME_BANNER,
-        Items.WATER_BUCKET, Items.SPONGE, Items.IRON_PICKAXE,
-        Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE, Items.STONE_PICKAXE,
-        Items.WOODEN_PICKAXE, Items.GOLDEN_PICKAXE, Items.CROSSBOW,
+        // Pickaxes are deliberately absent: isUsableItem already ORs in isPickaxe, which
+        // covers modded ones too. Listing the vanilla six here as well would be a second,
+        // narrower source of truth for the same question.
+        Items.WATER_BUCKET, Items.SPONGE, Items.CROSSBOW,
         Items.LINGERING_POTION, Items.LIGHTNING_ROD, Items.CACTUS,
         Items.HAY_BLOCK, Items.CAKE, Items.SPORE_BLOSSOM,
         Items.LANTERN, Items.TORCH, Items.GOAT_HORN, Items.ECHO_SHARD, Items.BRUSH, Items.ELYTRA
@@ -1186,7 +1212,16 @@ public class ItemUseHandler {
                                          GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         CombatEntity enemy = arena.getOccupant(targetTile);
-        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        // Empty ground: the charge bursts on the tile and sets it alight. Fire spreads from
+        // there on its own, so lobbing one into dry brush upwind of the enemy is a play.
+        if (enemy == null || !enemy.isAlive()) {
+            if (!canStrikeLightOn(arena.getTile(targetTile))) {
+                return "§cNothing there to burn - aim at an enemy or at open ground.";
+            }
+            consumeSpecialItem(player, stack);
+            return TILE_EFFECT_PREFIX + "fire:" + targetTile.x() + ":" + targetTile.z()
+                + "|§6The fire charge bursts! The ground catches.";
+        }
 
         consumeSpecialItem(player, stack);
         int dealt = applyTypedDamage(player, enemy, 4 + enemy.percentMaxHpDamage(0.08), DamageType.SPECIAL);
@@ -1406,7 +1441,22 @@ public class ItemUseHandler {
                                             GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         CombatEntity enemy = arena.getOccupant(targetTile);
-        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        // Empty ground: strike a light on the tile itself. Same melee reach as igniting a
+        // mob - you have to be standing over what you're lighting - but diagonals count,
+        // matching how grass is cleared from a corner.
+        if (enemy == null || !enemy.isAlive()) {
+            GridPos self = arena.getPlayerGridPos();
+            if (Math.max(Math.abs(self.x() - targetTile.x()),
+                         Math.abs(self.z() - targetTile.z())) > 1) {
+                return "§cToo far - you can only light the ground next to you.";
+            }
+            if (!canStrikeLightOn(arena.getTile(targetTile))) {
+                return "§cYou can't set a light there.";
+            }
+            damageFlintAndSteel(stack);
+            return TILE_EFFECT_PREFIX + "fire:" + targetTile.x() + ":" + targetTile.z()
+                + "|§6You strike a light! The ground catches fire.";
+        }
         // Flint &amp; steel is a melee-range interaction - you have to stand next to
         // the target. Without this you could ignite anything anywhere on the map.
         String reach = validateAdjacentReach(arena, enemy);
@@ -1416,17 +1466,54 @@ public class ItemUseHandler {
             return "§c§lThe Creaking is invulnerable! §7Destroy its §4Creaking Heart§7 instead!";
         }
 
-        // Durability cost
+        damageFlintAndSteel(stack);
+        int dealt = applyTypedDamage(player, enemy, 2, DamageType.SPECIAL);
+        // Actually set them alight. This only ever set vanilla fireTicks, which the combat
+        // tick zeroes every server tick as stray fire - so the target visibly caught fire and
+        // then took no burn damage at all, which is exactly what it looked like.
+        //
+        // Re-striking the same target fans the fire rather than restarting it: the first hit
+        // is worth FLINT_BURN_TURNS, every one after that adds a single turn to whatever is
+        // still running. Cheap to apply, so it climbs slowly instead of letting one item lock
+        // a long burn in two clicks.
+        int before = enemy.getBurningTurns();
+        enemy.stackBurning(before > 0 ? 1 : FLINT_BURN_TURNS, 0);
+        int burning = enemy.getBurningTurns();
+        if (enemy.getMobEntity() != null) {
+            // Visual synced to the burn it now actually has, not a flat 5 seconds.
+            enemy.getMobEntity().setFireTicks(burning * 80);
+        }
+        if (burning <= 0) {   // soaked or fire-immune: the strike just doesn't take
+            return "§7" + enemy.getDisplayName() + " won't catch. " + dealt + " Special damage.";
+        }
+        return "§6Set " + enemy.getDisplayName() + " on fire! " + dealt
+            + " Special damage, §cBurning §7for " + burning + " turn" + (burning == 1 ? "" : "s") + ".";
+    }
+
+    /** Turns of Burning a first flint &amp; steel strike lands. Later strikes add one each. */
+    public static final int FLINT_BURN_TURNS = 3;
+
+    /**
+     * True if the player can set a light on this tile by hand. Deliberately NOT
+     * {@link FlammableTiles#isFlammable}: fuel decides whether a fire SPREADS, not whether it
+     * can be lit. A flame set on bare stone burns out where it stands and goes nowhere, which
+     * is a perfectly good thing to want - a firebreak, or a torch to see by. What is refused
+     * is ground that cannot hold a flame at all (water, lava, open void, already alight) and
+     * standing walls, which only soul fire eats through. Mirrors the STRUCK rules in
+     * {@code CombatManager.igniteTile}, which does the real gate-keeping.
+     */
+    private static boolean canStrikeLightOn(GridTile tile) {
+        if (tile == null || !FlammableTiles.canHoldFlame(tile)) return false;
+        return tile.isWalkable() || FlammableTiles.isFlammable(tile);
+    }
+
+    /** Spend one point of flint &amp; steel durability, consuming the item on the last use. */
+    private static void damageFlintAndSteel(ItemStack stack) {
         if (stack.getDamage() + 1 >= stack.getMaxDamage()) {
             stack.decrement(1);
         } else {
             stack.setDamage(stack.getDamage() + 1);
         }
-        int dealt = applyTypedDamage(player, enemy, 2, DamageType.SPECIAL);
-        if (enemy.getMobEntity() != null) {
-            enemy.getMobEntity().setFireTicks(100); // 5 seconds of fire
-        }
-        return "§6Set " + enemy.getDisplayName() + " on fire! " + dealt + " Special damage.";
     }
 
     // --- Totem of Undying: prevents death once, full heal ---
@@ -1862,10 +1949,26 @@ public class ItemUseHandler {
             + "|§5Banner planted! §7+" + totalDef + " DEF for player/allies within 2 tiles.";
     }
 
-    private static boolean isPickaxe(Item item) {
-        return item == Items.IRON_PICKAXE || item == Items.DIAMOND_PICKAXE
-            || item == Items.NETHERITE_PICKAXE || item == Items.STONE_PICKAXE
-            || item == Items.WOODEN_PICKAXE || item == Items.GOLDEN_PICKAXE;
+    /**
+     * THE definition of "pickaxe" for combat, shared by the tile interactions here, the mine
+     * action in {@code CombatManager.handleMine}, and the client's mine gesture. All three used
+     * to decide this for themselves and disagreed: this method listed the vanilla six, while the
+     * other two matched a {@code _pickaxe} registry path. A modded pickaxe could therefore MINE a
+     * VFX obstacle but not break a terrain obstacle or dig a pit with the very same tool.
+     *
+     * <p>Widened the way modded swords and axes were: read what the game itself says rather than
+     * naming items. The {@code #minecraft:pickaxes} tag is how a mod declares a pickaxe (it is
+     * what gates vanilla's own mining and enchanting), so anything tagged counts, vanilla's six
+     * included. The registry-path suffix stays as a fallback for mods that ship a pickaxe without
+     * tagging it - the check the mine paths already relied on, so nothing that worked before
+     * stops working. Deliberately NOT {@code instanceof PickaxeItem}: that class is not present
+     * on every shard we build against, the same reason {@link CrafticsEnchantments#isSword}
+     * avoids {@code SwordItem}.
+     */
+    public static boolean isPickaxe(Item item) {
+        if (item == null) return false;
+        if (item.getDefaultStack().isIn(net.minecraft.registry.tag.ItemTags.PICKAXES)) return true;
+        return net.minecraft.registry.Registries.ITEM.getId(item).getPath().endsWith("_pickaxe");
     }
 
     // --- Water Bucket: place water tile on empty walkable tile (1 AP) ---

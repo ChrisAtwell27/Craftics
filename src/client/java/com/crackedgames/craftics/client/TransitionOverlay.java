@@ -120,6 +120,7 @@ public class TransitionOverlay {
         "Use a Lead to reposition an ally to a safer tile, or set up the perfect attack angle.",
         "Click your selected ally again to cancel a lead command without spending any AP.",
         "Hold a full block and click a nearby tile for 1 AP to drop a temporary wall. It lasts 4 turns. Mine it to get the block back.",
+        "Click a void or sunken tile with a full block to bridge it at ground level instead of walling it. The fill stays for the whole fight.",
         "Place a Campfire on a tile to create a 5x5 healing zone. Stay inside it for +2 HP per turn.",
         "Scaffolding gives +1 range to ranged attacks made from that tile. Place it for high-ground value.",
         "Honey Blocks are floor traps. Enemies that walk onto one lose all remaining movement. They look just like normal floor to the AI.",

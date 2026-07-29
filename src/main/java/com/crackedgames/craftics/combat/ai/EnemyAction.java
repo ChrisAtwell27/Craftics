@@ -28,7 +28,6 @@ public sealed interface EnemyAction {
     record MoveAttackMove(List<GridPos> approachPath, int damage, List<GridPos> retreatPath) implements EnemyAction {}
     record Flee(List<GridPos> path) implements EnemyAction {}
     record StartFuse() implements EnemyAction {}
-    record Detonate() implements EnemyAction {}
     record Idle() implements EnemyAction {}
 
     /** Enderman: instant teleport to a tile (no lerp animation) */

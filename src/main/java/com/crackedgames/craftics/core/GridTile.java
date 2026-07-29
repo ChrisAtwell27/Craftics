@@ -148,9 +148,13 @@ public class GridTile {
             case NORMAL -> Blocks.GRASS_BLOCK;
             case OBSTACLE -> Blocks.STONE;
             case LAVA -> Blocks.LAVA;
-            case FIRE -> Blocks.MAGMA_BLOCK;
+            // FIRE is the only tile whose block does NOT live at floor Y: it is a real
+            // flame placed at Y+1 (where an entity stands), leaving the floor beneath
+            // intact. Every painter in CombatManager routes FIRE through the overlay
+            // slot for that reason; the burnt-out magma stage is a separate EMBER tile.
+            case FIRE -> Blocks.FIRE;
+            case SOUL_FIRE -> Blocks.SOUL_FIRE;
             case VOID -> Blocks.AIR;
-            case EXIT -> Blocks.LADDER;
             case WATER, DEEP_WATER -> Blocks.WATER;
             case LOW_GROUND -> Blocks.STONE;
             case POWDER_SNOW -> Blocks.POWDER_SNOW;
@@ -162,6 +166,7 @@ public class GridTile {
             case FROST -> Blocks.PACKED_ICE;
             case MUD -> Blocks.MUD;
             case SCULK -> Blocks.SCULK;
+            case DECAY -> Blocks.SOUL_SOIL;
             // The crimson / warped fungus PLANTS. Unlike other tiles these are not painted at
             // floor-Y (a plant there would float and fail to render); the fungus TileFn in
             // CombatManager places this block in the Y+1 overlay slot (where the player stands,

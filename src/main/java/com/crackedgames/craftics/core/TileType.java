@@ -5,8 +5,11 @@ public enum TileType {
     OBSTACLE(false, false, 0, false),
     LAVA(true, false, 10, false),
     FIRE(true, false, 2, false),
+    // Soul fire - what a burn on soul sand / soul soil becomes. Same three-stage burn as
+    // FIRE, but it holds its flames a turn longer (so the front keeps advancing while the
+    // ground behind it is still alight) and sets whoever stands in it to Burning III.
+    SOUL_FIRE(true, false, 2, false),
     VOID(false, false, 0, false),
-    EXIT(true, false, 0, false),
     WATER(true, false, 0, false), // walkable without a boat (applies Soaked)
     DEEP_WATER(false, false, 0, false), // 2+ blocks deep - instant kill
     LOW_GROUND(true, false, 0, false), // 1 block lower than floor - walkable, Y-1 positioning
@@ -22,6 +25,12 @@ public enum TileType {
                                       // traveled has a 50% chance to stop movement there
                                       // (probabilistic cobweb; see the path truncation in
                                       // CombatManager). Placed by the jungle_rain biome effect.
+    // Withered ground - the rot the Wither leaves behind. Walkable, permanent for the fight,
+    // and it bites every time you set foot on it (damage + Wither, see the landing check in
+    // CombatManager.handleMove). Unlike the aura that creates it, this does not expire: the
+    // Wither poisons the arena as it moves, so the safe ground shrinks turn by turn and standing
+    // still stops being an option.
+    DECAY(true, false, 2, false),
     // Fungus hazard tiles: walkable, cobweb-like. Crossing one does NOT stop the player,
     // but inflicts a status effect live on their own turn (see the fungus scan in
     // CombatManager.handleMove). Scattered at fight start by the crimson/warped biome effects.
@@ -62,5 +71,17 @@ public enum TileType {
         this.requiresBoat = requiresBoat;
         this.damageOnStep = damageOnStep;
         this.providesStealth = providesStealth;
+    }
+
+    /**
+     * True for the open-flame tiles - the ones whose block lives at Y+1 on an intact floor
+     * rather than at floor level, and which set anything standing in them alight.
+     *
+     * <p>THE predicate for "is this tile on fire". Every site that used to compare against
+     * {@code FIRE} alone reads this instead, so adding {@link #SOUL_FIRE} didn't silently
+     * leave half the fire rules (AI avoidance, step damage, stealth, painting) blind to it.
+     */
+    public boolean isFlames() {
+        return this == FIRE || this == SOUL_FIRE;
     }
 }

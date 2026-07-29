@@ -1,5 +1,42 @@
 ﻿Changelog
 0.3.3
+Fire
+
+- Fire is a real thing on the battlefield now. It used to be a magma block painted onto the floor; it is now an actual flame standing on the ground, lit with flint and steel on an adjacent tile or a fire charge thrown at range
+- A lit tile burns for a turn, spreads to every flammable tile beside it as it collapses into a magma block, and that magma finishes burning a turn later. Ground that has burned is spent for the rest of the fight, so a fire eats its way outward and then dies rather than circling back over the same ash
+- Wood, leaves, plants and living ground carry a fire: grass blocks, mycelium and moss. Bare dirt, sand, gravel and stone floors have nothing to give, so a fire crossing a stone courtyard stops there
+- Netherrack, soul sand and soul soil burn and then rebuild themselves, fireproof for a turn afterwards, so the nether floor is never permanently scarred
+- Standing in flames sets you alight: Burning II for two turns, and every further turn spent in the fire adds two more rather than resetting the timer. It burns enemies on exactly the same terms
+- You can strike a light on any open ground, fuel or not. A fire on bare stone simply burns where it stands and goes nowhere, which makes it a firebreak instead of a mistake. Water, lava, open void and standing walls still refuse a light
+- Attack a burning tile to beat the flames out for 1 AP, the same way you clear tall grass. The ground is left scorched either way, so what you are buying is the tiles behind it
+
+Soul Fire
+
+- A fire lit on soul sand or soul soil comes up blue, and soul fire plays by different rules
+- It needs no fuel at all. It takes stone, sand, gravel, anything it touches, and carries itself onward. Only water, lava, open void, permanent walls and ground still cooling from an earlier burn turn it away
+- It also holds its flames a turn longer than ordinary fire, so the ground behind the front is still alight while the front keeps moving, and it inflicts Burning III instead of Burning II
+- An ordinary fire that reaches soul ground turns blue on its own
+
+Burning Kills
+
+- An animal killed while on fire drops its meat cooked. Whether it burned to death or simply died alight, the fire did the cooking
+
+Item Fixes
+
+- Echo shards do something. Using one now returns you to the tile you started your turn on when the turn ends, which is what its tooltip has always promised. Previously the shard was consumed and the only thing that happened was a chat message, printed twice
+- That double message was not unique to echo shards. Every item whose result carried an internal payload, including lava and water buckets, campfires, banners, fishing rods, anvils and goat horns, dumped its raw payload into chat and then printed the real message underneath it
+- Flint and steel actually sets things on fire. It only ever applied the vanilla fire visual, which combat strips every tick, so the target visibly caught alight and then took no burn damage whatsoever. It now applies Burning for three turns, and striking an already burning target fans the fire for one more turn each time
+- Nothing applies a damage-over-time effect for a single turn any more. A one turn burn or poison is a status icon that flickers and vanishes, so burns, poison, wither and bleed now last at least two turns from every source. Stuns are untouched, since skipping a turn happens whether or not the timer outlives it
+
+Modded Tools
+
+- Modded pickaxes work like vanilla ones. Breaking obstacles, digging pits and mining now recognise any pickaxe rather than the vanilla six, so a modded pickaxe no longer half worked: it could mine a rubble pile but not break a wall with the same swing
+
+Visuals
+
+- Crimson Forest and Warped Forest arenas have their own skies again. Both were wearing the pale overworld woodland haze, because the colour table matched the word forest before it ever reached the nether entries
+- The sculk sensor range ring is much calmer. It filled every tile in the field with a pulsing cyan slab that faded fully out and back every two and a half seconds; it now traces only the boundary of the field, dimmer and slower, and never fades out entirely
+
 Deeper and Darker Compatibility
 
 - The Deep Dark is fully overhauled when the Deeper and Darker mod is installed. Its whole enemy roster is replaced with the mod's sculk creatures. Nothing here touches your game if you don't have the mod
@@ -36,8 +73,8 @@ Deep Dark Loot
 Deeper and Darker Artifacts
 
 - Sonorous Staff (2 AP): a ranged Special attack that fires a line through your target and everything behind it. Damage falls off the further down the line an enemy stands, so it rewards lining up a crowd rather than replacing a bow for single targets. The first target is hurled back two tiles
-- Soul Elytra (2 AP): launch and glide up to five tiles, straight over obstacles, hazards and pits. Only the tile you land on has to be solid, which makes it the answer to an arena built around jaws and holes. Not consumed
-- Heart of the Deep (1 AP): pulse, dragging every hidden enemy into view and lifting Darkness from you. Shriek Worms stay revealed for good, but a Stalker can vanish again on its next turn, so it buys a window rather than ending the problem
+- Soul Elytra (2 AP): launch and glide up to five tiles, straight over obstacles, hazards and pits.
+- Heart of the Deep (1 AP): pulse, dragging every hidden enemy into view and lifting Darkness from you. Shriek Worms stay revealed for good, but a Stalker can vanish again on its next turn.
 
 Food
 
@@ -75,6 +112,52 @@ Quality of Life
 - Items can be dropped on the ground during combat again. Only the Move item stays locked in place
 - Sculk sensors are now ordinary pickaxe-breakable obstacles instead of blocks carrying a health bar. They still paint their range ring and still trigger the darkness and silverfish ambush when you stray too close
 - Home islands sit in the Plains biome instead of the void, so animals and mobs spawn on them normally and you have something to tame and farm. Islands previously used the void biome, which has no spawns at all, so nothing could ever appear. This applies to newly created islands: an existing island keeps whatever biome its chunks were already generated with
+
+Arenas No Longer Float in Nothing
+
+- Arenas, event scenes and trade halls are now ringed by a bank of cloud instead of ending at a hard edge with empty void past it. The cloud starts just under the floor at the build's edge and climbs the further out it goes, so you are standing in a bowl with walls above eye level rather than beside a lake
+- The cloud is built from chunky blocks with real height and shading rather than flat sheets, so it has silhouette and depth, and it drifts slowly enough to read as weather rather than a conveyor belt
+- A clear window is kept open along the line between the camera and the board, so the wall never stands between you and your own tiles no matter where you orbit to
+- Cloud colour follows the arena's biome: dusty yellow in the desert, ochre in badlands, rain blue in the jungle, blue white on snow, red in the crimson forest, teal in the warped, violet in the End. Rain shifts the whole bank toward storm grey
+- Dark Forest and Deep Dark fog is near black instead, and denser, so those arenas close in around you the way they should
+- The cloud rests on the ground it meets. It pools in hollows and laps up hillsides rather than growing through the terrain
+- A distance haze sits beyond the cloud to swallow far hills and treetops. It only ever tightens the view, so underwater, lava, Blindness and Darkness fog all still look exactly as they did, and it never touches the sky's own colour
+
+The Arena Reacts To The Fight
+
+- Boss phase two floods the surrounding cloud red and pulls the walls in closer for the length of the entrance. Killing the boss washes them gold white and opens them back up
+- Darkness or Blindness drives the whole bank black for as long as the effect holds
+- The camera leans in and a soft vignette closes around the screen while the enemies take their turn, then releases when control returns to you
+- Every combatant now casts a contact shadow on the tile beneath them, so models sit on the board instead of hovering over it. A knocked back mob's shadow stays on the ground it is going to land on
+- Landing a blow leaves an expanding ring on the struck tile, wider and gold on a heavy hit, and the camera is kicked in the direction the blow came from rather than just rattling in place. Heavy hits also flash and hold the scene still for a couple of frames
+- Moving kicks up dust where a combatant lands, for enemies and allies as well as you
+
+Weather and Hazards You Can See
+
+- Arenas carry their biome's weather: snow on cold boards, blown sand in the desert, cherry petals, crimson and warped spores, nether ash, drifting spores in the dark places, rain in the jungle and swamp. Real rain overrides a dry biome
+- Lava tiles give off heat, void pits breathe pale wisps out of the hole, and sculk fields pulse slowly, so the tiles that can kill you announce themselves without a tooltip
+- Frost left by a blizzard finally does something. Stepping on rime slows you and chills you, and leather boots turn it aside exactly as they do powder snow. It has always been described as a hazard and has never once been one
+
+Bridging and Building
+
+- Placing a block on a void or sunken tile now drops it to ground level and fills the hole into safe footing instead of stacking a wall in mid air. The fill lasts the rest of the fight, and a second block on the same tile raises a normal wall on top of it
+
+Boss Threats
+
+- Bosses leap gaps up to two tiles wide to keep after you. A pit dug in front of a boss no longer takes it out of the fight for good, and a split arena no longer strands it on the far side. Ordinary enemies are still stopped cold by a pit, so digging one is still worth the AP
+- The Warden tears the arena in half. From the fourth turn it opens a permanent fissure two tiles wide clean across the board, three in phase two, telegraphed a turn ahead. The ground is gone for the rest of the fight, cover on the wrong side with it, and a party can be cut apart by it
+- The Wither rots the ground it stands on. Every tile its body covers is permanently withered, and each charge leaves a scar behind the fire trail. Withered ground saps you and applies Wither every time you step onto it, so the safe half of the board shrinks the longer the fight runs and standing still stops being free
+
+Arena and Combat Fixes
+
+- Rails, pressure plates, thin snow and other flat decorations lying in a pit no longer count as its floor. The game read them as solid ground, called a two block hole a shallow dip, and let you walk in and fall straight through
+- Falling into a pickaxe dug void is fatal again. Its floor sat one block above the depth the fall check was watching for, so you stood at the bottom of a lethal hole perfectly alive while the fight kept swinging at where the board thought you were
+- You can no longer walk onto a tile with nothing under it. The board is checked against the world before a move is accepted, and a tile that claims to be walkable over a hole is corrected on the spot
+- A killing blow can no longer land during your own death animation. Anything that hit in that window killed you outright, opening the vanilla death screen on top of a fight still playing out its ending
+- Water throwables deal real Water damage. Turtle eggs, pufferfish, nautilus shells and hearts of the sea ignored every water resistance and weakness in the game, and none of them counted as water damage for the achievements built around it, so a water only run disqualified itself. They also splash and sound like they hit something now
+- Six collection achievements could never be earned by anyone. Trim patterns, trim materials, a full matching trim set, armor sets owned, pet species tamed and goat horn variants are all tracked and granted now, and they carry across runs
+- Arenas built with blocks from a mod you do not have are skipped rather than loaded full of holes. Deep Dark arenas built on Deeper and Darker blocks were loading for everyone; without the mod every one of those blocks became air, which reads as a floor full of invisible death pits. The bundled vanilla arenas are used instead, and installing the mod brings the custom ones straight back
+- Leaving a world mid fight no longer risks a crash on the way out
 
 0.3.2
 Biome Minibosses

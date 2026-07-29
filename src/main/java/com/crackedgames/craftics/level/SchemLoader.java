@@ -262,7 +262,9 @@ public class SchemLoader {
     public record SchemBlockEntity(int x, int y, int z, NbtCompound nbt) {}
 
     public record SchemData(int width, int height, int length, BlockState[] palette, byte[] blockData,
-                            java.util.List<SchemBlockEntity> blockEntities) {
+                            java.util.List<SchemBlockEntity> blockEntities,
+                            /** Mods this schematic's palette referenced that aren't installed. */
+                            java.util.Set<String> missingMods) {
 
         /**
          * Vanilla blocks the post-place scans treat as functional markers
@@ -676,6 +678,31 @@ public class SchemLoader {
         }
     }
 
+    /**
+     * Namespace of a palette entry like {@code "deeperdarker:sculk_stone[axis=y]"}, or
+     * {@code "minecraft"} when the id is unqualified.
+     */
+    private static String blockNamespace(String blockStr) {
+        if (blockStr == null || blockStr.isEmpty()) return null;
+        int bracket = blockStr.indexOf('[');
+        String id = bracket >= 0 ? blockStr.substring(0, bracket) : blockStr;
+        int colon = id.indexOf(':');
+        return colon > 0 ? id.substring(0, colon) : "minecraft";
+    }
+
+    /**
+     * Mods a schematic needs that aren't installed, or an empty set when it will load intact.
+     *
+     * <p>Used to skip arenas built out of another mod's blocks: without that mod every one of
+     * those blocks becomes air, which doesn't just look wrong - holes in a floor read as VOID
+     * tiles to the arena scan, so a missing-mod arena is full of invisible instant-death pits.
+     * Better to pass over it and use one that loads whole.
+     */
+    public static java.util.Set<String> missingMods(Path schemPath) {
+        SchemData data = load(schemPath);
+        return data == null ? java.util.Set.of() : data.missingMods();
+    }
+
     public static SchemData load(InputStream in, String sourceName) {
         try {
             return parseSchem(in, sourceName);
@@ -768,10 +795,23 @@ public class SchemLoader {
         }
 
         BlockState[] palette = new BlockState[maxId + 1];
+        // Namespaces in the palette that this install can't resolve. Captured HERE because it's
+        // the last point the ids are still strings - parseBlockState falls back to air, after
+        // which "was a Deeper and Darker sculk wall" is indistinguishable from "was empty".
+        java.util.Set<String> missingNamespaces = new java.util.TreeSet<>();
         for (Map.Entry<String, Integer> entry : paletteMap.entrySet()) {
             String blockStr = entry.getKey();
             int id = entry.getValue();
+            String namespace = blockNamespace(blockStr);
+            if (namespace != null && !"minecraft".equals(namespace)
+                    && !net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded(namespace)) {
+                missingNamespaces.add(namespace);
+            }
             palette[id] = parseBlockState(blockStr);
+        }
+        if (!missingNamespaces.isEmpty()) {
+            CrafticsMod.LOGGER.warn("Schematic {} uses blocks from missing mod(s) {} - "
+                + "those blocks load as air", sourceName, missingNamespaces);
         }
 
         java.util.List<SchemBlockEntity> blockEntities = parseBlockEntities(beContainer);
@@ -779,7 +819,8 @@ public class SchemLoader {
         CrafticsMod.LOGGER.info("Loaded .schem {}: {}x{}x{}, {} palette entries, {} block entities",
             sourceName, schemWidth, schemHeight, schemLength, paletteMap.size(), blockEntities.size());
 
-        return new SchemData(schemWidth, schemHeight, schemLength, palette, blockDataBytes, blockEntities);
+        return new SchemData(schemWidth, schemHeight, schemLength, palette, blockDataBytes,
+            blockEntities, missingNamespaces);
     }
 
     /**

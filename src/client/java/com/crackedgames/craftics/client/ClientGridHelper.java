@@ -295,11 +295,20 @@ public class ClientGridHelper {
                 || floor.isOf(net.minecraft.block.Blocks.WATER)) {
             return true;
         }
-        if (floor.isAir()) {
-            // Void: air with nothing solid beneath. (Air over solid ground is LOW_GROUND -
+        var floorPos = new net.minecraft.util.math.BlockPos(wx, wy, wz);
+        // Air, or floor dressing that holds nobody up (rail, pressure plate, single snow
+        // layer - empty collision). Mirrors ArenaBuilder: the surface is the first block
+        // below with real collision, so a rail laid across a 2-deep pit is still a gap.
+        if (floor.isAir() || (floor.getFluidState().isEmpty()
+                && !floor.isOf(net.minecraft.block.Blocks.POWDER_SNOW)
+                && !com.crackedgames.craftics.combat.WallBlocks
+                    .providesStandingSurface(floor, client.world, floorPos))) {
+            // Void: nothing standable beneath. (Air over solid ground is LOW_GROUND -
             // walkable, so it is a step, not a gap.)
-            var below = client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy - 1, wz));
-            return below.isAir() || !below.getFluidState().isEmpty();
+            var belowPos = new net.minecraft.util.math.BlockPos(wx, wy - 1, wz);
+            var below = client.world.getBlockState(belowPos);
+            return !com.crackedgames.craftics.combat.WallBlocks
+                .providesStandingSurface(below, client.world, belowPos);
         }
         // Powder snow is deliberately excluded - see the javadoc.
         return false;
@@ -317,11 +326,20 @@ public class ClientGridHelper {
 
         // Floor-level check: void (air with nothing below) is not walkable,
         // but hazard blocks (magma, lava, fire) at floor level ARE walkable
-        var floorState = client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy, wz));
-        if (floorState.isAir()) {
-            // Check if there's solid ground below (low ground) or true void
-            var belowState = client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy - 1, wz));
-            return !belowState.isAir() && belowState.getFluidState().isEmpty();
+        var floorPos = new net.minecraft.util.math.BlockPos(wx, wy, wz);
+        var floorState = client.world.getBlockState(floorPos);
+        // Air, or non-supporting floor dressing (rail / plate / single snow layer): the
+        // walkable surface is whatever sits below with real collision. Server-side mirror:
+        // ArenaBuilder's pit-depth scan, via WallBlocks#providesStandingSurface.
+        if (floorState.isAir() || (floorState.getFluidState().isEmpty()
+                && !floorState.isOf(net.minecraft.block.Blocks.POWDER_SNOW)
+                && !com.crackedgames.craftics.combat.WallBlocks
+                    .providesStandingSurface(floorState, client.world, floorPos))) {
+            // Standing surface 1 below = low ground (walkable); otherwise true void
+            var belowPos = new net.minecraft.util.math.BlockPos(wx, wy - 1, wz);
+            var belowState = client.world.getBlockState(belowPos);
+            return com.crackedgames.craftics.combat.WallBlocks
+                .providesStandingSurface(belowState, client.world, belowPos);
         }
         // Deep water (2+ blocks) is DEEP_WATER server-side: not walkable, instant
         // kill. Shallow water (solid below) stays walkable.
@@ -362,7 +380,11 @@ public class ClientGridHelper {
     private static boolean isPassableAtBodyHeight(net.minecraft.block.BlockState state) {
         if (state.isOf(net.minecraft.block.Blocks.TALL_GRASS)
             || state.isOf(net.minecraft.block.Blocks.LARGE_FERN)
-            || state.isOf(net.minecraft.block.Blocks.COBWEB)) {
+            || state.isOf(net.minecraft.block.Blocks.COBWEB)
+            // Burning tiles: the flame is a placed block in the body-height slot, but the
+            // tile stays walkable server-side (you can run through fire, you just catch).
+            || state.isOf(net.minecraft.block.Blocks.FIRE)
+            || state.isOf(net.minecraft.block.Blocks.SOUL_FIRE)) {
             return true;
         }
         if (state.getBlock() instanceof net.minecraft.block.StairsBlock) return true;
