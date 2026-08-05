@@ -51,6 +51,26 @@ Fixes
 - The anvil's "Special: 10% per point to avoid wear" line only appeared on the damaged anvil, though the save has always been rolled for every condition. It now shows on all three, including the two stages where sparing the wear is worth the most
 - Corrected two errors in the combat docs: the anvil was listed as a flat 5 damage rather than half the target's max health, and gold armor was listed at base 3 alongside chainmail when it has been base 2 since it became the Gambler set
 
+Lootbox Kiosks
+
+- Lootbox chests announce themselves. Each one carries a floating label with its name, its price and the command to read its odds, pulsing between two shades of its own colour: gold for weapons, cyan for armor, green for materials, magenta for special, purple for tomes. A kiosk used to be indistinguishable from every other chest in the room
+- Type-coloured motes orbit each kiosk, and opening one bursts into fireworks, totem sparks and a flash rather than the small puff it had before
+- The labels rebuild themselves from the chest registration, so they survive a restart, and nothing animates unless a player is nearby
+
+Lootbox Loot
+
+- The Special Cache draws from EVERY special item in the mod instead of the eleven that were hand-listed. Throwables, banners, anvils, scaffolding, campfires, jukeboxes, totems, cobwebs, flint and steel, shears, beehives, armor stands, ominous bottles, respawn anchors, end crystals, dragon breath, wolf armor, goat horns, every pottery sherd and every ice item are in the pool. It reads the same list the combat code uses, so anything that gains a use later turns up here on its own
+- It pays out more too: three guaranteed picks, a 40% bonus pick, and an 8% jackpot of two more
+- Legendary weapons are the full unique rosters. All thirty-five Simply Swords uniques and all seven Simply Bows uniques can drop from the Weapon Cache when those mods are installed, where it used to be six runic weapons. Without them the table still falls back to netherite
+- Weapons arrive already enchanted 35% of the time and armor 30%, with a further 25% chance of a second enchantment on top, at levels one to three. Enchantments are only ever drawn from those valid for that exact item, so a crossbow never rolls a bow enchant
+- Armor separately has a 20% chance to arrive trimmed, random pattern and material. The trim roll, the enchant roll and the item roll are all independent, so a piece can come with both, one or neither
+- Every number above is listed in /craftics lootbox odds, with the enchant and trim chances shown as their own block so it is clear they never change WHAT you get, only how good it is
+
+Lobby
+
+- The lobby is protected. Blocks cannot be broken or placed, containers cannot be opened and entities cannot be interacted with within sixty-four blocks of the lobby spawn. Operators and creative mode are exempt so the room can still be built in place, and lootbox kiosks still open normally
+- /spawn now works as another way back to the lobby, alongside /lobby
+
 0.3.3
 Fire
 

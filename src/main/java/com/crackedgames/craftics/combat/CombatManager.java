@@ -9244,7 +9244,9 @@ public class CombatManager {
     }
 
     /** Apply a single enchantment by registry path to an itemstack. */
-    private static void applyMobEnchant(ItemStack stack, String enchantPath, int level, ServerWorld world) {
+    /** Package-private so the lootbox can pre-enchant its rewards through the same path mob
+     *  gear uses - one enchant applier, one set of registry lookups, no second copy to drift. */
+    static void applyMobEnchant(ItemStack stack, String enchantPath, int level, ServerWorld world) {
         //? if <=1.21.1 {
         var enchantRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
         //?} else {

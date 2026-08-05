@@ -1184,6 +1184,29 @@ public class CrafticsSavedData extends PersistentState {
         return lootboxChests.get(lootboxKey(world, pos));
     }
 
+    /**
+     * Every registered lootbox chest in {@code world}, as position to registration entry.
+     * Used by the presentation layer, which has to find its kiosks without being told where
+     * they are - the registry is the only record that survives a restart.
+     */
+    public java.util.Map<net.minecraft.util.math.BlockPos, String> getLootboxChestsIn(
+            net.minecraft.server.world.ServerWorld world) {
+        String dim = world.getRegistryKey().getValue().toString();
+        java.util.Map<net.minecraft.util.math.BlockPos, String> out = new HashMap<>();
+        for (var e : lootboxChests.entrySet()) {
+            String[] parts = e.getKey().split("\\|");
+            if (parts.length != 4 || !parts[0].equals(dim)) continue;
+            try {
+                out.put(new net.minecraft.util.math.BlockPos(
+                    Integer.parseInt(parts[1]), Integer.parseInt(parts[2]),
+                    Integer.parseInt(parts[3])), e.getValue());
+            } catch (NumberFormatException ignored) {
+                // A malformed key is a dead registration; skip it rather than fail the sweep.
+            }
+        }
+        return out;
+    }
+
     private String lootboxChestsSerialized() {
         StringBuilder sb = new StringBuilder();
         for (var e : lootboxChests.entrySet()) {

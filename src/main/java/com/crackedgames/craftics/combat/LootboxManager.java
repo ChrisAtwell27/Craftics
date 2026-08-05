@@ -93,6 +93,48 @@ public final class LootboxManager {
      */
     private record Section(String label, double chance, int picks, List<ItemStack> prototypes) {}
 
+    // ── Post-roll polish odds ────────────────────────────────────────────────
+    // These are rolled PER ITEM, independently of which section produced it, so they never
+    // change what you get - only how good the thing you got is. Disclosed separately in the
+    // odds table for exactly that reason.
+
+    /** Chance a rolled weapon comes pre-enchanted. */
+    private static final double WEAPON_ENCHANT_CHANCE = 0.35;
+    /** Chance a rolled armor piece comes pre-enchanted. */
+    private static final double ARMOR_ENCHANT_CHANCE = 0.30;
+    /** Chance a rolled armor piece comes trimmed. Rolled independently of the enchant. */
+    private static final double ARMOR_TRIM_CHANCE = 0.20;
+    /** Chance an enchanted item gets a SECOND enchantment on top of the first. */
+    private static final double SECOND_ENCHANT_CHANCE = 0.25;
+    /** Highest enchant level a lootbox will roll. */
+    private static final int MAX_ENCHANT_LEVEL = 3;
+
+    /**
+     * Legendary weapons - Simply Swords uniques and Simply Bows uniques, the rare boss-drop
+     * tier of each mod. Every id is resolved through the registry and skipped when absent, so
+     * this whole table degrades to the vanilla netherite fallback on a plain install.
+     */
+    private static final String[] LEGENDARY_IDS = {
+        // Simply Swords uniques
+        "simplyswords:arcanethyst", "simplyswords:awakened_lichblade", "simplyswords:bramblethorn",
+        "simplyswords:brimstone_claymore", "simplyswords:caelestis", "simplyswords:chompolotl",
+        "simplyswords:dreadtide", "simplyswords:emberblade", "simplyswords:emberlash",
+        "simplyswords:enigma", "simplyswords:flamewind", "simplyswords:frostfall",
+        "simplyswords:harbinger", "simplyswords:hearthflame", "simplyswords:hiveheart",
+        "simplyswords:icewhisper", "simplyswords:livyatan", "simplyswords:magiblade",
+        "simplyswords:magic_estoc", "simplyswords:magiscythe", "simplyswords:magispear",
+        "simplyswords:mjolnir", "simplyswords:molten_edge", "simplyswords:ribboncleaver",
+        "simplyswords:shadowsting", "simplyswords:slumbering_lichblade", "simplyswords:soulkeeper",
+        "simplyswords:soulpyre", "simplyswords:soulrender", "simplyswords:soulstealer",
+        "simplyswords:stars_edge", "simplyswords:stormbringer", "simplyswords:storms_edge",
+        "simplyswords:sunfire", "simplyswords:sword_on_a_stick",
+        // Simply Bows uniques - the mod nests its item paths one level deep.
+        "simplybows:bee_bow/bee_bow", "simplybows:blossom_bow/blossom_bow",
+        "simplybows:bubble_bow/bubble_bow", "simplybows:earth_bow/earth_bow",
+        "simplybows:echo_bow/echo_bow", "simplybows:ice_bow/ice_bow",
+        "simplybows:vine_bow/vine_bow"
+    };
+
     // ── Init / tick ──────────────────────────────────────────────────────────
 
     /** Called once from CrafticsMod.onInitialize: the chest-click hook. */
@@ -105,8 +147,9 @@ public final class LootboxManager {
             String entry = data.getLootboxChestType(sw, pos);
             if (entry == null) return ActionResult.PASS;
             if (!sw.getBlockState(pos).isOf(Blocks.CHEST)) {
-                // Chest gone (broken by other means): drop the dead registration.
+                // Chest gone (broken by other means): drop the dead registration and its label.
                 data.unregisterLootboxChest(sw, pos);
+                LootboxPresentation.clearLabel(sw, pos);
                 return ActionResult.PASS;
             }
             // Registration value is "TYPE" or "TYPE,cost" (per-chest price override).
@@ -129,6 +172,8 @@ public final class LootboxManager {
     private static final List<PendingClose> PENDING_CLOSES = new ArrayList<>();
 
     public static void tick(MinecraftServer server) {
+        // Labels and ambient particles ride the same aggregate tick as the lid closes.
+        LootboxPresentation.tick(server);
         if (PENDING_CLOSES.isEmpty()) return;
         Iterator<PendingClose> it = PENDING_CLOSES.iterator();
         while (it.hasNext()) {
@@ -168,6 +213,7 @@ public final class LootboxManager {
         CrafticsSavedData data = CrafticsSavedData.get(world);
         if (data.getLootboxChestType(world, pos) == null) return false;
         data.unregisterLootboxChest(world, pos);
+        LootboxPresentation.clearLabel(world, pos);
         if (world.getBlockState(pos).isOf(Blocks.CHEST)) {
             world.breakBlock(pos, false);
         }
@@ -239,6 +285,8 @@ public final class LootboxManager {
             pos.getX() + 0.5, pos.getY() + 1.0, pos.getZ() + 0.5, 16, 0.4, 0.4, 0.4, 0.1);
         world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
             pos.getX() + 0.5, pos.getY() + 0.9, pos.getZ() + 0.5, 10, 0.25, 0.4, 0.25, 0.05);
+        LootboxPresentation.openBurst(world, pos, type);
+        world.playSound(null, pos, SoundEvents.ENTITY_PLAYER_LEVELUP, SoundCategory.PLAYERS, 0.5f, 1.6f);
         PENDING_CLOSES.add(new PendingClose(world, pos.toImmutable(), world.getTime() + 30));
 
         List<ItemStack> rewards = roll(type, world);
@@ -287,9 +335,7 @@ public final class LootboxManager {
                     new ItemStack(Items.CROSSBOW), new ItemStack(Items.TRIDENT),
                     new ItemStack(Items.BREEZE_ROD));
                 List<ItemStack> legends = new ArrayList<>();
-                addModded(legends, "simplyswords:runic_longsword", "simplyswords:runic_katana",
-                    "simplyswords:runic_claymore", "simplyswords:runic_greataxe",
-                    "simplyswords:runic_greathammer", "simplyswords:runic_rapier");
+                addModded(legends, LEGENDARY_IDS);
                 if (legends.isEmpty()) {
                     legends.add(new ItemStack(Items.NETHERITE_SWORD));
                     legends.add(new ItemStack(Items.NETHERITE_AXE));
@@ -324,14 +370,21 @@ public final class LootboxManager {
                     new ItemStack(Items.COAL, 12), new ItemStack(Items.ARROW, 24),
                     new ItemStack(Items.STRING, 6), new ItemStack(Items.LEATHER, 4))),
                 new Section("Bonus", 0.15, 1, List.of(new ItemStack(Items.EMERALD, 2))));
-            case SPECIAL -> List.of(
-                new Section("Guaranteed", 1.0, 3, List.of(
-                    new ItemStack(Items.FIRE_CHARGE, 3), new ItemStack(Items.WIND_CHARGE, 3),
-                    new ItemStack(Items.ENDER_PEARL, 2), new ItemStack(Items.TNT, 2),
-                    new ItemStack(Items.SPORE_BLOSSOM), new ItemStack(Items.SPYGLASS),
-                    new ItemStack(Items.BRUSH), new ItemStack(Items.BELL),
-                    new ItemStack(Items.HEART_POTTERY_SHERD), new ItemStack(Items.SKULL_POTTERY_SHERD),
-                    new ItemStack(Items.PRIZE_POTTERY_SHERD))));
+            case SPECIAL -> {
+                // EVERY special combat item, straight from the same source of truth the combat
+                // code uses (ItemUseHandler.specialLootItems). The old hand-written list held
+                // eleven entries out of the mod's whole special-item roster, so the cache paid
+                // 15 emeralds for fire charges and pottery sherds over and over.
+                List<ItemStack> everySpecial = new ArrayList<>();
+                for (Item item : com.crackedgames.craftics.combat.ItemUseHandler.specialLootItems()) {
+                    everySpecial.add(new ItemStack(item, specialStackSize(item)));
+                }
+                if (everySpecial.isEmpty()) everySpecial.add(new ItemStack(Items.FIRE_CHARGE, 3));
+                yield List.of(
+                    new Section("Guaranteed", 1.0, 3, everySpecial),
+                    new Section("Bonus", 0.40, 1, everySpecial),
+                    new Section("Jackpot", 0.08, 2, everySpecial));
+            }
             case BOOKS -> List.of(); // books roll over enchant keys, not item prototypes
         };
     }
@@ -350,13 +403,79 @@ public final class LootboxManager {
 
     private static final double BOOKS_SECOND_CHANCE = 0.35;
 
+    /** Consumables come in useful handfuls; gear and tools come as one. */
+    private static int specialStackSize(Item item) {
+        if (item == Items.FIRE_CHARGE || item == Items.WIND_CHARGE || item == Items.SNOWBALL
+            || item == Items.EGG || item == Items.BRICK) return 4;
+        if (item == Items.ENDER_PEARL || item == Items.TNT || item == Items.BONE_MEAL
+            || item == Items.COBWEB || item == Items.SCAFFOLDING) return 2;
+        return 1;
+    }
+
+    /**
+     * Roll the polish passes on one reward: pre-enchants and armor trims.
+     *
+     * <p>Rolled per item and entirely separately from the pool that produced it, so the odds of
+     * GETTING a diamond chestplate and the odds of it ARRIVING enchanted are independent numbers
+     * - which is also how they're disclosed. Enchantments are chosen from the same
+     * valid-for-this-item tables mob gear uses, so a crossbow never rolls a bow enchant.
+     */
+    /**
+     * Which armor slot an item belongs in, or null when it isn't armor.
+     *
+     * <p>Matched on the registry path rather than {@code instanceof ArmorItem} or the equipment
+     * component: both of those moved between 1.21.1 and 1.21.5, while the naming convention
+     * hasn't - and this way modded armor sets are classified correctly too.
+     */
+    private static net.minecraft.entity.EquipmentSlot armorSlotOf(ItemStack stack) {
+        Identifier id = Registries.ITEM.getId(stack.getItem());
+        if (id == null) return null;
+        String path = id.getPath();
+        if (path.endsWith("helmet") || path.endsWith("_cap")) {
+            return net.minecraft.entity.EquipmentSlot.HEAD;
+        }
+        if (path.endsWith("chestplate") || path.endsWith("_tunic")) {
+            return net.minecraft.entity.EquipmentSlot.CHEST;
+        }
+        if (path.endsWith("leggings") || path.endsWith("_pants")) {
+            return net.minecraft.entity.EquipmentSlot.LEGS;
+        }
+        if (path.endsWith("boots")) return net.minecraft.entity.EquipmentSlot.FEET;
+        return null;
+    }
+
+    private static void polish(ItemStack stack, ServerWorld world) {
+        if (stack.isEmpty()) return;
+        net.minecraft.entity.EquipmentSlot slot = armorSlotOf(stack);
+        boolean isArmor = slot != null;
+
+        if (isArmor && RNG.nextDouble() < ARMOR_TRIM_CHANCE) {
+            CombatManager.applyRandomTrim(stack, world);
+        }
+
+        double enchantChance = isArmor ? ARMOR_ENCHANT_CHANCE : WEAPON_ENCHANT_CHANCE;
+        String[] pool = isArmor
+            ? CombatManager.getValidArmorEnchants(slot)
+            : CombatManager.getValidWeaponEnchants(stack);
+        if (pool.length == 0 || RNG.nextDouble() >= enchantChance) return;
+
+        int rolls = 1 + (RNG.nextDouble() < SECOND_ENCHANT_CHANCE ? 1 : 0);
+        for (int i = 0; i < rolls; i++) {
+            String chosen = pool[RNG.nextInt(pool.length)];
+            CombatManager.applyMobEnchant(stack, chosen, 1 + RNG.nextInt(MAX_ENCHANT_LEVEL), world);
+        }
+    }
+
     private static List<ItemStack> roll(Type type, ServerWorld world) {
         if (type == Type.BOOKS) return rollBooks(world);
         List<ItemStack> out = new ArrayList<>();
         for (Section section : sectionsFor(type)) {
             if (RNG.nextDouble() >= section.chance()) continue;
             for (int i = 0; i < section.picks(); i++) {
-                out.add(section.prototypes().get(RNG.nextInt(section.prototypes().size())).copy());
+                ItemStack rolled = section.prototypes()
+                    .get(RNG.nextInt(section.prototypes().size())).copy();
+                polish(rolled, world);
+                out.add(rolled);
             }
         }
         // A bow without ammunition is a stick with extra steps.
@@ -402,6 +521,12 @@ public final class LootboxManager {
      * SAME sections the roll consumes. This is the player-facing disclosure required to
      * run randomized rewards responsibly - never gate or hide it.
      */
+    /** A 0..1 chance as a display percentage, keeping one decimal only when it needs one. */
+    private static String pct(double chance) {
+        double p = chance * 100.0;
+        return p == Math.rint(p) ? (int) p + "%" : String.format("%.1f%%", p);
+    }
+
     public static List<String> oddsLines(Type type) {
         List<String> lines = new ArrayList<>();
         lines.add(type.color + "§l" + type.display + " §7- standard cost §a" + type.emeraldCost
@@ -433,6 +558,28 @@ public final class LootboxManager {
             lines.add(items.toString());
         }
         lines.add("§7Bows always come with 16 arrows.");
+        // The polish odds are SEPARATE rolls: they never change which item you get, only how
+        // good the item you got is. Disclosed as their own block for exactly that reason.
+        if (type == Type.WEAPONS) {
+            lines.add("§e§lEnchant roll §7(independent of the item roll):");
+            lines.add("§7Each weapon: §f" + pct(WEAPON_ENCHANT_CHANCE)
+                + "§7 chance to arrive enchanted.");
+            lines.add("§7If enchanted: §f" + pct(SECOND_ENCHANT_CHANCE)
+                + "§7 chance of a second enchantment. Levels §f1-" + MAX_ENCHANT_LEVEL
+                + "§7, uniform.");
+            lines.add("§8Enchantments are drawn only from those valid for that weapon type.");
+        }
+        if (type == Type.ARMOR) {
+            lines.add("§e§lEnchant and trim rolls §7(independent of the item roll, and of each other):");
+            lines.add("§7Each piece: §f" + pct(ARMOR_ENCHANT_CHANCE)
+                + "§7 chance to arrive enchanted.");
+            lines.add("§7If enchanted: §f" + pct(SECOND_ENCHANT_CHANCE)
+                + "§7 chance of a second enchantment. Levels §f1-" + MAX_ENCHANT_LEVEL
+                + "§7, uniform.");
+            lines.add("§7Each piece: §f" + pct(ARMOR_TRIM_CHANCE)
+                + "§7 chance to arrive trimmed (random pattern and material, both uniform).");
+            lines.add("§8A piece can roll both, one, or neither - the two rolls don't affect each other.");
+        }
         return lines;
     }
 }

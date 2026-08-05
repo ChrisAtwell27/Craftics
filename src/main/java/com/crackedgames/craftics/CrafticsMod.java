@@ -789,6 +789,9 @@ public class CrafticsMod implements ModInitializer {
         // registered chests. Registered BEFORE the visitor guard below would matter,
         // but kiosks only exist where admins place them, never in visited islands.
         com.crackedgames.craftics.combat.LootboxManager.init();
+        // Registered AFTER the lootbox hook so a kiosk click resolves as a lootbox (SUCCESS,
+        // event consumed) before protection can deny it - the one interaction the lobby needs.
+        com.crackedgames.craftics.world.LobbyProtection.init();
 
         // Look-only visitors: block/entity interaction and block-hit (attack) are denied
         // in a foreign island dim; PASS lets vanilla/other handlers decide otherwise.
@@ -1999,7 +2002,10 @@ public class CrafticsMod implements ModInitializer {
             ));
 
             // /lobby: shortcut to central lobby
-            dispatcher.register(CommandManager.literal("lobby").executes(ctx -> {
+            // /lobby, plus /spawn - the name players reach for out of habit on any server.
+            // Registered as separate literals rather than a Brigadier redirect so both show up
+            // independently in tab-completion instead of hiding behind one canonical name.
+            var lobbyCmd = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
                 ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
                 CombatManager cm = CombatManager.get(player);
                 if (cm.isActive()) cm.endCombat();
@@ -2008,7 +2014,9 @@ public class CrafticsMod implements ModInitializer {
                 player.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
                 ctx.getSource().sendFeedback(() -> Text.literal("\u00a7aTeleported to the lobby."), false);
                 return 1;
-            }));
+            };
+            dispatcher.register(CommandManager.literal("lobby").executes(lobbyCmd));
+            dispatcher.register(CommandManager.literal("spawn").executes(lobbyCmd));
         });
     }
 

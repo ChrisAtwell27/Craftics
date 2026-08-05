@@ -8,10 +8,12 @@ import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.registry.Registries;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -390,6 +392,46 @@ public class ItemUseHandler {
 
     public static boolean isWaterThrowable(Item item) {
         return WATER_THROWABLES.contains(item);
+    }
+
+    /**
+     * Every SPECIAL combat item the mod gives a real use to - the Special Cache's whole pool.
+     *
+     * <p>Built from the same sets {@link #isUsableItem} consults rather than a hand-written
+     * copy, so an item added to a use-set turns up in the lootbox automatically instead of the
+     * two lists silently drifting apart. Food, potions and plain breeding items are deliberately
+     * excluded: they have their own reward lanes and would drown the interesting entries.
+     *
+     * <p>Modded usables registered through {@code UsableItemRegistry} are included, so an addon
+     * that teaches Craftics a new item also gets it into the cache.
+     */
+    public static List<Item> specialLootItems() {
+        java.util.LinkedHashSet<Item> out = new java.util.LinkedHashSet<>();
+        out.addAll(THROWABLES);
+        out.addAll(EXTRA_USABLE);
+        out.addAll(TWO_AP_ITEMS);
+        out.addAll(List.of(
+            Items.TNT, Items.SHIELD, Items.TOTEM_OF_UNDYING, Items.COBWEB,
+            Items.FLINT_AND_STEEL, Items.SHEARS, Items.BEEHIVE, Items.ARMOR_STAND,
+            Items.OMINOUS_BOTTLE, Items.RESPAWN_ANCHOR, Items.END_CRYSTAL, Items.BONE_MEAL,
+            Items.DRAGON_BREATH, Items.TALL_GRASS, Items.LARGE_FERN, Items.INK_SAC,
+            Items.CHORUS_FRUIT, Items.WOLF_ARMOR, Items.FISHING_ROD, Items.GOAT_HORN,
+            Items.MILK_BUCKET, Items.WATER_BUCKET, Items.SPONGE, Items.TURTLE_EGG,
+            Items.PUFFERFISH, Items.NAUTILUS_SHELL, Items.HEART_OF_THE_SEA,
+            Items.SNOWBALL, Items.EGG, Items.ENDER_PEARL, Items.FIRE_CHARGE,
+            Items.WIND_CHARGE, Items.BRICK));
+        // Every pottery sherd the sherd-spell system knows, and the ice items.
+        for (Item item : Registries.ITEM) {
+            if (PotterySherdSpells.isPotterySherd(item) || isIceItem(item)) out.add(item);
+        }
+        // Modded usables an addon registered.
+        for (Item item : Registries.ITEM) {
+            if (com.crackedgames.craftics.api.registry.UsableItemRegistry.isRegistered(item)) {
+                out.add(item);
+            }
+        }
+        out.remove(Items.AIR);
+        return List.copyOf(out);
     }
 
     public static boolean isUsableItem(Item item) {
