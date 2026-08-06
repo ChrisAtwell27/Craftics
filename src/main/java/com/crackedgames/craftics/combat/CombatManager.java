@@ -32644,6 +32644,10 @@ public class CombatManager {
         // late-game tuning, so telegraph-skips etc. keep escalating forever.
         com.crackedgames.craftics.level.InfiniteSpec infSpec = currentInfiniteSpec();
         if (infSpec != null) return Math.max(0, infSpec.virtualOrdinal());
+        // Raid bosses: stats are authored flat and must never scale. Without this check,
+        // the ordinal leaks in from the leader's campaign progress, making the same boss
+        // harder or easier depending on who joined first.
+        if (raidBossContext != null) return 0;
         com.crackedgames.craftics.level.BiomeTemplate biomeTemplate = null;
         if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
             biomeTemplate = gld.getBiomeTemplate();
