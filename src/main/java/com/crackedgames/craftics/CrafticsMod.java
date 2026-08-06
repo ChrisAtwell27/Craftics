@@ -35,6 +35,13 @@ public class CrafticsMod implements ModInitializer {
     public static CrafticsConfigWrapper CONFIG;
     private static final java.util.Map<java.util.UUID, String> addonBonusCache = new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** The currently running server, set on SERVER_STARTED and cleared on SERVER_STOPPING.
+     *  Lets code with no player/world in hand (e.g. the raid instance runtime returning a
+     *  player who forfeited) reach the server without threading one through every call site. */
+    private static volatile net.minecraft.server.MinecraftServer CURRENT_SERVER;
+
+    public static net.minecraft.server.MinecraftServer currentServer() { return CURRENT_SERVER; }
+
     /**
      * On a FRESH dedicated server (no level.dat yet), rewrite server.properties so
      * level-type points at the Craftics world preset instead of vanilla terrain -
@@ -323,6 +330,20 @@ public class CrafticsMod implements ModInitializer {
             // Fantasy saves/unloads its own runtime worlds on stop; this only drops
             // our stale UUID->handle map so it doesn't leak into the next session.
             com.crackedgames.craftics.world.IslandDimensions.clear();
+            // Evacuate every live raid BEFORE the server reference is dropped below -
+            // otherwise a graceful stop mid-raid disconnects players inside a dimension
+            // that is about to vanish, and their RaidBossOrigins entry is lost with the JVM.
+            com.crackedgames.craftics.raid.RaidBossInstance.endAll(server);
+            // endAll only drains STARTED instances - it can't reach a player who joined
+            // a lobby that never started, or an ANNOUNCED/WINDOW_OPEN raid that hadn't
+            // started yet. All three are static state that would otherwise survive a
+            // singleplayer world switch (same JVM, new save) and either mis-teleport a
+            // returning raider via a stale RaidBossOrigins entry, or auto-start/resume a
+            // raid built for this save's clock and players inside an unrelated one.
+            com.crackedgames.craftics.raid.RaidBossOrigins.clear();
+            com.crackedgames.craftics.raid.RaidBossSchedule.reset();
+            com.crackedgames.craftics.raid.RaidBossLobby.reset();
+            CURRENT_SERVER = null;
         });
 
         // When the overworld loads, check if we need to build the hub
@@ -352,6 +373,9 @@ public class CrafticsMod implements ModInitializer {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayerEntity player = handler.getPlayer();
             ServerWorld overworld = server.getOverworld();
+            // Daily raid boss: tell a rejoining player about a raid already announced
+            // or in its join window, so they don't miss it just for having logged in late.
+            com.crackedgames.craftics.raid.RaidBossSchedule.onPlayerJoin(player);
             // Infinite mode: refresh the leaderboard name and, if this player
             // disconnected mid-run, hand their stashed items/levels back.
             com.crackedgames.craftics.combat.InfiniteRunManager.onPlayerJoin(player);
@@ -528,6 +552,24 @@ public class CrafticsMod implements ModInitializer {
         {
             addonBonusCache.remove(playerUuid);
 
+            // DAILY RAID BOSS: dropping while in a raid always forfeits the reward,
+            // whether the leaver is the raid's leader or a plain member. This runs here
+            // rather than in the raw DISCONNECT callback above (which can fire off the
+            // server thread on a connection TIMEOUT) because forfeit() teleports players
+            // and mutates world state, which must stay on the server thread - exactly
+            // what the server.execute deferral above already buys everything below.
+            // byPlayer/forfeit only need the bare UUID, and RaidBossInstance.forfeit
+            // already tolerates the player being gone from PlayerManager by now.
+            com.crackedgames.craftics.raid.RaidBossInstance raidLeft =
+                com.crackedgames.craftics.raid.RaidBossInstance.byPlayer(playerUuid);
+            if (raidLeft != null) {
+                raidLeft.forfeit(playerUuid, "disconnected");
+            }
+            // A joiner who disconnects before any instance starts isn't in an
+            // instance's roster yet, so the forfeit path above never sees them - drop
+            // them from the join lobby directly instead. No-op if they aren't in it.
+            com.crackedgames.craftics.raid.RaidBossLobby.leave(playerUuid);
+
             // Check if this player is in someone else's party combat (non-leader)
             CombatManager leaderCm = CombatManager.getActiveCombat(playerUuid);
             // isActive() alone misses the between-level event interlude: there the leader's
@@ -558,7 +600,18 @@ public class CrafticsMod implements ModInitializer {
             // inactive but still gating the party - without it the remaining members would be
             // stranded (never sent home, gate never released).
             CombatManager cm = CombatManager.get(playerUuid);
-            if (cm.isActive() || cm.hasPendingEvent()) {
+            // DAILY RAID BOSS: CombatManager.get(uuid) is a strict per-UUID singleton, and
+            // RaidBossInstance.start() drives the whole (up to eight-player) party through
+            // CombatManager.get(leader). So for a raid's leader, "their own CombatManager" IS
+            // the shared instance the rest of the party is still fighting in - unlike every
+            // other disconnect path, it must NOT be ejected to the hub and ended just because
+            // one member (even the leader) left. RaidBossInstance.forfeit() (already run
+            // above) has handled this leaver correctly: it pulled them out of the turn queue
+            // and, if they were the LAST unforfeited roster member, has already ended combat
+            // and torn the instance down itself - in which case getRaidBossContext() is
+            // already null here and this whole branch is skipped naturally below.
+            boolean raidStillRunning = cm.getRaidBossContext() != null;
+            if (!raidStillRunning && (cm.isActive() || cm.hasPendingEvent())) {
                 LOGGER.info("Player {} disconnected during combat, cleaning up", playerName);
 
                 // If leader disconnects, send all remaining party members home first
@@ -583,7 +636,13 @@ public class CrafticsMod implements ModInitializer {
 
                 cm.endCombat();
             }
-            CombatManager.remove(playerUuid);
+            // A raid still in progress must keep its shared CombatManager in INSTANCES under
+            // the leader's UUID - tickAll() drives every fight purely by iterating INSTANCES,
+            // so removing it here would silently stop the raid from ticking for every
+            // surviving member the instant the leader disconnects.
+            if (!raidStillRunning) {
+                CombatManager.remove(playerUuid);
+            }
             com.crackedgames.craftics.scene.SceneController.onDisconnect(playerUuid);
 
             // Visiting (Task 8) is transient/in-memory only, so a disconnecting player
@@ -762,6 +821,12 @@ public class CrafticsMod implements ModInitializer {
                     LOGGER.error("Scoreboard sync failed: {}", t.toString(), t);
                 }
             }
+
+            try {
+                com.crackedgames.craftics.raid.RaidBossSchedule.tick(server);
+            } catch (Throwable t) {
+                LOGGER.error("RaidBossSchedule.tick() crashed; continuing server tick", t);
+            }
         });
 
         // Prevent breaking blocks during combat AND hub structure blocks
@@ -820,6 +885,7 @@ public class CrafticsMod implements ModInitializer {
 
         // Load biome definitions from JSON datapacks on server start
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            CURRENT_SERVER = server;
             com.crackedgames.craftics.util.RegistryHealthScanner.scan("server-start");
             com.crackedgames.craftics.level.BiomeRegistry.clear();
             com.crackedgames.craftics.level.BiomeRegistry.loadFromDatapacks(
@@ -833,6 +899,12 @@ public class CrafticsMod implements ModInitializer {
             // Deeper and Darker fully replaces the deep_dark pool, so it must run
             // LAST - after creeperoverhaul's cave_creeper swap - to win.
             com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.applyBiomeOverrides();
+
+            // Daily raid bosses: delete any dimension folder left behind by a raid
+            // instance that never got torn down (crash, force-kill), then load the
+            // authored boss definitions.
+            com.crackedgames.craftics.raid.RaidBossDimensions.deleteOrphans(server);
+            com.crackedgames.craftics.raid.RaidBossRegistry.reload(server);
         });
 
         // Also reload on /reload command
@@ -1591,6 +1663,7 @@ public class CrafticsMod implements ModInitializer {
             registerPartyCommands(root);
             registerWorldCommands(root);
             com.crackedgames.craftics.command.CrafticsServerCommands.register(root);
+            com.crackedgames.craftics.raid.RaidBossCommands.register(root, dispatcher);
 
             // /craftics infinite [start|stop|top] - the command-line door into
             // infinite mode (the Level Select block's button is the other one).

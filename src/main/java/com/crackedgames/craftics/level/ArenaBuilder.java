@@ -415,6 +415,18 @@ public class ArenaBuilder {
             biomeLevelIndex = rng.nextInt(1000);
         }
 
+        // Synthetic event levels (raid bosses) share one schem folder and carry
+        // their own variant + theme, since they have no biome template to derive
+        // either from. Both hooks default to "unset" so no existing level changes.
+        String envOverride = levelDef.getArenaEnvironmentId();
+        if (envOverride != null && !envOverride.isBlank()) {
+            env = com.crackedgames.craftics.api.registry.EnvironmentRegistry.get(envOverride);
+        }
+        int variantOverride = levelDef.getArenaVariantIndex();
+        if (variantOverride >= 0) {
+            biomeLevelIndex = variantOverride;
+        }
+
         // Reset per-build state
         structureOrigin = null;
         structurePlayerStart = null;

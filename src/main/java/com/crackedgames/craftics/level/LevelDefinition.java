@@ -48,6 +48,37 @@ public abstract class LevelDefinition {
     public String getArenaBiomeId() { return null; }
 
     /**
+     * Which variant of the arena schem set to use, or -1 to keep the default
+     * (the biome level index, which is 0 for anything that is not a
+     * GeneratedLevelDefinition and so always lands on the first variant).
+     * Event levels that reuse one shared schem folder set this to spread across
+     * the available files.
+     */
+    public int getArenaVariantIndex() { return -1; }
+
+    /**
+     * EnvironmentRegistry id for fog, ambience and theming, or null to derive it
+     * from the biome template (and fall back to plains when there is none).
+     * Synthetic levels have no biome template, so this is their only way to be
+     * themed.
+     */
+    public String getArenaEnvironmentId() { return null; }
+
+    /**
+     * Index into {@link #getEnemySpawns()} that should get the full boss
+     * treatment (boss AI lookup, nameplate, boss setup), or -1 for none. Only
+     * consulted when the level has no biome template to derive a boss from.
+     */
+    public int getBossSpawnIndex() { return -1; }
+
+    /**
+     * Pseudo-biome id used to build the boss AI registry key
+     * ({@code "boss:" + id}) when {@link #getBossSpawnIndex()} is set. Null when
+     * there is no boss.
+     */
+    public String getBossAiBiomeId() { return null; }
+
+    /**
      * Level numbers at or above this are synthetic: event levels (trial chambers,
      * ambushes, raids, addon fights) that exist outside the real biome-registry
      * range. A synthetic number is a stable id for logging and metadata only -

@@ -147,7 +147,7 @@ public class CombatEntity {
     public int getMaxHp() { return maxHp; }
     public int getCurrentHp() { return currentHp; }
     public void heal(int amount) { currentHp = Math.min(getEffectiveMaxHp(), currentHp + amount); }
-    public int getAttackPower() { return Math.max(0, attackPower + attackBoost + getAttackBuffBonus() - attackPenalty); }
+    public int getAttackPower() { return Math.max(0, attackPower + attackBoost + bonusAttack + getAttackBuffBonus() - attackPenalty); }
     public int getDefense() { return defense + defenseBoost; }
     public int getRange() { return rangeOverride >= 0 ? rangeOverride : range; }
     public int getAttackBoost() { return attackBoost; }
@@ -294,6 +294,16 @@ public class CombatEntity {
     }
     public void setSpeedBonus(int bonus) { this.speedBonus = bonus; }
     public int getSpeedBonus() { return speedBonus; }
+
+    /** Flat attack added on top of the base value; used by permanent raid-boss buffs. */
+    private int bonusAttack = 0;
+    public void setBonusAttack(int bonus) { this.bonusAttack = bonus; }
+    public int getBonusAttack() { return bonusAttack; }
+
+    /** Flat defense added on top of the base value; used by permanent raid-boss buffs. */
+    private int permanentBonusDefense = 0;
+    public void setBonusDefense(int bonus) { this.permanentBonusDefense = bonus; }
+    public int getBonusDefense() { return permanentBonusDefense; }
     public boolean isFrozen() { return frozen; }
     public void setFrozen(boolean f) { this.frozen = f; }
     public boolean isEnraged() { return enraged; }
@@ -563,6 +573,7 @@ public class CombatEntity {
     public int getMaxHpReduction() { return maxHpReduction; }
     public void addMaxHpReduction(int amount) { this.maxHpReduction += amount; }
     public int getEffectiveMaxHp() { return Math.max(1, maxHp - maxHpReduction); }
+    public void setMaxHp(int hp) { this.maxHp = Math.max(1, hp); }
 
     private boolean projectile = false;
     private int projectileDirX = 0;
@@ -1026,7 +1037,7 @@ public class CombatEntity {
     }
 
     public int getEffectiveDefense() {
-        return Math.max(0, defense - defensePenalty - permanentDefReduction);
+        return Math.max(0, defense - defensePenalty - permanentDefReduction + permanentBonusDefense);
     }
 
     public int takeDamage(int rawDamage) {

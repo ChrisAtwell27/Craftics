@@ -23,6 +23,9 @@ public class CrafticsSavedData extends PersistentState {
     public boolean hubBuilt = false;
     public int hubVersion = 0;
 
+    /** Daily raid-boss schedule + rotation state; see RaidBossState for the format. */
+    public String raidBossState = "";
+
     private int nextWorldSlot = 0;
 
     /** Custom lobby spawn (root-level, shared across all players). Y=Integer.MIN_VALUE sentinel = unset,
@@ -745,6 +748,7 @@ public class CrafticsSavedData extends PersistentState {
         data.lobbySpawnY = nbt.contains("lobbySpawnY") ? nbt.getInt("lobbySpawnY") : Integer.MIN_VALUE;
         data.lobbySpawnZ = nbt.contains("lobbySpawnZ") ? nbt.getInt("lobbySpawnZ") : 0;
         data.lobbySpawnYaw = nbt.contains("lobbySpawnYaw") ? nbt.getFloat("lobbySpawnYaw") : 0f;
+        data.raidBossState = nbt.contains("raidBossState") ? nbt.getString("raidBossState") : "";
 
         if (nbt.contains("players")) {
             NbtCompound playersNbt = nbt.getCompound("players");
@@ -808,6 +812,7 @@ public class CrafticsSavedData extends PersistentState {
         nbt.putInt("lobbySpawnY", lobbySpawnY);
         nbt.putInt("lobbySpawnZ", lobbySpawnZ);
         nbt.putFloat("lobbySpawnYaw", lobbySpawnYaw);
+        nbt.putString("raidBossState", raidBossState);
 
         NbtCompound playersNbt = new NbtCompound();
         for (var entry : players.entrySet()) {
@@ -847,6 +852,7 @@ public class CrafticsSavedData extends PersistentState {
         data.lobbySpawnY = nbt.getInt("lobbySpawnY", Integer.MIN_VALUE);
         data.lobbySpawnZ = nbt.getInt("lobbySpawnZ", 0);
         data.lobbySpawnYaw = nbt.getFloat("lobbySpawnYaw", 0f);
+        data.raidBossState = nbt.getString("raidBossState", "");
 
         NbtCompound playersNbt = nbt.getCompoundOrEmpty("players");
         for (String key : playersNbt.getKeys()) {
@@ -904,6 +910,7 @@ public class CrafticsSavedData extends PersistentState {
         nbt.putInt("lobbySpawnY", lobbySpawnY);
         nbt.putInt("lobbySpawnZ", lobbySpawnZ);
         nbt.putFloat("lobbySpawnYaw", lobbySpawnYaw);
+        nbt.putString("raidBossState", raidBossState);
 
         NbtCompound playersNbt = new NbtCompound();
         for (var entry : players.entrySet()) {

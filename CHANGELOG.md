@@ -1,4 +1,17 @@
 ﻿Changelog
+0.3.5
+Daily Raid Bosses
+
+- Once a day the server calls out a raid boss an hour before it arrives, then opens a five minute window where anyone can type /raidboss to join. Up to eight raiders share an arena, and the ninth joiner opens a second arena rather than being turned away, so a full server can field as many simultaneous raids as the admin allows
+- Raid bosses are authored, not generated. Each one is a JSON file in config/craftics/raidbosses naming its mob, its health, a movepool of six to eight attacks drawn from every boss in the mod, its emerald bounty and its own loot table. Admins can write them by hand or build them in game with /raidboss edit, and both write the same file
+- Arenas can carry their own hazards too. A boss can scatter lava, water, ice, powder snow, choking mud or cover through its own fight, authored per boss and rolled fresh every time it runs, so the same raid boss never opens onto an identical floor twice. Fire and soul fire placed this way are real fire, not decoration: they spread and burn out exactly like anything lit mid-fight, so a boss that opens with a lava pool is opening with one that can grow if the fight lets it
+- Every raid boss starts the fight already ahead: it either acts twice per turn, or carries a permanent buff it can never lose. Strength, Resistance, Speed, Regeneration, Absorption and Fire Resistance are all available, at any level
+- Health is fixed, never scaled to how many showed up. A raid can technically begin with one player, and one player will almost certainly lose
+- Win and everyone who stayed collects the bounty and two drops from the boss's table, including anyone who was downed along the way. Wipe and you get the usual defeat screen with none of the usual penalties, since raiders bring their own gear rather than a run's
+- Leave and you get nothing. A raider who goes quiet has their turn ended after 45 seconds, and a second timeout removes them from the raid entirely, because seven people should not wait on one
+- The day's boss is picked at random by weight and will not repeat for a configurable number of days, a week by default
+- Raids run in their own temporary dimension and put every participant back exactly where they were standing when they joined
+
 0.3.4
 Soul Fire Off Soul Ground
 

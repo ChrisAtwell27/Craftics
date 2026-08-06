@@ -767,6 +767,21 @@ public class CombatManager {
     /** Tracks party members who have died during this combat level (spectating). */
     private final java.util.Set<java.util.UUID> deadPartyMembers = new java.util.HashSet<>();
 
+    /**
+     * Set when this CombatManager is driving a DAILY RAID BOSS instance. Not to be
+     * confused with the pillager-raid event fields (raidActive, raidRemainingPillagers)
+     * elsewhere in this class, which are a different feature entirely.
+     */
+    private com.crackedgames.craftics.raid.RaidBossInstance raidBossContext = null;
+
+    public void setRaidBossContext(com.crackedgames.craftics.raid.RaidBossInstance instance) {
+        this.raidBossContext = instance;
+    }
+
+    public com.crackedgames.craftics.raid.RaidBossInstance getRaidBossContext() {
+        return raidBossContext;
+    }
+
     public void addPartyMember(ServerPlayerEntity member) {
         if (partyPlayers.stream().noneMatch(p -> p.getUuid().equals(member.getUuid()))) {
             partyPlayers.add(member);
@@ -855,6 +870,27 @@ public class CombatManager {
     }
 
     /**
+     * Record a raid turn-timeout against a player. Returns true when that strike
+     * removed them from the raid, in which case forfeit() has already pulled them
+     * out of the turn queue and the caller must not also end their turn.
+     */
+    private boolean applyRaidBossStrike(ServerPlayerEntity timedOut) {
+        com.crackedgames.craftics.raid.RaidBossInstance instance = raidBossContext;
+        if (instance == null) return false;
+        int strikes = instance.addStrike(timedOut.getUuid());
+        int allowed = com.crackedgames.craftics.CrafticsMod.CONFIG.raidBossAfkStrikes();
+        if (strikes < allowed) {
+            sendMessageTo(timedOut, "§cAFK strike " + strikes + " of " + allowed
+                + ". Miss another turn and you are out of the raid with no reward.");
+            return false;
+        }
+        sendMessage("§c" + timedOut.getName().getString()
+            + " was removed from the raid for going AFK.");
+        instance.forfeit(timedOut.getUuid(), "AFK strikes");
+        return true;
+    }
+
+    /**
      * Treat a disconnecting player as if they finished any non-combat event
      * they were holding the party on (trader, crafting station). Without this,
      * a mid-event DC leaves the player's UUID in the pending set forever and
@@ -894,7 +930,16 @@ public class CombatManager {
             }
         }
         if (lootPendingPlayers.remove(memberUuid) && lootPendingPlayers.isEmpty()) {
-            continueVictoryAfterLoot();
+            // DAILY RAID BOSS: mirrors the branch in handleLootScreenClosed. On the raid
+            // path pendingVictory is always null (a raid never sets it), so
+            // continueVictoryAfterLoot() would silently no-op here, leaking the instance
+            // and its dimension if the last loot-pending player disconnects instead of
+            // closing their screen.
+            if (raidBossContext != null) {
+                finishRaidBossVictory();
+            } else {
+                continueVictoryAfterLoot();
+            }
         }
         // Intro narrator gate (trial chambers, ominous trials, addon events):
         // drop the leaver from the dismiss set. If they were the last one we
@@ -3411,6 +3456,17 @@ public class CombatManager {
                 if (idx >= 0) spawnBiomeOrdinal = idx;
             }
         }
+        // Synthetic event levels (raid bosses) carry no biome template, so they name
+        // their own boss spawn and AI key. Runs only when the biome path found nothing,
+        // so no existing level is affected.
+        if (bossEntityTypeId == null && levelDef.getBossSpawnIndex() >= 0) {
+            LevelDefinition.EnemySpawn[] declared = levelDef.getEnemySpawns();
+            int declaredIndex = levelDef.getBossSpawnIndex();
+            if (declaredIndex < declared.length && levelDef.getBossAiBiomeId() != null) {
+                bossEntityTypeId = declared[declaredIndex].entityTypeId();
+                bossBiomeId = levelDef.getBossAiBiomeId();
+            }
+        }
         final int finalBiomeOrdinal = spawnBiomeOrdinal;
         final String finalSpawnBiomeId = spawnBiomeId;
 
@@ -3957,6 +4013,25 @@ public class CombatManager {
                             "[INFINITE BOSS] '{}' as {} moves={} actions/turn={}",
                             infSpec.bossName(), spawn.entityTypeId(),
                             infSpec.abilityNames(), infSpec.actionsPerTurn());
+                    }
+                    // DAILY RAID BOSS: authored name, authored power. Runs in place of
+                    // the infinite block (a raid level never carries an InfiniteSpec).
+                    if (raidBossContext != null) {
+                        com.crackedgames.craftics.raid.RaidBossDefinition raidDef = raidBossContext.boss();
+                        ce.setBossDisplayName(raidDef.name());
+                        mob.setCustomName(Text.literal("§4§l" + raidDef.name()));
+                        mob.setCustomNameVisible(true);
+                        scaleBoss(mob, 1.8);
+                        ce.setSize(1);
+                        com.crackedgames.craftics.combat.ai.boss.RaidBossAI.applySpawnPower(ce, raidDef);
+                        String power = raidDef.power().isDoubleMove()
+                            ? "striking twice each turn"
+                            : "wreathed in " + raidDef.power().buffEffect();
+                        sendMessage("§4§l" + raidDef.name() + "§r§c arrives, " + power + "!");
+                        CrafticsMod.LOGGER.info(
+                            "[RAID BOSS] '{}' as {} hp={} moves={} power={}",
+                            raidDef.id(), raidDef.entityTypeId(), raidDef.hp(),
+                            raidDef.moves(), raidDef.power());
                     }
                     CrafticsMod.LOGGER.info("[BOSS DEBUG] Spawned boss entity='{}' aiOverrideKey='boss:{}' entityId={} hp={}",
                         spawn.entityTypeId(), bossBiomeId, ce.getEntityId(), spawn.hp());
@@ -12161,6 +12236,12 @@ public class CombatManager {
             try {
                 timerOn = com.crackedgames.craftics.CrafticsMod.CONFIG.turnTimerEnabled();
                 limitSec = com.crackedgames.craftics.CrafticsMod.CONFIG.turnTimerSeconds();
+                // A raid always runs a timer, at its own (shorter) limit: eight players
+                // means one AFK player can freeze seven others for a whole fight.
+                if (raidBossContext != null) {
+                    timerOn = true;
+                    limitSec = com.crackedgames.craftics.CrafticsMod.CONFIG.raidBossTurnSeconds();
+                }
             } catch (Exception ignored) { /* config not loaded yet - leave the timer off */ }
             if (timerOn) {
                 int limitTicks = Math.max(1, limitSec) * 20;
@@ -12170,11 +12251,16 @@ public class CombatManager {
                     player.sendMessage(net.minecraft.text.Text.literal(
                         "§eYour turn ends automatically in 10 seconds..."), true);
                 } else if (turnIdleTicks >= limitTicks) {
-                    if (player != null) {
-                        sendMessage("§e" + player.getName().getString()
+                    ServerPlayerEntity timedOut = player;
+                    if (timedOut != null) {
+                        sendMessage("§e" + timedOut.getName().getString()
                             + "'s turn timed out - ending automatically.");
                     }
                     turnIdleTicks = 0;
+                    if (raidBossContext != null && timedOut != null
+                            && applyRaidBossStrike(timedOut)) {
+                        return; // removed from the raid; the queue was already repaired
+                    }
                     handleEndTurn();
                     return; // turn handed off this tick; skip the rest of the combat body
                 }
@@ -23714,6 +23800,27 @@ public class CombatManager {
             return;
         }
 
+        // DAILY RAID BOSS: the standard defeat screen with no penalties at all. Raiders
+        // brought gear in from outside a run, so the item-loss coin flip, the emerald
+        // halving and the XP loss below would punish participation far harder than
+        // losing a biome run does. The instance owns the return trip and the dimension.
+        if (raidBossContext != null) {
+            com.crackedgames.craftics.raid.RaidBossInstance raidInstance = raidBossContext;
+            java.util.List<ServerPlayerEntity> raidParticipants =
+                new java.util.ArrayList<>(getAllParticipants());
+            for (ServerPlayerEntity p : raidParticipants) {
+                if (p != null && !p.isRemoved() && !p.isDisconnected()) {
+                    p.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+                }
+            }
+            sendMessage("§4§lThe raid has fallen.");
+            sendToAllParty(new ExitCombatPayload(false));
+            petsRescued = true;
+            endCombat();
+            raidInstance.finish(world.getServer());
+            return;
+        }
+
         // INFINITE MODE: a wipe just ends the run. No emerald/XP/item death
         // penalties - the run items and the run wallet evaporate with the stash
         // restore (the real balance returns), and the banked best score is kept.
@@ -24253,6 +24360,10 @@ public class CombatManager {
     /** Called by the loot screen handler when a player closes their loot screen. */
     public void handleLootScreenClosed(ServerPlayerEntity p) {
         if (lootPendingPlayers.remove(p.getUuid()) && lootPendingPlayers.isEmpty()) {
+            if (raidBossContext != null) {
+                finishRaidBossVictory();
+                return;
+            }
             continueVictoryAfterLoot();
         }
     }
@@ -24270,6 +24381,15 @@ public class CombatManager {
         // brand new token. The duplicate has to be rejected at the entry point, and phase is
         // the state that says the level is already won.
         if (phase == CombatPhase.LEVEL_COMPLETE) return;
+
+        // DAILY RAID BOSS: rewards and teardown are entirely our own. The biome victory
+        // path below unlocks biomes, advances the run and offers a next level, none of
+        // which mean anything for a raid, so it never runs.
+        if (raidBossContext != null) {
+            phase = CombatPhase.LEVEL_COMPLETE;
+            awardRaidBossRewards();
+            return;
+        }
 
         // Miniboss gate: some mechanics hold an extra objective beyond "enemies dead"
         // (e.g. graves still standing). Most mechanics use the default isComplete()==true,
@@ -24702,6 +24822,97 @@ public class CombatManager {
 
         // Bank the score, roll the next realm, rebuild the rest room, move the party.
         InfiniteRunManager.onBossDefeated(world, hostUuid, savedParty, bossTurns);
+    }
+
+    /**
+     * Pay out a raid win: the boss's bounty in emeralds plus two rolls from its loot
+     * table, to every participant who did not forfeit, whether downed or alive. Overflow goes
+     * through the same loot screen as a normal victory.
+     */
+    private void awardRaidBossRewards() {
+        com.crackedgames.craftics.raid.RaidBossInstance instance = raidBossContext;
+        com.crackedgames.craftics.raid.RaidBossDefinition def = instance.boss();
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        java.util.Map<java.util.UUID, List<ItemStack>> lootOverflow = new java.util.HashMap<>();
+        java.util.Random rng = new java.util.Random();
+
+        sendMessage("§6§l✦ " + def.name() + " has fallen! ✦");
+
+        for (java.util.UUID recipientId : instance.rewardedPlayers()) {
+            ServerPlayerEntity recipient = server != null
+                ? server.getPlayerManager().getPlayer(recipientId) : null;
+            if (recipient == null) continue;
+
+            data.getPlayerData(recipientId).addEmeralds(def.bounty());
+            sendMessageTo(recipient, "§a+ " + def.bounty() + " Emeralds");
+
+            for (int roll = 0; roll < 2; roll++) {
+                ItemStack drop = rollRaidBossLoot(def, rng);
+                if (drop.isEmpty()) continue;
+                deliverLoot(recipient, drop, lootOverflow);
+                sendMessageTo(recipient, "§6§l⚔ " + drop.getCount() + "x "
+                    + drop.getName().getString());
+            }
+        }
+        data.markDirty();
+
+        // Hand overflow to the standard loot screen, then tear the instance down once
+        // every screen is closed; the raid has no next level to transition into.
+        lootPendingPlayers.clear();
+        for (var entry : lootOverflow.entrySet()) {
+            ServerPlayerEntity p = server != null
+                ? server.getPlayerManager().getPlayer(entry.getKey()) : null;
+            if (p == null) continue;
+            if (openLootScreen(p, entry.getValue())) lootPendingPlayers.add(entry.getKey());
+        }
+        if (lootPendingPlayers.isEmpty()) {
+            finishRaidBossVictory();
+        }
+    }
+
+    /** Weighted single roll from a raid boss's authored loot table. */
+    private static ItemStack rollRaidBossLoot(
+            com.crackedgames.craftics.raid.RaidBossDefinition def, java.util.Random rng) {
+        int total = 0;
+        for (var entry : def.loot()) total += Math.max(1, entry.weight());
+        if (total <= 0) return ItemStack.EMPTY;
+        int pick = rng.nextInt(total);
+        int cumulative = 0;
+        for (var entry : def.loot()) {
+            cumulative += Math.max(1, entry.weight());
+            if (pick >= cumulative) continue;
+            // tryParse, not of(): an authored itemId is untrusted JSON text that the
+            // parser never validates as a well-formed identifier. of() throws
+            // InvalidIdentifierException on anything malformed, which would abort the
+            // whole raid reward pass mid-loop. Mirrors BarterJsonLoader's convention.
+            net.minecraft.util.Identifier itemId = net.minecraft.util.Identifier.tryParse(entry.itemId());
+            if (itemId == null) {
+                CrafticsMod.LOGGER.warn("Raid boss '{}' loot id '{}' is not a valid identifier",
+                    def.id(), entry.itemId());
+                return ItemStack.EMPTY;
+            }
+            if (!net.minecraft.registry.Registries.ITEM.containsId(itemId)) {
+                CrafticsMod.LOGGER.warn("Raid boss '{}' loot item '{}' is not registered",
+                    def.id(), entry.itemId());
+                return ItemStack.EMPTY;
+            }
+            int span = Math.max(1, entry.max() - entry.min() + 1);
+            int count = entry.min() + rng.nextInt(span);
+            return new ItemStack(net.minecraft.registry.Registries.ITEM.get(itemId), count);
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /** Close out a raid win: end combat and let the instance return everyone home. */
+    private void finishRaidBossVictory() {
+        com.crackedgames.craftics.raid.RaidBossInstance instance = raidBossContext;
+        if (instance == null) return;
+        net.minecraft.server.MinecraftServer srv = server;
+        sendToAllParty(new ExitCombatPayload(true));
+        petsRescued = true;
+        endCombat();
+        if (srv != null) instance.finish(srv);
     }
 
     /**

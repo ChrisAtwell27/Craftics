@@ -33,7 +33,7 @@ import java.util.Random;
  *   <li>1x1-safe: nothing assumes a 2x2 footprint or an off-grid background boss.</li>
  *   <li>Self-contained: no cross-turn state beyond the {@link BossAI} cooldown map.</li>
  *   <li>Returns {@code null} when the move can't fire this turn - the
- *       {@link InfiniteBossAI} cycle then tries its next move.</li>
+ *       {@link MovepoolBossAI} cycle then tries its next move.</li>
  *   <li>Telegraphed casts return {@link EnemyAction.BossAbility} (CombatManager
  *       owns the warning); movement casts return their action directly since the
  *       telegraph store can't drive the movement state machine.</li>
@@ -44,11 +44,11 @@ public final class InfiniteAbilityPool {
 
     @FunctionalInterface
     public interface AbilityCast {
-        EnemyAction cast(InfiniteBossAI ctx, CombatEntity self, GridArena arena, GridPos playerPos);
+        EnemyAction cast(MovepoolBossAI ctx, CombatEntity self, GridArena arena, GridPos playerPos);
     }
 
     public record InfiniteAbility(String id, AbilityCast castFn) {
-        public EnemyAction cast(InfiniteBossAI ctx, CombatEntity self, GridArena arena, GridPos playerPos) {
+        public EnemyAction cast(MovepoolBossAI ctx, CombatEntity self, GridArena arena, GridPos playerPos) {
             try {
                 return castFn.cast(ctx, self, arena, playerPos);
             } catch (Exception e) {

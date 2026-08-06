@@ -424,4 +424,40 @@ public class CrafticsConfig {
      */
     @SectionHeader("bugReports")
     public String bugReportEndpoint = "https://crackedgames.co/api/bugreport";
+
+    // ===== Daily Raid Bosses =====
+
+    @SectionHeader("raidBosses")
+    public boolean raidBossesEnabled = true;
+
+    /** Comma-separated server-local times of day, 24h "HH:mm". Example: "18:00,21:30". */
+    public String raidBossTimes = "18:00";
+
+    /** How long before a raid the server announces it. */
+    @RangeConstraint(min = 5, max = 720)
+    public int raidBossAnnounceLeadMinutes = 60;
+
+    /** How long players have to /raidboss once the window opens. */
+    @RangeConstraint(min = 30, max = 1800)
+    public int raidBossJoinWindowSeconds = 300;
+
+    /** A boss that ran within this many days is excluded from the daily roll. */
+    @RangeConstraint(min = 0, max = 60)
+    public int raidBossNoRepeatDays = 7;
+
+    /** Hard cap on concurrent raid instances (each is its own dimension). */
+    @RangeConstraint(min = 1, max = 32)
+    public int raidBossMaxInstances = 8;
+
+    /** Per-player turn timer inside a raid, overriding the normal turn timer. */
+    @RangeConstraint(min = 10, max = 300)
+    public int raidBossTurnSeconds = 45;
+
+    /** Turn timeouts a player may take before being removed from the raid. */
+    @RangeConstraint(min = 1, max = 10)
+    public int raidBossAfkStrikes = 2;
+
+    /** Warn when a chosen raid arena's playable grid is smaller than this on either axis. */
+    @RangeConstraint(min = 4, max = 40)
+    public int raidBossMinArenaGrid = 12;
 }

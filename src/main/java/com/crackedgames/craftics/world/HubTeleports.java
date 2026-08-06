@@ -164,19 +164,35 @@ public final class HubTeleports {
     /** Cross-dim teleport helper mirroring the repo's stonecutter split
      *  (CrafticsMod.teleportToHub): same-dim uses requestTeleport, cross-dim uses the
      *  version-split {@code player.teleport(world, ...)} overload. Keeping the split
-     *  here means the two call sites above never repeat the preprocessor dance. */
-    private static void teleportTo(ServerPlayerEntity p, ServerWorld world,
-                                   double x, double y, double z) {
+     *  here means call sites across the mod never repeat the preprocessor dance.
+     *  Public: this is also the single teleport path for the daily raid boss instance
+     *  runtime ({@code RaidBossInstance}), which crosses into and back out of its own
+     *  private dimension. Keeps the player's CURRENT facing; see the yaw/pitch overload
+     *  below when an exact facing must be restored instead. */
+    public static void teleportTo(ServerPlayerEntity p, ServerWorld world,
+                                  double x, double y, double z) {
+        teleportTo(p, world, x, y, z, p.getYaw(), p.getPitch());
+    }
+
+    /** As {@link #teleportTo(ServerPlayerEntity, ServerWorld, double, double, double)},
+     *  but with an explicit facing instead of the player's current one. Needed when
+     *  restoring a player to a remembered origin - e.g. RaidBossInstance putting a
+     *  raider back exactly where and which way they were facing before the raid
+     *  started, which their CURRENT (in-arena) yaw/pitch would not capture. */
+    public static void teleportTo(ServerPlayerEntity p, ServerWorld world,
+                                  double x, double y, double z, float yaw, float pitch) {
         if (p.getServerWorld() != world) {
             //? if <=1.21.1 {
             p.teleport(world, x, y, z,
-                java.util.Collections.emptySet(), p.getYaw(), p.getPitch());
+                java.util.Collections.emptySet(), yaw, pitch);
             //?} else {
             /*p.teleport(world, x, y, z,
-                java.util.Collections.emptySet(), p.getYaw(), p.getPitch(), true);
+                java.util.Collections.emptySet(), yaw, pitch, true);
             *///?}
         } else {
             p.requestTeleport(x, y, z);
+            p.setYaw(yaw);
+            p.setPitch(pitch);
         }
     }
 
