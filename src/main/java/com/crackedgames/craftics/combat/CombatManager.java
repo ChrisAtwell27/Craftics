@@ -1056,6 +1056,22 @@ public class CombatManager {
         if (!active) return;
         java.util.UUID leaverUuid = leaver.getUuid();
 
+        // DAILY RAID BOSS: an op can reach this method via /home mid-raid (the /home
+        // handler treats any active party combat the same way). forfeit() owns the
+        // WHOLE exit path for a raid participant - mark forfeited (so they collect no
+        // bounty/loot if the raid is later won), repair the turn queue, clear their
+        // own raid context, send them home through their recorded origin, and tear the
+        // instance down if they were the last one left to fight it. Falling through to
+        // the generic leave-party logic below would leave them un-forfeited (still
+        // owed a full reward for a fight they walked away from), have
+        // RaidBossInstance.finish() try to pull them back to their PRE-raid origin
+        // later, and - if they were the last one standing - end combat while leaving
+        // the instance registered and its dimension open forever.
+        if (raidBossContext != null) {
+            raidBossContext.forfeit(leaverUuid, "left via /home");
+            return;
+        }
+
         // Move item is persistent across combat -no per-combat cleanup needed.
         leaver.clearStatusEffects();
         leaver.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
@@ -3862,14 +3878,24 @@ public class CombatManager {
                 // Scale HP by 1.25x per extra player in the party
                 int partySize = getAllParticipants().size();
                 double perPlayer = com.crackedgames.craftics.CrafticsMod.CONFIG.partyHpPerPlayer();
-                double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * perPlayer : 1.0;
                 boolean infiniteRun = currentInfiniteSpec() != null;
+                // Raid bosses are authored flat stats - "never scaled" per the raid boss
+                // spec - so both the NG+ multiplier and the per-party-size HP bump are
+                // excluded here explicitly, exactly like infinite mode excludes them.
+                // Explicit rather than relying on statement ordering: RaidBossInstance.start
+                // calls addPartyMember AFTER startCombat, so partySize reads 1 here only by
+                // accident of when this spawn code runs relative to that ordering. A future
+                // reordering of that call must not be able to silently reintroduce scaling.
+                boolean raidBossFight = raidBossContext != null;
+                double partyHpMult = (raidBossFight || partySize <= 1)
+                    ? 1.0 : 1.0 + (partySize - 1) * perPlayer;
                 // Infinite HP already comes from the flat InfiniteScaling curve, so the
                 // enemy multiplier and the per-biome boss-kill ramp must NOT re-inflate it.
                 // The campaign NG+ multiplier is excluded for the same reason: it is
                 // unrelated campaign progress, and stacking it onto the flat curve made
-                // infinite difficulty depend on the player's NG+ level.
-                double effNgMult = infiniteRun ? 1.0 : ngMult;
+                // infinite difficulty depend on the player's NG+ level. Raid bosses are
+                // excluded for the reason above: flat, authored numbers only.
+                double effNgMult = (infiniteRun || raidBossFight) ? 1.0 : ngMult;
                 double hpMult = (isBoss || infiniteRun)
                     ? 1.0 : com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier();
                 double bossKillMult = 1.0;
@@ -14729,10 +14755,15 @@ public class CombatManager {
                 // pool ability became an instant, undodgeable nuke on the player's tile
                 // (12 dmg = 6 hearts per hit, doubled by multi-action phases). The pool's
                 // design contract says fairness IS the warning turn; escalation comes from
-                // actionsPerTurn + charging advances instead.
+                // actionsPerTurn + charging advances instead. Raid bosses draw from the
+                // same ability pool and routinely carry a double-move power on top, so they
+                // need this exemption even more than infinite bosses do: without it, every
+                // raid boss fight past ordinal 3 nukes the whole party with zero counterplay.
                 boolean isInfiniteBoss = currentEnemy != null
                     && InfiniteRunManager.BOSS_AI_KEY.equals(currentEnemy.getAiKey());
-                boolean skipTelegraph = currentBiomeOrdinal >= 3 && !isVoidWalker && !isInfiniteBoss;
+                boolean isRaidBoss = raidBossContext != null;
+                boolean skipTelegraph = currentBiomeOrdinal >= 3
+                    && !isVoidWalker && !isInfiniteBoss && !isRaidBoss;
                 if (!skipTelegraph && ba.warningTiles() != null && !ba.warningTiles().isEmpty()) {
                     sendMessage("§e" + currentEnemy.getDisplayName() + " prepares " +
                         ba.abilityName().replace('_', ' ') + "! §7("
@@ -23814,6 +23845,17 @@ public class CombatManager {
                 }
             }
             sendMessage("§4§lThe raid has fallen.");
+            // Spec 6.2: the STANDARD game-over screen runs, with only the item-loss
+            // rolls skipped - not the screen itself. GameOverItemsPayload is what opens
+            // that screen client-side, so it must still be sent, just with empty lists
+            // and zero losses, or a raid wipe silently shows nothing where every other
+            // defeat in the mod shows the coin-flip screen.
+            for (ServerPlayerEntity p : raidParticipants) {
+                if (p != null && !p.isRemoved() && !p.isDisconnected()) {
+                    ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.GameOverItemsPayload(
+                        java.util.List.of(), java.util.List.of(), 0, 0));
+                }
+            }
             sendToAllParty(new ExitCombatPayload(false));
             petsRescued = true;
             endCombat();
@@ -24837,7 +24879,29 @@ public class CombatManager {
         java.util.Map<java.util.UUID, List<ItemStack>> lootOverflow = new java.util.HashMap<>();
         java.util.Random rng = new java.util.Random();
 
-        sendMessage("§6§l✦ " + def.name() + " has fallen! ✦");
+        // Spec 6.1: a server-wide broadcast naming the boss and its survivors - not
+        // just a message to this instance's own party, which is all sendMessage()
+        // reaches. Other instances fighting the same boss (and the rest of the
+        // server) never otherwise hear that a raid was won.
+        broadcastRaidBossVictory(instance, def);
+
+        // Revive fallen (downed, not forfeited) raiders with 2 hearts, the same as the
+        // standard victory path in handleVictory() - which this raid branch returns
+        // before reaching, so without this a downed winner went home still clamped at
+        // 1 HP from the death handler.
+        if (!deadPartyMembers.isEmpty()) {
+            for (java.util.UUID recipientId : instance.rewardedPlayers()) {
+                if (!deadPartyMembers.contains(recipientId)) continue;
+                ServerPlayerEntity revived = server != null
+                    ? server.getPlayerManager().getPlayer(recipientId) : null;
+                if (revived == null) continue;
+                revived.setHealth(4); // 2 hearts
+                revived.clearStatusEffects();
+                revived.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
+                sendMessageTo(revived, "§a§l✦ REVIVED! §rYour raid won - you're back with 2 hearts!");
+            }
+            deadPartyMembers.clear();
+        }
 
         for (java.util.UUID recipientId : instance.rewardedPlayers()) {
             ServerPlayerEntity recipient = server != null
@@ -24868,6 +24932,27 @@ public class CombatManager {
         }
         if (lootPendingPlayers.isEmpty()) {
             finishRaidBossVictory();
+        }
+    }
+
+    /** Server-wide victory announcement: the boss, and who survived to collect the
+     *  reward. Deliberately separate from {@link #sendMessage}, which only reaches
+     *  this instance's own party. */
+    private void broadcastRaidBossVictory(
+            com.crackedgames.craftics.raid.RaidBossInstance instance,
+            com.crackedgames.craftics.raid.RaidBossDefinition def) {
+        if (server == null) return;
+        List<String> survivorNames = new ArrayList<>();
+        for (java.util.UUID id : instance.rewardedPlayers()) {
+            ServerPlayerEntity p = server.getPlayerManager().getPlayer(id);
+            if (p != null) survivorNames.add(p.getName().getString());
+        }
+        String survivors = survivorNames.isEmpty()
+            ? "no one left standing" : String.join(", ", survivorNames);
+        Text msg = Text.literal("§6§l✦ " + def.name()
+            + " has fallen! §r§7Survivors: " + survivors);
+        for (ServerPlayerEntity online : server.getPlayerManager().getPlayerList()) {
+            online.sendMessage(msg, false);
         }
     }
 

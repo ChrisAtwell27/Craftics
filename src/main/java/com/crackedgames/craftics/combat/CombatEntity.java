@@ -148,7 +148,16 @@ public class CombatEntity {
     public int getCurrentHp() { return currentHp; }
     public void heal(int amount) { currentHp = Math.min(getEffectiveMaxHp(), currentHp + amount); }
     public int getAttackPower() { return Math.max(0, attackPower + attackBoost + bonusAttack + getAttackBuffBonus() - attackPenalty); }
-    public int getDefense() { return defense + defenseBoost; }
+    // Mirrors getAttackPower() above: bonusAttack (set by setBonusAttack) folds into
+    // the "total attack" accessor everyone reads, so permanentBonusDefense (set by
+    // setBonusDefense - a raid boss's permanent RESISTANCE buff) must fold into the
+    // "total defense" accessor the same way. Before this fix getDefense() and
+    // getEffectiveDefense() disagreed on a buffed raid boss's true defense: callers
+    // reading getDefense() (the armor-shatter ability's "how much DEF is there to
+    // destroy" check, debug/tooltip stat displays, the mirror-clone stat copy) saw the
+    // unbuffed number, while the real damage formula in takeDamage() reads
+    // getEffectiveDefense(), which already included it.
+    public int getDefense() { return defense + defenseBoost + permanentBonusDefense; }
     public int getRange() { return rangeOverride >= 0 ? rangeOverride : range; }
     public int getAttackBoost() { return attackBoost; }
     public void setAttackBoost(int boost) { this.attackBoost = boost; }

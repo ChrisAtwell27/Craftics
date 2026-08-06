@@ -94,8 +94,8 @@ public final class RaidBossCommands {
                 + " §7has been announced and is on its way."), false);
             return 1;
         }
-        int seconds = RaidBossSchedule.secondsUntilNextRaid(src.getServer());
-        String slot = RaidBossSchedule.nextSlotDescription(src.getServer());
+        int seconds = RaidBossSchedule.secondsUntilNextRaid();
+        String slot = RaidBossSchedule.nextSlotDescription();
         if (seconds < 0) {
             src.sendFeedback(() -> Text.literal("§7No raids are scheduled."), false);
             return 0;

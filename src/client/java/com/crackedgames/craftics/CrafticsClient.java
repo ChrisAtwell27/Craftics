@@ -12,6 +12,7 @@ import com.crackedgames.craftics.client.CombatVisualEffects;
 import com.crackedgames.craftics.client.LevelSelectScreen;
 import com.crackedgames.craftics.client.TransitionOverlay;
 import com.crackedgames.craftics.client.AchievementToast;
+import com.crackedgames.craftics.client.RaidBossToast;
 import com.crackedgames.craftics.network.CombatSyncPayload;
 import com.crackedgames.craftics.network.EnterCombatPayload;
 import com.crackedgames.craftics.network.ExitCombatPayload;
@@ -713,6 +714,13 @@ public class CrafticsClient implements ClientModInitializer {
         );
 
         ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.RaidBossToastPayload.ID, (payload, context) -> {
+                context.client().execute(() -> RaidBossToast.enqueue(
+                    payload.title(), payload.subtitle()));
+            }
+        );
+
+        ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.GuideBookSyncPayload.ID, (payload, context) -> {
                 context.client().execute(() ->
                     com.crackedgames.craftics.client.guide.GuideBookData.applySyncFromServer(payload.unlockedEntries()));
@@ -761,6 +769,7 @@ public class CrafticsClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.SceneHudOverlay());
         HudRenderCallback.EVENT.register(TransitionOverlay::render);
         HudRenderCallback.EVENT.register(new AchievementToast());
+        HudRenderCallback.EVENT.register(new RaidBossToast());
         HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.music.MusicToast());
         HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.hints.HintHudRenderer());
         CombatTooltips.register();
@@ -866,6 +875,7 @@ public class CrafticsClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             AchievementToast.tick();
+            RaidBossToast.tick();
             com.crackedgames.craftics.client.music.MusicToast.tick();
 
             // Lead-command ally glow is server-driven via LeadSelectPayload:

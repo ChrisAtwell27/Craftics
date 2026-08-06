@@ -23,7 +23,7 @@ import java.util.UUID;
 public class RaidBossLevelDefinition extends LevelDefinition {
 
     /** Well clear of the trial/ambush synthetic ids, and never fed to the level*300 formula. */
-    public static final int RAID_LEVEL_NUMBER = LevelDefinition.SYNTHETIC_LEVEL_BASE + 400;
+    public static final int RAIDBOSS_LEVEL_NUMBER = LevelDefinition.SYNTHETIC_LEVEL_BASE + 400;
 
     /**
      * Fallback grid when no schematic is found. Also the size of the tile array that
@@ -47,7 +47,7 @@ public class RaidBossLevelDefinition extends LevelDefinition {
 
     public RaidBossDefinition boss() { return boss; }
 
-    @Override public int getLevelNumber() { return RAID_LEVEL_NUMBER; }
+    @Override public int getLevelNumber() { return RAIDBOSS_LEVEL_NUMBER; }
     @Override public String getName() { return boss.name(); }
     @Override public int getWidth() { return FALLBACK_GRID; }
     @Override public int getHeight() { return FALLBACK_GRID; }

@@ -1,7 +1,9 @@
 package com.crackedgames.craftics.raid;
 
 import com.crackedgames.craftics.CrafticsMod;
+import com.crackedgames.craftics.network.RaidBossToastPayload;
 import com.crackedgames.craftics.world.CrafticsSavedData;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
@@ -34,6 +36,20 @@ public final class RaidBossSchedule {
     private static Phase phase = Phase.IDLE;
     private static RaidBossDefinition pending = null;
     private static int ticksUntilWindow = 0;
+    /** Guards the "N minute(s) left" broadcast to firing once per minute mark, not
+     *  once per tick within that mark's second - the WINDOW_OPEN countdown below runs
+     *  every tick so the window itself stays second-accurate, but integer division
+     *  (secondsLeft() % 60 == 0) alone stays true for all 20 ticks of that second. */
+    private static int lastMinuteBroadcast = -1;
+
+    /** Pre-window warning thresholds, largest first. Each fires once as a toast when
+     *  {@link #ticksUntilWindow} crosses below it during the ANNOUNCED phase. */
+    private static final int[] WARNING_MINUTES = {30, 10};
+    /** Parallel to {@link #WARNING_MINUTES}: true once that threshold's toast has fired
+     *  (or was skipped as already-past at announce time) for the current raid. A
+     *  crossed-boolean rather than an exact tick-count match, so a lagging or batched
+     *  tick can never cause a threshold to be stepped over unfired. */
+    private static final boolean[] warningFired = new boolean[WARNING_MINUTES.length];
 
     public static Phase phase() { return phase; }
 
@@ -53,26 +69,50 @@ public final class RaidBossSchedule {
         pending = null;
         ticksUntilWindow = 0;
         tickCounter = 0;
+        lastMinuteBroadcast = -1;
+        java.util.Arrays.fill(warningFired, false);
     }
 
     public static void tick(MinecraftServer server) {
         if (server == null) return;
-        if (!CrafticsMod.CONFIG.raidBossesEnabled()) return;
+        if (!CrafticsMod.CONFIG.raidBossesEnabled()) {
+            // The master switch can flip off mid-window (a config edit or reload).
+            // Bailing out here with no cleanup used to freeze whatever state was
+            // current: a pending announce or an open lobby never advanced, the phase
+            // never returned to IDLE, and forceStart's `phase != IDLE` guard refused
+            // admin control forever. Reset both the schedule and the lobby so turning
+            // raids back on later starts clean, and so an admin can still forceStart.
+            if (phase != Phase.IDLE || RaidBossLobby.isOpen()) {
+                for (UUID id : RaidBossLobby.joiners()) RaidBossOrigins.forget(id);
+                RaidBossLobby.close();
+                reset();
+                CrafticsMod.LOGGER.info("Raid bosses disabled mid-schedule; reset to IDLE.");
+            }
+            return;
+        }
 
         // The join countdown runs every tick so the window is second-accurate.
         if (phase == Phase.WINDOW_OPEN) {
             if (RaidBossLobby.tick()) {
                 startAllInstances(server);
-            } else if (RaidBossLobby.secondsLeft() % 60 == 0 && RaidBossLobby.secondsLeft() > 0) {
-                broadcast(server, Text.literal("§e" + RaidBossLobby.secondsLeft() / 60
-                    + " minute(s) left to §6/raidboss§e into " + pending.name()
-                    + " §7(" + RaidBossLobby.count() + " joined)"));
+            } else {
+                int secondsLeft = RaidBossLobby.secondsLeft();
+                int minuteMark = secondsLeft / 60;
+                if (secondsLeft > 0 && secondsLeft % 60 == 0 && minuteMark != lastMinuteBroadcast) {
+                    lastMinuteBroadcast = minuteMark;
+                    broadcastToast(server, minuteMark + " minute(s) left",
+                        "/raidboss for " + pending.name() + " - " + RaidBossLobby.count() + " joined");
+                }
             }
             return;
         }
 
         if (phase == Phase.ANNOUNCED) {
-            if (--ticksUntilWindow <= 0) openWindow(server);
+            if (--ticksUntilWindow <= 0) {
+                openWindow(server);
+                return;
+            }
+            checkPreWindowWarnings(server);
             return;
         }
 
@@ -145,19 +185,38 @@ public final class RaidBossSchedule {
         pending = boss;
         phase = Phase.ANNOUNCED;
         ticksUntilWindow = Math.max(1, minutesUntil * 60 * 20);
-        broadcast(server, Text.literal("§4§l✦ RAID BOSS ✦ §r§c" + boss.name()
-            + " §7stirs. It arrives in " + minutesUntil + " minute(s). Be ready to §6/raidboss§7."));
+        // A threshold already at or behind the lead time is covered by this very
+        // announcement, so mark it fired up front -otherwise a short-lead admin
+        // /raidboss start would fire the 30/10 minute warnings within the same second.
+        for (int i = 0; i < WARNING_MINUTES.length; i++) {
+            warningFired[i] = minutesUntil <= WARNING_MINUTES[i];
+        }
+        broadcastToast(server, "RAID BOSS INCOMING",
+            boss.name() + " stirs - arrives in " + minutesUntil + "m");
         CrafticsMod.LOGGER.info("Announced raid boss '{}', window opens in {} minute(s)",
             boss.id(), minutesUntil);
+    }
+
+    /** Fire each not-yet-fired warning threshold that {@link #ticksUntilWindow} has
+     *  now dropped to or below. Runs every tick of the ANNOUNCED phase. */
+    private static void checkPreWindowWarnings(MinecraftServer server) {
+        for (int i = 0; i < WARNING_MINUTES.length; i++) {
+            if (warningFired[i]) continue;
+            int thresholdTicks = WARNING_MINUTES[i] * 60 * 20;
+            if (ticksUntilWindow <= thresholdTicks) {
+                warningFired[i] = true;
+                broadcastToast(server, pending.name() + " in " + WARNING_MINUTES[i] + "m",
+                    "Get ready - /raidboss opens soon");
+            }
+        }
     }
 
     private static void openWindow(MinecraftServer server) {
         phase = Phase.WINDOW_OPEN;
         int seconds = CrafticsMod.CONFIG.raidBossJoinWindowSeconds();
         RaidBossLobby.open(pending, seconds);
-        broadcast(server, Text.literal("§4§l✦ " + pending.name() + " HAS ARRIVED ✦"));
-        broadcast(server, Text.literal("§eType §6/raidboss§e to join. "
-            + (seconds / 60) + " minute(s), up to 8 raiders per arena."));
+        broadcastToast(server, pending.name() + " HAS ARRIVED",
+            "/raidboss to join - " + (seconds / 60) + "m, up to 8 raiders");
     }
 
     private static void startAllInstances(MinecraftServer server) {
@@ -178,10 +237,25 @@ public final class RaidBossSchedule {
         List<List<UUID>> packed = RaidBossLobbyPacking.pack(
             joinOrder, CrafticsMod.CONFIG.raidBossMaxInstances());
         int started = 0;
+        int totalRaiders = 0;
         for (List<UUID> group : packed) {
             RaidBossInstance instance = new RaidBossInstance(UUID.randomUUID(), boss, group);
-            if (instance.start(server)) {
+            boolean ok;
+            try {
+                ok = instance.start(server);
+            } catch (Exception e) {
+                // One group's arena build or dimension open throwing must not abort the
+                // loop: the lobby is already closed and the phase already reset by the
+                // time we get here, so any group after the one that threw would
+                // otherwise never start, and would never even hear why.
+                CrafticsMod.LOGGER.error(
+                    "Raid '{}' instance threw during start(); the rest of the pack is still attempted",
+                    boss.id(), e);
+                ok = false;
+            }
+            if (ok) {
                 started++;
+                totalRaiders += instance.roster().size();
             } else {
                 // Forget every origin in the group unconditionally, not just the ones
                 // still online: a joiner who disconnected before the window closed
@@ -196,6 +270,13 @@ public final class RaidBossSchedule {
                     }
                 }
             }
+        }
+        if (started > 0) {
+            // One announcement for the whole raid, not one per instance: with multiple
+            // arenas this used to fire the same "descends" line to every online player
+            // once per instance (RaidBossInstance.start() broadcast it directly).
+            broadcastToast(server, boss.name() + " descends!",
+                totalRaiders + " raider(s) across " + started + " arena(s)");
         }
         CrafticsMod.LOGGER.info("Raid '{}' started {} instance(s) for {} raider(s)",
             boss.id(), started, joinOrder.size());
@@ -229,13 +310,13 @@ public final class RaidBossSchedule {
             RaidBossLobby.close();
             phase = Phase.IDLE;
             pending = null;
-            broadcast(server, Text.literal("§7The raid was called off."));
+            broadcastToast(server, "Raid Cancelled", "The raid was called off.");
         }
         RaidBossInstance.endAll(server);
     }
 
     /** Seconds until the next scheduled raid announcement, or -1 when none is configured. */
-    public static int secondsUntilNextRaid(MinecraftServer server) {
+    public static int secondsUntilNextRaid() {
         List<String> slots = RaidBossScheduleMath.parseSlots(CrafticsMod.CONFIG.raidBossTimes());
         if (slots.isEmpty()) return -1;
         LocalTime now = LocalTime.now();
@@ -251,7 +332,7 @@ public final class RaidBossSchedule {
     }
 
     /** "18:00" style description of the next slot, or "none" when unconfigured. */
-    public static String nextSlotDescription(MinecraftServer server) {
+    public static String nextSlotDescription() {
         List<String> slots = RaidBossScheduleMath.parseSlots(CrafticsMod.CONFIG.raidBossTimes());
         if (slots.isEmpty()) return "none";
         LocalTime now = LocalTime.now();
@@ -266,9 +347,11 @@ public final class RaidBossSchedule {
         return best;
     }
 
-    private static void broadcast(MinecraftServer server, Text message) {
+    /** Server-wide raid boss toast, replacing the chat broadcasts these scheduling
+     *  messages used to spam. Command replies stay on chat -see RaidBossCommands. */
+    private static void broadcastToast(MinecraftServer server, String title, String subtitle) {
         for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
-            p.sendMessage(message, false);
+            ServerPlayNetworking.send(p, new RaidBossToastPayload(title, subtitle));
         }
     }
 }

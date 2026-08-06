@@ -24,7 +24,7 @@ Raid bosses live in `config/craftics/raidbosses/`, one `<id>.json` file per boss
 | `speed` | int | no | `0` | Floored at 0. |
 | `weight` | int | no | `10` | Floored at 1. Relative chance of being picked on a day it is eligible (see `raidBossNoRepeatDays`). |
 | `arena` | int | no | `0` | 1-based index into the `raidboss` schem set (see below). `0` or omitted rolls a random variant per raid instance. |
-| `environment` | string | no | `"plains"` | Any registered environment id (the same ids biomes use - `plains`, `nether`, `river`, `desert`, `jungle`, `mountain`, `snowy`, `cave`, `deep_dark`, `soul_sand_valley`, `crimson_forest`, `warped_forest`, `basalt_deltas`, `end_city`, `outer_end_islands`, `chorus_grove`, `dragons_nest`, or an addon's own). An unregistered id silently falls back to the plains theme rather than erroring. |
+| `environment` | string | no | `"plains"` | An arena environment theme id, **not** a biome id (a biome's own JSON points at one of these through its own `"environment"` field - `nether_wastes` uses `nether`, `soul_sand_valley` uses `nether` too, `end_city` uses `end`, and so on). The 13 built-in ids are `plains`, `forest`, `snowy`, `mountain`, `river`, `desert`, `jungle`, `cave`, `deep_dark`, `nether`, `crimson_forest`, `warped_forest`, `end`, plus any an addon registers of its own. **An unregistered id (including a biome id that isn't also an environment id, like `soul_sand_valley` or `dragons_nest`) silently falls back to the plains theme with no error and no warning** - double check the id against this list. |
 | `moves` | array of strings | yes | - | 6 to 8 ability ids. See **Moves** below. |
 | `power` | object | yes | - | Exactly one opening advantage. See **Power** below. |
 | `bounty` | int | yes | - | Must be positive. Emerald payout to every raider who did not forfeit, on a win. |
@@ -86,7 +86,7 @@ Optional arena hazards the boss scatters through its own arena when a raid start
 | --- | --- | --- | --- | --- |
 | `tile` | string | yes | - | A `TileType` name, case-insensitive. An unknown name is dropped with a warning, not a hard error. |
 | `block` | string | no | - | What the tile looks like. Left empty, the placer picks a sensible default for that tile type (lava for `lava`, soul fire for `soul_fire`, and so on). An unparseable or unknown block id falls back to the same default rather than erroring. |
-| `count` | int, or `{ "min": int, "max": int }` | no | `1` | How many separate placements to roll, inclusive, re-rolled fresh for every raid instance. A bare integer is shorthand for `min == max`. |
+| `count` | int, or `{ "min": int, "max": int }` | no | `1` | How many separate placements to roll, inclusive, re-rolled fresh for every raid instance. A bare integer is shorthand for `min == max`. `min` is floored at `0`, not `1`, so `{ "min": 0, "max": 3 }` is legal and can roll zero placements on a given raid. |
 | `cluster` | int | no | `1` | How many tiles one placement grows into, by walking outward through free neighbouring tiles. `1` scatters singles; `3` to `6` grows a blob like a lava pool or a fallen tree. |
 
 Placement happens tile by tile after all obstacles are rolled: obstacle-typed tiles (below) are only committed if the arena's playable floor stays fully connected to the player start afterward, and a placement that would cut the arena in two is reverted and the rest of the plan continues. Every other hazard type is always safe to place and skips that check.
@@ -196,11 +196,11 @@ A raid boss's arena is one shared "raidboss" schem set, the same disk-then-jar l
 
 In search order, for each of the server's run directory and its parents:
 
-1. `craftics_arenas/raidboss.schem` - the primary variant.
-2. `craftics_arenas/raidboss_2.schem` through `raidboss_10.schem` - additional variants at the same flat naming convention WorldEdit produces.
+1. `craftics_arenas/raidboss.schem` - one variant.
+2. `craftics_arenas/raidboss_1.schem` through `raidboss_10.schem` - further variants at the same flat naming convention WorldEdit produces. These are probed unconditionally (there is no special case for `_1`), so the bare file and all ten numbered ones can all exist side by side.
 3. `craftics_arenas/raidboss/1.schem`, `2.schem`, ... - the same variants as a subfolder instead, stopping at the first missing number.
 4. `config/worldedit/schematics/` and `run/config/worldedit/schematics/` directly - WorldEdit's own save location, searched with the same three patterns above. A freshly `//schem save raidboss`'d file is found there without moving it anywhere.
-5. Finally, bundled datapack resources at `data/craftics/arenas/raidboss.schem` or `data/craftics/arenas/raidboss/<n>.schem`, for an addon or resource pack that ships its own set in the jar.
+5. Finally, a bundled datapack resource at `data/craftics/arenas/raidboss/<n>.schem` (numbered subfolder only, probed 1 through 10, stopping at the first gap), for an addon or resource pack that ships its own set in the jar. There is no flat `data/craftics/arenas/raidboss.schem` fallback: that path only exists for sub-biome ids that contain a slash, which `raidboss` never does, so a flat file placed there is silently never found.
 
 A boss's `arena` field (1-based) pins it to one specific numbered variant; `0` or omitted rolls a random one out of whichever variants exist for every raid that boss runs.
 
@@ -214,7 +214,7 @@ Build the arena like any other arena schematic, in creative, then mark it up bef
 | Emerald Block | The corner diagonally opposite the Diamond Block. Together these two define the rectangle that becomes the playable floor. |
 | Gold Block | Where the first player (the one who opened the raid) spawns, inside the grid. |
 
-Markers are consumed when the arena is scanned and never appear in the finished build. A raid roster can hold up to eight players, far more than the fixed marker slots other arenas use for player 2 through 4 (Iron/Copper/Coal); the remaining raiders are not assigned individual markers at all; they scatter onto free walkable tiles near the leader's spawn once the roster is pulled into the dimension. Export with WorldEdit (`//copy`, `//schem save raidboss`) the same way any other arena schematic is built - see the Reference page's arena authoring walkthrough for the full marker diagram and export steps shared by every arena type.
+Markers are consumed when the arena is scanned and never appear in the finished build. Other arena types also recognize Iron, Copper and Coal blocks as P2/P3/P4 spawn markers, but placing them in a `raidboss` schem buys nothing today: the arena builder detects them, clears the blocks and logs their positions, but never actually stores or uses those positions - only the Gold (P1) spawn is kept. A raid roster can hold up to eight players regardless, so this is not a real limitation in practice: every player past the leader, in a raid exactly as in a normal co-op run, is scattered onto a free walkable tile near the leader's spawn once the roster is pulled into the dimension, not placed at a marker. Treat Iron/Copper/Coal as decorative if you place them at all. Export with WorldEdit (`//copy`, `//schem save raidboss`) the same way any other arena schematic is built - see the Reference page's arena authoring walkthrough for the full marker diagram and export steps shared by every arena type.
 
 ## The `/raidboss` command tree
 

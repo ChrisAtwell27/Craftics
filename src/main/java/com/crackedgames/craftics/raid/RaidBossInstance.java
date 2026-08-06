@@ -96,13 +96,49 @@ public final class RaidBossInstance {
      */
     public boolean start(MinecraftServer server) {
         List<ServerPlayerEntity> players = new ArrayList<>();
-        for (UUID id : roster) {
+        // Eligibility was only ever checked once, at lobby join - up to
+        // raidBossJoinWindowSeconds (five minutes by default) before this runs. Re-run
+        // the SAME check (RaidBossLobby.checkEligibility, shared with join() so the two
+        // can never drift apart) here per player: a joiner who went idle and then
+        // started a biome run, or wandered onto someone else's island, in that window
+        // must not be pulled out of whatever they are now doing and have
+        // setRaidBossContext(this) stamped onto the CombatManager driving it - which
+        // would make that fight take the raid turn timer, AFK strikes, the no-penalty
+        // game over, and the raid's bounty/loot on victory, for an ordinary fight.
+        // Removed from the roster outright (not just skipped here) so they are never
+        // counted as forfeited-but-owed-nothing, never rewarded, and never chased by
+        // finish()'s return-home loop for a raid they were never actually in.
+        java.util.Iterator<UUID> rosterIt = roster.iterator();
+        while (rosterIt.hasNext()) {
+            UUID id = rosterIt.next();
             ServerPlayerEntity p = server.getPlayerManager().getPlayer(id);
-            if (p != null) players.add(p);
+            if (p == null) continue; // offline: start() already tolerates this below
+            RaidBossLobby.JoinResult ineligible = RaidBossLobby.checkEligibility(p);
+            if (ineligible != null) {
+                String reason = switch (ineligible) {
+                    case BUSY -> "you're mid-run or mid-combat";
+                    case VISITING -> "you're visiting another island";
+                    default -> "you're no longer eligible";
+                };
+                p.sendMessage(Text.literal("§cYou were dropped from the raid: " + reason + "."), false);
+                RaidBossOrigins.forget(id);
+                rosterIt.remove();
+                continue;
+            }
+            players.add(p);
         }
         if (players.isEmpty()) {
             CrafticsMod.LOGGER.warn("Raid instance {} had no online players at start", instanceId);
             return false;
+        }
+
+        // A raid instance and a merchant scene are mutually exclusive, exactly like a
+        // normal biome run (RunInviteManager.beginRun does the same eject before
+        // teleporting anyone into an arena): without this, a participant who is still
+        // registered as a scene member when they cross into the raid dimension stays
+        // wedged in both systems at once.
+        for (ServerPlayerEntity p : players) {
+            com.crackedgames.craftics.scene.SceneController.ejectForRun(p);
         }
 
         ServerWorld world = RaidBossDimensions.open(server, instanceId);
@@ -182,8 +218,9 @@ public final class RaidBossInstance {
         register(this);
         CrafticsMod.LOGGER.info("Raid instance {} started: boss='{}' players={}",
             instanceId, boss.id(), players.size());
-        broadcast(server, Text.literal("§4§l" + boss.name()
-            + " §r§cdescends on " + players.size() + " raider(s)!"));
+        // No broadcast here: the spec announces the raid descending ONCE for the whole
+        // event, not once per instance. RaidBossSchedule.startAllInstances sends the
+        // single server-wide line after every instance in the pack has started.
         return true;
     }
 
@@ -467,22 +504,55 @@ public final class RaidBossInstance {
     public void finish(MinecraftServer server) {
         if (!ACTIVE.containsKey(instanceId)) return;
         unregister(instanceId);
-        for (UUID id : roster) {
-            // Already sent home (and had their raidBossContext cleared) by forfeit().
-            // Re-running returnHome here would find no RaidBossOrigins entry left
-            // (forfeit's returnHome already consumed it via take()) and fall through
-            // to HubTeleports.toLobby, involuntarily yanking a player who legitimately
-            // left the raid - possibly long ago - to the lobby from wherever they are.
-            // Still forget() here (a no-op if forfeit() already took() it): an OFFLINE
-            // forfeit returns before ever calling returnHome, so its origin entry can
-            // still be sitting in RaidBossOrigins. Skipping unconditionally would leak
-            // it forever (no TTL) and, since remember() is first-write-wins, silently
-            // discard that player's real position on their NEXT raid - they'd land back
-            // wherever THIS raid's stale entry pointed when that later raid finishes.
-            if (forfeited.contains(id)) {
-                RaidBossOrigins.forget(id);
-                continue;
+
+        // Self-sufficient: end combat and notify every still-connected, non-forfeited
+        // participant here, rather than depending on the caller having already done it.
+        // The three normal exits (victory, wipe, and forfeit()'s own empty-roster
+        // teardown) already end combat and send an ExitCombatPayload - with the
+        // correct won/lost flag - just before calling finish(); gating on isActive()
+        // (rather than sending unconditionally) means those callers are not just
+        // "unaffected" but never get a SECOND, contradicting ExitCombatPayload(false)
+        // chasing a real ExitCombatPayload(true). An admin /raidboss cancel and the
+        // SERVER_STOPPING handler, by contrast, reach finish() only through endAll()
+        // and never ran either step: without this, a cancelled raid left players stuck
+        // in ADVENTURE mode and the client's combat HUD, PlayerData.inCombat never
+        // cleared, and this instance's CombatManager kept ticking its turn timer
+        // against an arena in the dimension this method is about to delete.
+        if (leaderUuid != null) {
+            CombatManager leaderCm = CombatManager.get(leaderUuid);
+            if (leaderCm.isActive()) {
+                for (UUID id : roster) {
+                    if (forfeited.contains(id)) continue;
+                    ServerPlayerEntity p = server.getPlayerManager().getPlayer(id);
+                    if (p != null) ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+                }
+                leaderCm.endCombat();
             }
+        }
+
+        for (UUID id : roster) {
+            // The leader's own CombatManager is the shared instance that actually
+            // drives the whole raid (see forfeit()'s comment: its context is
+            // deliberately left set on the leader's CM while the raid is still
+            // running, even once the leader themselves forfeits, so the fight keeps
+            // functioning for the rest of the party). Clear every roster UUID's own
+            // context unconditionally, before the forfeited/offline checks below -
+            // which only decide whether to teleport - so a forfeited OR offline member
+            // can never be left pointing at this now-dead instance into their next
+            // ordinary fight.
+            CombatManager.get(id).setRaidBossContext(null);
+
+            // Already sent home (and had their RaidBossOrigins entry consumed, via
+            // take() or an explicit forget() on the offline/disconnected branches) by
+            // forfeit(). Do NOT forget() it again here: if this player has since
+            // joined a LATER raid, forgetting here would delete THAT raid's freshly
+            // remembered origin instead of a stale one of ours, stranding them at that
+            // raid's lobby when it ends. Re-running returnHome would have the same
+            // problem in the other direction - finding no entry and falling through to
+            // HubTeleports.toLobby, yanking a player who legitimately left this raid,
+            // possibly long ago, to the lobby from wherever they are now.
+            if (forfeited.contains(id)) continue;
+
             ServerPlayerEntity p = server.getPlayerManager().getPlayer(id);
             if (p == null) {
                 RaidBossOrigins.forget(id);
@@ -490,18 +560,6 @@ public final class RaidBossInstance {
             }
             if (p.isSpectator()) p.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
             returnHome(server, p);
-            CombatManager.get(id).setRaidBossContext(null);
-        }
-        // The leader's own CombatManager is the shared instance that actually drove the
-        // raid (see forfeit(): it deliberately leaves that one CM's context set while the
-        // raid is still running, even when the leader themselves forfeits, so the fight
-        // keeps functioning for the rest of the party). The loop above only clears context
-        // for a roster member it just found and sent home, which misses the leader
-        // whenever THEY end up forfeited (AFK strikes, disconnect, or simply being the
-        // last one standing) - clear it unconditionally here instead, now that the raid is
-        // actually ending for good. Harmless no-op if the loop above already cleared it.
-        if (leaderUuid != null) {
-            CombatManager.get(leaderUuid).setRaidBossContext(null);
         }
         RaidBossDimensions.close(instanceId);
         CrafticsMod.LOGGER.info("Raid instance {} finished", instanceId);
@@ -526,12 +584,6 @@ public final class RaidBossInstance {
             return;
         }
         HubTeleports.teleportTo(p, target, origin.x(), origin.y(), origin.z(), origin.yaw(), origin.pitch());
-    }
-
-    private static void broadcast(MinecraftServer server, Text message) {
-        for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
-            p.sendMessage(message, false);
-        }
     }
 
     // ---- registry ----

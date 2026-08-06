@@ -81,6 +81,33 @@ public final class RaidBossLobby {
     }
 
     /**
+     * The "is this player free to raid" predicate, shared by {@link #join} and
+     * {@link RaidBossInstance#start} so the two checks can never drift into two
+     * different definitions of "busy": not mid-combat/mid-event
+     * ({@link CombatManager#isEngaged}), not mid-biome-run (the persisted
+     * {@code PlayerData.isInBiomeRun()} - called out separately by both the design
+     * spec and {@code docs/modding/raid-bosses.md} because a player parked at the
+     * victory or level-select screen between levels has an INACTIVE CombatManager and
+     * would otherwise slip through isEngaged alone), and not a foreign visitor on
+     * someone else's island.
+     *
+     * @return the reason they are ineligible, or {@code null} when they are free to raid.
+     */
+    public static JoinResult checkEligibility(ServerPlayerEntity p) {
+        UUID id = p.getUuid();
+        if (CombatManager.isEngaged(id)) return JoinResult.BUSY;
+        if (isMidBiomeRun(p)) return JoinResult.BUSY;
+        if (VisitProtection.isForeignVisitor(p)) return JoinResult.VISITING;
+        return null;
+    }
+
+    private static boolean isMidBiomeRun(ServerPlayerEntity p) {
+        com.crackedgames.craftics.world.CrafticsSavedData data = com.crackedgames.craftics.world.CrafticsSavedData
+            .get((net.minecraft.server.world.ServerWorld) p.getEntityWorld());
+        return data.getPlayerData(p.getUuid()).isInBiomeRun();
+    }
+
+    /**
      * Try to add a player. Eligibility: window open, not already in, not mid-run or
      * mid-combat, not a visitor on someone else's island, and under the instance cap.
      */
@@ -89,8 +116,8 @@ public final class RaidBossLobby {
         if (ticksLeft <= 0) return JoinResult.WINDOW_CLOSED;
         UUID id = p.getUuid();
         if (JOINERS.contains(id)) return JoinResult.ALREADY_JOINED;
-        if (CombatManager.isEngaged(id)) return JoinResult.BUSY;
-        if (VisitProtection.isForeignVisitor(p)) return JoinResult.VISITING;
+        JoinResult ineligible = checkEligibility(p);
+        if (ineligible != null) return ineligible;
         if (!RaidBossLobbyPacking.hasRoom(JOINERS.size(), CrafticsMod.CONFIG.raidBossMaxInstances())) {
             return JoinResult.FULL;
         }

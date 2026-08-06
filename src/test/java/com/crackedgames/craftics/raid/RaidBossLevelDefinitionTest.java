@@ -26,7 +26,7 @@ class RaidBossLevelDefinitionTest {
         RaidBossLevelDefinition def = new RaidBossLevelDefinition(boss(-1), 5, null);
         assertTrue(def.getLevelNumber()
             >= com.crackedgames.craftics.level.LevelDefinition.SYNTHETIC_LEVEL_BASE);
-        assertEquals(RaidBossLevelDefinition.RAID_LEVEL_NUMBER, def.getLevelNumber());
+        assertEquals(RaidBossLevelDefinition.RAIDBOSS_LEVEL_NUMBER, def.getLevelNumber());
     }
 
     @Test
