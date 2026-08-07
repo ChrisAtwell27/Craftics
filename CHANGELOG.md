@@ -2,9 +2,39 @@
 0.3.6
 Combat and Lootbox Updates
 
-- Raid bosses now load correctly from the bundled boss JSON files at runtime, so newly added bosses appear without requiring manual config copying.
-- The lootbox Special Cache now includes Artifacts and More Totems as ultra-rare rewards alongside the existing special-item pool.
-- Craftics combat enchantment tooltips now show their effect descriptions for compat items and enchanted gear in inventory and battle views.
+- Raid bosses now load from the bundled boss JSON files at runtime, so new bosses appear without manual config copying.
+- The Special lootbox cache now includes Artifacts and More Totems as ultra rare rewards.
+- Combat enchantment tooltips now show effect descriptions for compat items and enchanted gear in inventory and battle views.
+
+Raid Bosses
+
+- Raid boss attacks now show telegraphs again.
+- Raid announcements now appear as toasts instead of chat lines.
+- Players now get warnings 30 and 10 minutes before a raid, not just 1 hour before.
+- Large bosses are now solid across their full body.
+
+Lootboxes
+
+- Players can read lootbox odds by punching a lootbox.
+- Right clicking opens a confirm screen with the price and emerald balance.
+- Right clicking while holding a key opens the lootbox directly.
+- The kiosk hologram is easier to read and no longer uses dark gray text.
+- Weapon, armor, trim, and enchantment pools now come from the game's registries.
+- Netherite weapons are locked to the legendary tier and diamonds to rare.
+- Every coral type appears in the weapon cache at uncommon.
+- The Material Crate is now a real crate with useful rewards and better quantity ranges.
+- Simply Swords relics are no longer handed out as weapons.
+
+Enchantments
+
+- Sharpness, Smite, Bane of Arthropods, Knockback, Serrated, and Sweeping Edge now work on all melee weapons.
+- Lootbox enchantment levels are now capped to what each enchantment supports.
+
+Movement
+
+- Blocks can be placed in water and lava to create bridges.
+- Walking through lava now burns you.
+- The pathfinder now jumps lava channels instead of wading them.
 
 0.3.5
 Daily Raid Bosses
