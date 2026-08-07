@@ -1,10 +1,17 @@
 ﻿Changelog
+0.3.6
+Combat and Lootbox Updates
+
+- Raid bosses now load correctly from the bundled boss JSON files at runtime, so newly added bosses appear without requiring manual config copying.
+- The lootbox Special Cache now includes Artifacts and More Totems as ultra-rare rewards alongside the existing special-item pool.
+- Craftics combat enchantment tooltips now show their effect descriptions for compat items and enchanted gear in inventory and battle views.
+
 0.3.5
 Daily Raid Bosses
 
 - Once a day the server calls out a raid boss an hour before it arrives, then opens a five minute window where anyone can type /raidboss to join. Up to eight raiders share an arena, and the ninth joiner opens a second arena rather than being turned away, so a full server can field as many simultaneous raids as the admin allows
 - Raid bosses are authored, not generated. Each one is a JSON file in config/craftics/raidbosses naming its mob, its health, a movepool of six to eight attacks drawn from every boss in the mod, its emerald bounty and its own loot table. Admins can write them by hand or build them in game with /raidboss edit, and both write the same file
-- Arenas can carry their own hazards too. A boss can scatter lava, water, ice, powder snow, choking mud or cover through its own fight, authored per boss and rolled fresh every time it runs, so the same raid boss never opens onto an identical floor twice. Fire and soul fire placed this way are real fire, not decoration: they spread and burn out exactly like anything lit mid-fight, so a boss that opens with a lava pool is opening with one that can grow if the fight lets it
+- Arenas can carry their own hazards too. A boss can scatter lava, water, ice, powder snow, mud or cover through its own fight, authored per boss and rolled fresh every time it runs, so the same raid boss never opens onto an identical floor twice.
 - Every raid boss starts the fight already ahead: it either acts twice per turn, or carries a permanent buff it can never lose. Strength, Resistance, Speed, Regeneration, Absorption and Fire Resistance are all available, at any level
 - Health is fixed, never scaled to how many showed up. A raid can technically begin with one player, and one player will almost certainly lose
 - Win and everyone who stayed collects the bounty and two drops from the boss's table, including anyone who was downed along the way. Wipe and you get the usual defeat screen with none of the usual penalties, since raiders bring their own gear rather than a run's

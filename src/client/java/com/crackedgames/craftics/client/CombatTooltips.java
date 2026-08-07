@@ -71,6 +71,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (ArtifactsTooltips.isArtifactsItem(itemId)) {
             stripModTooltip(stack, lines);
             ArtifactsTooltips.appendLines(itemId.getPath(), lines);
+            addEnchantmentTooltips(stack, lines);
             return; // skip all other tooltip handlers - artifacts only show our text
         }
 
@@ -80,6 +81,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             && com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isMoreTotem(item)) {
             stripModTooltip(stack, lines);
             MoreTotemsTooltips.appendLines(itemId.getPath(), lines);
+            addEnchantmentTooltips(stack, lines);
             return;
         }
 
@@ -91,6 +93,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             && com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.isSimplySword(item)) {
             stripModTooltip(stack, lines);
             SimplySwordsTooltips.appendLines(item, itemId.getPath(), lines);
+            addEnchantmentTooltips(stack, lines);
             return;
         }
 
@@ -100,6 +103,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             && com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.isSimplyBow(item)) {
             stripModTooltip(stack, lines);
             SimplyBowsTooltips.appendLines(item, itemId.getPath(), lines);
+            addEnchantmentTooltips(stack, lines);
             return;
         }
         // Its upgrade components and rune etchings are a crafting system Craftics doesn't
@@ -107,6 +111,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (SimplyBowsTooltips.isUpgradeComponent(itemId)) {
             stripModTooltip(stack, lines);
             SimplyBowsTooltips.appendUpgradeLines(lines);
+            addEnchantmentTooltips(stack, lines);
             return;
         }
 
@@ -118,6 +123,7 @@ public class CombatTooltips implements ItemTooltipCallback {
                 .getEnchantLevel(stack, "basicweapons:might");
             stripModTooltip(stack, lines);
             BasicWeaponsTooltips.appendLines(item, itemId.getPath(), might, lines);
+            addEnchantmentTooltips(stack, lines);
             return;
         }
 
@@ -135,6 +141,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             && com.crackedgames.craftics.compat.instruments.InstrumentsCompat.isInstrument(item)) {
             stripModTooltip(stack, lines);
             InstrumentsTooltips.appendLines(item, lines);
+            addEnchantmentTooltips(stack, lines);
             return;
         }
 
@@ -442,7 +449,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "breach" -> "\u00a74\u2694 Breach " + toRoman(level) + ": \u00a77Ignore " + level + " enemy DEF";
 
             // Weapon utility
-            case "fire_aspect" -> "\u00a76\u2604 Fire Aspect " + toRoman(level) + ": \u00a77Ignite target for " + (level * 4) + "s";
+            case "fire_aspect" -> "\u00a76\u2604 Fire Aspect " + toRoman(level) + ": \u00a77Ignite target for " + (level + 1) + " turn" + (level + 1 == 1 ? "" : "s");
             case "knockback" -> "\u00a7e\u2B05 Knockback " + toRoman(level) + ": \u00a77Push target " + level + " extra tile(s)";
             case "looting" -> "\u00a7a\u2728 Looting " + toRoman(level) + ": \u00a77+" + level + " bonus loot drops";
             case "sweeping" -> "\u00a77\u2694 Sweeping Edge " + toRoman(level) + ": \u00a77Cleave deals " + (level == 1 ? 60 : (level == 2 ? 75 : 90)) + "% to adjacent";

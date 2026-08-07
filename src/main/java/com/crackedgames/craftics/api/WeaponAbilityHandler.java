@@ -18,8 +18,8 @@ import net.minecraft.server.network.ServerPlayerEntity;
  * building blocks, and chain them with {@link #and(WeaponAbilityHandler)}:
  *
  * <pre>{@code
- * WeaponAbilityHandler handler = Abilities.bleed()
- *     .and(Abilities.sweepAdjacent(0.10, 0.05));
+ * WeaponAbilityHandler handler = Abilities.sweepAdjacent(0.10, 0.05)
+ *     .and(Abilities.stun(0.05, 0.03));
  * }</pre>
  *
  * <p>Implement this interface directly only when the built-in factories cannot express

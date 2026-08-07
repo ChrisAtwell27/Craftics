@@ -30,4 +30,28 @@ class CombatEnchantHelpersTest {
         assertEquals(1, CombatEnchantHelpers.fortunePick(0.4));
         assertEquals(2, CombatEnchantHelpers.fortunePick(0.9));
     }
+
+    private static final java.util.Set<String> UNCAPPED = java.util.Set.of("knockback");
+
+    @Test void clampEnchantLevelCapsAboveMax() {
+        // Hilt: max level I, but the lootbox/mob-gear roll is blind up to 5.
+        assertEquals(1, CombatEnchantHelpers.clampEnchantLevel("hilt", 5, 1, UNCAPPED));
+        assertEquals(1, CombatEnchantHelpers.clampEnchantLevel("hilt", 1, 1, UNCAPPED));
+    }
+
+    @Test void clampEnchantLevelPassesThroughAtOrBelowMax() {
+        assertEquals(3, CombatEnchantHelpers.clampEnchantLevel("sharpness", 3, 5, UNCAPPED));
+        assertEquals(5, CombatEnchantHelpers.clampEnchantLevel("sharpness", 5, 5, UNCAPPED));
+    }
+
+    @Test void clampEnchantLevelAllowsKnockbackAboveVanillaMax() {
+        // Knockback's vanilla max is II, but Craftics deliberately lets it roll higher.
+        assertEquals(5, CombatEnchantHelpers.clampEnchantLevel("knockback", 5, 2, UNCAPPED));
+    }
+
+    @Test void clampEnchantLevelUncappedSetIsExact() {
+        // Only the named exception skips the clamp - everything else, including a
+        // similarly-named enchant, still gets capped.
+        assertEquals(2, CombatEnchantHelpers.clampEnchantLevel("punch", 5, 2, UNCAPPED));
+    }
 }

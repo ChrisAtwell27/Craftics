@@ -43,10 +43,9 @@ public final class RaidBossJsonLoader {
         return FabricLoader.getInstance().getConfigDir().resolve("craftics").resolve("raidbosses");
     }
 
-    /** Copy the jar's example definitions the first time the directory is missing. */
+    /** Copy bundled example definitions that are missing from the runtime config directory. */
     public static void copyBundledIfAbsent(MinecraftServer server) {
         Path dir = directory();
-        if (Files.isDirectory(dir)) return;
         try {
             Files.createDirectories(dir);
         } catch (IOException e) {
@@ -58,8 +57,12 @@ public final class RaidBossJsonLoader {
         for (Map.Entry<Identifier, Resource> entry : bundled.entrySet()) {
             String path = entry.getKey().getPath();
             String fileName = path.substring(path.lastIndexOf('/') + 1);
+            Path target = dir.resolve(fileName);
+            if (Files.exists(target)) {
+                continue;
+            }
             try (InputStream in = entry.getValue().getInputStream()) {
-                Files.copy(in, dir.resolve(fileName));
+                Files.copy(in, target);
                 CrafticsMod.LOGGER.info("Copied bundled raid boss example {}", fileName);
             } catch (IOException e) {
                 CrafticsMod.LOGGER.error("Could not copy bundled raid boss {}", fileName, e);

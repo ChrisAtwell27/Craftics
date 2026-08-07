@@ -99,9 +99,10 @@ public final class VanillaWeapons {
     // Sword ability handler (shared by all 6 swords)
 
     /**
-     * Full sword ability: bleed (Sharpness), smite AoE (Smite), poison+slow (Bane),
-     * directional shockwave (Knockback), whirlwind (Sweeping Edge) or base sweep,
-     * Diamond crit, Netherite execute.
+     * Sword-specific ability: base sword sweep (affinity-scaled), when neither Serrated nor
+     * Sweeping Edge has claimed the swing. Serrated, Sweeping Edge, Sharpness, Smite, Bane of
+     * Arthropods and Knockback are NOT here - see {@link #universalEnchantEffects}, which
+     * every melee weapon gets regardless of which ability handler it registers.
      */
     private static WeaponAbility.AttackResult swordAbility(ServerPlayerEntity player,
                                                             CombatEntity target,
@@ -114,21 +115,86 @@ public final class VanillaWeapons {
         List<CombatEntity> extraTargets = new ArrayList<>();
         int totalExtra = 0;
 
-        // Serrated: trade the sword sweep for Bleed. Gates both sweep branches below off
-        // and applies Bleed stacks equal to the enchant level to the primary target only.
+        // Serrated and Sweeping Edge both trade the base sword sweep below for their own
+        // effect (a Bleed-stack trade and a whirlwind AoE, respectively) - their actual
+        // effects now live in universalEnchantEffects, run once per attack from CombatManager
+        // for every melee weapon, not just one wired to this handler. Read here ONLY to gate
+        // the base sweep off; do not re-apply either effect here - that would double-apply
+        // them for vanilla swords.
         int serrated = CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.SERRATED);
+        int sweepingEdge = PlayerCombatStats.getSweepingEdge(player);
+
+        // Base sword sweep (affinity-scaled): only when neither enchant claimed the swing.
+        if (serrated <= 0 && sweepingEdge <= 0) {
+            int slashingPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.SLASHING) : 0;
+            double sweepChance = 0.10 + (slashingPts * 0.05) + luckBonus;
+            if (Math.random() < sweepChance) {
+                List<CombatEntity> sweepTargets = Abilities.findAdjacentEnemies(arena, target, 1);
+                for (CombatEntity sweepTarget : sweepTargets) {
+                    int sweepDmg = sweepTarget.takeDamage(baseDamage / 2);
+                    extraTargets.add(sweepTarget);
+                    totalExtra += sweepDmg;
+                    messages.add("\u00a7eSweep! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " splash damage.");
+                }
+            }
+        }
+
+        // NOTE: the Diamond Sword crit (2x) and Netherite Sword execute (3x) used
+        // to live here, but this method's returned damage() is DISCARDED for the
+        // primary target (CombatManager deals the primary hit from its own
+        // baseDamage, and only reads extraTargets() from this result). So those
+        // multipliers never actually landed. They now live in the real damage
+        // chain in CombatManager (search "Signature tier-weapon multipliers"),
+        // which owns the message + achievement + VFX for both.
+
+        return new WeaponAbility.AttackResult(baseDamage + totalExtra, messages, extraTargets);
+    }
+
+    /**
+     * Six effects that used to live inside {@link #swordAbility}, so only a weapon registered
+     * with the vanilla sword handler ever saw them - every weapon that brings its own ability
+     * (Simply Swords blades, the Mace, Basic Weapons, any future addon) silently lost all six
+     * the moment it registered something else:
+     * <ul>
+     *   <li>Sharpness - bleed stacks
+     *   <li>Smite - AoE radiant burst vs undead
+     *   <li>Bane of Arthropods - poison + slowness vs arthropods
+     *   <li>Knockback - directional shockwave
+     *   <li>Serrated (Craftics enchant) - trades the melee sweep for a bigger Bleed
+     *   <li>Sweeping Edge - whirlwind AoE
+     * </ul>
+     * This method reads the enchant levels straight off the held item
+     * ({@link PlayerCombatStats#getSharpness}, etc.), so it works for any weapon regardless
+     * of ability handler, and is called once per attack from CombatManager ALONGSIDE
+     * (never instead of) the weapon's own registered ability.
+     *
+     * <p>Called only for melee weapons - see the call site in CombatManager for why bows and
+     * crossbows are excluded (Punch already covers bow knockback).
+     *
+     * @param abilityAlreadyHitExtraTargets whether the weapon's OWN ability handler (the one
+     *      {@code CombatManager} already ran before calling this method) hit any extra target
+     *      this swing. Sweeping Edge is an AREA effect, unlike the other five - several
+     *      weapons (coral fan splash, several Simply Swords/Basic Weapons greatweapons) bake
+     *      their own AoE into their ability handler as their signature mechanic, so Sweeping
+     *      Edge is skipped whenever this is {@code true} to avoid hitting the same enemies
+     *      twice in one swing. See the Sweeping Edge block below for the full reasoning.
+     */
+    public static WeaponAbility.AttackResult universalEnchantEffects(ServerPlayerEntity player,
+                                                                      CombatEntity target,
+                                                                      GridArena arena,
+                                                                      int baseDamage,
+                                                                      PlayerProgression.PlayerStats playerStats,
+                                                                      int luckPoints,
+                                                                      boolean abilityAlreadyHitExtraTargets) {
+        List<String> messages = new ArrayList<>();
+        List<CombatEntity> extraTargets = new ArrayList<>();
+        int totalExtra = 0;
 
         // Sharpness: apply bleed stacks (each stack = +1 damage when attacked)
         int sharpness = PlayerCombatStats.getSharpness(player);
         if (sharpness > 0) {
             target.stackBleed(sharpness);
-            messages.add("\u00a7cBleed! " + target.getDisplayName() + " has " + target.getBleedStacks() + " bleed stacks.");
-        }
-
-        // Serrated: apply Bleed to the primary target (never the sweep victims).
-        if (serrated > 0) {
-            target.stackBleed(SwordAxeEnchantEffects.serratedBleedStacks(serrated));
-            messages.add("\u00a7cSerrated! " + target.getDisplayName() + " has " + target.getBleedStacks() + " bleed stacks.");
+            messages.add("§cBleed! " + target.getDisplayName() + " has " + target.getBleedStacks() + " bleed stacks.");
         }
 
         // Smite: AoE radiant burst vs undead. Scales as +25% of the hit's base
@@ -147,7 +213,7 @@ public final class VanillaWeapons {
                     int burstDmg = enemy.takeDamage(smiteDmg);
                     extraTargets.add(enemy);
                     totalExtra += burstDmg;
-                    messages.add("\u00a7eHoly Radiance! " + enemy.getDisplayName() + " takes " + burstDmg + " radiant damage.");
+                    messages.add("§eHoly Radiance! " + enemy.getDisplayName() + " takes " + burstDmg + " radiant damage.");
                 }
             }
         }
@@ -165,7 +231,7 @@ public final class VanillaWeapons {
             target.stackSlowness(3, slowPenalty);
             // No per-turn figure: EffectFormulas owns that number, it changes per tick as the
             // poison front-loads, and it varies per target via the max-HP term.
-            messages.add("\u00a72Venom! " + target.getDisplayName() + " is poisoned and slowed (-" + slowPenalty + " speed).");
+            messages.add("§2Venom! " + target.getDisplayName() + " is poisoned and slowed (-" + slowPenalty + " speed).");
         }
 
         // Knockback: directional shockwave - push target + enemies behind in a line
@@ -232,22 +298,22 @@ public final class VanillaWeapons {
                                 case VOID -> {
                                     pushTarget.takeDamage(pushTarget.getCurrentHp() + 100);
                                     if (pushTarget != target) extraTargets.add(pushTarget);
-                                    messages.add("\u00a74" + pushTarget.getDisplayName() + " fell into the void!");
+                                    messages.add("§4" + pushTarget.getDisplayName() + " fell into the void!");
                                 }
                                 case DEEP_WATER -> {
                                     pushTarget.takeDamage(pushTarget.getCurrentHp() + 100);
                                     if (pushTarget != target) extraTargets.add(pushTarget);
-                                    messages.add("\u00a71" + pushTarget.getDisplayName() + " drowned in deep water!");
+                                    messages.add("§1" + pushTarget.getDisplayName() + " drowned in deep water!");
                                 }
                                 case LAVA -> {
                                     int lavaDmg = pushTarget.takeDamage(10);
                                     totalExtra += lavaDmg;
                                     if (pushTarget != target) extraTargets.add(pushTarget);
-                                    messages.add("\u00a76" + pushTarget.getDisplayName() + " knocked into lava for " + lavaDmg + " damage!");
+                                    messages.add("§6" + pushTarget.getDisplayName() + " knocked into lava for " + lavaDmg + " damage!");
                                 }
                                 case WATER -> {
                                     pushTarget.stackSoaked(2, 1);
-                                    messages.add("\u00a7b" + pushTarget.getDisplayName() + " splashes into water and is soaked!");
+                                    messages.add("§b" + pushTarget.getDisplayName() + " splashes into water and is soaked!");
                                 }
                                 default -> {}
                             }
@@ -259,22 +325,42 @@ public final class VanillaWeapons {
                     int cDmg = pushTarget.takeDamage(collisionDmg);
                     totalExtra += cDmg;
                     if (pushTarget != target) extraTargets.add(pushTarget);
-                    messages.add("\u00a76" + pushTarget.getDisplayName() + " slammed into obstacle for " + cDmg + " collision damage!");
+                    messages.add("§6" + pushTarget.getDisplayName() + " slammed into obstacle for " + cDmg + " collision damage!");
                 } else if (!hitHazard && pushTarget != target) {
                     extraTargets.add(pushTarget);
-                    messages.add("\u00a76" + pushTarget.getDisplayName() + " pushed back " + pushDist + " tiles!");
+                    messages.add("§6" + pushTarget.getDisplayName() + " pushed back " + pushDist + " tiles!");
                 }
             }
             if (!lineTargets.isEmpty()) {
-                messages.add("\u00a76Shockwave! Knocked back " + lineTargets.size() + " enemies.");
+                messages.add("§6Shockwave! Knocked back " + lineTargets.size() + " enemies.");
             }
         }
 
-        // Sweeping Edge: the swing geometry scales with enchant level:
-        // Lv1 = 3-wide chop across the swing direction, Lv2 = 5-wide arc,
-        // Lv3 = full 360 ring around the player (see AoeShapes.sweepingEdge).
+        // Serrated (Craftics enchant, max III): trades the melee sweep for Bleed - applies
+        // Bleed stacks equal to the enchant level to the primary target only. Independent of
+        // Sharpness above (a blade can carry both); together with Sweeping Edge just below it
+        // suppresses swordAbility's own base sword sweep so a weapon never gets both.
+        int serrated = CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.SERRATED);
+        if (serrated > 0) {
+            target.stackBleed(SwordAxeEnchantEffects.serratedBleedStacks(serrated));
+            messages.add("§cSerrated! " + target.getDisplayName() + " has " + target.getBleedStacks() + " bleed stacks.");
+        }
+
+        // Sweeping Edge: whirlwind AoE, geometry scaling with level - Lv1 = 3-wide chop across
+        // the swing direction, Lv2 = 5-wide arc, Lv3 = full 360 ring (see
+        // AoeShapes.sweepingEdge). Skipped when Serrated already claimed the swing (above),
+        // and skipped whenever the weapon's OWN registered ability already hit extra targets
+        // THIS swing (abilityAlreadyHitExtraTargets). Several weapons bake their own AoE into
+        // their ability handler using this exact AoeShapes.sweepingEdge geometry as their
+        // signature mechanic, independent of this enchant entirely - coral fan splash, and the
+        // Simply Swords / Basic Weapons claymore, glaive, scythe, Soulrender, Brimstone
+        // Claymore and Magiscythe. Those are all CLEAVING, so Craftics' own valid-enchant pool
+        // never offers them Sweeping Edge - but a vanilla anvil doesn't know that (it only
+        // checks the item's class/tag, the same loophole Fix 2 exists for), so one COULD end
+        // up enchanted with it anyway. Without this guard that weapon would hit the same
+        // enemies twice in one swing: once from its own baked-in arc, once from this one.
         int sweepingEdge = PlayerCombatStats.getSweepingEdge(player);
-        if (sweepingEdge > 0 && serrated <= 0) {
+        if (sweepingEdge > 0 && serrated <= 0 && !abilityAlreadyHitExtraTargets) {
             double sweepDmgPct = sweepingEdge == 1 ? 0.60 : (sweepingEdge == 2 ? 0.75 : 0.90);
             int sweepKb = sweepingEdge >= 3 ? 1 : 0;
             List<CombatEntity> sweepTargets = AoeShapes.enemiesOn(arena,
@@ -284,7 +370,7 @@ public final class VanillaWeapons {
                 int sweepDmg = sweepTarget.takeDamage((int)(baseDamage * sweepDmgPct));
                 extraTargets.add(sweepTarget);
                 totalExtra += sweepDmg;
-                messages.add("\u00a7eWhirlwind! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " damage.");
+                messages.add("§eWhirlwind! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " damage.");
                 // Lv3: knockback 1 tile
                 if (sweepKb > 0) {
                     GridPos pPos2 = target.getGridPos();
@@ -311,30 +397,30 @@ public final class VanillaWeapons {
                                     switch (tile.getType()) {
                                         case VOID -> {
                                             sweepTarget.takeDamage(sweepTarget.getCurrentHp() + 100);
-                                            messages.add("\u00a74" + sweepTarget.getDisplayName() + " fell into the void!");
+                                            messages.add("§4" + sweepTarget.getDisplayName() + " fell into the void!");
                                         }
                                         case DEEP_WATER -> {
                                             sweepTarget.takeDamage(sweepTarget.getCurrentHp() + 100);
-                                            messages.add("\u00a71" + sweepTarget.getDisplayName() + " drowned in deep water!");
+                                            messages.add("§1" + sweepTarget.getDisplayName() + " drowned in deep water!");
                                         }
                                         case LAVA -> {
                                             int lavaDmg = sweepTarget.takeDamage(10);
                                             totalExtra += lavaDmg;
-                                            messages.add("\u00a76" + sweepTarget.getDisplayName() + " knocked into lava for " + lavaDmg + " damage!");
+                                            messages.add("§6" + sweepTarget.getDisplayName() + " knocked into lava for " + lavaDmg + " damage!");
                                         }
                                         case WATER -> {
                                             sweepTarget.stackSoaked(2, 1);
-                                            messages.add("\u00a7b" + sweepTarget.getDisplayName() + " splashes into water and is soaked!");
+                                            messages.add("§b" + sweepTarget.getDisplayName() + " splashes into water and is soaked!");
                                         }
                                         case POWDER_SNOW -> {
                                             int freezeDmg = sweepTarget.takeDamage(2);
                                             sweepTarget.stackSlowness(2, 1);
                                             totalExtra += freezeDmg;
-                                            messages.add("\u00a7b" + sweepTarget.getDisplayName() + " sinks into powder snow!");
+                                            messages.add("§b" + sweepTarget.getDisplayName() + " sinks into powder snow!");
                                         }
                                         case LOW_GROUND -> {
                                             sweepTarget.setStunned(true);
-                                            messages.add("\u00a77" + sweepTarget.getDisplayName() + " tumbles into a sunken pit!");
+                                            messages.add("§7" + sweepTarget.getDisplayName() + " tumbles into a sunken pit!");
                                         }
                                         default -> {}
                                     }
@@ -344,28 +430,7 @@ public final class VanillaWeapons {
                     }
                 }
             }
-        } else {
-            // Base sword sweep (affinity-scaled)
-            int slashingPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.SLASHING) : 0;
-            double sweepChance = 0.10 + (slashingPts * 0.05) + luckBonus;
-            if (Math.random() < sweepChance && serrated <= 0) {
-                List<CombatEntity> sweepTargets = Abilities.findAdjacentEnemies(arena, target, 1);
-                for (CombatEntity sweepTarget : sweepTargets) {
-                    int sweepDmg = sweepTarget.takeDamage(baseDamage / 2);
-                    extraTargets.add(sweepTarget);
-                    totalExtra += sweepDmg;
-                    messages.add("\u00a7eSweep! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " splash damage.");
-                }
-            }
         }
-
-        // NOTE: the Diamond Sword crit (2x) and Netherite Sword execute (3x) used
-        // to live here, but this method's returned damage() is DISCARDED for the
-        // primary target (CombatManager deals the primary hit from its own
-        // baseDamage, and only reads extraTargets() from this result). So those
-        // multipliers never actually landed. They now live in the real damage
-        // chain in CombatManager (search "Signature tier-weapon multipliers"),
-        // which owns the message + achievement + VFX for both.
 
         return new WeaponAbility.AttackResult(baseDamage + totalExtra, messages, extraTargets);
     }
@@ -522,7 +587,11 @@ public final class VanillaWeapons {
     // ===== Axes (CLEAVING, range 1, apCost 2) =====
 
     private static void registerAxes() {
-        WeaponAbilityHandler axeHandler = Abilities.armorIgnore(0.05, 0.03).and(Abilities.enchantKnockback());
+        // Knockback used to be tacked on here via Abilities.enchantKnockback(), a second,
+        // simpler knockback implementation. universalEnchantEffects now covers Knockback for
+        // every melee weapon (axes included) with the same shockwave swordAbility always had,
+        // so adding it here too would knock an enchanted axe's target back twice.
+        WeaponAbilityHandler axeHandler = Abilities.armorIgnore(0.05, 0.03);
 
         WeaponRegistry.register(Items.WOODEN_AXE, WeaponEntry.builder(Items.WOODEN_AXE)
             .damageType(DamageType.CLEAVING)

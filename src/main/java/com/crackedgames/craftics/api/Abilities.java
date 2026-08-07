@@ -20,8 +20,8 @@ import java.util.List;
  *
  * <p>Example:
  * <pre>{@code
- *   WeaponAbilityHandler handler = Abilities.bleed()
- *       .and(Abilities.sweepAdjacent(0.10, 0.05));
+ *   WeaponAbilityHandler handler = Abilities.sweepAdjacent(0.10, 0.05)
+ *       .and(Abilities.stun(0.05, 0.03));
  * }</pre>
  *
  * @since 0.2.0
@@ -30,22 +30,13 @@ public final class Abilities {
 
     private Abilities() {}
 
-    /**
-     * Reads the Sharpness enchant level from the player's weapon.
-     * If sharpness > 0, applies that many bleed stacks to the target.
-     */
-    public static WeaponAbilityHandler bleed() {
-        return (player, target, arena, baseDamage, stats, luckPoints) -> {
-            List<String> messages = new ArrayList<>();
-            int sharpness = PlayerCombatStats.getSharpness(player);
-            if (sharpness > 0) {
-                target.stackBleed(sharpness);
-                messages.add("§cBleed! " + target.getDisplayName()
-                        + " has " + target.getBleedStacks() + " bleed stacks.");
-            }
-            return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
-        };
-    }
+    // A bleed() factory (reading Sharpness off the held weapon) used to live here. It was
+    // removed: Sharpness bleed is now automatic for EVERY melee weapon regardless of ability
+    // handler (see VanillaWeapons.universalEnchantEffects), so composing this into a custom
+    // handler would have double-applied Bleed stacks - the same risk the axe handler's old
+    // Abilities.enchantKnockback() call had for Knockback. Nothing in this repo ever called
+    // it besides a JSON datapack keyword (see WeaponJsonLoader, which now treats "bleed" as a
+    // documented no-op instead) and these doc examples, so removing it costs nothing real.
 
     /**
      * Affinity-scaled chance to hit one adjacent enemy for half base damage.

@@ -29,7 +29,7 @@ import net.minecraft.util.Identifier;
  *   "ranged": false,
  *   "break_chance": 0.0,
  *   "ability": [
- *     { "kind": "bleed" },
+ *     { "kind": "armor_ignore", "base_chance": 0.05, "bonus_per_point": 0.03 },
  *     { "kind": "sweep", "base_chance": 0.1, "bonus_per_point": 0.05 }
  *   ]
  * }
@@ -83,7 +83,17 @@ public final class WeaponJsonLoader extends CrafticsDataLoader<WeaponEntry> {
     private WeaponAbilityHandler parseAbility(JsonObject obj, Identifier fileId) {
         String kind = obj.get("kind").getAsString();
         return switch (kind) {
-            case "bleed" -> Abilities.bleed();
+            // "bleed" used to call Abilities.bleed() (Sharpness -> Bleed stacks). Kept as a
+            // recognized, logged no-op rather than dropped into the "unknown kind" branch
+            // below: Sharpness bleed is now automatic for every melee weapon regardless of
+            // ability handler (see VanillaWeapons.universalEnchantEffects), so a datapack
+            // weapon using this entry would otherwise double-apply Bleed stacks. A future
+            // datapack should simply remove this entry - it adds nothing anymore.
+            case "bleed" -> {
+                CrafticsMod.LOGGER.warn("Weapon ability kind 'bleed' in {} is a no-op: Sharpness "
+                    + "bleed is now automatic for every melee weapon. Remove this entry.", fileId);
+                yield null;
+            }
             case "pierce" -> Abilities.pierce();
             case "sweep" -> Abilities.sweepAdjacent(
                 getDouble(obj, "base_chance", 0.10), getDouble(obj, "bonus_per_point", 0.05));

@@ -26,6 +26,13 @@ public record GridPos(int x, int z) {
     }
 
     /**
+     * Chebyshev distance for 8-direction movement: diagonals count as one step.
+     */
+    public int chebyshevDistanceTo(GridPos other) {
+        return Math.max(Math.abs(this.x - other.x), Math.abs(this.z - other.z));
+    }
+
+    /**
      * The two cardinal-perpendicular neighbours of this tile for a forward direction
      * {@code (faceDx, faceDz)} (each component -1/0/1). For a forward of (0,1) this
      * returns the tiles to the left and right (x-1, x+1) - used to build the netherite

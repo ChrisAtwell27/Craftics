@@ -5432,7 +5432,7 @@ public class CombatManager {
             return;
         }
         GridPos playerPos = arena.getPlayerGridPos();
-        if (playerPos == null || playerPos.manhattanDistance(targetTile) > 1) {
+        if (playerPos == null || playerPos.chebyshevDistanceTo(targetTile) > 1) {
             sendMessage("§cMust be adjacent to mine!");
             return;
         }
@@ -6653,10 +6653,6 @@ public class CombatManager {
         final int fTridentLoyaltyLevel = tridentLoyaltyLevel;
         final int fImpalingLevel = isTridentWeapon(weapon) ? PlayerCombatStats.getImpaling(player) : 0;
         final int fImpalingBleed = isTridentWeapon(weapon) ? PlayerCombatStats.getImpalingBleed(player) : 0;
-        // Sharpness on the player's weapon also inflicts bleed (1 stack per level).
-        // Bow/crossbow Power is the ranged equivalent and does not bleed.
-        final int fSharpnessBleed = (!PlayerCombatStats.isBowItem(weapon) && weapon != Items.CROSSBOW)
-            ? PlayerCombatStats.getSharpness(player) : 0;
         final boolean fLuckCrit = luckCrit;
         final java.util.List<String> fTippedEffects = tippedEffects;
         final boolean fSpectralShot = spectralShot;
@@ -7038,6 +7034,35 @@ public class CombatManager {
             WeaponAbility.AttackResult abilityResult = fSuppressDirectHit
                 ? new WeaponAbility.AttackResult(0, "")
                 : WeaponAbility.applyAbility(player, fWeapon, fTarget, arena, fBaseDamage, fAttackerStats, fLuckPoints);
+            // Sharpness, Smite, Bane of Arthropods, Knockback, Serrated and Sweeping Edge: all
+            // six apply to every MELEE weapon regardless of which ability handler it
+            // registered (see VanillaWeapons.universalEnchantEffects) - a Simply Swords blade
+            // or a Mace reads them straight off its own enchantments, exactly like a vanilla
+            // sword always could. Ranged weapons are excluded on purpose: a bow/crossbow can
+            // never legally carry these six (its own valid-enchant pool doesn't offer them),
+            // and bow knockback is already handled below as Punch (fBowPunchLevel), a distinct
+            // vanilla enchantment from Knockback. Skipped on a suppressed indirect
+            // (empty-tile) attack for the same reason the ability above is - the anchor
+            // target was never actually struck.
+            //
+            // abilityResult.extraTargets() is read BEFORE this call and passed in: Sweeping
+            // Edge is an AoE, and several weapons (coral fan splash, the Simply Swords/Basic
+            // Weapons claymore, glaive, scythe, Soulrender, Brimstone Claymore, Magiscythe)
+            // already bake their own AoE into their registered ability using the very same
+            // AoeShapes.sweepingEdge geometry as their signature mechanic. If that ability
+            // already hit someone extra this swing, universalEnchantEffects skips Sweeping
+            // Edge entirely so the same enemies are never hit twice in one swing.
+            if (!fSuppressDirectHit && !fIsRangedWeapon) {
+                WeaponAbility.AttackResult universalResult = com.crackedgames.craftics.api.VanillaWeapons
+                    .universalEnchantEffects(player, fTarget, arena, fBaseDamage, fAttackerStats, fLuckPoints,
+                        !abilityResult.extraTargets().isEmpty());
+                List<String> combinedMsgs = new ArrayList<>(abilityResult.messages());
+                combinedMsgs.addAll(universalResult.messages());
+                List<CombatEntity> combinedExtras = new ArrayList<>(abilityResult.extraTargets());
+                combinedExtras.addAll(universalResult.extraTargets());
+                int combinedTotal = abilityResult.totalDamage() + (universalResult.totalDamage() - fBaseDamage);
+                abilityResult = new WeaponAbility.AttackResult(combinedTotal, combinedMsgs, combinedExtras);
+            }
             // Consume the Wind Burst recoil tag FIRST, and hand every consumer below a list
             // that no longer contains it. The tag is a control instruction, not a message:
             // the shockwave blows the SWINGER around too, so it grants Airtime at the
@@ -7168,13 +7193,6 @@ public class CombatManager {
                 fTarget.stackBleed(fImpalingBleed);
                 sendMessage("§b✦ Impaling! +" + impDmg + " damage, " + fImpalingBleed + " bleed on "
                     + fTarget.getDisplayName() + (soaked ? " §3(Soaked +50%!)" : "") + ".");
-            }
-
-            // === SHARPNESS: melee weapon sharpness applies bleed stacks (1 per level) ===
-            if (fSharpnessBleed > 0 && fTarget.isAlive()) {
-                fTarget.stackBleed(fSharpnessBleed);
-                sendMessage("§4✦ Sharpness " + fSharpnessBleed + "! " + fTarget.getDisplayName()
-                    + " is bleeding (" + fTarget.getBleedStacks() + " stacks).");
             }
 
             // === MOB HEAD: Wither Skeleton Skull -25% chance to inflict Wither on a melee hit ===
@@ -9374,9 +9392,25 @@ public class CombatManager {
         };
     }
 
+    /**
+     * Enchantments Craftics deliberately lets roll ABOVE their vanilla/registry maximum.
+     * Knockback is the one exception: Craftics' own push scales meaningfully with level with
+     * no cap (see {@code VanillaWeapons.universalEnchantEffects}: {@code pushDist = knockback
+     * + 1}, {@code collisionDmg = knockback * 2}), unlike a binary or already-maxed-out
+     * effect (Hilt is max I and is a pure damage-type conversion - Hilt II-V would do
+     * nothing at all). Named explicitly, as an allow-list, so this reads as an intentional
+     * design choice and not a clamp someone forgot to add.
+     */
+    private static final java.util.Set<String> ENCHANT_LEVEL_UNCAPPED = java.util.Set.of("knockback");
+
     /** Apply a single enchantment by registry path to an itemstack. */
     /** Package-private so the lootbox can pre-enchant its rewards through the same path mob
-     *  gear uses - one enchant applier, one set of registry lookups, no second copy to drift. */
+     *  gear uses - one enchant applier, one set of registry lookups, no second copy to drift.
+     *  The requested level is clamped to the enchantment's own registry maximum (see
+     *  {@link net.minecraft.enchantment.Enchantment#getMaxLevel()}) unless {@code enchantPath}
+     *  is in {@link #ENCHANT_LEVEL_UNCAPPED} - otherwise a caller rolling 1-5 blind (as the
+     *  lootbox polish and mob gear enchanting both do) can hand out, say, "Hilt V" or
+     *  "Fire Aspect IV", levels above the max that either do nothing or don't exist. */
     static void applyMobEnchant(ItemStack stack, String enchantPath, int level, ServerWorld world) {
         //? if <=1.21.1 {
         var enchantRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
@@ -9387,9 +9421,11 @@ public class CombatManager {
             .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(enchantPath))
             .findFirst().orElse(null);
         if (enchantEntry == null) return;
+        int clampedLevel = CombatEnchantHelpers.clampEnchantLevel(
+            enchantPath, level, enchantEntry.value().getMaxLevel(), ENCHANT_LEVEL_UNCAPPED);
         ItemEnchantmentsComponent.Builder builder = new ItemEnchantmentsComponent.Builder(
             stack.getOrDefault(DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT));
-        builder.add(enchantEntry, level);
+        builder.add(enchantEntry, clampedLevel);
         stack.set(DataComponentTypes.ENCHANTMENTS, builder.build());
         stack.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
     }

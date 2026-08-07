@@ -131,7 +131,11 @@ public final class LootboxManager {
     private static final double ARMOR_TRIM_CHANCE = 0.20;
     /** Chance an enchanted item gets a SECOND enchantment on top of the first. */
     private static final double SECOND_ENCHANT_CHANCE = 0.25;
-    /** Highest enchant level a lootbox will roll. */
+    /** Highest enchant level a lootbox will ROLL - the die has 5 faces. The level actually
+     *  applied is clamped down to the chosen enchantment's own real maximum by
+     *  {@link CombatManager#applyMobEnchant} (Knockback excepted; see
+     *  {@code CombatManager.ENCHANT_LEVEL_UNCAPPED}), so a single-level enchantment like
+     *  Hilt or Mending never rolls higher than I. */
     private static final int MAX_ENCHANT_LEVEL = 5;
 
     /**
@@ -416,7 +420,7 @@ public final class LootboxManager {
             lore.add("");
             lore.add("§f" + pct(WEAPON_ENCHANT_CHANCE) + " §achance to arrive enchanted");
             lore.add("§f" + pct(SECOND_ENCHANT_CHANCE) + " §achance of a second enchantment");
-            lore.add("§7Levels §f1-" + MAX_ENCHANT_LEVEL + " §7, uniform");
+            lore.add("§7Levels §f1-" + MAX_ENCHANT_LEVEL + " §7, uniform §8(never above what that enchant allows)");
             lore.add("");
             lore.add("§7Only enchantments valid for that weapon can roll.");
             setIcon(inv, slot, new ItemStack(Items.ENCHANTED_BOOK), "§e§lEnchant roll", lore);
@@ -425,7 +429,7 @@ public final class LootboxManager {
             lore.add("");
             lore.add("§f" + pct(ARMOR_ENCHANT_CHANCE) + " §achance to arrive enchanted");
             lore.add("§f" + pct(SECOND_ENCHANT_CHANCE) + " §achance of a second enchantment");
-            lore.add("§7Levels §f1-" + MAX_ENCHANT_LEVEL + " §7, uniform");
+            lore.add("§7Levels §f1-" + MAX_ENCHANT_LEVEL + " §7, uniform §8(never above what that enchant allows)");
             lore.add("§f" + pct(ARMOR_TRIM_CHANCE) + " §achance to arrive trimmed");
             lore.add("§7(random pattern and material, both uniform)");
             setIcon(inv, slot, new ItemStack(Items.ENCHANTED_BOOK), "§e§lEnchant & trim roll", lore);
@@ -709,6 +713,23 @@ public final class LootboxManager {
     }
 
     /**
+     * NAME-based exclusion, not an id list: Simply Swords ships four "Relic" items
+     * ({@code dormant_relic}, {@code tainted_relic}, {@code righteous_relic},
+     * {@code decaying_relic} - confirmed from its lang file) that are {@code SwordItem}
+     * subclasses, which is exactly why {@link #isWeaponItem} would otherwise sweep them in.
+     * They are not weapons - they're progression items carried in the inventory to transform
+     * into something else, and are never actually wielded in combat (they also never got a
+     * {@code WeaponEntry} from {@code SimplySwordsCompat}, so a player who somehow equipped
+     * one would just be hitting with bare-fist stats). Matching on the id substring "relic"
+     * rather than a fixed four-id list catches whichever of the four are actually registered
+     * in a given install, and any relic Simply Swords (or another mod) adds later.
+     */
+    private static boolean isRelicItem(Item item) {
+        Identifier id = Registries.ITEM.getId(item);
+        return id != null && id.getPath().contains("relic");
+    }
+
+    /**
      * Whether {@code stack} counts as a weapon for the Weapon Cache sweep. Mirrors the exact
      * definition {@code CombatManager.getValidWeaponEnchants} already uses to pick an enchant
      * pool (see {@code CrafticsEnchantments.isAxeLike}/{@code isSword}/{@code matchesBlunt}),
@@ -720,6 +741,7 @@ public final class LootboxManager {
      */
     private static boolean isWeaponItem(ItemStack stack) {
         Item item = stack.getItem();
+        if (isRelicItem(item)) return false;
         if (item instanceof net.minecraft.item.BowItem
             || item instanceof net.minecraft.item.CrossbowItem
             || item instanceof net.minecraft.item.TridentItem
@@ -756,15 +778,16 @@ public final class LootboxManager {
      * Which tier an item sits in, by id substring.
      *
      * <p>Matching on the id rather than an explicit item list is what makes this work for
-     * modded gear: Simply Swords and Basic Weapons both ship netherite and diamond variants
-     * of every weapon they add, and naming them item by item never kept up. Anything whose id
-     * says netherite or diamond is gated behind the tier that matches, whoever added it.
+     * modded gear: Simply Swords and Basic Weapons ship diamond, netherite, and runic
+     * variants of many weapons, and naming them item by item never kept up. Anything whose
+     * id says netherite is gated behind the legendary tier; diamond and runic fall into the
+     * same rare tier, whoever added them.
      */
     private static WeaponTier tierOf(Item item) {
         Identifier id = Registries.ITEM.getId(item);
         String path = id == null ? "" : id.getPath();
         if (path.contains("netherite")) return WeaponTier.NETHERITE;
-        if (path.contains("diamond")) return WeaponTier.DIAMOND;
+        if (path.contains("diamond") || path.contains("runic")) return WeaponTier.DIAMOND;
         return WeaponTier.BASE;
     }
 
@@ -784,6 +807,11 @@ public final class LootboxManager {
             if (isWeaponItem(new ItemStack(item))) found.add(item);
         }
         found.removeAll(exclude);
+        // Belt and suspenders: isWeaponItem already refuses relics (see isRelicItem), but a
+        // relic could in principle also arrive via WeaponRegistry.registeredItems() if some
+        // future compat module ever registered one directly. Named explicitly, right where
+        // the LEGENDARY exclusion above already carves out the pool, so it stays obvious why.
+        found.removeIf(LootboxManager::isRelicItem);
 
         java.util.Map<WeaponTier, List<ItemStack>> tiers = new java.util.EnumMap<>(WeaponTier.class);
         for (WeaponTier tier : WeaponTier.values()) tiers.put(tier, new ArrayList<>());
@@ -1025,20 +1053,32 @@ public final class LootboxManager {
                 // The unique-weapon ids are legendary in their own right, so they ride
                 // alongside every netherite-tier weapon rather than replacing them.
                 legends.addAll(netheriteWeaponPool());
-                yield List.of(
+                List<Section> weaponSections = new ArrayList<>(List.of(
                     new Section("Guaranteed", LootboxRarity.COMMON, 1.0, 2, weaponPool()),
                     new Section("Bonus", LootboxRarity.UNCOMMON, 0.35, 1, weaponPool()),
                     new Section("Coral", LootboxRarity.UNCOMMON, 0.30, 1, coralPool()),
-                    new Section("Rare", LootboxRarity.RARE, 0.08, 1, diamondWeaponPool()),
-                    new Section("LEGENDARY", LootboxRarity.LEGENDARY, 0.01, 1, legends));
+                    new Section("Rare", LootboxRarity.RARE, 0.08, 1, diamondWeaponPool())));
+                List<ItemStack> ultraRareWeapons = ultraRareWeaponPool();
+                if (!ultraRareWeapons.isEmpty()) {
+                    weaponSections.add(new Section("Ultra Rare", LootboxRarity.EPIC, 0.005, 1, ultraRareWeapons));
+                }
+                weaponSections.add(new Section("LEGENDARY", LootboxRarity.LEGENDARY, 0.01, 1, legends));
+                yield List.copyOf(weaponSections);
             }
-            case ARMOR -> List.of(
-                new Section("Guaranteed", LootboxRarity.COMMON, 1.0, 2, armorPool()),
-                new Section("Bonus", LootboxRarity.UNCOMMON, 0.25, 1, armorPool()),
-                new Section("Rare", LootboxRarity.LEGENDARY, 0.01, 1, List.of(
-                    new ItemStack(Items.NETHERITE_HELMET), new ItemStack(Items.NETHERITE_CHESTPLATE),
-                    new ItemStack(Items.NETHERITE_LEGGINGS), new ItemStack(Items.NETHERITE_BOOTS))),
-                new Section("Trim bonus", LootboxRarity.RARE, 0.10, 1, trimTemplatePool()));
+            case ARMOR -> {
+                List<Section> armorSections = new ArrayList<>(List.of(
+                    new Section("Guaranteed", LootboxRarity.COMMON, 1.0, 2, armorPool()),
+                    new Section("Bonus", LootboxRarity.UNCOMMON, 0.25, 1, armorPool()),
+                    new Section("Rare", LootboxRarity.LEGENDARY, 0.01, 1, List.of(
+                        new ItemStack(Items.NETHERITE_HELMET), new ItemStack(Items.NETHERITE_CHESTPLATE),
+                        new ItemStack(Items.NETHERITE_LEGGINGS), new ItemStack(Items.NETHERITE_BOOTS))),
+                    new Section("Trim bonus", LootboxRarity.RARE, 0.10, 1, trimTemplatePool())));
+                List<ItemStack> ultraRareArmor = ultraRareArmorPool();
+                if (!ultraRareArmor.isEmpty()) {
+                    armorSections.add(3, new Section("Ultra Rare", LootboxRarity.EPIC, 0.005, 1, ultraRareArmor));
+                }
+                yield List.copyOf(armorSections);
+            }
             case MATERIALS -> List.of(
                 new Section("Wood", LootboxRarity.COMMON, 1.0, 1, woodPool(), 16, 48),
                 new Section("Stone", LootboxRarity.COMMON, 1.0, 1, stonePool(), 16, 48),
@@ -1059,10 +1099,22 @@ public final class LootboxManager {
                     everySpecial.add(new ItemStack(item, specialStackSize(item)));
                 }
                 if (everySpecial.isEmpty()) everySpecial.add(new ItemStack(Items.FIRE_CHARGE, 3));
-                yield List.of(
-                    new Section("Guaranteed", LootboxRarity.COMMON, 1.0, 3, everySpecial),
-                    new Section("Bonus", LootboxRarity.UNCOMMON, 0.40, 1, everySpecial),
-                    new Section("Jackpot", LootboxRarity.LEGENDARY, 0.05, 2, everySpecial));
+
+                List<ItemStack> artifactItems = artifactPool();
+                List<ItemStack> moreTotemItems = moreTotemPool();
+                List<Section> sections = new ArrayList<>();
+                sections.add(new Section("Guaranteed", LootboxRarity.COMMON, 1.0, 3, everySpecial));
+                sections.add(new Section("Bonus", LootboxRarity.UNCOMMON, 0.40, 1, everySpecial));
+                if (!artifactItems.isEmpty()) {
+                    // Artifacts are intentionally ultra-rare: just below the legendary jackpot
+                    // lane, so they feel prestigious without dominating the box.
+                    sections.add(new Section("Artifacts", LootboxRarity.EPIC, 0.04, 1, artifactItems));
+                }
+                if (!moreTotemItems.isEmpty()) {
+                    sections.add(new Section("More Totems", LootboxRarity.EPIC, 0.03, 1, moreTotemItems));
+                }
+                sections.add(new Section("Jackpot", LootboxRarity.LEGENDARY, 0.05, 2, everySpecial));
+                yield List.copyOf(sections);
             }
             case BOOKS -> List.of(); // books roll over every registered enchantment, not item prototypes
         };
@@ -1072,6 +1124,56 @@ public final class LootboxManager {
      *  a plain book, and a paid reward should never be a downgrade. */
     private static final java.util.Set<String> BOOKS_EXCLUDED_IDS = java.util.Set.of(
         "minecraft:binding_curse", "minecraft:vanishing_curse");
+
+    private static List<ItemStack> ultraRareWeaponPool() {
+        List<ItemStack> pool = new ArrayList<>();
+        for (String path : List.of(
+            "warden_sword", "warden_axe", "warden_shovel", "warden_hoe",
+            "resonarium_sword", "resonarium_axe", "resonarium_shovel", "resonarium_hoe")) {
+            Identifier id = Identifier.of("deeperdarker", path);
+            if (Registries.ITEM.containsId(id)) {
+                pool.add(new ItemStack(Registries.ITEM.get(id)));
+            }
+        }
+        return List.copyOf(pool);
+    }
+
+    private static List<ItemStack> ultraRareArmorPool() {
+        List<ItemStack> pool = new ArrayList<>();
+        for (String path : List.of(
+            "warden_helmet", "warden_chestplate", "warden_leggings", "warden_boots",
+            "resonarium_helmet", "resonarium_chestplate", "resonarium_leggings", "resonarium_boots")) {
+            Identifier id = Identifier.of("deeperdarker", path);
+            if (Registries.ITEM.containsId(id)) {
+                pool.add(new ItemStack(Registries.ITEM.get(id)));
+            }
+        }
+        return List.copyOf(pool);
+    }
+
+    private static List<ItemStack> artifactPool() {
+        List<ItemStack> pool = new ArrayList<>();
+        for (Item item : Registries.ITEM) {
+            Identifier id = Registries.ITEM.getId(item);
+            if (id != null && "artifacts".equals(id.getNamespace())) {
+                pool.add(new ItemStack(item, specialStackSize(item)));
+            }
+        }
+        return List.copyOf(pool);
+    }
+
+    private static List<ItemStack> moreTotemPool() {
+        if (!com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isLoaded()) {
+            return List.of();
+        }
+        List<ItemStack> pool = new ArrayList<>();
+        for (Item item : Registries.ITEM) {
+            if (com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.totemPath(item) != null) {
+                pool.add(new ItemStack(item, 1));
+            }
+        }
+        return List.copyOf(pool);
+    }
 
     /**
      * Every enchantment currently registered - vanilla, Craftics, and any other installed
@@ -1310,7 +1412,7 @@ public final class LootboxManager {
                 + "§7 chance to arrive enchanted.");
             lines.add("§7If enchanted: §f" + pct(SECOND_ENCHANT_CHANCE)
                 + "§7 chance of a second enchantment. Levels §f1-" + MAX_ENCHANT_LEVEL
-                + "§7, uniform.");
+                + "§7, uniform §8(never above what that enchant allows)§7.");
             lines.add("§8Enchantments are drawn only from those valid for that weapon type.");
         }
         if (type == Type.ARMOR) {
@@ -1319,7 +1421,7 @@ public final class LootboxManager {
                 + "§7 chance to arrive enchanted.");
             lines.add("§7If enchanted: §f" + pct(SECOND_ENCHANT_CHANCE)
                 + "§7 chance of a second enchantment. Levels §f1-" + MAX_ENCHANT_LEVEL
-                + "§7, uniform.");
+                + "§7, uniform §8(never above what that enchant allows)§7.");
             lines.add("§7Each piece: §f" + pct(ARMOR_TRIM_CHANCE)
                 + "§7 chance to arrive trimmed (random pattern and material, both uniform).");
             lines.add("§8A piece can roll both, one, or neither - the two rolls don't affect each other.");

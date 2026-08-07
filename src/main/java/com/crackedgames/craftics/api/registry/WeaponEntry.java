@@ -21,7 +21,7 @@ import java.util.function.IntSupplier;
  *     .attackPower(9)
  *     .apCost(1)
  *     .range(1)
- *     .ability(Abilities.bleed().and(Abilities.sweepAdjacent(0.10, 0.05)))
+ *     .ability(Abilities.sweepAdjacent(0.10, 0.05).and(Abilities.stun(0.05, 0.03)))
  *     .build();
  * }</pre>
  *
