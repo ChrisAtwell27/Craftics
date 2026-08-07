@@ -1,0 +1,82 @@
+{
+    "id":  "wailing_stalker",
+    "name":  "The Wailing Stalker",
+    "entity":  "minecraft:warden",
+    "hp":  1180,
+    "attack":  15,
+    "defense":  8,
+    "range":  2,
+    "speed":  3,
+    "moves":  [
+                  "darkness_pulse",
+                  "sonic_boom",
+                  "phase_strike",
+                  "void_pull",
+                  "tremor_stomp",
+                  "swarm_call"
+              ],
+    "power":  {
+                  "effect":  "speed",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "deep_dark",
+    "bounty":  78,
+    "loot":  [
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:echo_shard",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:sculk_sensor",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:amethyst_shard",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "item":  "minecraft:emerald",
+                     "weight":  8,
+                     "min":  0,
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:sculk_catalyst",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  9
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  5
+                                    },
+                          "tile":  "soul_fire"
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  7
+                                    },
+                          "tile":  "mud"
+                      }
+                  ],
+    "weight":  9
+}

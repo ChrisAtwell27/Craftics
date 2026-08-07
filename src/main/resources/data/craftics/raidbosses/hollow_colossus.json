@@ -1,0 +1,78 @@
+{
+    "id":  "hollow_colossus",
+    "name":  "The Hollow Colossus",
+    "entity":  "minecraft:ravager",
+    "hp":  1240,
+    "attack":  16,
+    "defense":  10,
+    "range":  1,
+    "speed":  2,
+    "moves":  [
+                  "ground_slam",
+                  "seismic_slam",
+                  "boulder_toss",
+                  "rampage",
+                  "shield_bash",
+                  "cave_in"
+              ],
+    "power":  {
+                  "effect":  "absorption",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "cave",
+    "bounty":  82,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  12,
+                     "item":  "minecraft:deepslate",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:iron_ingot",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 },
+                 {
+                     "weight":  5,
+                     "min":  2,
+                     "item":  "minecraft:diamond",
+                     "max":  4
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "cluster":  2,
+                          "tile":  "obstacle",
+                          "block":  "minecraft:cobbled_deepslate",
+                          "count":  {
+                                        "min":  8,
+                                        "max":  14
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    },
+                          "tile":  "mud"
+                      },
+                      {
+                          "cluster":  2,
+                          "tile":  "lava",
+                          "count":  {
+                                        "min":  1,
+                                        "max":  3
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

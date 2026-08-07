@@ -1,0 +1,82 @@
+{
+    "id":  "nightforge_exarch",
+    "name":  "The Nightforge Exarch",
+    "entity":  "minecraft:piglin",
+    "hp":  1120,
+    "attack":  12,
+    "defense":  8,
+    "range":  2,
+    "speed":  2,
+    "moves":  [
+                  "fire_pillar",
+                  "magma_eruption",
+                  "fireball_barrage",
+                  "fireball_rain",
+                  "ground_slam",
+                  "shield_bash"
+              ],
+    "power":  {
+                  "effect":  "speed",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "warped_forest",
+    "bounty":  76,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:gold_nugget",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:netherite_scrap",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:blackstone",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "soul_fire"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:blackstone",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  8
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "decay"
+                      }
+                  ],
+    "weight":  8
+}

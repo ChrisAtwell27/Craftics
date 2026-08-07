@@ -1,0 +1,83 @@
+{
+    "id":  "runic_stoneguard",
+    "name":  "The Runic Stoneguard",
+    "entity":  "minecraft:vindicator",
+    "hp":  1170,
+    "attack":  14,
+    "defense":  9,
+    "range":  1,
+    "speed":  2,
+    "moves":  [
+                  "seismic_slam",
+                  "tremor_stomp",
+                  "boulder_toss",
+                  "cave_in",
+                  "rubble_toss",
+                  "fortify_shell"
+              ],
+    "power":  {
+                  "effect":  "resistance",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "cave",
+    "bounty":  79,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:stone_bricks",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:tuff",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:iron_ingot",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "tile":  "rubble",
+                          "block":  "minecraft:tuff",
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    }
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:stone_bricks",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  9
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    },
+                          "tile":  "mud"
+                      }
+                  ],
+    "weight":  8
+}

@@ -1,0 +1,81 @@
+{
+    "id":  "abyssfang_corsair",
+    "name":  "The Abyssfang Corsair",
+    "entity":  "minecraft:phantom",
+    "hp":  1090,
+    "attack":  12,
+    "defense":  7,
+    "range":  2,
+    "speed":  3,
+    "moves":  [
+                  "void_beam",
+                  "void_pull",
+                  "null_burst",
+                  "chorus_bomb",
+                  "ender_roar",
+                  "phase_strike"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "outer_end_islands",
+    "bounty":  74,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:phantom_membrane",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:ender_pearl",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:blackstone",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    },
+                          "tile":  "sculk"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:crying_obsidian",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      },
+                      {
+                          "tile":  "rubble",
+                          "block":  "minecraft:end_stone",
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

@@ -1,0 +1,78 @@
+{
+    "id":  "petrified_earthshaker",
+    "name":  "The Petrified Earthshaker",
+    "entity":  "minecraft:iron_golem",
+    "hp":  1200,
+    "attack":  16,
+    "defense":  10,
+    "range":  1,
+    "speed":  1,
+    "moves":  [
+                  "seismic_slam",
+                  "boulder_toss",
+                  "ground_pound",
+                  "ground_slam",
+                  "avalanche",
+                  "tremor_stomp"
+              ],
+    "power":  {
+                  "effect":  "resistance",
+                  "amplifier":  2,
+                  "type":  "buff"
+              },
+    "environment":  "cave",
+    "bounty":  76,
+    "loot":  [
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:iron_block",
+                     "max":  64
+                 },
+                 {
+                     "weight":  10,
+                     "min":  10,
+                     "item":  "minecraft:cobbled_deepslate",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  2
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "cluster":  2,
+                          "tile":  "obstacle",
+                          "block":  "minecraft:deepslate",
+                          "count":  {
+                                        "min":  8,
+                                        "max":  14
+                                    }
+                      },
+                      {
+                          "cluster":  2,
+                          "tile":  "lava",
+                          "count":  {
+                                        "min":  1,
+                                        "max":  3
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  5
+                                    },
+                          "tile":  "mud"
+                      }
+                  ],
+    "weight":  8
+}

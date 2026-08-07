@@ -1,0 +1,80 @@
+{
+    "id":  "mossfang_behemoth",
+    "name":  "The Mossfang Behemoth",
+    "entity":  "minecraft:zoglin",
+    "hp":  1190,
+    "attack":  15,
+    "defense":  8,
+    "range":  1,
+    "speed":  2,
+    "moves":  [
+                  "pounce_strike",
+                  "gore_charge",
+                  "rampage",
+                  "swarm_call",
+                  "ground_pound",
+                  "tail_slam"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "forest",
+    "bounty":  80,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:moss_block",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:leather",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:oak_log",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    },
+                          "tile":  "mud"
+                      },
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    },
+                          "tile":  "tall_grass"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:moss_block",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

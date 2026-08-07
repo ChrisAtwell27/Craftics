@@ -1,0 +1,82 @@
+{
+    "id":  "basalt_widowqueen",
+    "name":  "The Basalt Widowqueen",
+    "entity":  "minecraft:cave_spider",
+    "hp":  1120,
+    "attack":  11,
+    "defense":  8,
+    "range":  1,
+    "speed":  3,
+    "moves":  [
+                  "web_spray",
+                  "spawn_brood",
+                  "venomous_bite",
+                  "swarm_call",
+                  "pounce_strike",
+                  "entangle"
+              ],
+    "power":  {
+                  "effect":  "strength",
+                  "amplifier":  0,
+                  "type":  "buff"
+              },
+    "environment":  "basalt_deltas",
+    "bounty":  76,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:string",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:blackstone",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:spider_eye",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "soul_fire"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:blackstone",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  8
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "decay"
+                      }
+                  ],
+    "weight":  8
+}

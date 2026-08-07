@@ -1,0 +1,82 @@
+{
+    "id":  "cindermaul_overseer",
+    "name":  "The Cindermaul Overseer",
+    "entity":  "minecraft:magma_cube",
+    "hp":  1180,
+    "attack":  15,
+    "defense":  8,
+    "range":  1,
+    "speed":  2,
+    "moves":  [
+                  "fire_pillar",
+                  "magma_eruption",
+                  "fireball_barrage",
+                  "fireball_rain",
+                  "ground_slam",
+                  "shield_bash"
+              ],
+    "power":  {
+                  "effect":  "fire_resistance",
+                  "amplifier":  0,
+                  "type":  "buff"
+              },
+    "environment":  "nether_wastes",
+    "bounty":  80,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:magma_cream",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:nether_brick",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:blackstone",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    },
+                          "tile":  "lava"
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "soul_fire"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:basalt",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  8
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

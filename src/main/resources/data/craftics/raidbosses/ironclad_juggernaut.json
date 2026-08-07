@@ -1,0 +1,77 @@
+{
+    "id":  "ironclad_juggernaut",
+    "name":  "The Ironclad Juggernaut",
+    "entity":  "minecraft:iron_golem",
+    "hp":  1260,
+    "attack":  16,
+    "defense":  11,
+    "range":  1,
+    "speed":  1,
+    "moves":  [
+                  "shield_bash",
+                  "ground_slam",
+                  "seismic_slam",
+                  "boulder_toss",
+                  "fortify_shell",
+                  "rampage"
+              ],
+    "power":  {
+                  "effect":  "resistance",
+                  "amplifier":  2,
+                  "type":  "buff"
+              },
+    "environment":  "plains",
+    "bounty":  80,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:iron_ingot",
+                     "max":  64
+                 },
+                 {
+                     "weight":  3,
+                     "min":  1,
+                     "item":  "minecraft:shield",
+                     "max":  1
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 },
+                 {
+                     "weight":  4,
+                     "min":  2,
+                     "item":  "minecraft:diamond",
+                     "max":  4
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "cluster":  2,
+                          "tile":  "obstacle",
+                          "block":  "minecraft:stone_bricks",
+                          "count":  {
+                                        "min":  7,
+                                        "max":  12
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    },
+                          "tile":  "tall_grass"
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    },
+                          "tile":  "mud"
+                      }
+                  ],
+    "weight":  8
+}

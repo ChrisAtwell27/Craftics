@@ -1,0 +1,82 @@
+{
+    "id":  "blackwater_predator",
+    "name":  "The Blackwater Predator",
+    "entity":  "minecraft:guardian",
+    "hp":  1140,
+    "attack":  12,
+    "defense":  8,
+    "range":  3,
+    "speed":  2,
+    "moves":  [
+                  "tidal_wave",
+                  "trident_storm",
+                  "riptide_charge",
+                  "harpoon_pull",
+                  "call_of_the_deep",
+                  "fortify_shell"
+              ],
+    "power":  {
+                  "effect":  "resistance",
+                  "amplifier":  0,
+                  "type":  "buff"
+              },
+    "environment":  "river",
+    "bounty":  77,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:prismarine_crystals",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:cod",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:ink_sac",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    },
+                          "tile":  "water"
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "mud"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:prismarine",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

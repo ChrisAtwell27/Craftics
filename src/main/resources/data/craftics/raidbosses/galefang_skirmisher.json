@@ -1,0 +1,81 @@
+{
+    "id":  "galefang_skirmisher",
+    "name":  "The Galefang Skirmisher",
+    "entity":  "minecraft:phantom",
+    "hp":  1110,
+    "attack":  12,
+    "defense":  7,
+    "range":  2,
+    "speed":  3,
+    "moves":  [
+                  "lightning_strike",
+                  "sonic_boom",
+                  "wing_buffet",
+                  "phase_strike",
+                  "void_gale",
+                  "ground_pound"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "mountain",
+    "bounty":  75,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:phantom_membrane",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:feather",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:string",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "mud"
+                      },
+                      {
+                          "tile":  "rubble",
+                          "block":  "minecraft:cobblestone",
+                          "count":  {
+                                        "min":  2,
+                                        "max":  5
+                                    }
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:deepslate_tiles",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

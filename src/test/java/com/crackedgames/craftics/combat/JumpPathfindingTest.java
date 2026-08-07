@@ -182,4 +182,95 @@ class JumpPathfindingTest {
         assertFalse(reachable.contains(new GridPos(0, 2)),
             "2 speed cannot afford a 3-cost jump");
     }
+
+    // ── Lava cost model ─────────────────────────────────────────────────────
+    // Lava used to be priced at 1 for the player, same as ordinary floor, which meant
+    // A* could never prefer a jump (gap + 2) over just wading through. LAVA_STEP_COST
+    // fixes that; FIRE is untouched and must stay at cost 1.
+
+    @Test
+    void lavaStepCostMatchesTheWidestJump() {
+        // Wading a single lava tile is priced the same as the most expensive jump the
+        // player can ever take, so a jump is always at least as good as wading, and
+        // strictly better whenever the channel is narrower than the jump limit.
+        assertEquals(Pathfinding.MAX_JUMP_GAP + 2, Pathfinding.LAVA_STEP_COST);
+    }
+
+    /** A jump can never land closer than 2 tiles away, so a 1-tile move onto lava is a pure walk. */
+    @Test
+    void walkingOntoLavaCostsTheNewHigherPrice() {
+        GridArena a = arena();
+        paint(a, TileType.LAVA, 0, 1);
+        Pathfinding.Path p = Pathfinding.findPlayerPathWithJumps(
+            a, new GridPos(0, 0), new GridPos(0, 1), 10, false, false, false);
+        assertFalse(p.isEmpty());
+        assertEquals(Pathfinding.LAVA_STEP_COST, p.cost(),
+            "stepping directly onto lava must cost LAVA_STEP_COST, not the old flat 1");
+    }
+
+    /** FIRE is explicitly out of scope for this fix and must stay cheap to wade. */
+    @Test
+    void walkingOntoFireStaysCheap() {
+        GridArena a = arena();
+        paint(a, TileType.FIRE, 0, 1);
+        Pathfinding.Path p = Pathfinding.findPlayerPathWithJumps(
+            a, new GridPos(0, 0), new GridPos(0, 1), 10, false, false, false);
+        assertFalse(p.isEmpty());
+        assertEquals(1, p.cost(), "fire is unaffected by the lava fix and stays cost 1");
+    }
+
+    /**
+     * The bug report: a single lava tile between the player and their destination.
+     * Wading costs LAVA_STEP_COST (4); jumping it costs jumpCost(1) (3). A* must jump.
+     */
+    @Test
+    void jumpsASingleLavaTileInsteadOfWadingIt() {
+        GridArena a = arena();
+        for (int x = 0; x < 4; x++) paint(a, TileType.LAVA, x, 1);
+
+        GridPos from = new GridPos(0, 0);
+        GridPos to = new GridPos(0, 2);
+
+        Pathfinding.Path p = Pathfinding.findPlayerPathWithJumps(a, from, to, 10, false, false, false);
+        assertFalse(p.isEmpty());
+        assertEquals(3, p.cost(), "wading (cost 4) must lose to jumping the 1-tile channel (cost 3)");
+        assertEquals(1, p.steps().size(), "the jump is a single step landing past the lava");
+        assertEquals(to, p.steps().get(0));
+        assertEquals(1, p.jumpedOver().size());
+        assertEquals(new GridPos(0, 1), p.jumpedOver().get(0), "the lava tile was vaulted, not walked");
+    }
+
+    /** A 2-tile lava channel (still within MAX_JUMP_GAP) is also cheaper to jump than to wade. */
+    @Test
+    void jumpsATwoTileLavaChannelInsteadOfWadingIt() {
+        GridArena a = arena();
+        paint(a, TileType.LAVA, 0, 1);
+        paint(a, TileType.LAVA, 0, 2);
+        Pathfinding.Path p = Pathfinding.findPlayerPathWithJumps(
+            a, new GridPos(0, 0), new GridPos(0, 3), 20, false, false, false);
+        assertFalse(p.isEmpty());
+        assertEquals(4, p.cost(), "jumping the 2-tile channel (cost 4) beats wading both tiles (cost 8)");
+        assertEquals(2, p.jumpedOver().size());
+    }
+
+    /**
+     * The reachable-tile highlight must agree with the pathfinder on lava's new cost, or the
+     * player is shown a tile as reachable that the move itself would refuse (or vice versa).
+     */
+    @Test
+    void reachabilityAgreesOnLavaJumpCost() {
+        GridArena a = arena();
+        for (int x = 0; x < 4; x++) paint(a, TileType.LAVA, x, 1);
+
+        // Exactly enough speed for the jump (3) but not for wading (4).
+        var reachableAtJumpBudget = Pathfinding.getPlayerReachableTilesWithJumps(
+            a, new GridPos(0, 0), 3, false, false);
+        assertTrue(reachableAtJumpBudget.contains(new GridPos(0, 2)),
+            "3 speed affords the 3-cost jump over the lava, so the far side must be highlighted");
+
+        var reachableBelowJumpBudget = Pathfinding.getPlayerReachableTilesWithJumps(
+            a, new GridPos(0, 0), 2, false, false);
+        assertFalse(reachableBelowJumpBudget.contains(new GridPos(0, 2)),
+            "2 speed affords neither the 3-cost jump nor the 4-cost wade");
+    }
 }

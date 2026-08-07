@@ -1,0 +1,77 @@
+{
+    "id":  "verdant_mireking",
+    "name":  "The Verdant Mireking",
+    "entity":  "minecraft:slime",
+    "hp":  1060,
+    "attack":  10,
+    "defense":  8,
+    "range":  1,
+    "speed":  2,
+    "moves":  [
+                  "entangle",
+                  "plant_mine",
+                  "swarm_call",
+                  "pounce_strike",
+                  "web_spray",
+                  "ground_pound"
+              ],
+    "power":  {
+                  "effect":  "regeneration",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "forest",
+    "bounty":  68,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:moss_block",
+                     "max":  64
+                 },
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:slime_ball",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:oak_log",
+                     "max":  64
+                 },
+                 {
+                     "weight":  5,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  7,
+                                        "max":  12
+                                    },
+                          "tile":  "tall_fern"
+                      },
+                      {
+                          "cluster":  2,
+                          "tile":  "mud",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:oak_wood",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  8
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

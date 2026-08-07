@@ -1,0 +1,81 @@
+{
+    "id":  "gilded_marauder",
+    "name":  "The Gilded Marauder",
+    "entity":  "minecraft:pillager",
+    "hp":  1090,
+    "attack":  14,
+    "defense":  7,
+    "range":  3,
+    "speed":  2,
+    "moves":  [
+                  "bullet_storm",
+                  "plant_mine",
+                  "miners_fury",
+                  "shield_bash",
+                  "rampage",
+                  "phase_strike"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "desert",
+    "bounty":  74,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:gold_ingot",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:crossbow",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:emerald_block",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:cut_sandstone",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  9
+                                    }
+                      },
+                      {
+                          "tile":  "rubble",
+                          "block":  "minecraft:sandstone",
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    },
+                          "tile":  "mud"
+                      }
+                  ],
+    "weight":  8
+}

@@ -100,8 +100,8 @@ public final class RaidBossSchedule {
                 int minuteMark = secondsLeft / 60;
                 if (secondsLeft > 0 && secondsLeft % 60 == 0 && minuteMark != lastMinuteBroadcast) {
                     lastMinuteBroadcast = minuteMark;
-                    broadcastToast(server, minuteMark + " minute(s) left",
-                        "/raidboss for " + pending.name() + " - " + RaidBossLobby.count() + " joined");
+                    broadcastToast(server, minuteMark + "m left",
+                        pending.name() + " - " + RaidBossLobby.count() + " joined");
                 }
             }
             return;
@@ -191,8 +191,8 @@ public final class RaidBossSchedule {
         for (int i = 0; i < WARNING_MINUTES.length; i++) {
             warningFired[i] = minutesUntil <= WARNING_MINUTES[i];
         }
-        broadcastToast(server, "RAID BOSS INCOMING",
-            boss.name() + " stirs - arrives in " + minutesUntil + "m");
+        broadcastToast(server, "RAID INCOMING",
+            boss.name() + " in " + minutesUntil + "m");
         CrafticsMod.LOGGER.info("Announced raid boss '{}', window opens in {} minute(s)",
             boss.id(), minutesUntil);
     }
@@ -205,8 +205,8 @@ public final class RaidBossSchedule {
             int thresholdTicks = WARNING_MINUTES[i] * 60 * 20;
             if (ticksUntilWindow <= thresholdTicks) {
                 warningFired[i] = true;
-                broadcastToast(server, pending.name() + " in " + WARNING_MINUTES[i] + "m",
-                    "Get ready - /raidboss opens soon");
+                broadcastToast(server, pending.name() + " - " + WARNING_MINUTES[i] + "m",
+                    "/raidboss to prep");
             }
         }
     }
@@ -215,8 +215,8 @@ public final class RaidBossSchedule {
         phase = Phase.WINDOW_OPEN;
         int seconds = CrafticsMod.CONFIG.raidBossJoinWindowSeconds();
         RaidBossLobby.open(pending, seconds);
-        broadcastToast(server, pending.name() + " HAS ARRIVED",
-            "/raidboss to join - " + (seconds / 60) + "m, up to 8 raiders");
+        broadcastToast(server, pending.name() + " ARRIVED",
+            "/raidboss to join (" + (seconds / 60) + "m)");
     }
 
     private static void startAllInstances(MinecraftServer server) {
@@ -276,7 +276,7 @@ public final class RaidBossSchedule {
             // arenas this used to fire the same "descends" line to every online player
             // once per instance (RaidBossInstance.start() broadcast it directly).
             broadcastToast(server, boss.name() + " descends!",
-                totalRaiders + " raider(s) across " + started + " arena(s)");
+                totalRaiders + " raiders, " + started + " arena(s)");
         }
         CrafticsMod.LOGGER.info("Raid '{}' started {} instance(s) for {} raider(s)",
             boss.id(), started, joinOrder.size());

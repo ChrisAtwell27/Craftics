@@ -1,0 +1,76 @@
+{
+    "id":  "thorned_hunter",
+    "name":  "The Thorned Hunter",
+    "entity":  "minecraft:skeleton",
+    "hp":  990,
+    "attack":  9,
+    "defense":  6,
+    "range":  4,
+    "speed":  3,
+    "moves":  [
+                  "entangle",
+                  "plant_mine",
+                  "frost_arrow",
+                  "fang_line",
+                  "pounce_strike",
+                  "hex_bolt"
+              ],
+    "power":  {
+                  "effect":  "speed",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "jungle",
+    "bounty":  65,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  12,
+                     "item":  "minecraft:arrow",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:vine",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:bamboo",
+                     "max":  64
+                 },
+                 {
+                     "weight":  5,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  8,
+                                        "max":  14
+                                    },
+                          "tile":  "tall_grass"
+                      },
+                      {
+                          "count":  {
+                                        "min":  6,
+                                        "max":  10
+                                    },
+                          "tile":  "tall_fern"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:jungle_log",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  9
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

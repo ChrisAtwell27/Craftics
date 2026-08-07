@@ -1,0 +1,81 @@
+{
+    "id":  "thundermaw_reaver",
+    "name":  "The Thundermaw Reaver",
+    "entity":  "minecraft:ravager",
+    "hp":  1230,
+    "attack":  16,
+    "defense":  8,
+    "range":  1,
+    "speed":  2,
+    "moves":  [
+                  "pounce_strike",
+                  "gore_charge",
+                  "rampage",
+                  "swarm_call",
+                  "ground_pound",
+                  "tail_slam"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "mountain",
+    "bounty":  82,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:leather",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:iron_ingot",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:raw_copper",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "mud"
+                      },
+                      {
+                          "tile":  "rubble",
+                          "block":  "minecraft:cobblestone",
+                          "count":  {
+                                        "min":  2,
+                                        "max":  5
+                                    }
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:deepslate_tiles",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      }
+                  ],
+    "weight":  9
+}

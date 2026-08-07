@@ -1,0 +1,83 @@
+{
+    "id":  "blazing_warbringer",
+    "name":  "The Blazing Warbringer",
+    "entity":  "minecraft:blaze",
+    "hp":  980,
+    "attack":  15,
+    "defense":  5,
+    "range":  3,
+    "speed":  3,
+    "moves":  [
+                  "fireball_barrage",
+                  "fireball_rain",
+                  "fire_pillar",
+                  "ash_brand",
+                  "lava_cage",
+                  "summon_blaze_guard"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "nether",
+    "bounty":  68,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:blaze_rod",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:magma_cream",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:gold_ingot",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "item":  "minecraft:emerald",
+                     "weight":  8,
+                     "min":  0,
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "cluster":  3,
+                          "tile":  "lava",
+                          "block":  "minecraft:lava",
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  5
+                                    },
+                          "tile":  "fire"
+                      },
+                      {
+                          "cluster":  2,
+                          "tile":  "obstacle",
+                          "block":  "minecraft:blackstone",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  9
+                                    }
+                      }
+                  ],
+    "weight":  10
+}

@@ -1,0 +1,82 @@
+{
+    "id":  "soulcoil_hierarch",
+    "name":  "The Soulcoil Hierarch",
+    "entity":  "minecraft:ghast",
+    "hp":  1150,
+    "attack":  10,
+    "defense":  8,
+    "range":  4,
+    "speed":  2,
+    "moves":  [
+                  "summon_blaze_guard",
+                  "fireball_rain",
+                  "fire_pillar",
+                  "magma_eruption",
+                  "absorb_heat",
+                  "tail_slam"
+              ],
+    "power":  {
+                  "effect":  "regeneration",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "soul_sand_valley",
+    "bounty":  78,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:soul_soil",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:ghast_tear",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:quartz",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "soul_fire"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:blackstone",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  8
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "decay"
+                      }
+                  ],
+    "weight":  8
+}

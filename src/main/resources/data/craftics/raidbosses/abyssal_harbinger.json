@@ -1,0 +1,84 @@
+{
+    "id":  "abyssal_harbinger",
+    "name":  "The Abyssal Harbinger",
+    "entity":  "minecraft:warden",
+    "hp":  1280,
+    "attack":  15,
+    "defense":  9,
+    "range":  2,
+    "speed":  2,
+    "moves":  [
+                  "darkness_pulse",
+                  "sonic_boom",
+                  "tremor_stomp",
+                  "cave_in",
+                  "rubble_toss",
+                  "miners_fury"
+              ],
+    "power":  {
+                  "effect":  "resistance",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "deep_dark",
+    "bounty":  80,
+    "loot":  [
+                 {
+                     "weight":  6,
+                     "min":  8,
+                     "item":  "minecraft:echo_shard",
+                     "max":  64
+                 },
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:sculk",
+                     "max":  64
+                 },
+                 {
+                     "weight":  5,
+                     "min":  2,
+                     "item":  "minecraft:diamond",
+                     "max":  4
+                 },
+                 {
+                     "weight":  2,
+                     "min":  1,
+                     "item":  "minecraft:disc_fragment_5",
+                     "max":  2
+                 },
+                 {
+                     "item":  "minecraft:emerald",
+                     "weight":  8,
+                     "min":  0,
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "cluster":  2,
+                          "tile":  "obstacle",
+                          "block":  "minecraft:sculk",
+                          "count":  {
+                                        "min":  7,
+                                        "max":  12
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    },
+                          "tile":  "soul_fire"
+                      },
+                      {
+                          "cluster":  2,
+                          "tile":  "mud",
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    }
+                      }
+                  ],
+    "weight":  10
+}

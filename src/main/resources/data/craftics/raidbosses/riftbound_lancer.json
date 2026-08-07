@@ -1,0 +1,81 @@
+{
+    "id":  "riftbound_lancer",
+    "name":  "The Riftbound Lancer",
+    "entity":  "minecraft:enderman",
+    "hp":  1160,
+    "attack":  14,
+    "defense":  8,
+    "range":  2,
+    "speed":  3,
+    "moves":  [
+                  "summon_endermites",
+                  "chorus_bomb",
+                  "void_pull",
+                  "null_burst",
+                  "ender_roar",
+                  "phase_strike"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "end_city",
+    "bounty":  79,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:end_stone",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:chorus_fruit",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:ender_pearl",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    },
+                          "tile":  "sculk"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:crying_obsidian",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      },
+                      {
+                          "tile":  "rubble",
+                          "block":  "minecraft:end_stone",
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

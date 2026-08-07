@@ -1,0 +1,89 @@
+{
+    "id":  "stormgrave_adjudicator",
+    "name":  "The Stormgrave Adjudicator",
+    "entity":  "minecraft:wither_skeleton",
+    "hp":  1170,
+    "attack":  14,
+    "defense":  8,
+    "range":  2,
+    "speed":  2,
+    "moves":  [
+                  "wither_slash",
+                  "skull_barrage",
+                  "summon_wither_skeletons",
+                  "gravefire_grid",
+                  "decay_aura",
+                  "fang_line"
+              ],
+    "power":  {
+                  "effect":  "strength",
+                  "amplifier":  0,
+                  "type":  "buff"
+              },
+    "environment":  "deep_dark",
+    "bounty":  79,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:wither_rose",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:bone_block",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:deepslate_tiles",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    },
+                          "tile":  "grave"
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  7
+                                    },
+                          "tile":  "decay"
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  5
+                                    },
+                          "tile":  "soul_fire"
+                      },
+                      {
+                          "tile":  "rubble",
+                          "block":  "minecraft:bone_block",
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

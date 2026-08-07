@@ -1,0 +1,83 @@
+{
+    "id":  "relic_stormcaller",
+    "name":  "The Relic Stormcaller",
+    "entity":  "minecraft:evoker",
+    "hp":  1120,
+    "attack":  11,
+    "defense":  8,
+    "range":  3,
+    "speed":  2,
+    "moves":  [
+                  "lightning_strike",
+                  "sonic_boom",
+                  "wing_buffet",
+                  "phase_strike",
+                  "void_gale",
+                  "ground_pound"
+              ],
+    "power":  {
+                  "effect":  "speed",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "mountain",
+    "bounty":  76,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:lightning_rod",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:copper_ingot",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:amethyst_shard",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "mud"
+                      },
+                      {
+                          "tile":  "rubble",
+                          "block":  "minecraft:cobblestone",
+                          "count":  {
+                                        "min":  2,
+                                        "max":  5
+                                    }
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:deepslate_tiles",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

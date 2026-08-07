@@ -1,6 +1,7 @@
 package com.crackedgames.craftics.combat;
 
 import com.crackedgames.craftics.combat.ai.EnemyAI;
+import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.nbt.NbtCompound;
@@ -1200,7 +1201,7 @@ public class CombatEntity {
                  "minecraft:slime", "minecraft:magma_cube",
                  "minecraft:ghast", // spawned at 0.5 scale, so 4x4 hitbox -> 2x2
                  "minecraft:polar_bear", "minecraft:panda",
-                 "minecraft:iron_golem", "minecraft:elder_guardian" -> new int[]{2, 2};
+                 "minecraft:iron_golem" -> new int[]{2, 2};
             // Long heavyweights: ~2 blocks wide, ~3 blocks nose to tail.
             case "minecraft:sniffer", "minecraft:camel", "minecraft:ravager" -> new int[]{2, 3};
             // Long but narrow: horses, llamas - one tile wide, two long.
@@ -1208,7 +1209,7 @@ public class CombatEntity {
                  "minecraft:donkey", "minecraft:mule",
                  "minecraft:llama", "minecraft:trader_llama" -> new int[]{1, 2};
             // Giant zombie: 3.6-block hitbox width.
-            case "minecraft:giant" -> new int[]{3, 3};
+            case "minecraft:giant", "minecraft:elder_guardian" -> new int[]{3, 3};
             default -> new int[]{1, 1};
         };
     }

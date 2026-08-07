@@ -1,0 +1,76 @@
+{
+    "id":  "vengeful_revenant",
+    "name":  "The Vengeful Revenant",
+    "entity":  "minecraft:zombie",
+    "hp":  1090,
+    "attack":  14,
+    "defense":  7,
+    "range":  1,
+    "speed":  3,
+    "moves":  [
+                  "death_charge",
+                  "raise_dead",
+                  "decay_aura",
+                  "fang_line",
+                  "cursed_fog",
+                  "gore_charge"
+              ],
+    "power":  {
+                  "effect":  "regeneration",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "forest",
+    "bounty":  71,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  10,
+                     "item":  "minecraft:rotten_flesh",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:bone",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:mossy_cobblestone",
+                          "count":  {
+                                        "min":  6,
+                                        "max":  10
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  6,
+                                        "max":  10
+                                    },
+                          "tile":  "tall_grass"
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  7
+                                    },
+                          "tile":  "mud"
+                      }
+                  ],
+    "weight":  8
+}

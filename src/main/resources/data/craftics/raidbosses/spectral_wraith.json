@@ -1,0 +1,77 @@
+{
+    "id":  "spectral_wraith",
+    "name":  "The Spectral Wraith",
+    "entity":  "minecraft:phantom",
+    "hp":  980,
+    "attack":  9,
+    "defense":  6,
+    "range":  3,
+    "speed":  5,
+    "moves":  [
+                  "void_gale",
+                  "phase_strike",
+                  "blink_step",
+                  "hex_bolt",
+                  "cursed_fog",
+                  "skull_barrage"
+              ],
+    "power":  {
+                  "effect":  "speed",
+                  "amplifier":  2,
+                  "type":  "buff"
+              },
+    "environment":  "warped_forest",
+    "bounty":  69,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:phantom_membrane",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:ender_pearl",
+                     "max":  64
+                 },
+                 {
+                     "weight":  6,
+                     "min":  8,
+                     "item":  "minecraft:spectral_arrow",
+                     "max":  64
+                 },
+                 {
+                     "weight":  5,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  5
+                                    },
+                          "tile":  "soul_fire"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:warped_stem",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  8
+                                    }
+                      },
+                      {
+                          "tile":  "ice",
+                          "block":  "minecraft:blue_ice",
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

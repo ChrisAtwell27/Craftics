@@ -1,0 +1,95 @@
+{
+    "id":  "withered_gravedigger",
+    "name":  "The Withered Gravedigger",
+    "entity":  "minecraft:wither_skeleton",
+    "hp":  1150,
+    "attack":  16,
+    "defense":  8,
+    "range":  1,
+    "speed":  2,
+    "moves":  [
+                  "wither_slash",
+                  "skull_barrage",
+                  "raise_dead",
+                  "death_charge",
+                  "gravefire_grid",
+                  "fang_line"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "deep_dark",
+    "bounty":  79,
+    "loot":  [
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:wither_rose",
+                     "max":  2
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:bone_block",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:coal_block",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "item":  "minecraft:emerald",
+                     "weight":  8,
+                     "min":  0,
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "soul_fire"
+                      },
+                      {
+                          "tile":  "grave",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  9
+                                    }
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:deepslate_tiles",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    },
+                          "tile":  "decay"
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    },
+                          "tile":  "rubble",
+                          "block":  "minecraft:deepslate_tiles"
+                      }
+                  ],
+    "weight":  9
+}

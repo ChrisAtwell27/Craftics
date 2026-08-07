@@ -187,6 +187,12 @@ public final class RaidBossParser {
                 warnings.add("skipping an obstacle row: 'block' must be a string");
                 continue;
             }
+            if ((block == null || block.isBlank()) && isGraveAlias(rawTile)) {
+                // Author convenience: graves in base bosses are block-backed objects.
+                // Raids use obstacle tiles, so map authored "grave" to an OBSTACLE that
+                // looks like the same cobblestone-wall grave marker.
+                block = "minecraft:cobblestone_wall";
+            }
 
             int min = 1;
             int max = 1;
@@ -225,12 +231,19 @@ public final class RaidBossParser {
     /** Upper-cased TileType name, or null when the string names no tile type. */
     private static String resolveTileType(String raw) {
         if (raw == null || raw.isBlank()) return null;
+        if (isGraveAlias(raw)) return com.crackedgames.craftics.core.TileType.OBSTACLE.name();
         try {
             return com.crackedgames.craftics.core.TileType
                 .valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT)).name();
         } catch (IllegalArgumentException unknown) {
             return null;
         }
+    }
+
+    private static boolean isGraveAlias(String raw) {
+        if (raw == null) return false;
+        String normalized = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        return "grave".equals(normalized) || "graves".equals(normalized);
     }
 
     private static String str(JsonObject o, String key, String fallback, List<String> errors) {

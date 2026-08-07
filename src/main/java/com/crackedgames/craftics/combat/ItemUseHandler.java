@@ -2090,16 +2090,20 @@ public class ItemUseHandler {
 
     /**
      * Placement guard for special blocks (campfire, banner, jukebox, ...): they need
-     * flat, solid ground. Rejects void, sunken pits, water, lava, fire, powder snow,
-     * obstacles and stair ramps. Returns the refusal message, or null when placeable.
+     * flat, solid ground. Rejects void, sunken pits, fire, powder snow, obstacles and
+     * stair ramps. Returns the refusal message, or null when placeable.
+     *
+     * <p>WATER, DEEP_WATER and LAVA are deliberately NOT rejected: placing a block onto
+     * one of those is how a player bridges a hazard tile, and DEEP_WATER is the whole
+     * point (it is otherwise impassable without a boat). CombatManager's tile-effect
+     * handler flips the tile to NORMAL once the block goes down - walkability is driven
+     * by TileType, not the block sitting on it, so the guard alone isn't enough.
      */
     private static String requireFlatGround(GridArena arena, GridPos targetTile) {
         GridTile tile = arena.getTile(targetTile);
         if (tile == null) return "§cTarget out of bounds!";
         return switch (tile.getType()) {
             case VOID -> "§cCan't place that over the void!";
-            case WATER, DEEP_WATER -> "§cCan't place that in water!";
-            case LAVA -> "§cCan't place that in lava!";
             case FIRE -> "§cCan't place that in fire!";
             case LOW_GROUND -> "§cCan't place that in a sunken pit!";
             case POWDER_SNOW -> "§cCan't place that on powder snow!";

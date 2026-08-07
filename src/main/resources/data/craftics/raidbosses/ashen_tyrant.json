@@ -1,33 +1,83 @@
 {
-  "id": "ashen_tyrant",
-  "name": "The Ashen Tyrant",
-  "entity": "minecraft:wither_skeleton",
-  "hp": 900,
-  "attack": 14,
-  "defense": 6,
-  "range": 1,
-  "speed": 3,
-  "moves": [
-    "fireball_rain",
-    "lava_cage",
-    "summon_wither_skeletons",
-    "gore_charge",
-    "magma_eruption",
-    "tremor_stomp"
-  ],
-  "power": { "type": "double_move" },
-  "environment": "nether",
-  "bounty": 64,
-  "loot": [
-    { "item": "minecraft:netherite_scrap", "weight": 2, "min": 1, "max": 2 },
-    { "item": "minecraft:diamond", "weight": 8, "min": 2, "max": 5 },
-    { "item": "minecraft:gold_block", "weight": 6, "min": 1, "max": 3 },
-    { "item": "minecraft:blaze_rod", "weight": 10, "min": 2, "max": 6 }
-  ],
-  "obstacles": [
-    { "tile": "lava", "block": "minecraft:lava", "count": { "min": 3, "max": 6 }, "cluster": 3 },
-    { "tile": "soul_fire", "count": { "min": 2, "max": 4 } },
-    { "tile": "obstacle", "block": "minecraft:basalt", "count": { "min": 6, "max": 12 }, "cluster": 2 }
-  ],
-  "weight": 10
+    "id":  "ashen_tyrant",
+    "name":  "The Ashen Tyrant",
+    "entity":  "minecraft:wither_skeleton",
+    "hp":  900,
+    "attack":  16,
+    "defense":  6,
+    "range":  1,
+    "speed":  3,
+    "moves":  [
+                  "fireball_rain",
+                  "lava_cage",
+                  "summon_wither_skeletons",
+                  "gore_charge",
+                  "magma_eruption",
+                  "tremor_stomp"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "nether",
+    "bounty":  64,
+    "loot":  [
+                 {
+                     "item":  "minecraft:netherite_scrap",
+                     "weight":  2,
+                     "min":  1,
+                     "max":  2
+                 },
+                 {
+                     "item":  "minecraft:diamond",
+                     "weight":  8,
+                     "min":  2,
+                     "max":  5
+                 },
+                 {
+                     "item":  "minecraft:gold_block",
+                     "weight":  6,
+                     "min":  8,
+                     "max":  64
+                 },
+                 {
+                     "item":  "minecraft:blaze_rod",
+                     "weight":  10,
+                     "min":  8,
+                     "max":  64
+                 },
+                 {
+                     "item":  "minecraft:emerald",
+                     "weight":  8,
+                     "min":  0,
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "tile":  "lava",
+                          "block":  "minecraft:lava",
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "cluster":  3
+                      },
+                      {
+                          "tile":  "soul_fire",
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    }
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:basalt",
+                          "count":  {
+                                        "min":  6,
+                                        "max":  12
+                                    },
+                          "cluster":  2
+                      }
+                  ],
+    "weight":  10
 }

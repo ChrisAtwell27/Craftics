@@ -1,0 +1,76 @@
+{
+    "id":  "stormbound_titan",
+    "name":  "The Stormbound Titan",
+    "entity":  "minecraft:goat",
+    "hp":  1120,
+    "attack":  15,
+    "defense":  8,
+    "range":  1,
+    "speed":  4,
+    "moves":  [
+                  "lightning_strike",
+                  "avalanche",
+                  "ground_pound",
+                  "tail_slam",
+                  "wing_buffet",
+                  "seismic_slam"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "mountain",
+    "bounty":  73,
+    "loot":  [
+                 {
+                     "weight":  5,
+                     "min":  1,
+                     "item":  "minecraft:goat_horn",
+                     "max":  2
+                 },
+                 {
+                     "weight":  3,
+                     "min":  1,
+                     "item":  "minecraft:powder_snow_bucket",
+                     "max":  1
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "cluster":  2,
+                          "tile":  "ice",
+                          "block":  "minecraft:packed_ice",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "powder_snow"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:andesite",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  9
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

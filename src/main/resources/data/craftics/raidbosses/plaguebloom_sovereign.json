@@ -1,0 +1,82 @@
+{
+    "id":  "plaguebloom_sovereign",
+    "name":  "The Plaguebloom Sovereign",
+    "entity":  "minecraft:cave_spider",
+    "hp":  1100,
+    "attack":  10,
+    "defense":  8,
+    "range":  2,
+    "speed":  3,
+    "moves":  [
+                  "web_spray",
+                  "spawn_brood",
+                  "venomous_bite",
+                  "swarm_call",
+                  "pounce_strike",
+                  "entangle"
+              ],
+    "power":  {
+                  "effect":  "poison",
+                  "amplifier":  0,
+                  "type":  "buff"
+              },
+    "environment":  "deep_dark",
+    "bounty":  75,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:fermented_spider_eye",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:moss_block",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:glow_lichen",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    },
+                          "tile":  "mud"
+                      },
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    },
+                          "tile":  "tall_grass"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:moss_block",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

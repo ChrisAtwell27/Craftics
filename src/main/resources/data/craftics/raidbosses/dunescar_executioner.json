@@ -1,0 +1,81 @@
+{
+    "id":  "dunescar_executioner",
+    "name":  "The Dunescar Executioner",
+    "entity":  "minecraft:husk",
+    "hp":  1160,
+    "attack":  15,
+    "defense":  7,
+    "range":  1,
+    "speed":  2,
+    "moves":  [
+                  "sandstorm",
+                  "sand_burial",
+                  "curse_of_the_sands",
+                  "rubble_toss",
+                  "death_charge",
+                  "shield_bash"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "desert",
+    "bounty":  78,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:sandstone",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:bone",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:gold_ingot",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:cut_sandstone",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  9
+                                    }
+                      },
+                      {
+                          "tile":  "rubble",
+                          "block":  "minecraft:sandstone",
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    },
+                          "tile":  "mud"
+                      }
+                  ],
+    "weight":  8
+}

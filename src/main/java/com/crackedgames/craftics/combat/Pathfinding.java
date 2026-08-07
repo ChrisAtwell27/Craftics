@@ -36,6 +36,25 @@ public class Pathfinding {
     }
 
     /**
+     * Speed cost for the PLAYER to step into a LAVA tile (see {@link #findPlayerPathWithJumps}
+     * and {@link #getPlayerReachableTilesWithJumps}, the two live player-movement entry points).
+     * Every other walkable tile, including FIRE, still costs a flat 1 there.
+     *
+     * <p>Lava used to be priced at 1 like ordinary floor, which was honest about nothing: it let
+     * the player wade a lava channel for free, and it meant a jump (which costs {@code gap + 2})
+     * could never look cheaper to A* than just walking through, so the pathfinder would never
+     * choose to jump one. Now that crossing lava actually deals damage and sets the player alight
+     * per tile (see the move-tick hazard loop in CombatManager), the cost has to say so.
+     *
+     * <p>Set to match the priciest jump the player can ever take ({@link #MAX_JUMP_GAP} + 2):
+     * wading even a single lava tile is never cheaper than jumping the widest gap you could
+     * clear instead, so jumping a lava channel is always at least as good as wading it - and
+     * strictly better whenever the channel is narrower than the max jump, which is the case that
+     * actually matters (a wider channel leaves no jump option anyway, so it has to be walked).
+     */
+    public static final int LAVA_STEP_COST = MAX_JUMP_GAP + 2;
+
+    /**
      * How this player's jumps behave. Threads the movement enchantments through the jump
      * edges without the pathfinder knowing about enchantments:
      *
@@ -133,10 +152,11 @@ public class Pathfinding {
     }
 
     /**
-     * Player-facing pathfinding that treats hazard tiles (LAVA/FIRE) as cost 1
-     * so the player can walk freely across magma and fire. Damage still applies
-     * at move-tick time - this only removes the path-disruption behavior.
-     * Enemy pathfinding retains the high hazard cost so AI avoids stepping into hazards.
+     * Player-facing pathfinding that removes the path-disruption FIRE and LAVA otherwise cause
+     * (both are jumpable gaps and neither should force a detour): FIRE still costs 1 to walk,
+     * LAVA costs {@link #LAVA_STEP_COST} so a jump can genuinely beat wading it. Damage and
+     * burning still apply at move-tick time regardless. Enemy pathfinding retains the high
+     * hazard cost so AI avoids stepping into hazards.
      */
     public static List<GridPos> findPathPlayer(GridArena arena, GridPos from, GridPos to, int maxSteps, boolean hasBoat, boolean ignoreObstacles, boolean phaseThroughEnemies) {
         return findPathFull(arena, from, to, maxSteps, null, hasBoat, ignoreObstacles, false, phaseThroughEnemies, true);
@@ -211,11 +231,11 @@ public class Pathfinding {
     }
 
     /**
-     * A* pathfinding with full options. When {@code ignoreHazardCost} is true,
-     * LAVA/FIRE tiles cost 1 to step through instead of 50 - used for player
-     * movement so magma/fire behave like cobweb (damage on step but no path
-     * disruption) while leaving AI pathfinding untouched so enemies still
-     * naturally avoid hazards.
+     * A* pathfinding with full options. When {@code ignoreHazardCost} is true, FIRE costs 1 and
+     * LAVA costs {@link #LAVA_STEP_COST} to step through instead of 50 - used for player movement
+     * so magma/fire behave like cobweb (damage on step but no path disruption), while still
+     * pricing lava high enough that jumping a channel can beat wading it. AI pathfinding is
+     * untouched so enemies still naturally avoid hazards.
      */
     /**
      * Player pathfinding that may JUMP gaps it cannot walk through.
@@ -286,9 +306,12 @@ public class Pathfinding {
                         || (phaseThroughEnemies ? !step.equals(arena.getPlayerGridPos())
                                                 : !isBlockedBy(arena, step, null, false));
                     if (walkable && free) {
-                        // Player movement treats LAVA/FIRE as cost 1 (they damage on step but
-                        // must not warp pathing), matching findPathPlayer's ignoreHazardCost.
-                        relax(open, gScore, cameFrom, current, step, currentG + 1, maxSpeed);
+                        // Player movement treats FIRE as cost 1 (it damages on step but must not
+                        // warp pathing). LAVA costs LAVA_STEP_COST instead of the old flat 1, so
+                        // wading it has to genuinely compete on price against jumping it - see
+                        // LAVA_STEP_COST's doc for why that number was chosen.
+                        int stepCost = t != null && t.getType() == TileType.LAVA ? LAVA_STEP_COST : 1;
+                        relax(open, gScore, cameFrom, current, step, currentG + stepCost, maxSpeed);
                     }
                 }
 
@@ -404,7 +427,9 @@ public class Pathfinding {
                     if (phaseThroughEnemies && neighbor.equals(arena.getPlayerGridPos())) continue;
                 }
 
-                int moveCost = ignoreHazardCost ? 1 : neighborTile.getMoveCost();
+                int moveCost = ignoreHazardCost
+                    ? (neighborTile.getType() == TileType.LAVA ? LAVA_STEP_COST : 1)
+                    : neighborTile.getMoveCost();
                 int tentativeG = currentG + moveCost;
                 if (tentativeG < gScore.getOrDefault(neighbor, Integer.MAX_VALUE)) {
                     cameFrom.put(neighbor, current);
@@ -666,7 +691,11 @@ public class Pathfinding {
                     var t = arena.getTile(step);
                     if (t != null && t.isWalkableEx(hasBoat, ignoreObstacles, aquatic)
                             && !isBlockedBy(arena, step, null, false)) {
-                        int nd = currentDist + 1;
+                        // Mirrors findPlayerPathWithJumps exactly: FIRE stays cost 1, LAVA
+                        // costs LAVA_STEP_COST, or a tile reachable only by jumping there
+                        // would show green while the pathfinder refuses the walk-in click.
+                        int stepCost = t.getType() == TileType.LAVA ? LAVA_STEP_COST : 1;
+                        int nd = currentDist + stepCost;
                         if (nd <= maxSpeed && nd < dist.getOrDefault(step, Integer.MAX_VALUE)) {
                             dist.put(step, nd);
                             open.add(step);

@@ -1,0 +1,83 @@
+{
+    "id":  "ancient_overlord",
+    "name":  "The Ancient Overlord",
+    "entity":  "minecraft:enderman",
+    "hp":  1220,
+    "attack":  16,
+    "defense":  8,
+    "range":  3,
+    "speed":  3,
+    "moves":  [
+                  "void_beam",
+                  "null_burst",
+                  "void_gale",
+                  "ender_roar",
+                  "lightning_strike",
+                  "summon_endermites"
+              ],
+    "power":  {
+                  "effect":  "absorption",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "end",
+    "bounty":  84,
+    "loot":  [
+                 {
+                     "weight":  2,
+                     "min":  1,
+                     "item":  "minecraft:end_crystal",
+                     "max":  1
+                 },
+                 {
+                     "weight":  10,
+                     "min":  10,
+                     "item":  "minecraft:end_stone",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:ender_pearl",
+                     "max":  64
+                 },
+                 {
+                     "weight":  5,
+                     "min":  2,
+                     "item":  "minecraft:diamond",
+                     "max":  5
+                 },
+                 {
+                     "item":  "minecraft:emerald",
+                     "weight":  8,
+                     "min":  0,
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:end_stone_bricks",
+                          "count":  {
+                                        "min":  7,
+                                        "max":  12
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    },
+                          "tile":  "fire"
+                      },
+                      {
+                          "tile":  "ice",
+                          "block":  "minecraft:packed_ice",
+                          "count":  {
+                                        "min":  2,
+                                        "max":  5
+                                    }
+                      }
+                  ],
+    "weight":  10
+}

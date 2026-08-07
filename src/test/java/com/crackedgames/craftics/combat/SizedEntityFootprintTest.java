@@ -54,4 +54,23 @@ class SizedEntityFootprintTest {
         assertEquals(1, spider.minChebyshevDistanceTo(diagonal));
         assertEquals(2, spider.minDistanceTo(diagonal));
     }
+
+    @Test
+    void size3Footprint_meleeReachableJustPastItsFarCorner_theElderGuardianRaidBossCase() {
+        // Regression for the elder guardian/giant raid & infinite boss fix: these bosses
+        // now occupy their real 3x3 footprint (CombatManager's raid/infinite boss dressing
+        // calls ce.setFootprint) instead of being shrunk to a walkable 1x1 anchor with a
+        // separate reach patch bolted on.
+        // A player standing just past the boss's far corner (2,2) must already be in melee
+        // range 1 via the existing, general-purpose minChebyshevDistanceTo - no bespoke
+        // "hit footprint" geometry required.
+        CombatEntity boss = new CombatEntity(1, "minecraft:elder_guardian", new GridPos(0, 0), 20, 3, 0, 1, 3, 1);
+        GridPos justPastFarCorner = new GridPos(3, 3);
+        assertEquals(1, boss.minChebyshevDistanceTo(justPastFarCorner),
+            "melee range 1 should reach the boss's occupied far corner (2,2)");
+        // Before the fix the boss was shrunk to a 1x1 anchor at (0,0): that bare-anchor
+        // distance is 3, well outside melee range - exactly the bug this pins against.
+        assertEquals(3, Math.max(Math.abs(justPastFarCorner.x()), Math.abs(justPastFarCorner.z())),
+            "sanity: the old 1x1 anchor would have been out of melee range");
+    }
 }

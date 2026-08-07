@@ -1,0 +1,82 @@
+{
+    "id":  "frostspine_watcher",
+    "name":  "The Frostspine Watcher",
+    "entity":  "minecraft:stray",
+    "hp":  1130,
+    "attack":  11,
+    "defense":  9,
+    "range":  3,
+    "speed":  2,
+    "moves":  [
+                  "blizzard",
+                  "frost_arrow",
+                  "ice_wall",
+                  "avalanche",
+                  "ground_pound",
+                  "blink_step"
+              ],
+    "power":  {
+                  "effect":  "speed",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "snowy",
+    "bounty":  77,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:powder_snow_bucket",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:packed_ice",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:arrow",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "powder_snow"
+                      },
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    },
+                          "tile":  "ice"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:packed_ice",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

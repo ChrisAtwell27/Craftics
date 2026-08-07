@@ -1,0 +1,80 @@
+{
+    "id":  "tidewrath_mariner",
+    "name":  "The Tidewrath Mariner",
+    "entity":  "minecraft:drowned",
+    "hp":  1160,
+    "attack":  14,
+    "defense":  8,
+    "range":  2,
+    "speed":  2,
+    "moves":  [
+                  "tidal_wave",
+                  "trident_storm",
+                  "riptide_charge",
+                  "harpoon_pull",
+                  "call_of_the_deep",
+                  "fortify_shell"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "river",
+    "bounty":  79,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:trident",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:prismarine_shard",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:kelp",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    },
+                          "tile":  "water"
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "mud"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:prismarine",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

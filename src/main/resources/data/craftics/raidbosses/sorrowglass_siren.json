@@ -1,0 +1,82 @@
+{
+    "id":  "sorrowglass_siren",
+    "name":  "The Sorrowglass Siren",
+    "entity":  "minecraft:ghast",
+    "hp":  1130,
+    "attack":  9,
+    "defense":  8,
+    "range":  4,
+    "speed":  2,
+    "moves":  [
+                  "void_beam",
+                  "void_pull",
+                  "null_burst",
+                  "chorus_bomb",
+                  "ender_roar",
+                  "phase_strike"
+              ],
+    "power":  {
+                  "effect":  "regeneration",
+                  "amplifier":  0,
+                  "type":  "buff"
+              },
+    "environment":  "soul_sand_valley",
+    "bounty":  76,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:ghast_tear",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:soul_sand",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:glass",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "soul_fire"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:blackstone",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  8
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "decay"
+                      }
+                  ],
+    "weight":  8
+}

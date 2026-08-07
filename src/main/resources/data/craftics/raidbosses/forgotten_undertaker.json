@@ -1,0 +1,97 @@
+{
+    "id":  "forgotten_undertaker",
+    "name":  "The Forgotten Undertaker",
+    "entity":  "minecraft:stray",
+    "hp":  1070,
+    "attack":  10,
+    "defense":  8,
+    "range":  3,
+    "speed":  2,
+    "moves":  [
+                  "raise_dead",
+                  "gravefire_grid",
+                  "skull_barrage",
+                  "decay_aura",
+                  "cursed_fog",
+                  "shield_bash"
+              ],
+    "power":  {
+                  "effect":  "absorption",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "cave",
+    "bounty":  72,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:bone",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:soul_soil",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:iron_ingot",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "item":  "minecraft:emerald",
+                     "weight":  8,
+                     "min":  0,
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    },
+                          "tile":  "soul_fire"
+                      },
+                      {
+                          "tile":  "grave",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  8
+                                    }
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:tuff",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  7
+                                    },
+                          "tile":  "decay"
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    },
+                          "tile":  "rubble",
+                          "block":  "minecraft:tuff"
+                      }
+                  ],
+    "weight":  9
+}

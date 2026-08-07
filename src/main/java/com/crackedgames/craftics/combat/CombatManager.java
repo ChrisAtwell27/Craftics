@@ -4009,9 +4009,10 @@ public class CombatManager {
                         ce.setAiInstance(freshBossAi);
                     }
                     // INFINITE MODE: replace the biome boss with the run's randomized
-                    // one - a visually enlarged 1x1 mob with a generated name and a movepool
+                    // one - a visually enlarged mob with a generated name and a movepool
                     // pulled from every boss in the mod. Must run before placeEntity
-                    // so the standard footprint is what gets placed.
+                    // so its real footprint (set below) is what gets placed and
+                    // registered as real occupancy.
                     com.crackedgames.craftics.level.InfiniteSpec infSpec = currentInfiniteSpec();
                     if (infSpec != null && infSpec.hasBossOverride()) {
                         var infiniteAi = new com.crackedgames.craftics.combat.ai.boss.InfiniteBossAI(
@@ -4026,10 +4027,20 @@ public class CombatManager {
                         // grid shows the generated one.
                         mob.setCustomName(Text.literal("§5§l" + infSpec.bossName()));
                         mob.setCustomNameVisible(true);
-                        // Infinite bosses look imposing, but remain a standard 1x1
-                        // combat target so their visuals never block adjacent tiles.
-                        scaleBoss(mob, 1.6);
-                        ce.setSize(1);
+                        // Infinite bosses look imposing, and now actually occupy the
+                        // footprint that look implies: sizeX/sizeZ above already hold the
+                        // entity type's real floor coverage (3x3 for elder_guardian/giant,
+                        // 2x2 for spider/hoglin/ghast and friends, 1x1 for the rest of the
+                        // infinite mob pool), oriented toward the player and already
+                        // reserved as clear ground by the spawn search - reapplying the
+                        // same values here (instead of a fresh, possibly differently
+                        // oriented recomputation) guarantees the body that gets placed is
+                        // exactly the body that was checked clear, so it blocks movement
+                        // and is meleeable across its whole footprint instead of a single
+                        // walkable tile with a separately-tracked reach padding.
+                        double infiniteBossScale = 1.6;
+                        scaleBoss(mob, infiniteBossScale);
+                        ce.setFootprint(sizeX, sizeZ);
                         // Extra actions per enemy phase (+1 every 10 cleared biomes);
                         // consumed by tickEnemyDone's re-entry loop.
                         ce.setAiMemory("inf_actions_per_turn", Math.max(1, infSpec.actionsPerTurn()));
@@ -4047,8 +4058,19 @@ public class CombatManager {
                         ce.setBossDisplayName(raidDef.name());
                         mob.setCustomName(Text.literal("§4§l" + raidDef.name()));
                         mob.setCustomNameVisible(true);
-                        scaleBoss(mob, 1.8);
-                        ce.setSize(1);
+                        // Occupy the real footprint the model implies (3x3 for an
+                        // elder_guardian/giant raid boss like the Tideglass Leviathan or
+                        // Sunken Oracle, 2x3 for a ravager one like the Hollow Colossus,
+                        // 1x1 for a humanoid one like the Ashen Tyrant), so a visually-huge
+                        // boss actually blocks its ground and can be meleed anywhere on its
+                        // body, not just a single walkable centre tile. sizeX/sizeZ are the
+                        // exact values the spawn search above already reserved as clear
+                        // ground for this boss (oriented toward the player for non-square
+                        // footprints like the ravager's), so the body placed here can never
+                        // be bigger than the space that was checked clear.
+                        double raidBossScale = 1.8;
+                        scaleBoss(mob, raidBossScale);
+                        ce.setFootprint(sizeX, sizeZ);
                         com.crackedgames.craftics.combat.ai.boss.RaidBossAI.applySpawnPower(ce, raidDef);
                         String power = raidDef.power().isDoubleMove()
                             ? "striking twice each turn"
@@ -6343,10 +6365,17 @@ public class CombatManager {
         // clearing the secondary) here feeds BOTH the affinity damage bonus below and the mob
         // resistance lookup further down, so the whole hit is scored under the new type. They are
         // mutually exclusive; if both are somehow held, Hilt wins.
-        if (CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.HILT) > 0) {
+        //
+        // Reads heldLevelIgnoringTool, not heldLevel: the effect must fire off the enchantment
+        // being on the stack, not off the stack ALSO passing the sword/axe/blunt tool check a
+        // second time. Tools[] only gates what the anvil/enchanting table are willing to put Hilt
+        // or Dull on - a weapon that got the enchant some other way (loot, a modded weapon
+        // matchesEntry doesn't recognize) still has to convert, or the conversion silently never
+        // fires on exactly the weapons the user asked for this to work on.
+        if (CrafticsEnchantments.heldLevelIgnoringTool(player, CrafticsEnchantments.HILT) > 0) {
             damageType = DamageType.PHYSICAL;
             secondaryType = null;
-        } else if (CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.DULL) > 0) {
+        } else if (CrafticsEnchantments.heldLevelIgnoringTool(player, CrafticsEnchantments.DULL) > 0) {
             damageType = DamageType.BLUNT;
             secondaryType = null;
         }
@@ -6596,9 +6625,10 @@ public class CombatManager {
         // Hilt and Dull trade damage for the affinity they redirected upstream: Hilt drops the hit
         // to a quarter, Dull to a half. Sits in the same multiplier tier as Facade and Reversal so
         // it scales the whole built-up hit. Mutually exclusive; if both are held, Hilt wins.
-        if (CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.HILT) > 0) {
+        // heldLevelIgnoringTool, not heldLevel - see the damageType redirect above for why.
+        if (CrafticsEnchantments.heldLevelIgnoringTool(player, CrafticsEnchantments.HILT) > 0) {
             baseDamage = SwordAxeEnchantEffects.hiltDamage(baseDamage);
-        } else if (CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.DULL) > 0) {
+        } else if (CrafticsEnchantments.heldLevelIgnoringTool(player, CrafticsEnchantments.DULL) > 0) {
             baseDamage = SwordAxeEnchantEffects.dullDamage(baseDamage);
         }
 
@@ -9577,6 +9607,7 @@ public class CombatManager {
         }
     }
 
+
     /** Snap a yaw angle to the nearest cardinal direction (0, 90, 180, -90). */
     private static float snapToCardinalYaw(float yaw) {
         float normalized = ((yaw % 360) + 360) % 360; // 0..360
@@ -10963,6 +10994,26 @@ public class CombatManager {
                 }
             } else {
                 GridPos effectPos = new GridPos(tx, tz);
+
+                // Bridging: ItemUseHandler#requireFlatGround now allows placing these
+                // blocks onto WATER, DEEP_WATER and LAVA tiles, so the tile itself has to
+                // flip to NORMAL here before anything below sets its own type/block -
+                // walkability is driven by TileType, not the visible block, so leaving the
+                // tile typed as a hazard would still block movement even with a block sat
+                // on top of it. This MUST run before the per-effect code further down:
+                // GridTile#setType resets the tile's block to a generic default, and the
+                // obstacle/utility placement below (cactus, jukebox, honey, sponge, ...)
+                // relies on setting its own type (e.g. OBSTACLE) and block AFTER this, so
+                // it still wins for the effects that aren't a plain walkable floor.
+                GridTile bridgeTile = arena.getTile(effectPos);
+                if (bridgeTile != null) {
+                    TileType bridgedFrom = bridgeTile.getType();
+                    if (bridgedFrom == TileType.WATER || bridgedFrom == TileType.DEEP_WATER
+                            || bridgedFrom == TileType.LAVA) {
+                        bridgeTile.setType(TileType.NORMAL);
+                    }
+                }
+
                 // Banner: store color- and bonus-tagged form so the aura is visually
                 // distinct per color and the Special-scaled DEF bonus is frozen at
                 // placement time (later affinity gains don't retroactively buff old banners).
@@ -12776,6 +12827,11 @@ public class CombatManager {
         if (riptideAnimActive) { tickRiptideAnimation(); return; }
         if (movePathIndex >= movePath.size()) {
             int tilesMoved = movePath.size();
+            // Captured before movePath is nulled below: every tile actually stood on this
+            // move (ordinary steps AND jump landings), in order. Tiles JUMPED OVER are never
+            // in here - Pathfinding.Path.steps() only ever holds tiles the player stood on -
+            // so vaulting a lava channel still correctly skips all of the hazard loop below.
+            List<GridPos> traversedTiles = new ArrayList<>(movePath);
             GridPos walkedPos = arena.getPlayerGridPos();
             movePath = null;
             lerpInitialized = false;
@@ -12906,24 +12962,34 @@ public class CombatManager {
                 despawnActiveBoat(player);
             }
 
-            // Lava damage on move -10 damage when stepping onto lava
-            if (landingTile != null && landingTile.getType() == com.crackedgames.craftics.core.TileType.LAVA
-                    && !playerMounted && !combatEffects.hasFireResistance()) {
-                int lavaDmg = damagePlayer(10);
-                sendMessage("§6  Stepped in lava for " + lavaDmg + " damage!");
-                if (getPlayerHp() <= 0) {
-                    sendSync();
-                    handlePlayerDeathOrGameOver();
-                    return;
+            // Lava damage + flame burning for EVERY tile actually walked across this move,
+            // not just the tile the player stops on. This used to only check landingTile
+            // (the very last tile), so wading three lava tiles in one move was free right
+            // up until the player stopped standing in one - walking straight across a lava
+            // channel cost nothing at all unless you ended your move inside it. Reuses the
+            // exact same lava-damage amount/message and applyFireTileBurnToPlayer that the
+            // "standing in lava/fire" turn-start checks use, so landing and mid-path tiles
+            // can never drift apart from each other.
+            for (GridPos crossed : traversedTiles) {
+                GridTile crossedTile = arena.getTile(crossed);
+                if (crossedTile == null) continue;
+                if (crossedTile.getType() == com.crackedgames.craftics.core.TileType.LAVA
+                        && !playerMounted && !combatEffects.hasFireResistance()) {
+                    int lavaDmg = damagePlayer(10);
+                    sendMessage("§6  Stepped in lava for " + lavaDmg + " damage!");
+                    if (getPlayerHp() <= 0) {
+                        sendSync();
+                        handlePlayerDeathOrGameOver();
+                        return;
+                    }
                 }
-            }
 
-            // Walking into a flame tile sets you alight (Burning II, extending any burn
-            // already running). The magma a burnt-out tile leaves behind is a separate
-            // EMBER tile and bites through the MAGMA_BLOCK check in the per-turn pass.
-            if (landingTile != null && landingTile.getType().isFlames()
-                    && !combatEffects.hasFireResistance()) {
-                applyFireTileBurnToPlayer(landingTile.getType());
+                // Walking into a flame tile sets you alight (Burning II, extending any burn
+                // already running). The magma a burnt-out tile leaves behind is a separate
+                // EMBER tile and bites through the MAGMA_BLOCK check in the per-turn pass.
+                if (crossedTile.getType().isFlames() && !combatEffects.hasFireResistance()) {
+                    applyFireTileBurnToPlayer(crossedTile.getType());
+                }
             }
 
             // Frost: the blizzard's rime. Leather boots keep it off you, exactly like powder
@@ -24878,6 +24944,9 @@ public class CombatManager {
         CrafticsSavedData data = CrafticsSavedData.get(world);
         java.util.Map<java.util.UUID, List<ItemStack>> lootOverflow = new java.util.HashMap<>();
         java.util.Random rng = new java.util.Random();
+        int luckBonusItems = PlayerProgression.get(world)
+            .getStats(player).getPoints(PlayerProgression.Stat.LUCK);
+        List<ServerPlayerEntity> rewardedOnline = new ArrayList<>();
 
         // Spec 6.1: a server-wide broadcast naming the boss and its survivors - not
         // just a message to this instance's own party, which is all sendMessage()
@@ -24907,6 +24976,7 @@ public class CombatManager {
             ServerPlayerEntity recipient = server != null
                 ? server.getPlayerManager().getPlayer(recipientId) : null;
             if (recipient == null) continue;
+            rewardedOnline.add(recipient);
 
             data.getPlayerData(recipientId).addEmeralds(def.bounty());
             sendMessageTo(recipient, "§a+ " + def.bounty() + " Emeralds");
@@ -24919,6 +24989,62 @@ public class CombatManager {
                     + drop.getName().getString());
             }
         }
+
+        // Include the same boss-only rare extras normal boss fights can award.
+        // These rolls are shared at the raid instance level (matching the normal
+        // boss path's single roll gate), then distributed to each rewarded player.
+        if (!rewardedOnline.isEmpty()) {
+            float totemChance = (float) CrafticsMod.CONFIG.totemDropChance() + luckBonusItems * 0.01f;
+            if (Math.random() < totemChance) {
+                ItemStack totemDrop = com.crackedgames.craftics.compat.moretotems.MoreTotemsLootRoller.rollOne();
+                if (!totemDrop.isEmpty()) {
+                    for (ServerPlayerEntity recipient : rewardedOnline) {
+                        deliverLoot(recipient, totemDrop.copy(), lootOverflow);
+                    }
+                    sendMessage("§d§l✦ RARE DROP: " + totemDrop.getName().getString() + "!");
+                }
+            }
+
+            float uniqueChance = (float) CrafticsMod.CONFIG.uniqueWeaponDropChance() + luckBonusItems * 0.01f;
+            if (Math.random() < uniqueChance) {
+                for (ServerPlayerEntity recipient : rewardedOnline) {
+                    ItemStack uniqueDrop = rollUniqueWeapon(recipient);
+                    if (!uniqueDrop.isEmpty()) {
+                        deliverLoot(recipient, uniqueDrop.copy(), lootOverflow);
+                        sendMessageTo(recipient, "§6§l⚔ LEGENDARY DROP: " + uniqueDrop.getName().getString() + "!");
+                    }
+                }
+            }
+
+            if (Math.random() < CrafticsMod.CONFIG.trimDropChance() + luckBonusItems * 0.02) {
+                String dimension = raidTrimDimension(def.environmentId());
+                net.minecraft.item.Item[] trimPool = TrimEffects.getBossDropTrims(dimension);
+                if (trimPool.length > 0) {
+                    java.util.List<net.minecraft.item.Item> candidates = new java.util.ArrayList<>();
+                    for (net.minecraft.item.Item t : trimPool) {
+                        if (t != lastDroppedTrim) candidates.add(t);
+                    }
+                    if (candidates.isEmpty()) {
+                        for (net.minecraft.item.Item t : trimPool) candidates.add(t);
+                    }
+                    java.util.Random trimRng = new java.util.Random();
+                    String lastName = null;
+                    for (ServerPlayerEntity recipient : rewardedOnline) {
+                        net.minecraft.item.Item trimItem =
+                            candidates.get(trimRng.nextInt(candidates.size()));
+                        lastDroppedTrim = trimItem;
+                        ItemStack trimStack = new ItemStack(trimItem);
+                        deliverLoot(recipient, trimStack.copy(), lootOverflow);
+                        lastName = trimStack.getName().getString();
+                    }
+                    if (lastName != null) {
+                        sendMessage("§b§l✦ RARE DROP: " + lastName + "!");
+                    }
+                    unlockTrimGuideEntries(world, rewardedOnline);
+                }
+            }
+        }
+
         data.markDirty();
 
         // Hand overflow to the standard loot screen, then tear the instance down once
@@ -24987,6 +25113,28 @@ public class CombatManager {
             return new ItemStack(net.minecraft.registry.Registries.ITEM.get(itemId), count);
         }
         return ItemStack.EMPTY;
+    }
+
+    /** Raid environments map onto the same trim-drop dimensions as regular bosses. */
+    private static String raidTrimDimension(String environmentId) {
+        if (environmentId == null) return "overworld";
+        return switch (environmentId) {
+            case "nether", "crimson_forest", "warped_forest" -> "nether";
+            case "end" -> "end";
+            default -> "overworld";
+        };
+    }
+
+    /** Unlocks the trim guide page after a raid trim drop, same as normal boss wins. */
+    private void unlockTrimGuideEntries(ServerWorld world, List<ServerPlayerEntity> recipients) {
+        CrafticsSavedData trimData = CrafticsSavedData.get(world);
+        for (ServerPlayerEntity recipient : recipients) {
+            CrafticsSavedData.PlayerData pd = trimData.getPlayerData(recipient.getUuid());
+            if (pd.unlockGuideEntry("How Trims Work")) {
+                trimData.markDirty();
+                sendGuideBookSync(recipient, pd);
+            }
+        }
     }
 
     /** Close out a raid win: end combat and let the instance return everyone home. */
@@ -30714,7 +30862,13 @@ public class CombatManager {
                         }
                     }
                 } else {
-                    // Normal entity range check
+                    // Normal entity range check. Same isRanged split as handleAttack -
+                    // Chebyshev for melee (diagonals count), Manhattan for ranged - so
+                    // the highlight matches exactly what handleAttack will accept a
+                    // click on, including a big boss's whole real footprint (the raid/
+                    // infinite dressing's ce.setFootprint call): minDistanceTo/
+                    // minChebyshevDistanceTo already measure to the nearest tile of any
+                    // multi-tile occupancy.
                     boolean inRange;
                     if (range == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
                         inRange = false;
@@ -30722,12 +30876,14 @@ public class CombatManager {
                             if (PlayerCombatStats.isInCrossbowLine(arena, playerPos, tile)) { inRange = true; break; }
                         }
                     } else {
-                        inRange = enemy.minDistanceTo(playerPos) <= range;
+                        inRange = (isRanged ? enemy.minDistanceTo(playerPos)
+                                             : enemy.minChebyshevDistanceTo(playerPos)) <= range;
                     }
 
                     if (inRange) {
                         highlighted.add(enemy);
                         for (var tile : GridArena.getOccupiedTiles(enemy)) {
+                            if (!arena.isInBounds(tile)) continue;
                             attackList.add(tile.x());
                             attackList.add(tile.z());
                         }

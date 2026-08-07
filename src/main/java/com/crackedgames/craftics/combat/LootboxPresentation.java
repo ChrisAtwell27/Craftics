@@ -24,8 +24,8 @@ import java.util.Map;
  *
  * <p>A lootbox is an admin-placed chest sitting in a hub full of other chests. Without a
  * label it is indistinguishable from storage, and a player has no way to know it exists, what
- * it costs, or that the odds are a command away. The hologram carries all three, so the kiosk
- * explains itself from across the room.
+ * it costs, or that punching it shows the full odds before they ever spend anything. The
+ * hologram carries both, so the kiosk explains itself from across the room.
  *
  * <p>Everything here is rebuilt from the registration in {@link CrafticsSavedData}, never
  * persisted: the label entities are spawned as needed and re-derived on restart. Display
@@ -143,20 +143,28 @@ public final class LootboxPresentation {
     }
 
     /**
-     * Write the label: title in the cycling colour, then the price and the odds command.
+     * Write the label: title in the cycling colour, then a price line with a short hint.
+     *
+     * <p>Two lines only. A third line naming the odds command used to sit here, but between
+     * the colour cycle, the price and a command string it read as noise - and the command is
+     * redundant now that punching the chest opens the odds menu directly. Every colour used is
+     * a bright, saturated one (never §7/§8): dark grey reads fine against a bright sky but
+     * disappears against stone, caves and night, which is exactly where a lot of these kiosks
+     * end up standing.
      *
      * <p>The whole text is rewritten each pulse rather than patched, because the vanilla text
      * getter is protected and only the setter is exposed through the invoker mixin. Rebuilding
-     * three short lines every four ticks is cheaper than another mixin.
+     * two short lines every four ticks is cheaper than another mixin.
      */
     private static void applyText(DisplayEntity.TextDisplayEntity label,
                                   LootboxManager.Type type, int cost, float blend) {
         int[] cycle = cycleFor(type);
         int colour = lerpColor(cycle[0], cycle[1], blend);
-        String priceLine = cost <= 0 ? "§aFree to open" : "§f" + cost + " §7emeralds §8or a Key";
+        String priceLine = cost <= 0
+            ? "§a§lFree to open §f- §b(Punch: Odds)"
+            : "§f" + cost + " §aEmeralds §f- §b(Punch: Odds)";
         var text = Text.literal("§l" + type.display).styled(s -> s.withColor(colour))
-            .append(Text.literal("\n" + priceLine))
-            .append(Text.literal("\n§8/craftics lootbox odds " + type.name().toLowerCase()));
+            .append(Text.literal("\n" + priceLine));
         ((TextDisplayInvoker) label).craftics$setText(text);
     }
 
@@ -194,13 +202,22 @@ public final class LootboxPresentation {
     }
 
     /** Coloured dust, built through the shard-appropriate constructor. */
-    private static DustParticleEffect dustOf(int colour) {
+    static DustParticleEffect dustOf(int colour) {
+        return dustOf(colour, 1.0f);
+    }
+
+    /**
+     * Coloured dust at a given particle size. Package-visible so {@code LootboxReveal} can
+     * reuse the same shard-appropriate constructor for the reveal's ring, trail and burst dust
+     * instead of duplicating the version split.
+     */
+    static DustParticleEffect dustOf(int colour, float size) {
         //? if <=1.21.1 {
         return new DustParticleEffect(
             new Vector3f(((colour >> 16) & 0xFF) / 255f, ((colour >> 8) & 0xFF) / 255f,
-                (colour & 0xFF) / 255f), 1.0f);
+                (colour & 0xFF) / 255f), size);
         //?} else {
-        /*return new DustParticleEffect(colour, 1.0f);
+        /*return new DustParticleEffect(colour, size);
         *///?}
     }
 

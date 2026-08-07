@@ -1,0 +1,83 @@
+{
+    "id":  "ironshard_sentinel",
+    "name":  "The Ironshard Sentinel",
+    "entity":  "minecraft:iron_golem",
+    "hp":  1240,
+    "attack":  15,
+    "defense":  10,
+    "range":  1,
+    "speed":  1,
+    "moves":  [
+                  "seismic_slam",
+                  "tremor_stomp",
+                  "boulder_toss",
+                  "cave_in",
+                  "rubble_toss",
+                  "fortify_shell"
+              ],
+    "power":  {
+                  "effect":  "resistance",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "plains",
+    "bounty":  83,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:iron_block",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:iron_ingot",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:andesite",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "tile":  "rubble",
+                          "block":  "minecraft:tuff",
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    }
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:stone_bricks",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  9
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    },
+                          "tile":  "mud"
+                      }
+                  ],
+    "weight":  9
+}

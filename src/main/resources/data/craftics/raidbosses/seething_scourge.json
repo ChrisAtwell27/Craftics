@@ -1,0 +1,77 @@
+{
+    "id":  "seething_scourge",
+    "name":  "The Seething Scourge",
+    "entity":  "minecraft:husk",
+    "hp":  1000,
+    "attack":  14,
+    "defense":  6,
+    "range":  1,
+    "speed":  3,
+    "moves":  [
+                  "sand_burial",
+                  "sandstorm",
+                  "curse_of_the_sands",
+                  "death_charge",
+                  "fang_line",
+                  "ground_pound"
+              ],
+    "power":  {
+                  "effect":  "strength",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "desert",
+    "bounty":  68,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  12,
+                     "item":  "minecraft:sand",
+                     "max":  64
+                 },
+                 {
+                     "weight":  3,
+                     "min":  1,
+                     "item":  "minecraft:rabbit_foot",
+                     "max":  2
+                 },
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:gold_nugget",
+                     "max":  64
+                 },
+                 {
+                     "weight":  5,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "cluster":  2,
+                          "tile":  "mud",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  9
+                                    }
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:sandstone",
+                          "count":  {
+                                        "min":  6,
+                                        "max":  10
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  1,
+                                        "max":  3
+                                    },
+                          "tile":  "fire"
+                      }
+                  ],
+    "weight":  8
+}

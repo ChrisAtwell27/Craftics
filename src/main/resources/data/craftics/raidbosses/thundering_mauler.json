@@ -1,0 +1,76 @@
+{
+    "id":  "thundering_mauler",
+    "name":  "The Thundering Mauler",
+    "entity":  "minecraft:ravager",
+    "hp":  1160,
+    "attack":  16,
+    "defense":  7,
+    "range":  1,
+    "speed":  3,
+    "moves":  [
+                  "lightning_strike",
+                  "ground_slam",
+                  "rampage",
+                  "gore_charge",
+                  "seismic_slam",
+                  "ground_pound"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "mountain",
+    "bounty":  74,
+    "loot":  [
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:lightning_rod",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:amethyst_shard",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "cluster":  2,
+                          "tile":  "ice",
+                          "block":  "minecraft:packed_ice",
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    }
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:stone",
+                          "count":  {
+                                        "min":  6,
+                                        "max":  10
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  5
+                                    },
+                          "tile":  "powder_snow"
+                      }
+                  ],
+    "weight":  9
+}

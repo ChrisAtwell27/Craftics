@@ -1804,8 +1804,26 @@ public class CrafticsMod implements ModInitializer {
                         + ". Valid: weapons, armor, materials, special, books"));
                     return 0;
                 }
-                for (String line : com.crackedgames.craftics.combat.LootboxManager.oddsLines(boxType)) {
+                var oddsWorld = ctx.getSource().getServer().getOverworld();
+                for (String line : com.crackedgames.craftics.combat.LootboxManager.oddsLines(boxType, oddsWorld)) {
                     ctx.getSource().sendFeedback(() -> Text.literal(line), false);
+                }
+                return 1;
+            };
+            // Re-validates the chest and hands off to LootboxManager.openChest(), the one place
+            // that charges/rolls/delivers/logs. The confirm menu's "Open it" icon calls
+            // LootboxManager.confirmOpen() directly rather than this command; this stays
+            // registered as a harmless, re-validating public entry point to the same path.
+            var lootboxConfirmOpenExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                int x = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "x");
+                int y = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "y");
+                int z = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "z");
+                var world = (ServerWorld) player.getEntityWorld();
+                if (!com.crackedgames.craftics.combat.LootboxManager.confirmOpen(
+                        player, world, new net.minecraft.util.math.BlockPos(x, y, z))) {
+                    ctx.getSource().sendError(Text.literal("§cThat lootbox chest is no longer there."));
+                    return 0;
                 }
                 return 1;
             };
@@ -1859,6 +1877,13 @@ public class CrafticsMod implements ModInitializer {
                     .then(CommandManager.argument("type", com.mojang.brigadier.arguments.StringArgumentType.word())
                         .suggests(lootboxTypeSuggester)
                         .executes(lootboxOddsExec)))
+                // Reached only via the [Open] link in the confirm message, not typed by hand -
+                // deliberately PUBLIC, same as odds: it is the player confirming their own open.
+                .then(CommandManager.literal("confirmopen")
+                    .then(CommandManager.argument("x", com.mojang.brigadier.arguments.IntegerArgumentType.integer())
+                        .then(CommandManager.argument("y", com.mojang.brigadier.arguments.IntegerArgumentType.integer())
+                            .then(CommandManager.argument("z", com.mojang.brigadier.arguments.IntegerArgumentType.integer())
+                                .executes(lootboxConfirmOpenExec)))))
                 .then(CommandManager.literal("key").requires(src -> src.hasPermissionLevel(2))
                     .executes(lootboxKeyExec)
                     .then(CommandManager.argument("count", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 27))

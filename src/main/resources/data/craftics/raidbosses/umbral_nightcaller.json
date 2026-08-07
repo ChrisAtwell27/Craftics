@@ -1,0 +1,82 @@
+{
+    "id":  "umbral_nightcaller",
+    "name":  "The Umbral Nightcaller",
+    "entity":  "minecraft:enderman",
+    "hp":  1180,
+    "attack":  15,
+    "defense":  7,
+    "range":  3,
+    "speed":  4,
+    "moves":  [
+                  "void_beam",
+                  "null_burst",
+                  "void_pull",
+                  "ender_roar",
+                  "phase_strike",
+                  "blink_step"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "end",
+    "bounty":  78,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:ender_pearl",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:end_stone",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:chorus_fruit",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  2,
+                     "item":  "minecraft:diamond",
+                     "max":  4
+                 },
+                 {
+                     "item":  "minecraft:emerald",
+                     "weight":  8,
+                     "min":  0,
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "cluster":  2,
+                          "tile":  "obstacle",
+                          "block":  "minecraft:obsidian",
+                          "count":  {
+                                        "min":  6,
+                                        "max":  10
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    },
+                          "tile":  "fire"
+                      },
+                      {
+                          "tile":  "ice",
+                          "block":  "minecraft:packed_ice",
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    }
+                      }
+                  ],
+    "weight":  9
+}

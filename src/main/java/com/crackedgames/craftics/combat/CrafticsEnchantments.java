@@ -486,6 +486,30 @@ public final class CrafticsEnchantments {
     }
 
     /**
+     * The level of {@code entry} on the held stack, SKIPPING the {@link #matchesEntry} tool gate
+     * that {@link #heldLevel} applies.
+     *
+     * <p>{@link Entry#tools()} governs where the anvil and enchanting table are willing to PUT an
+     * enchantment - it is not a second check the effect has to pass once the enchantment is
+     * already sitting on an item. For a weapon-agnostic entry like {@link #HILT} or {@link #DULL}
+     * (meant to convert ANY weapon's damage type, including ones outside their normal tool list),
+     * gating the effect through {@code matchesEntry} again means an enchant that reached the stack
+     * by some route the runtime filter doesn't recognize - a loot table, a command, a modded
+     * weapon whose Item class or registered DamageType {@link #isSword}/{@link #isAxeLike}/
+     * {@link #matchesBlunt} don't happen to catch - sits on the item doing nothing. The client-side
+     * Hilt flip mixins already read the raw enchant level this way for the same reason; this is
+     * the server-side effect counterpart, used only by Hilt/Dull's damage-type conversion.
+     *
+     * @return the level on the held stack, or 0 when it is empty or unenchanted
+     */
+    public static int heldLevelIgnoringTool(ServerPlayerEntity player, Entry entry) {
+        if (player == null || entry == null) return 0;
+        ItemStack held = player.getMainHandStack();
+        if (held.isEmpty()) return 0;
+        return PlayerCombatStats.getEnchantLevel(held, entry.fullId());
+    }
+
+    /**
      * The level of {@code entry} on the OFFHAND item (same item-type filter as
      * {@link #heldLevel}). For enchants that assist the main hand's action - e.g.
      * Timberfall on an offhand axe crushing enemies when the PICKAXE in the main

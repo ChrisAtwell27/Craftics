@@ -1,0 +1,77 @@
+{
+    "id":  "venomous_broodlord",
+    "name":  "The Venomous Broodlord",
+    "entity":  "minecraft:cave_spider",
+    "hp":  980,
+    "attack":  12,
+    "defense":  6,
+    "range":  1,
+    "speed":  4,
+    "moves":  [
+                  "web_spray",
+                  "venomous_bite",
+                  "spawn_brood",
+                  "pounce_strike",
+                  "entangle",
+                  "plant_mine"
+              ],
+    "power":  {
+                  "effect":  "speed",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "jungle",
+    "bounty":  66,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:string",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:spider_eye",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:vine",
+                     "max":  64
+                 },
+                 {
+                     "weight":  5,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  8,
+                                        "max":  14
+                                    },
+                          "tile":  "tall_grass"
+                      },
+                      {
+                          "cluster":  2,
+                          "tile":  "mud",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    }
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:moss_block",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  9
+                                    }
+                      }
+                  ],
+    "weight":  9
+}

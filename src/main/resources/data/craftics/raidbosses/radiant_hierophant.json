@@ -1,0 +1,78 @@
+{
+    "id":  "radiant_hierophant",
+    "name":  "The Radiant Hierophant",
+    "entity":  "minecraft:evoker",
+    "hp":  1100,
+    "attack":  10,
+    "defense":  8,
+    "range":  3,
+    "speed":  2,
+    "moves":  [
+                  "lightning_strike",
+                  "hex_bolt",
+                  "fortify_shell",
+                  "ground_pound",
+                  "blizzard",
+                  "bullet_storm"
+              ],
+    "power":  {
+                  "effect":  "absorption",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "snowy",
+    "bounty":  75,
+    "loot":  [
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:glowstone_dust",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:amethyst_shard",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "cluster":  2,
+                          "tile":  "ice",
+                          "block":  "minecraft:blue_ice",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  3,
+                                        "max":  6
+                                    },
+                          "tile":  "powder_snow"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:quartz_block",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    }
+                      }
+                  ],
+    "weight":  8
+}

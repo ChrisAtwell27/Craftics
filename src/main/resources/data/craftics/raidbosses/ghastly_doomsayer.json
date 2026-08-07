@@ -1,0 +1,81 @@
+{
+    "id":  "ghastly_doomsayer",
+    "name":  "The Ghastly Doomsayer",
+    "entity":  "minecraft:ghast",
+    "hp":  1080,
+    "attack":  14,
+    "defense":  6,
+    "range":  5,
+    "speed":  2,
+    "moves":  [
+                  "fireball_barrage",
+                  "fireball_rain",
+                  "void_beam",
+                  "void_pull",
+                  "magma_eruption",
+                  "fire_pillar"
+              ],
+    "power":  {
+                  "type":  "double_move"
+              },
+    "environment":  "nether",
+    "bounty":  76,
+    "loot":  [
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:ghast_tear",
+                     "max":  64
+                 },
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:gunpowder",
+                     "max":  64
+                 },
+                 {
+                     "weight":  8,
+                     "min":  8,
+                     "item":  "minecraft:quartz",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "item":  "minecraft:emerald",
+                     "weight":  8,
+                     "min":  0,
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "cluster":  2,
+                          "tile":  "lava",
+                          "count":  {
+                                        "min":  2,
+                                        "max":  5
+                                    }
+                      },
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    },
+                          "tile":  "fire"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:netherrack",
+                          "count":  {
+                                        "min":  5,
+                                        "max":  9
+                                    }
+                      }
+                  ],
+    "weight":  9
+}

@@ -1,0 +1,83 @@
+{
+    "id":  "echoing_dominion",
+    "name":  "The Echoing Dominion",
+    "entity":  "minecraft:shulker",
+    "hp":  1140,
+    "attack":  10,
+    "defense":  9,
+    "range":  4,
+    "speed":  1,
+    "moves":  [
+                  "void_beam",
+                  "void_pull",
+                  "null_burst",
+                  "chorus_bomb",
+                  "ender_roar",
+                  "phase_strike"
+              ],
+    "power":  {
+                  "effect":  "resistance",
+                  "amplifier":  1,
+                  "type":  "buff"
+              },
+    "environment":  "deep_dark",
+    "bounty":  78,
+    "loot":  [
+                 {
+                     "weight":  10,
+                     "min":  8,
+                     "item":  "minecraft:echo_shard",
+                     "max":  64
+                 },
+                 {
+                     "weight":  9,
+                     "min":  8,
+                     "item":  "minecraft:sculk",
+                     "max":  64
+                 },
+                 {
+                     "weight":  7,
+                     "min":  8,
+                     "item":  "minecraft:amethyst_shard",
+                     "max":  64
+                 },
+                 {
+                     "weight":  4,
+                     "min":  1,
+                     "item":  "minecraft:diamond",
+                     "max":  3
+                 },
+                 {
+                     "weight":  8,
+                     "min":  0,
+                     "item":  "minecraft:emerald",
+                     "max":  100
+                 }
+             ],
+    "obstacles":  [
+                      {
+                          "count":  {
+                                        "min":  4,
+                                        "max":  8
+                                    },
+                          "tile":  "sculk"
+                      },
+                      {
+                          "tile":  "obstacle",
+                          "block":  "minecraft:crying_obsidian",
+                          "count":  {
+                                        "min":  4,
+                                        "max":  7
+                                    }
+                      },
+                      {
+                          "tile":  "rubble",
+                          "block":  "minecraft:end_stone",
+                          "count":  {
+                                        "min":  2,
+                                        "max":  4
+                                    }
+                      }
+                  ],
+    "weight":  8
+}
