@@ -85,9 +85,29 @@ public final class RaidBossDimensions {
         if (handle == null) return;
         ServerWorld w = handle.asWorld();
         if (w != null && !w.getPlayers().isEmpty()) {
+            // Callers are supposed to have evacuated already, so reaching here means a
+            // return-home path failed or was skipped. This used to only WARN and delete
+            // anyway, which is the worst possible outcome for the players left behind: a
+            // raid arena is a VoidChunkGenerator world, so whatever Fantasy does with them
+            // as it tears the world down, they end up standing on nothing in a world that
+            // is disappearing - an ordinary out-of-combat void death, dropping their whole
+            // (own, non-run) inventory into a dimension that no longer exists. Put them on
+            // real ground first; the lobby is the one floor guaranteed to still be there.
             CrafticsMod.LOGGER.warn(
-                "Closing raid dimension {} with {} player(s) still inside",
+                "Closing raid dimension {} with {} player(s) still inside - evacuating them to the lobby",
                 instanceId, w.getPlayers().size());
+            for (net.minecraft.server.network.ServerPlayerEntity stranded
+                    : new ArrayList<>(w.getPlayers())) {
+                try {
+                    if (stranded.isSpectator()) {
+                        stranded.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+                    }
+                    com.crackedgames.craftics.world.HubTeleports.toLobby(stranded);
+                } catch (Exception e) {
+                    CrafticsMod.LOGGER.error("Failed to evacuate {} from raid dimension {}: {}",
+                        stranded.getName().getString(), instanceId, e.getMessage());
+                }
+            }
         }
         CLOSING.add(instanceId);
         handle.delete();

@@ -24,7 +24,7 @@ public class CombatEffects {
         WEAKNESS("Weakness", "-2 attack/level"),
         WITHER("Wither", "-(1+level) HP/turn, ramping each turn"),
         BURNING("Burning", "-(1+level) HP/turn"),
-        BLEEDING("Bleeding", "Stacking HP loss/turn (1, 3, 6, 10...)"),
+        BLEEDING("Bleeding", "Stacking HP loss/turn (1, 1, 3, 5, 7...)"),
         BLINDNESS("Blindness", "-2 range/level"),
         MINING_FATIGUE("Mining Fatigue", "-1 AP/level"),
         LEVITATION("Levitation", "-1 movement/level"),

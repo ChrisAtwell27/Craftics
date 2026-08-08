@@ -89,7 +89,7 @@ class EffectParityTest {
         for (int stacks = 1; stacks <= 5; stacks++) {
             assertEquals(EffectFormulas.bleedTick(stacks),
                 CombatEntity.computeBleedTickDamage(stacks),
-                "bleed must be the shared triangular curve at " + stacks + " stacks");
+                "bleed must be the shared half-triangular curve at " + stacks + " stacks");
         }
     }
 

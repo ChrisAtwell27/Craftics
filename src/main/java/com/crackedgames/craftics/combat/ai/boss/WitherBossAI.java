@@ -16,9 +16,10 @@ import java.util.List;
  *
  * Abilities:
  * - Wither Skull Barrage: Spawns 3 (P2: 5) Wither Skull projectile entities that travel
- *   2 tiles/turn in a straight line. Skulls are 3HP - killable by the player.
- *   Deal 5 dmg + Wither on player contact. No AOE.
- * - Decay Aura: Passive - pulses an AreaAttack within 2 (P2: 3) of the Wither dealing
+ *   2 tiles/turn in a straight line. Skulls are 6HP - killable by the player,
+ *   but not by a single basic bow shot.
+ *   Deal 7 dmg + Wither on player contact. No AOE.
+ * - Decay Aura: Passive - pulses an AreaAttack within 3 (P2: 4) of the Wither dealing
  *   damage + refreshing Wither (bypasses Fire Resistance). Refreshed every turn.
  * - Summon Wither Skeletons: Spawns 2 (P2: 3) Wither Skeletons. Max 4 (P2: 6) alive.
  * - Charge: Dashes up to 4 tiles in a line, dealing ATK+3 damage. Leaves decay in P2.

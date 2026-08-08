@@ -50,25 +50,34 @@ class EffectFormulasTest {
         assertEquals(5, EffectFormulas.burningTick(1, 3)); // 1 + 1 + 3
     }
 
-    /** Bleed is triangular: 1, 3, 6, 10, 15 as stacks climb. */
+    /** Bleed is HALF the triangle: 1, 1, 3, 5, 7, 10 as stacks climb. */
     @Test
-    void bleedIsTriangular() {
-        assertEquals(1, EffectFormulas.bleedTick(1));
-        assertEquals(3, EffectFormulas.bleedTick(2));
-        assertEquals(6, EffectFormulas.bleedTick(3));
-        assertEquals(10, EffectFormulas.bleedTick(4));
-        assertEquals(15, EffectFormulas.bleedTick(5));
+    void bleedIsHalfTriangular() {
+        assertEquals(1, EffectFormulas.bleedTick(1), "1*2/4 = 0, floored to 1");
+        assertEquals(1, EffectFormulas.bleedTick(2), "2*3/4 = 1");
+        assertEquals(3, EffectFormulas.bleedTick(3));
+        assertEquals(5, EffectFormulas.bleedTick(4));
+        assertEquals(7, EffectFormulas.bleedTick(5));
+        assertEquals(10, EffectFormulas.bleedTick(6));
         assertEquals(0, EffectFormulas.bleedTick(0));
         assertEquals(0, EffectFormulas.bleedTick(-1), "a negative stack count can't heal");
     }
 
-    /** A single bleed/burn tick is clamped so a runaway stack can't one-shot a full-HP target. */
+    /** Bleed carries its own, much lower ceiling: stacks arrive several per hit and decay one a
+     *  turn, so the shared DOT cap was never a real limit on it. */
     @Test
-    void dotTicksCapAt100() {
-        // Triangular bleed passes 100 at 14 stacks (14*15/2 = 105); it must clamp there.
-        assertEquals(91, EffectFormulas.bleedTick(13), "13 stacks (91) is still under the cap");
-        assertEquals(EffectFormulas.MAX_DOT_TICK, EffectFormulas.bleedTick(14), "14 stacks (105) clamps to 100");
-        assertEquals(EffectFormulas.MAX_DOT_TICK, EffectFormulas.bleedTick(1000), "no stack count exceeds the cap");
+    void bleedTicksCapAt50() {
+        assertEquals(45, EffectFormulas.bleedTick(13), "13 stacks (13*14/4 = 45) is still under the cap");
+        assertEquals(EffectFormulas.MAX_BLEED_TICK, EffectFormulas.bleedTick(14), "14 stacks (52) clamps to 50");
+        assertEquals(EffectFormulas.MAX_BLEED_TICK, EffectFormulas.bleedTick(1000), "no stack count exceeds the cap");
+        assertEquals(50, EffectFormulas.MAX_BLEED_TICK);
+        assertTrue(EffectFormulas.MAX_BLEED_TICK < EffectFormulas.MAX_DOT_TICK,
+            "bleed's ceiling must stay under the general DOT ceiling");
+    }
+
+    /** A single burn tick is clamped so a runaway level can't one-shot a full-HP target. */
+    @Test
+    void burnTicksCapAt100() {
         // Burning is flat and small, but a huge affinity would still clamp.
         assertEquals(EffectFormulas.MAX_DOT_TICK, EffectFormulas.burningTick(1, 1000));
         assertEquals(100, EffectFormulas.MAX_DOT_TICK);

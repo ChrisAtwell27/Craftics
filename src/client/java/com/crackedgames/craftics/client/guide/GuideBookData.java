@@ -347,7 +347,7 @@ public class GuideBookData {
             "Tame with golden apples or golden carrots. Saddle it in the hub and add it to your party for a +3 Speed mount!"));
         enemies.add(mob("Wolf", "minecraft:wolf_spawn_egg",
             st("Neutral", "4", "0", "0", "3", null, null, "Special", null, null),
-            "Passive until hit. Tame with a bone or beef to gain a loyal melee ally that dashes at enemies."));
+            "Passive until hit. Tame with a bone to gain a loyal melee ally that dashes at enemies."));
         enemies.add(mob("Cat", "minecraft:cat_spawn_egg",
             st("Passive", "3", "1", "0", "2", null, null, null, null, null),
             "Skittish - it flees from you unless you're holding a fish. Tame with cod or salmon for a quick flanking ally."));
@@ -813,7 +813,7 @@ public class GuideBookData {
             new Page("Bleed Striker",
                 "§cBleed Striker. Stack bleed, finish quick.\n\n" +
                 "Weapon: Diamond or Netherite Sword + Sharpness.\n" +
-                "Each Sharpness hit adds a Bleed stack; bleed damage climbs steeply with stacks (1, 3, 6, 10...) every turn. Classified as Special damage.\n\n" +
+                "Each Sharpness hit adds a Bleed stack; bleed damage climbs with stacks (1, 1, 3, 5, 7, 10...) every turn, up to 50. Classified as Special damage.\n\n" +
                 "Armor: Chainmail set (Rogue). +2 Slashing, -1 AP cost.\n" +
                 "Trim: Bolt = +1 Slashing per piece.\n\n" +
                 "Tip: Sweeping Edge spreads hits to adjacent foes. Every extra hit is another bleed stack."),

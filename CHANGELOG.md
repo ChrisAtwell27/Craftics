@@ -1,4 +1,40 @@
 ﻿Changelog
+0.3.6.1
+Bleed
+
+- Bleed was ending fights by itself and has been halved. It charged the full triangle of your stack count - 1, 3, 6, 10, 15 and up - which compounded far faster than stacks come off, since they decay one a turn while a Sharpness V sword alone adds five per hit, before Serrated, Piercing or Impaling add theirs. One swing was 15 damage a turn, two was 45, three was 91, past most things' entire HP pool. It is half that triangle now - 1, 1, 3, 5, 7, 10, 14 - so the same three swings read 7, 22 and 45
+- Bleed also has its own ceiling of 50 a turn, rather than sharing the general 100 damage-over-time cap with burn. That cap was never a real limit on bleed, which reached it in three hits; 50 now needs fourteen live stacks, and a big enemy's bonus damage counts against it instead of being added on top of it
+
+Raid Bosses
+
+- A finished raid no longer drops you into the void. Sending a raider back to where they joined from was the one teleport in the mod that did not check for ground under the landing spot, and every hub world here is a void world, so an origin whose floor had gone - or one recorded mid-jump or mid-fall - put the player in open air over nothing. That is an ordinary death outside combat, so it took the whole inventory with it, gear you brought from outside the raid included. The landing is now clamped onto the highest solid block in that column, and an origin with no ground left anywhere in it sends you to the lobby instead
+- Raid arenas no longer spawn anyone over a hole. A raid is built inside an empty void dimension, so a tile the arena marks walkable but never floored is not a pit, it is the sky. The leader's start tile and every fanned-out member's tile now require a real floor, the same check ordinary party fights have used for schematic arenas
+- A raid dimension is never deleted with someone still inside it. That case used to be logged and then deleted anyway, which is the worst outcome for whoever was left: standing on nothing in a world that is disappearing, with their items dropping into it. Anyone still in the arena at teardown is now moved to the lobby first. Covers a win, a wipe, an admin cancel and a server stop
+
+Taming
+
+- Taming an animal with food now actually works. Every taming item that is also something you can eat - cod and salmon for cats and ocelots, carrot, potato and beetroot for pigs, golden apple and golden carrot for horses and donkeys, sweet and glow berries for foxes - was being caught by the "eat this" branch first and swallowed for a couple of HP. Those mobs could not be tamed at all. Taming is now checked ahead of eating, and only claims the click when the tile in front of you actually holds a live untamed animal that item breeds, so the same item still eats normally everywhere else
+- Wolves take a bone, and only a bone. Beef and cooked beef were listed as wolf taming items, which is not how the game works - beef breeds a wolf you already own - and it meant a steak eaten next to a wild wolf tamed it instead of feeding you
+
+Kill Streak
+
+- Your kill streak no longer carries into the next fight. It was only ever cleared on a turn that ended without a kill, so a fight that ended on a killing blow - which is most of them - left the streak standing. The next fight then opened with a free damage multiplier before anything in it had died, up to +90% in leather and compounding on a Feral trim. It now resets with the rest of the per-fight state when a new fight starts
+
+Achievements
+
+- Whirlwind, Shockwave and Coral Reef each needed one more enemy than they advertised. The count they were given excludes the enemy the swing already hit, so "hit 5 enemies with a shockwave" was really six, and sweep and splash were off the same way. The Crossbow's Pierce feat had this right and the other three were copied without it
+- Reef Dweller now checks the Coast trim it has always asked for. Without that check it was Coral Crusader with turtle armor added, so a single boss kill handed over both
+
+Potions
+
+- Splash and lingering potions count as Special casts again. The check behind that only recognised the drinkable potion, so the two hoe enchantments that key off Special - Performative's free double-cast and Reserving's AP refund - silently never fired for a thrown potion
+
+Documentation
+
+- The campfire's own comment said it healed 1 HP to anyone adjacent. It heals 2, to anyone standing in its 5x5, which is what the item's message and the combat code have both always said
+- The echo shard's comment said it returned you at the start of your turn. It returns you at the end of it
+- The Wither's summary still described 3HP skulls dealing 5 damage inside a 2 tile decay aura. The skulls have been 6HP and 7 damage for a while, and the aura is 3 tiles, 4 in phase two
+
 0.3.6
 Combat and Lootbox Updates
 

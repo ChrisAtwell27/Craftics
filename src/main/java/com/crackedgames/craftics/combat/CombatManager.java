@@ -235,9 +235,13 @@ public class CombatManager {
 
     /** Like {@link #findNearestWalkableUnreserved} but ALSO requires a real floor under the
      *  tile, so a player is never dropped into a trial-chamber pit. Falls back to plain
-     *  walkability only if no floored tile exists at all (degenerate arena). */
-    private static GridPos findNearestSafeSpawn(ServerWorld world, GridArena arena,
-                                                GridPos desired, java.util.Set<GridPos> reserved) {
+     *  walkability only if no floored tile exists at all (degenerate arena).
+     *
+     *  <p>Public because raid arenas need it just as much: RaidBossInstance builds its
+     *  arena inside a VoidChunkGenerator dimension, where a floorless "walkable" tile is
+     *  not a pit with a bottom but open void. */
+    public static GridPos findNearestSafeSpawn(ServerWorld world, GridArena arena,
+                                               GridPos desired, java.util.Set<GridPos> reserved) {
         GridPos bestFloored = null; int bestFlDist = Integer.MAX_VALUE;
         GridPos bestWalkable = null; int bestWkDist = Integer.MAX_VALUE;
         for (int x = 0; x < arena.getWidth(); x++) {
@@ -3322,6 +3326,12 @@ public class CombatManager {
         // Fresh fight -reset the anti-farming idle tracker.
         this.antiFarmIdleRounds = 0;
         this.killedThisRound = false;
+        // Kill streak is per-fight. It only ever cleared on a turn that ended
+        // WITHOUT a kill, so a fight that ended on a killing blow left the streak
+        // standing and handed the next fight a free Brawler/Feral damage multiplier
+        // before a single enemy had died in it.
+        this.killStreak = 0;
+        this.killedThisTurn = false;
 
         // Cache the biome ordinal so late-game tuning (boss waiting-turn skip,
         // etc.) doesn't have to recompute it on every enemy decision.
@@ -7114,7 +7124,9 @@ public class CombatManager {
                 achievementTracker.recordPierceTargets(1 + extraHits); // original + pierced
             }
             if (fWeapon == Items.MACE && extraHits > 0) {
-                achievementTracker.recordShockwaveTargets(extraHits);
+                // extraTargets() excludes the primary target the engine already hit,
+                // so count it like the Crossbow path above does.
+                achievementTracker.recordShockwaveTargets(1 + extraHits);
             }
             // Diamond crit / Netherite execute moved to the upstream damage chain,
             // so their achievements are recorded from the flags here (the message-
@@ -7124,7 +7136,7 @@ public class CombatManager {
             if (fNetheriteExecute && !fTarget.isAlive()) achievementTracker.recordExecutionKill();
             // Check ability messages for specific achievement events
             for (String msg : abilityMessages) {
-                if (msg.contains("Sweep!")) achievementTracker.recordSweepTargets(extraHits);
+                if (msg.contains("Sweep!")) achievementTracker.recordSweepTargets(1 + extraHits);
                 if (msg.contains("CRITICAL HIT")) achievementTracker.recordCrit();
                 if (msg.contains("EXECUTE!") && !fTarget.isAlive()) achievementTracker.recordExecutionKill();
                 if (msg.contains("SHATTER ARMOR") && msg.contains("destroyed ")) {
@@ -7137,7 +7149,7 @@ public class CombatManager {
                     } catch (NumberFormatException ignored) {}
                 }
                 if (msg.contains("STUNNED")) achievementTracker.recordStun(fTarget.getEntityId());
-                if (msg.contains("Splash!")) achievementTracker.recordCoralFanTargets(extraHits);
+                if (msg.contains("Splash!")) achievementTracker.recordCoralFanTargets(1 + extraHits);
                 if (msg.contains("Confused!")) achievementTracker.recordEnemyConfused(fTarget.getEntityId());
             }
             // Reset crit streak on non-crit
@@ -13537,10 +13549,14 @@ public class CombatManager {
                 checkAndHandleDeath(e);
             }
 
-            // --- Bleed DOT: damage scales quadratically with stack count, then 1 stack drops off ---
+            // --- Bleed DOT: damage grows with stack count, then 1 stack drops off ---
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getBleedStacks() <= 0) continue;
-                int bleedDmg = applyStatusDot(e, CombatEntity.computeBleedTickDamage(e.getBleedStacks()) + e.getMaxHpDotBonus());
+                // The big-target bonus is added OUTSIDE computeBleedTickDamage (unlike poison,
+                // wither and burn, which fold it in), so the ceiling has to be re-applied to the
+                // sum here or a high-max-HP enemy would bleed for more than MAX_BLEED_TICK.
+                int bleedDmg = applyStatusDot(e, Math.min(EffectFormulas.MAX_BLEED_TICK,
+                    CombatEntity.computeBleedTickDamage(e.getBleedStacks()) + e.getMaxHpDotBonus()));
                 sendMessage("§4" + e.getDisplayName() + " bleeds for " + bleedDmg + " (" + e.getBleedStacks() + " stacks).");
                 if (e.getMobEntity() != null) {
                     ((ServerWorld) player.getEntityWorld()).spawnParticles(

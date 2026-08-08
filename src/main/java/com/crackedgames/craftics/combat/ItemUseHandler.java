@@ -262,7 +262,10 @@ public class ItemUseHandler {
 
     // Breeding/taming materials - maps mob entity type → item that tames them
     private static final Map<String, Set<Item>> BREEDING_ITEMS = Map.ofEntries(
-        Map.entry("minecraft:wolf", Set.of(Items.BONE, Items.BEEF, Items.COOKED_BEEF)),
+        // Bone only, as in vanilla. Beef is what you BREED a wolf with once it's
+        // already yours, never what tames it, and listing it here both diverged from
+        // the game and shadowed eating a steak next to a wild wolf.
+        Map.entry("minecraft:wolf", Set.of(Items.BONE)),
         Map.entry("minecraft:cat", Set.of(Items.COD, Items.SALMON, Items.COOKED_COD, Items.COOKED_SALMON)),
         Map.entry("minecraft:ocelot", Set.of(Items.COD, Items.SALMON)),
         Map.entry("minecraft:cow", Set.of(Items.WHEAT)),
@@ -486,6 +489,21 @@ public class ItemUseHandler {
             return useArmorStand(arena, targetTile, held);
         } else if (item == Items.OMINOUS_BOTTLE) {
             return useOminousBottle(player, held);
+        } else if (isAnyBreedingItem(item) && hasBreedableTargetFor(arena, targetTile, item)) {
+            // Sits ABOVE the food branch on purpose. Most taming items are also plain food -
+            // cod and salmon tame cats and ocelots, carrot, potato and beetroot tame pigs,
+            // golden apple and golden carrot tame horses, sweet and glow berries tame
+            // foxes - and with the food branch first, clicking an
+            // untamed animal with the correct item just ate it for HP. Taming those mobs was
+            // unreachable entirely.
+            //
+            // Hoisting it is safe because hasBreedableTargetFor already gates the claim: the
+            // branch only fires when the target tile actually holds a live, untamed creature
+            // this item breeds. With no such creature the click falls through and the item
+            // still eats, or places, exactly as before. That same guard is what lets a
+            // dual-use item (cactus = camel-tame item AND a placeable obstacle) reach its
+            // normal use further down.
+            return useBreedingItem(player, arena, targetTile, held);
         } else if (isFood(item)) {
             return useFood(player, held, item);
         } else if (isPotion(item)) {
@@ -542,12 +560,6 @@ public class ItemUseHandler {
             return useFlintAndSteel(player, arena, targetTile, held);
         } else if (item == Items.TOTEM_OF_UNDYING) {
             return useTotem(player, held);
-        } else if (isAnyBreedingItem(item) && hasBreedableTargetFor(arena, targetTile, item)) {
-            // Only claim the click for taming when the target tile actually holds a live, untamed
-            // creature this item breeds. Otherwise fall through so a dual-use breeding item that is
-            // ALSO a placeable/usable block (cactus = camel-tame item AND an obstacle you place)
-            // reaches its normal use below instead of being shadowed into a "no creature" failure.
-            return useBreedingItem(player, arena, targetTile, held);
         } else if (isFishingRod(item)) {
             return useFishingRod(player, arena, targetTile, held);
         } else if (item == Items.TURTLE_EGG || item == Items.PUFFERFISH || item == Items.NAUTILUS_SHELL || item == Items.HEART_OF_THE_SEA) {
@@ -901,7 +913,10 @@ public class ItemUseHandler {
      */
     public static boolean isSpecialConsumable(Item item) {
         if (item == null) return false;
-        if (isPotion(item)) return true; // drink, splash and lingering all conserve
+        // Drink, splash and lingering all conserve. isPotion() is the DRINKABLE potion only,
+        // so checking it alone silently excluded splash and lingering from the Special class,
+        // and with them the Performative and Reserving hoe enchantments that key off it.
+        if (isPotion(item) || isSplashPotion(item) || item == Items.LINGERING_POTION) return true;
         if (item == Items.GOAT_HORN) return true;
         if (item == Items.FIRE_CHARGE || item == Items.WIND_CHARGE) return true;
         if (item == Items.DRAGON_BREATH) return true;
@@ -2123,7 +2138,7 @@ public class ItemUseHandler {
             + "|§aPlaced scaffolding! +1 range for ranged attacks from this tile.";
     }
 
-    // --- Campfire: place healing zone - heals 1 HP per turn when adjacent (1 AP) + creates light zone ---
+    // --- Campfire: place healing zone - heals 2 HP per turn to anyone inside the 5x5 (1 AP) + creates light zone ---
     private static String useCampfire(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         String ground = requireFlatGround(arena, targetTile);
@@ -2686,7 +2701,7 @@ public class ItemUseHandler {
     /** Prefix for horn effects - CombatManager applies the actual buff/debuff. */
     public static final String HORN_EFFECT_PREFIX = "§6HORN:";
 
-    // --- Echo Shard: teleport back to your position at start of turn (1 AP) ---
+    // --- Echo Shard: teleport back to your start position at END of turn (1 AP) ---
     private static String useEchoShard(GridArena arena, ItemStack stack) {
         stack.decrement(1);
         return ALLY_BUFF_PREFIX + "echo|§5Echo shard activates! You'll return to your start position at end of turn.";

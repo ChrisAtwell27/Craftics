@@ -169,7 +169,17 @@ public final class RaidBossInstance {
         ServerPlayerEntity leader = players.get(0);
         this.leaderUuid = leader.getUuid();
 
-        BlockPos startPos = arena.getPlayerStartBlockPos();
+        // Floor-aware start tile, exactly as CombatManager.transitionPartyToArena does for
+        // an ordinary party. The authored player-start tile is only "walkable" per the
+        // grid; in a raid dimension - which is a VoidChunkGenerator world with nothing but
+        // the arena in it - a tile the schem left floorless is open void, not a pit, so
+        // spawning on it drops the leader out of the world.
+        GridPos startGrid = arena.getPlayerStart();
+        GridPos safeStartGrid = CombatManager.findNearestSafeSpawn(
+            world, arena, startGrid, new HashSet<>());
+        if (safeStartGrid == null) safeStartGrid = startGrid;
+        arena.setPlayerGridPos(safeStartGrid);
+        BlockPos startPos = arena.gridToBlockPos(safeStartGrid);
         float cameraYaw = ArenaBuilder.consumePendingCameraYaw();
         BlockPos origin = arena.getOrigin();
 
@@ -197,8 +207,11 @@ public final class RaidBossInstance {
             idx++;
             int cx = Math.max(0, Math.min(arena.getWidth() - 1, leaderGrid.x() + dx));
             int cz = Math.max(0, Math.min(arena.getHeight() - 1, leaderGrid.z()));
-            GridPos chosen = CombatManager.findNearestWalkableUnreserved(
-                arena, new GridPos(cx, cz), reserved);
+            // Same floor requirement as the leader above: findNearestWalkableUnreserved
+            // trusts the grid's walkable flag alone, which fanned members out onto
+            // floorless tiles and dropped them into the void the moment they landed.
+            GridPos chosen = CombatManager.findNearestSafeSpawn(
+                world, arena, new GridPos(cx, cz), reserved);
             if (chosen == null) chosen = leaderGrid;
             reserved.add(chosen);
 
@@ -583,7 +596,47 @@ public final class RaidBossInstance {
             HubTeleports.toLobby(p);
             return;
         }
-        HubTeleports.teleportTo(p, target, origin.x(), origin.y(), origin.z(), origin.yaw(), origin.pitch());
+        // Every hub world in this mod is a VoidChunkGenerator world (the overworld
+        // lobby included), so "the remembered coordinates" and "somewhere a player can
+        // stand" are NOT the same thing. A raider whose origin column has since lost
+        // its floor - or who was mid-jump, mid-fall or riding something when they
+        // joined - was being dropped into open void on the way OUT of the raid, and a
+        // void death outside combat is an ordinary vanilla death: full inventory
+        // dropped into a world with no floor to catch it. Every other teleport in the
+        // mod (HubTeleports.toLobby, crossDimMove, the join handler) already clamps
+        // through hubLandingY; this was the one path that did not.
+        //
+        // Only intervene when the exact spot is actually over void, so the documented
+        // "put them back EXACTLY where they were" contract still holds everywhere it
+        // can - clamping unconditionally would pop a raider who joined from inside a
+        // building onto its roof.
+        double landY = origin.y();
+        if (!hasGroundBelow(target, origin.x(), origin.y(), origin.z())) {
+            int clamped = CrafticsMod.hubLandingY(target,
+                (int) Math.floor(origin.x()), (int) Math.floor(origin.z()), (int) Math.floor(origin.y()));
+            if (clamped == Integer.MIN_VALUE) {
+                // Nothing solid anywhere in that column: the origin is pure void now.
+                // The lobby is the only guaranteed floor on the server.
+                CrafticsMod.LOGGER.warn(
+                    "Raid return origin for {} is over void at {} {},{},{} - routing to the lobby instead",
+                    p.getName().getString(), origin.dimensionId(), origin.x(), origin.y(), origin.z());
+                HubTeleports.toLobby(p);
+                return;
+            }
+            landY = clamped;
+        }
+        HubTeleports.teleportTo(p, target, origin.x(), landY, origin.z(), origin.yaw(), origin.pitch());
+    }
+
+    /** True when something solid sits within a few blocks under this position, i.e. the
+     *  player lands instead of falling out of the world. Mirrors CombatManager's own
+     *  {@code hasSolidFloorBelow} probe, in world (not grid) space. */
+    private static boolean hasGroundBelow(ServerWorld world, double x, double y, double z) {
+        BlockPos stand = BlockPos.ofFloored(x, y, z);
+        for (int dy = 0; dy <= 4; dy++) {
+            if (!world.getBlockState(stand.down(dy)).isAir()) return true;
+        }
+        return false;
     }
 
     // ---- registry ----

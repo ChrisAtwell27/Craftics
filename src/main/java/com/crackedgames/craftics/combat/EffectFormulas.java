@@ -23,10 +23,15 @@ public final class EffectFormulas {
 
     private EffectFormulas() {}
 
-    /** Hard ceiling on a single bleed/burn tick. High stacks/levels make these grow without
-     *  bound (bleed is triangular in the stack count), so one tick is clamped here to keep a
-     *  runaway DOT from one-shotting a full-HP target. */
+    /** Hard ceiling on a single burn tick. High levels make these grow without bound, so one
+     *  tick is clamped here to keep a runaway DOT from one-shotting a full-HP target. */
     public static final int MAX_DOT_TICK = 100;
+
+    /** Hard ceiling on a single bleed tick, well under {@link #MAX_DOT_TICK}. Bleed reaches its
+     *  cap far faster than any other DOT because stacks are added several at a time (Sharpness V
+     *  alone is +5 per hit) and only decay by one a turn, so the general DOT ceiling was never a
+     *  real limit on it - the curve simply ran to 100 in three swings. */
+    public static final int MAX_BLEED_TICK = 50;
 
     /**
      * Poison damage for one tick. Front-loaded: the {@code turnsRemaining} term means it hits
@@ -58,12 +63,24 @@ public final class EffectFormulas {
     }
 
     /**
-     * Bleed damage for one tick. Triangular in the stack count (1, 3, 6, 10, 15...), so bleed
-     * punishes stacking rather than duration. Special affinity does not scale it.
+     * Bleed damage for one tick: half the triangle of the stack count (1, 1, 3, 5, 7, 10, 14,
+     * 18...), so bleed still punishes stacking rather than duration, but no longer outruns the
+     * fight. Special affinity does not scale it.
+     *
+     * <p>The full triangle {@code stacks*(stacks+1)/2} was the old curve, and it compounded far
+     * faster than stacks decay: they fall by one a turn while a Sharpness V sword adds five per
+     * hit, before Serrated, Piercing or Impaling add their own. That put a plain sword at 15
+     * damage a turn after one swing, 45 after two and 91 after three - past most things' whole
+     * HP pool - so bleed decided fights on its own. Halved, and clamped by
+     * {@link #MAX_BLEED_TICK}, the same three swings read 7, 22 and 45, and the ceiling needs
+     * fourteen live stacks to reach.
      */
     public static int bleedTick(int stacks) {
         if (stacks <= 0) return 0;
-        return Math.min(MAX_DOT_TICK, stacks * (stacks + 1) / 2);
+        // Floors at 1: a single stack halves to zero, and an effect that is active always does
+        // something. That makes 1 and 2 stacks both worth 1, which is the intent - one nick is
+        // a nick whether you took it once or twice.
+        return Math.min(MAX_BLEED_TICK, Math.max(1, stacks * (stacks + 1) / 4));
     }
 
     /** Range lost to vision debuffs: Blindness costs 2 per level, Darkness 1, and they stack. */

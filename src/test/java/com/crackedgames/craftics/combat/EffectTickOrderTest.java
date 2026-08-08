@@ -129,10 +129,10 @@ class EffectTickOrderTest {
     @Test
     void bleedingDamagesOncePerTurnOfItsDuration() {
         CombatEffects fx = new CombatEffects();
-        fx.addEffect(EffectType.BLEEDING, 2, 2); // 3 stacks -> triangular 6/turn
+        fx.addEffect(EffectType.BLEEDING, 2, 2); // 3 stacks -> half-triangular 3/turn
 
-        assertEquals(-6, runTurn(fx));
-        assertEquals(-6, runTurn(fx));
+        assertEquals(-3, runTurn(fx));
+        assertEquals(-3, runTurn(fx));
         assertEquals(0, runTurn(fx), "expired");
     }
 

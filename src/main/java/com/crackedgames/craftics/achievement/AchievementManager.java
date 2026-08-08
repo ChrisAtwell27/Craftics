@@ -191,9 +191,13 @@ public class AchievementManager {
             grant(player, Achievement.ARMOR_AQUATIC);
         }
 
-        // Reef Dweller: Boss with Turtle armor + Coral weapon + Coast trim
-        // (Coast trim check would need trim scan - simplified to turtle + water weapon for now)
-        if ("turtle".equals(armorSet) && singleType && weaponsUsed.contains(DamageType.WATER)) {
+        // Reef Dweller: Boss with Turtle armor + Coral weapon + Coast trim.
+        // The trim half of that was never checked, which left this achievement as nothing
+        // more than Coral Crusader with turtle armor bolted on - two entries granted by one
+        // condition. TrimEffects.scan is available from the player, so the Coast requirement
+        // the description has always advertised is now actually enforced.
+        boolean hasCoastTrim = TrimEffects.scan(player).patternCounts().getOrDefault("coast", 0) > 0;
+        if ("turtle".equals(armorSet) && singleType && weaponsUsed.contains(DamageType.WATER) && hasCoastTrim) {
             grant(player, Achievement.CORAL_REEF_DWELLER);
         }
 

@@ -80,7 +80,7 @@ public class CombatEntity {
     private int confusionAmplifier = 0;
     private int slownessTurns = 0;
     private int slownessPenalty = 0;
-    private int bleedStacks = 0; // drives the triangular bleed DOT (1, 3, 6, 10...) - not a per-hit bonus
+    private int bleedStacks = 0; // drives the half-triangular bleed DOT (1, 1, 3, 5, 7...) - not a per-hit bonus
     private int permanentDefReduction = 0; // from Breach, never expires
     private int attackBoost = 0;
     private int defenseBoost = 0;
@@ -811,7 +811,8 @@ public class CombatEntity {
     public void stackBleed(int stacks) { this.bleedStacks = Math.min(MAX_EFFECT_AMPLIFIER, this.bleedStacks + stacks); }
 
     /**
-     * Damage dealt by a single bleed tick, triangular in the stack count (1, 3, 6, 10...).
+     * Damage dealt by a single bleed tick, half the triangle of the stack count
+     * (1, 1, 3, 5, 7, 10...), capped at {@link EffectFormulas#MAX_BLEED_TICK}.
      *
      * <p>Shared with the player via {@link EffectFormulas}; EffectParityTest pins the two
      * together. This method used to return a flat {@code stacks} while the player path charged

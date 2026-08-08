@@ -8,25 +8,25 @@ import static org.junit.jupiter.api.Assertions.*;
  * Bleed must scale the same way on an enemy as it does on a player.
  *
  * <p>It didn't: {@link CombatEntity#computeBleedTickDamage} returned a flat {@code stacks}
- * while the player path ({@link CombatEffects#applyPerTurnEffects}) charged the triangular
- * {@code stacks*(stacks+1)/2}. The enemy method's own javadoc described the triangular curve
- * it failed to implement, so the two paths had silently diverged - bleeding an enemy was far
- * weaker than being bled, and no test held the formulas together. This one does.
+ * while the player path ({@link CombatEffects#applyPerTurnEffects}) charged the full triangle.
+ * The enemy method's own javadoc described the curve it failed to implement, so the two paths
+ * had silently diverged - bleeding an enemy was far weaker than being bled, and no test held the
+ * formulas together. This one does.
  */
 class BleedScalingTest {
 
-    /** The triangular curve both sides are supposed to use: 1, 3, 6, 10, 15... */
-    private static int triangular(int stacks) {
-        return stacks * (stacks + 1) / 2;
+    /** The curve both sides are supposed to use: half the triangle, 1, 1, 3, 5, 7... */
+    private static int halfTriangular(int stacks) {
+        return Math.max(1, stacks * (stacks + 1) / 4);
     }
 
     @Test
-    void enemyBleedIsTriangular() {
+    void enemyBleedIsHalfTriangular() {
         assertEquals(1, CombatEntity.computeBleedTickDamage(1));
-        assertEquals(3, CombatEntity.computeBleedTickDamage(2));
-        assertEquals(6, CombatEntity.computeBleedTickDamage(3));
-        assertEquals(10, CombatEntity.computeBleedTickDamage(4));
-        assertEquals(15, CombatEntity.computeBleedTickDamage(5));
+        assertEquals(1, CombatEntity.computeBleedTickDamage(2));
+        assertEquals(3, CombatEntity.computeBleedTickDamage(3));
+        assertEquals(5, CombatEntity.computeBleedTickDamage(4));
+        assertEquals(7, CombatEntity.computeBleedTickDamage(5));
     }
 
     @Test
@@ -48,7 +48,7 @@ class BleedScalingTest {
             // applyPerTurnEffects returns a signed HP delta; bleed is the only effect here.
             int playerDamage = -fx.applyPerTurnEffects(0);
 
-            assertEquals(triangular(stacks), CombatEntity.computeBleedTickDamage(stacks),
+            assertEquals(halfTriangular(stacks), CombatEntity.computeBleedTickDamage(stacks),
                 "enemy bleed at " + stacks + " stacks");
             assertEquals(CombatEntity.computeBleedTickDamage(stacks), playerDamage,
                 "player and enemy bleed must match at " + stacks + " stacks");
