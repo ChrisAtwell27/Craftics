@@ -112,8 +112,11 @@ function Get-ChangelogSection {
     if ($lines.Count -gt 0) { $lines[0] = $lines[0] -replace '^﻿', '' }
 
     foreach ($line in $lines) {
-        # Version headings are a bare "0.2.10" on their own line.
-        $isHeading = $line -match '^\d+\.\d+(\.\d+)?\s*$'
+        # Version headings are a bare "0.2.10" on their own line. Two to FOUR components: a
+        # hotfix on top of a release gets a fourth ("0.3.6.1"), and with only three allowed here
+        # such a heading was not recognised as a heading at all, so its section could never be
+        # found and publishing that version died on "No '0.3.6.1' section found in CHANGELOG.md".
+        $isHeading = $line -match '^\d+\.\d+(\.\d+){0,2}\s*$'
         if ($isHeading) {
             if ($inSection) { break }                       # next version - we're done
             if ($line.Trim() -eq $Version) { $inSection = $true; continue }
@@ -236,6 +239,7 @@ function Publish-Shard {
         -Metadata $metadata `
         -FilePath $jar
 
+    $script:CurseForgeUploads++
     Write-Host "`r    uploaded, file id $($resp.id)          " -ForegroundColor Green
 }
 
@@ -290,6 +294,7 @@ function Publish-ShardModrinth {
         -AuthHeaderName "Authorization" `
         -JsonPartName "data"
 
+    $script:ModrinthUploads++
     Write-Host "`r    uploaded, version id $($resp.id)          " -ForegroundColor Green
 }
 
@@ -394,6 +399,16 @@ function Send-MultipartUpload {
 # --- Run --------------------------------------------------------------------------------------
 Write-Host "Craftics publish  |  version $ModVersion  |  $ReleaseType  |  $($GameVersions.Count) shard(s)" -ForegroundColor White
 
+# What each platform actually DID, not what it was asked to do. The closing "Publish complete."
+# used to print whenever -DryRun was absent, so a run that skipped CurseForge by flag and skipped
+# Modrinth for missing config announced success, in green, having uploaded nothing - and exited 0,
+# so no caller could tell either. These track real uploads so the summary can only claim what
+# happened.
+$script:CurseForgeUploads = 0
+$script:ModrinthUploads = 0
+$script:CurseForgeState = "skipped (-SkipCurseForge)"
+$script:ModrinthState = "skipped (-SkipModrinth)"
+
 if (-not $SkipCurseForge) {
     Write-Host ""
     Write-Host "CurseForge project $ProjectId" -ForegroundColor White
@@ -408,10 +423,12 @@ if (-not $SkipCurseForge) {
     foreach ($v in $GameVersions) {
         Publish-Shard -GameVersion $v -GameVersionId $ids[$v] -LoaderId $ids["__loader__"] -EnvIds $ids["__env__"]
     }
+    $script:CurseForgeState = if ($DryRun) { "dry run" } else { "uploaded $script:CurseForgeUploads file(s)" }
 }
 
 if (-not $SkipModrinth) {
     if (-not $ModrinthProject) {
+        $script:ModrinthState = "skipped (MODRINTH_PROJECT not set)"
         Write-Host ""
         Write-Host "Modrinth skipped: set `$env:MODRINTH_PROJECT (or -ModrinthProject) to the project slug/id." -ForegroundColor Yellow
     } elseif (-not $ModrinthToken -and -not $DryRun) {
@@ -422,12 +439,28 @@ if (-not $SkipModrinth) {
         foreach ($v in $GameVersions) {
             Publish-ShardModrinth -GameVersion $v
         }
+        $script:ModrinthState = if ($DryRun) { "dry run" } else { "uploaded $script:ModrinthUploads file(s)" }
     }
 }
 
 Write-Host ""
+Write-Host "  CurseForge : $script:CurseForgeState"
+Write-Host "  Modrinth   : $script:ModrinthState"
+Write-Host ""
+
 if ($DryRun) {
     Write-Host "Dry run complete. Nothing was uploaded." -ForegroundColor Yellow
-} else {
-    Write-Host "Publish complete." -ForegroundColor Green
+    return
 }
+
+$uploaded = $script:CurseForgeUploads + $script:ModrinthUploads
+if ($uploaded -eq 0) {
+    # Loud, and a non-zero exit: a publish that published nothing is a failed publish, however
+    # many of its steps were skipped on purpose. Silently succeeding here is how a release gets
+    # marked "shipped" while the download page still serves the previous version.
+    Write-Host "NOTHING WAS PUBLISHED - no file reached any platform." -ForegroundColor Red
+    Write-Host "Drop -SkipCurseForge to publish to CurseForge, and set MODRINTH_PROJECT for Modrinth." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Publish complete. $uploaded file(s) uploaded." -ForegroundColor Green
