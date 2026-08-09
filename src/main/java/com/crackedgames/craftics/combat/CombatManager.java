@@ -92,6 +92,30 @@ public class CombatManager {
     private static final int MOVE_TICKS = 4; // ticks per tile of movement
     private int getMoveTicks() { return CrafticsMod.CONFIG.skipEnemyAnimations() ? 1 : MOVE_TICKS; }
 
+    /**
+     * Abilities that keep their warning turn no matter how deep the biome is.
+     *
+     * <p>The late-game rule drops telegraphs from biome ordinal 3 onward, which is fair for
+     * an attack that hits a tile: you take the damage and the arena is unchanged. It is not
+     * fair for one that DELETES the tile. The Warden's fissure drops a band of floor across
+     * the whole board permanently, cutting the arena in two and stranding whoever is on the
+     * wrong side - and the Warden vaults gaps, so the hole only ever traps the party. The
+     * deep dark sits well past ordinal 3, so that ability had lost its telegraph entirely
+     * and opened with no warning at all.
+     */
+    private static final java.util.Set<String> ALWAYS_TELEGRAPHED = java.util.Set.of("fissure");
+
+    /**
+     * Hard ceiling on any spawned enemy's attack, applied after every bonus at spawn time.
+     *
+     * <p>The per-biome cap ({@code 3 + biomeOrdinal / 2}) is the normal governor, but several
+     * spawn kinds legitimately skip it - trial chamber and ominous trial mobs carry their own
+     * difficulty multiplier, and artifact carriers add on top of the cap by design. Nothing in
+     * that set had an upper bound of its own, so a deep-biome NG+ run could stack them into a
+     * one-shot. This is the bound: no enemy leaves the spawn loop above it.
+     */
+    public static final int MAX_ENEMY_ATTACK = 18;
+
     //? if <=1.21.1 {
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE;
@@ -2062,6 +2086,19 @@ public class CombatManager {
                         // fail to render.
                         tw.setBlockState(floorBp.up(1), t.getBlockType().getDefaultState(),
                             net.minecraft.block.Block.NOTIFY_ALL);
+                    } else if (type == TileType.VOID) {
+                        // A void needs an open shaft, not merely an air floor with its support
+                        // block still visible one level down (which reads as a sunken pit).
+                        // The original floor is restored by temporary-terrain expiry; the
+                        // cleared sub-floor stays safely hidden beneath that restored floor.
+                        tw.setBlockState(floorBp.up(1), net.minecraft.block.Blocks.AIR.getDefaultState(),
+                            net.minecraft.block.Block.NOTIFY_ALL);
+                        tw.setBlockState(floorBp, net.minecraft.block.Blocks.AIR.getDefaultState(),
+                            net.minecraft.block.Block.NOTIFY_ALL);
+                        tw.setBlockState(floorBp.down(), net.minecraft.block.Blocks.AIR.getDefaultState(),
+                            net.minecraft.block.Block.NOTIFY_ALL);
+                        tw.setBlockState(floorBp.down(2), net.minecraft.block.Blocks.BLACK_CONCRETE.getDefaultState(),
+                            net.minecraft.block.Block.NOTIFY_ALL);
                     } else {
                         // Floor block pos (origin Y, no +1) - matches tickTemporaryTerrain, which
                         // paints the FLOOR block, not the entity-standing block gridToBlockPos returns.
@@ -2766,6 +2803,15 @@ public class CombatManager {
     }
 
     /**
+     * Applies damage caused by an arena tile. The entity that pushed a player onto the tile is
+     * retained for messages and death attribution, but terrain itself cannot be dodged, blocked,
+     * or reduced by armor.
+     */
+    private int damagePlayerFromTile(int rawDamage, CombatEntity source) {
+        return damagePlayer(rawDamage, source, null, false);
+    }
+
+    /**
      * As {@link #damagePlayer(int, CombatEntity)}, but tagged with the kind of damage
      * coming in so armor that resists a specific damage type can react.
      *
@@ -2775,6 +2821,11 @@ public class CombatManager {
      * ({@link DamageType#BLUNT}) - name their type today.
      */
     private int damagePlayer(int incomingRaw, CombatEntity attacker, DamageType incomingType) {
+        return damagePlayer(incomingRaw, attacker, incomingType, true);
+    }
+
+    private int damagePlayer(int incomingRaw, CombatEntity attacker, DamageType incomingType,
+                             boolean mitigable) {
         lastHitAvoided = false; // set true below only if the hit is fully avoided
         // Hard ceiling on a single boss hit. LevelGenerator caps a boss's BASE attack, but
         // per-ability riders (Tidecaller riptide +3, Deluge +2 on water, and the like) stack on
@@ -2783,14 +2834,14 @@ public class CombatManager {
         // ceiling on what any single boss swing can deal to a 20 HP player. Only boss attackers
         // are clamped; regular mobs and environmental damage are unaffected. Single-assign into
         // rawDamage so it stays effectively final for the downstream lambdas that capture it.
-        int bossCap = (attacker != null && attacker.isBoss())
+        int bossCap = (mitigable && attacker != null && attacker.isBoss())
             ? com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAttack() : 0;
         int rawDamage = (bossCap > 0) ? Math.min(incomingRaw, bossCap) : incomingRaw;
         // AC dodge roll -only enemy attacks roll. Environmental/self damage
         // (attacker == null) and DoT ticks bypass the roll and apply directly.
         // The attack's resolved damage (rawDamage) doubles as the enemy's
         // effective attack value fed to the dodge formula.
-        if (attacker != null) {
+        if (mitigable && attacker != null) {
             // Banner-aura defense must read the player actually being hit. In MP
             // this.player is swapped to the real victim, but arena.getPlayerGridPos()
             // still holds the last-acting player's tile, so gridPosOf(player) is
@@ -2822,7 +2873,7 @@ public class CombatManager {
         }
 
         // ETHEREAL set bonus: an extra 20% dodge layer, independent of AC.
-        if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.ETHEREAL) {
+        if (mitigable && activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.ETHEREAL) {
             if (Math.random() < 0.20) {
                 playDodgeFeedback("§b§l✦ ETHEREAL!",
                     "§b§l✦ Ethereal!§r §7The attack phased through you!");
@@ -2837,7 +2888,7 @@ public class CombatManager {
 
         // Shield passive: 25% chance to fully block the attack. The shield must have been up
         // when the player attacked this turn -swapping one in after a dual-wield strike blocks nothing.
-        if (PlayerCombatStats.hasShield(player) && !attackedWithoutShieldThisTurn
+        if (mitigable && PlayerCombatStats.hasShield(player) && !attackedWithoutShieldThisTurn
                 && Math.random() < SHIELD_BLOCK_CHANCE) {
             playDodgeFeedback("§9§l✦ BLOCKED!",
                 "§9§l✦ Shield blocked!§r §7Attack deflected!");
@@ -2854,7 +2905,7 @@ public class CombatManager {
         }
 
         // Gilded Guard hybrid: a flat chance to fully negate an incoming enemy hit.
-        if (attacker != null && activeHybridEffect() == HybridEffect.GILDED_GUARD
+        if (mitigable && attacker != null && activeHybridEffect() == HybridEffect.GILDED_GUARD
                 && Math.random() < HybridSetEffects.GILDED_GUARD_CHANCE) {
             playDodgeFeedback("§6§l✦ GILDED GUARD!",
                 "§6§l✦ Gilded Guard!§r §7The " + attacker.getDisplayName() + "'s hit glanced off your gilding.");
@@ -2866,7 +2917,7 @@ public class CombatManager {
         }
 
         // Divine armor: the first enemy hit of the battle is turned aside entirely.
-        if (attacker != null && !divineDeflectUsed.contains(player.getUuid())
+        if (mitigable && attacker != null && !divineDeflectUsed.contains(player.getUuid())
                 && ArmorSetEffects.hasDivineDeflect(PlayerCombatStats.getArmorSet(player))) {
             divineDeflectUsed.add(player.getUuid());
             playDodgeFeedback("§e§l✦ DIVINE!",
@@ -2888,7 +2939,7 @@ public class CombatManager {
         // II = -4, ...). Always leaves at least 1 damage so it's a mitigation,
         // not full immunity. Applies to enemy hits, not environmental/DoT
         // (those pass attacker == null and we still want hazards to bite).
-        if (attacker != null && actual > 0) {
+        if (mitigable && attacker != null && actual > 0) {
             int resist = combatEffects.getResistanceBonus();
             if (resist > 0) actual = Math.max(1, actual - resist);
         }
@@ -2897,14 +2948,14 @@ public class CombatManager {
         // failed to make you miss still counts for something. Same shape as Resistance
         // above - always leaves at least 1 damage, and enemy hits only, so hazards
         // (lava, sculk jaws, your own bed) keep the full bite they were tuned for.
-        if (attacker != null && actual > 0) {
+        if (mitigable && attacker != null && actual > 0) {
             int armorDef = PlayerCombatStats.getArmorDefense(player);
             if (armorDef > 0) actual = Math.max(1, actual - armorDef);
         }
 
         // Grudgeplate chestplate: remember the last enemy to actually land a hit on the
         // wearer. The whole party's attacks read this pointer.
-        if (attacker != null && actual > 0 && !attacker.isAlly()
+        if (mitigable && attacker != null && actual > 0 && !attacker.isAlly()
                 && CrafticsEnchantments.wornLevel(player, CrafticsEnchantments.GRUDGEPLATE) > 0) {
             grudgeTargets.put(player.getUuid(), attacker.getEntityId());
         }
@@ -2912,7 +2963,7 @@ public class CombatManager {
         // Armor-set resistance to a specific incoming damage type (Wooden armor's
         // padding against arrows and blasts). Only typed hits qualify; a source that
         // didn't name its damage type is never mitigated here.
-        if (attacker != null && actual > 0 && incomingType != null) {
+        if (mitigable && attacker != null && actual > 0 && incomingType != null) {
             double typeResist = ArmorSetEffects.incomingResistance(
                 PlayerCombatStats.getArmorSet(player), incomingType);
             if (typeResist > 0) {
@@ -2921,12 +2972,12 @@ public class CombatManager {
         }
 
         // Stonewall hybrid: every incoming hit is capped.
-        if (activeHybridEffect() == HybridEffect.STONEWALL) {
+        if (mitigable && activeHybridEffect() == HybridEffect.STONEWALL) {
             actual = HybridSetEffects.capIncomingDamage(actual);
         }
 
         // FORTRESS set bonus: 50% less damage when player didn't move this turn
-        if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.FORTRESS && !movedThisTurn) {
+        if (mitigable && activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.FORTRESS && !movedThisTurn) {
             actual = Math.max(1, actual / 2);
         }
 
@@ -2942,7 +2993,7 @@ public class CombatManager {
         //   Iron (15)           → 22%
         //   Gold (11)           → 16%
         //   Diamond/Netherite (20) → 30%
-        if (attacker != null && actual > 0) {
+        if (mitigable && attacker != null && actual > 0) {
             int armorPoints = player.getArmor();
             double reductionPct = Math.min(0.40, armorPoints * 0.015);
             if (reductionPct > 0) {
@@ -2966,7 +3017,7 @@ public class CombatManager {
         }
 
         // Armor-set reactions to a hit that actually landed.
-        if (attacker != null) {
+        if (mitigable && attacker != null) {
             applyFragileArmorBreak();
             applyWitherRetaliation(attacker);
             applySlimeContactKnockback(attacker);
@@ -3481,6 +3532,8 @@ public class CombatManager {
                     .ordinalOf(biome.biomeId, Math.max(0, pdSpawn.branchChoice));
                 if (idx >= 0) spawnBiomeOrdinal = idx;
             }
+        } else if (levelDef.getProgressionBiomeOrdinal() >= 0) {
+            spawnBiomeOrdinal = levelDef.getProgressionBiomeOrdinal();
         }
         // Synthetic event levels (raid bosses) carry no biome template, so they name
         // their own boss spawn and AI key. Runs only when the biome path found nothing,
@@ -3932,7 +3985,7 @@ public class CombatManager {
                 // → 3, snowy/desert → 4, mountain/cave (set 2) → 5, and so on in
                 // pairs. Keeps early biomes survivable while late game still
                 // ramps. Bosses bypass -they're meant to be scary.
-                if (!isBoss) {
+                if (!isBoss && !levelDef.bypassesEnemyDamageCap(spawnIndex)) {
                     int damageCap = 3 + (Math.max(0, finalBiomeOrdinal) / 2);
                     if (scaledAtk > damageCap) scaledAtk = damageCap;
                 }
@@ -3944,6 +3997,12 @@ public class CombatManager {
                     scaledAtk += artifactBuffs.attack();
                     scaledHp += artifactBuffs.hp();
                 }
+                // Absolute ceiling, applied last so nothing above can climb past it:
+                // NG+ multipliers, artifact buffs, equipment, and the cap-bypassing
+                // event spawns all land underneath it. Bosses keep their own, tighter
+                // ceiling (CONFIG.maxBossAttack, 12) and never reach this one - this
+                // exists for the spawns that legitimately skip the per-biome cap.
+                scaledAtk = Math.min(MAX_ENEMY_ATTACK, scaledAtk);
                 int finalDef = spawn.defense() + equipDefBonus;
 
                 // Determine entity grid size: boss AI defines its own, others use mob defaults
@@ -5665,12 +5724,24 @@ public class CombatManager {
             return;
         }
 
+        // Who is standing on the clicked tile. Resolved up here because the terrain
+        // branches below claim the click before entity targeting is ever reached, so
+        // any of them that can also be a tile an ENEMY occupies has to yield first.
+        CombatEntity tileOccupant = clickedTile != null ? arena.getOccupant(clickedTile) : null;
+        boolean tileHasLiveEnemy = tileOccupant != null && tileOccupant.isAlive() && !tileOccupant.isAlly();
+
         // Beating out flames: attacking a fire or soul fire tile puts it out for 1 AP,
         // exactly like clearing tall grass. The counter-play to a spreading burn - stamp
         // out the front tile by tile before it reaches you, or cut a firebreak through it.
         // Claims the click the same way stealth tiles do, so an out-of-range attempt gives
         // an actionable hint instead of "No valid target!".
-        if (clickedTile != null) {
+        //
+        // An enemy standing IN the flames always wins the click. Fire spreads onto occupied
+        // tiles and mobs walk into it, so a burning tile is a common place to find a target -
+        // and swallowing that click to douse the fire both wasted the swing and put out the
+        // burn that was damaging the mob. Attacking the enemy is unambiguously what the
+        // player meant; the fire can still be stamped out from any adjacent empty tile.
+        if (clickedTile != null && !tileHasLiveEnemy) {
             GridTile flames = arena.getTile(clickedTile);
             if (flames != null && flames.getType().isFlames()) {
                 boolean soul = flames.getType() == TileType.SOUL_FIRE;
@@ -5844,8 +5915,6 @@ public class CombatManager {
         // Skip if a live enemy occupies that tile -otherwise block-based enemies
         // (e.g. Creaking Heart) that spawn on a schematic tile with a cobweb at
         // Y+1/Y+2 would have their attack clicks swallowed by the web break.
-        CombatEntity tileOccupant = clickedTile != null ? arena.getOccupant(clickedTile) : null;
-        boolean tileHasLiveEnemy = tileOccupant != null && tileOccupant.isAlive() && !tileOccupant.isAlly();
         if (arena.hasWebOverlay(clickedTile) && !tileHasLiveEnemy) {
             int webDist = arena.getPlayerGridPos().manhattanDistance(clickedTile);
             if (webDist <= 1) {
@@ -12041,7 +12110,7 @@ public class CombatManager {
             if (turnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !playerMounted
                     && !combatEffects.hasFireResistance()
                     && !PlayerCombatStats.wearsHead(player, Items.PIGLIN_HEAD)) {
-                int lavaDmg = damagePlayer(10);
+                int lavaDmg = damagePlayerFromTile(10, null);
                 sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
                 if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
             } else if (turnTile.getType().isFlames()
@@ -12056,7 +12125,7 @@ public class CombatManager {
                     && !hasLeatherBoots() && !playerMounted) {
                 powderSnowTurns++;
                 int freezeDmg = (int) Math.pow(2, powderSnowTurns - 1); // 1, 2, 4, 8, 16...
-                int actual = damagePlayer(freezeDmg);
+                int actual = damagePlayerFromTile(freezeDmg, null);
                 sendMessage("§b  Freezing! " + actual + " damage! (Turn " + powderSnowTurns + " in snow)");
                 if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
             } else {
@@ -13023,7 +13092,7 @@ public class CombatManager {
                 if (crossedTile == null) continue;
                 if (crossedTile.getType() == com.crackedgames.craftics.core.TileType.LAVA
                         && !playerMounted && !combatEffects.hasFireResistance()) {
-                    int lavaDmg = damagePlayer(10);
+                    int lavaDmg = damagePlayerFromTile(10, null);
                     sendMessage("§6  Stepped in lava for " + lavaDmg + " damage!");
                     if (getPlayerHp() <= 0) {
                         sendSync();
@@ -13058,7 +13127,7 @@ public class CombatManager {
             // clean tiles to stand on. Wither bypasses Fire Resistance by design.
             if (landingTile != null
                     && landingTile.getType() == com.crackedgames.craftics.core.TileType.DECAY) {
-                int decayDmg = damagePlayer(landingTile.getType().damageOnStep);
+                int decayDmg = damagePlayerFromTile(landingTile.getType().damageOnStep, null);
                 addEffectHooked(CombatEffects.EffectType.WITHER, 2, 0);
                 sendMessage("§8  The withered ground saps you for " + decayDmg + "!");
                 if (getPlayerHp() <= 0) {
@@ -13947,7 +14016,7 @@ public class CombatManager {
                 if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !playerMounted
                         && !combatEffects.hasFireResistance()
                         && !PlayerCombatStats.wearsHead(player, Items.PIGLIN_HEAD)) {
-                    int lavaDmg = damagePlayer(10);
+                    int lavaDmg = damagePlayerFromTile(10, null);
                     sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
                     if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
                 } else if (qTurnTile.getType().isFlames()
@@ -13959,7 +14028,7 @@ public class CombatManager {
                         && !hasLeatherBoots() && !playerMounted) {
                     powderSnowTurns++;
                     int freezeDmg = (int) Math.pow(2, powderSnowTurns - 1);
-                    int actual = damagePlayer(freezeDmg);
+                    int actual = damagePlayerFromTile(freezeDmg, null);
                     sendMessage("§b  Freezing! " + actual + " damage! (Turn " + powderSnowTurns + " in snow)");
                     if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
                 } else {
@@ -14881,7 +14950,8 @@ public class CombatManager {
                     && InfiniteRunManager.BOSS_AI_KEY.equals(currentEnemy.getAiKey());
                 boolean isRaidBoss = raidBossContext != null;
                 boolean skipTelegraph = currentBiomeOrdinal >= 3
-                    && !isVoidWalker && !isInfiniteBoss && !isRaidBoss;
+                    && !isVoidWalker && !isInfiniteBoss && !isRaidBoss
+                    && !ALWAYS_TELEGRAPHED.contains(ba.abilityName());
                 if (!skipTelegraph && ba.warningTiles() != null && !ba.warningTiles().isEmpty()) {
                     sendMessage("§e" + currentEnemy.getDisplayName() + " prepares " +
                         ba.abilityName().replace('_', ' ') + "! §7("
@@ -15294,7 +15364,7 @@ public class CombatManager {
             net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
             net.minecraft.sound.SoundCategory.HOSTILE, 0.8f, 1.3f);
 
-        int dealt = damagePlayer(SAND_MINE_DAMAGE);
+        int dealt = damagePlayerFromTile(SAND_MINE_DAMAGE, null);
         sendMessage("§6A buried sand mine erupts beneath you for " + dealt
             + " damage! §7(HP: " + getPlayerHp() + ")");
         if (getPlayerHp() <= 0) {
@@ -15374,7 +15444,7 @@ public class CombatManager {
             net.minecraft.sound.SoundEvents.BLOCK_SCULK_SHRIEKER_SHRIEK,
             net.minecraft.sound.SoundCategory.HOSTILE, 0.7f, 1.4f);
 
-        int dealt = damagePlayer(SCULK_JAW_DAMAGE);
+        int dealt = damagePlayerFromTile(SCULK_JAW_DAMAGE, null);
         int levels = Math.min(SCULK_JAW_XP_STEAL, player.experienceLevel);
         if (levels > 0) {
             player.addExperienceLevels(-levels);
@@ -22637,7 +22707,7 @@ public class CombatManager {
 
         // Cactus collision damage -fires even if player didn't move (adjacent slam)
         if (hitCactus) {
-            int cactusDmg = damagePlayer(2, source);
+            int cactusDmg = damagePlayerFromTile(2, source);
             sendMessage("§2  Slammed into a cactus for " + cactusDmg + " damage!");
             if (getPlayerHp() <= 0) {
                 sendSync();
@@ -22682,7 +22752,7 @@ public class CombatManager {
                         }
                         case LAVA -> {
                             if (!combatEffects.hasFireResistance()) {
-                                int lavaDmg = damagePlayer(10, source);
+                                int lavaDmg = damagePlayerFromTile(10, source);
                                 sendMessage("§6  Knocked into lava for " + lavaDmg + " damage!");
                             } else {
                                 sendMessage("§6  Knocked into lava, but the heat washes over you!");
@@ -24435,7 +24505,14 @@ public class CombatManager {
         // (killed by an enemy) routes through here too, but it must not award
         // kill-streak emeralds, Symbiote heals, AP refunds, or loot procs.
         // Mirror clones are excluded for the same reason -they are decoys, not kills.
-        if (!enemy.isAlly() && !enemy.isMirrorClone()) {
+        //
+        // Projectiles are excluded on the same grounds and are the most common case: a
+        // boss fireball, wither skull or seeker is a CombatEntity so it can occupy grid
+        // tiles and be moved by the AI, and it is retired through killEnemy the instant it
+        // lands - on a player, on a wall, on anything. That is the projectile DOING ITS
+        // JOB, so every hit the party took was crediting the party with a kill: streak up,
+        // bonus emeralds, Symbiote heal, AP refunds, and totalEnemiesKilled inflated.
+        if (!enemy.isAlly() && !enemy.isMirrorClone() && !enemy.isProjectile()) {
             onEnemyKilled(enemy); // track kill streak
         }
         // Clean up visual projectile entity
@@ -26216,6 +26293,7 @@ public class CombatManager {
     // ---- Crafting Station event ----
     // ---- Trader system ----
     private TraderSystem.TraderOffer activeTraderOffer;
+    private int[] activeTraderStock = new int[0];
     private com.crackedgames.craftics.level.LevelDefinition pendingNextLevelDef;
     private com.crackedgames.craftics.level.BiomeTemplate pendingBiome;
     private net.minecraft.entity.passive.WanderingTraderEntity spawnedTrader;
@@ -26661,6 +26739,8 @@ public class CombatManager {
         var metOwner = metData.getEffectiveWorldOwner(savedPlayer.getUuid());
         activeTraderOffer = TraderSystem.generateOffer(biomeTier, new java.util.Random(),
             metData.getPlayerData(metOwner).metTraders, world);
+        activeTraderStock = new int[activeTraderOffer.trades().size()];
+        java.util.Arrays.fill(activeTraderStock, 99);
         com.crackedgames.craftics.scene.MetMerchants.recordTrader(
             world, savedPlayer.getUuid(), activeTraderOffer.type().id());
 
@@ -26676,36 +26756,13 @@ public class CombatManager {
             activeTraderOffer = new TraderSystem.TraderOffer(activeTraderOffer.type(), discounted);
         }
 
-        // Give each player emerald items from their own currency
         CrafticsSavedData data = CrafticsSavedData.get(world);
         traderPendingPlayers.clear();
         currentTrader = null;
         traderQueue.clear();
         for (ServerPlayerEntity p : members) {
             traderPendingPlayers.add(p.getUuid());
-            CrafticsSavedData.PlayerData traderPd = data.getPlayerData(p.getUuid());
-            int emeraldsToGive = traderPd.emeralds;
-            if (emeraldsToGive > 0) {
-                // Only deduct what actually made it into the inventory: insertStack
-                // leaves whatever didn't fit in the passed stack, and unconditionally
-                // zeroing here used to delete a full-inventory player's whole balance.
-                int undelivered = 0;
-                int remaining = emeraldsToGive;
-                while (remaining > 0) {
-                    int stackSize = Math.min(64, remaining);
-                    ItemStack emeraldStack = new ItemStack(Items.EMERALD, stackSize);
-                    p.getInventory().insertStack(emeraldStack);
-                    remaining -= stackSize;
-                    undelivered += emeraldStack.getCount();
-                }
-                traderPd.emeralds = undelivered;
-                if (undelivered > 0) {
-                    p.sendMessage(Text.literal("§e" + undelivered
-                        + " emerald(s) didn't fit in your inventory - they stay banked."), false);
-                }
-            }
         }
-        data.markDirty();
 
         // Build a small themed trader area away from the arena
         BlockPos traderAreaOrigin;
@@ -28375,7 +28432,25 @@ public class CombatManager {
     }
 
     public void handleTraderBuy(ServerPlayerEntity player, int tradeIndex) {
-        // No longer used -vanilla trading handles purchases directly
+        if (activeTraderOffer == null || !player.getUuid().equals(currentTrader)
+                || tradeIndex < 0 || tradeIndex >= activeTraderOffer.trades().size()
+                || activeTraderStock[tradeIndex] <= 0) {
+            return;
+        }
+        TraderSystem.Trade trade = activeTraderOffer.trades().get(tradeIndex);
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        CrafticsSavedData.PlayerData playerData = data.getPlayerData(player.getUuid());
+        if (!playerData.spendEmeralds(trade.emeraldCost())) {
+            sendActiveTraderOffer(player, false);
+            return;
+        }
+        activeTraderStock[tradeIndex]--;
+        data.markDirty();
+        LootDelivery.deliver(player, trade.item().copy());
+        world.playSound(null, player.getBlockPos(), net.minecraft.sound.SoundEvents.ENTITY_VILLAGER_YES,
+            net.minecraft.sound.SoundCategory.NEUTRAL, 1.0f, 1.0f);
+        sendActiveTraderOffer(player, false);
     }
 
     /** Push a dialogue definition to one player as a {@code DialoguePayload}. No-op if null. */
@@ -29486,7 +29561,7 @@ public class CombatManager {
                 show, "§eWandering Trader", show ? "§7Waiting for the rest of the party..." : ""));
     }
 
-    /** Open the vanilla merchant screen for the player against the spawned trader. */
+    /** Open the event trader with the same banked-currency screen used by the trading hall. */
     private void openTraderFor(ServerPlayerEntity player) {
         if (spawnedTrader == null || activeTraderOffer == null) return;
         // Serialize access to the single shared merchant. Only one party member can hold
@@ -29503,24 +29578,33 @@ public class CombatManager {
         }
         currentTrader = player.getUuid();
         traderQueue.remove(player.getUuid());
-        // Mirror vanilla WanderingTraderEntity.interactMob: bind the customer and open
-        // the MerchantScreenHandler via the Merchant.sendOffers default. We deliberately
-        // do NOT re-send TraderOfferPayload here -that payload's client receiver kicks
-        // off a TransitionOverlay fade (legacy teleport-trade flow) which raced with and
-        // tore down this freshly-opened merchant screen. The client self-arms its
-        // merchant-close detection when it sees the MerchantScreen open during a
-        // cinematic (see CrafticsClient), so no extra signal is needed.
-        // This player is now the active shopper — clear any waiting overlay so the
-        // merchant screen isn't drawn under the fade.
         sendTraderWaitOverlay(player, false);
-        spawnedTrader.setCustomer(player);
-        spawnedTrader.sendOffers(player, spawnedTrader.getDisplayName(), 1);
+        sendActiveTraderOffer(player, true);
     }
 
-    /** Collect every emerald item in the player's inventory back into their banked
-     *  currency, ADDING to the balance -the bank may still hold an undelivered
-     *  remainder from a full inventory at offerTrader time, and re-entrant calls
-     *  must not overwrite it with a fresh (possibly zero) count. */
+    /** Send the event trader's shared stock through the trading-hall shop protocol. */
+    private void sendActiveTraderOffer(ServerPlayerEntity player, boolean openScreen) {
+        if (activeTraderOffer == null) return;
+        StringBuilder serialized = new StringBuilder();
+        java.util.List<ItemStack> stacks = new java.util.ArrayList<>();
+        for (int i = 0; i < activeTraderOffer.trades().size(); i++) {
+            TraderSystem.Trade trade = activeTraderOffer.trades().get(i);
+            if (serialized.length() > 0) serialized.append('|');
+            serialized.append(net.minecraft.registry.Registries.ITEM.getId(trade.item().getItem()))
+                .append('~').append(trade.item().getCount())
+                .append('~').append(trade.emeraldCost())
+                .append('~').append(activeTraderStock[i])
+                .append('~').append(trade.description());
+            stacks.add(trade.item().copy());
+        }
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        int emeralds = CrafticsSavedData.get(world).getPlayerData(player.getUuid()).emeralds;
+        ServerPlayNetworking.send(player, new TraderOfferPayload(
+            activeTraderOffer.type().displayName(), activeTraderOffer.type().icon(),
+            serialized.toString(), stacks, emeralds, openScreen ? 1 : 0));
+    }
+
+    /** Collect legacy physical emeralds back into the player's banked currency. */
     private void reclaimTraderEmeralds(ServerPlayerEntity player) {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
@@ -29601,6 +29685,7 @@ public class CombatManager {
             spawnedTrader = null;
         }
         activeTraderOffer = null;
+        activeTraderStock = new int[0];
         this.activeCinematic = null;
         this.activeWalkers.clear();
 
@@ -30144,6 +30229,18 @@ public class CombatManager {
         LootRecorder.clear();
         despawnAllBoats();
 
+        // Clear anything the party dropped on the arena floor. The build path sweeps too, so
+        // this is not the only guard - but doing it here means the items stop existing when
+        // the fight does, rather than sitting loaded in the world until that arena slot is
+        // next reused (which may be never, for a level the player does not revisit).
+        try {
+            if (arena != null && player != null
+                    && player.getEntityWorld() instanceof ServerWorld sweepWorld) {
+                com.crackedgames.craftics.level.ArenaBuilder.sweepDroppedItems(
+                    sweepWorld, arena.getOrigin(), arena.getWidth(), arena.getHeight());
+            }
+        } catch (Throwable ignored) { /* cleanup must never break the combat exit */ }
+
         // Remove hidden fire resistance, restore freeze damage, and re-enable random ticks
         if (player != null) {
             player.removeStatusEffect(net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE);
@@ -30315,19 +30412,15 @@ public class CombatManager {
             CrafticsMod.LOGGER.warn("endCombat: enemy discard failed: {}", e.getMessage());
         }
 
-        // Discard any lingering potion clouds, visual projectiles, and any
-        // cosmetic stack passengers that somehow survived the per-mob
-        // cleanup. Catch-all sweep so a ghost rider never persists past
-        // combat -keyed off the craftics_stack_visual tag (in addition to
-        // the existing AreaEffectCloud / craftics_visual_projectile sweep).
+        // Discard every remaining arena-tagged entity. The tracked-enemy loop
+        // above covers normal exits, but a disconnect can interrupt entity
+        // bookkeeping and leave an untracked boss behind. Arena tags are only
+        // applied to transient combat entities and visuals.
         try {
             if (player != null) {
                 ServerWorld cleanupWorld = (ServerWorld) player.getEntityWorld();
                 for (net.minecraft.entity.Entity entity : cleanupWorld.iterateEntities()) {
-                    if (entity.getCommandTags().contains("craftics_arena")
-                            && (entity instanceof net.minecraft.entity.AreaEffectCloudEntity
-                                || entity.getCommandTags().contains("craftics_visual_projectile")
-                                || entity.getCommandTags().contains("craftics_stack_visual"))) {
+                    if (entity.getCommandTags().contains("craftics_arena")) {
                         entity.discard();
                     }
                 }
@@ -32901,6 +32994,10 @@ public class CombatManager {
 
     /** Called when an enemy is killed. */
     private void onEnemyKilled(CombatEntity enemy) {
+        // A projectile is not a kill, wherever the call came from. killEnemy already
+        // filters these out, but there are two more call sites on the ally-attack path
+        // and this is the one place all of them pass through, so the rule lives here too.
+        if (enemy != null && enemy.isProjectile()) return;
         killStreak++;
         killedThisTurn = true;
         killedThisRound = true;

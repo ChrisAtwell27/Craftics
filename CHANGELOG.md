@@ -1,4 +1,44 @@
 ﻿Changelog
+0.3.6.3
+Softlocks and Lost Inventories
+
+- The victory screen could be lost with its choice still unanswered, which left you standing in the arena unable to move or use anything. The server holds the whole party still until that button is pressed, and closing the screen is not something the screen itself can refuse - anything that opens or clears a screen replaces it silently, and there was then nothing left that would ever ask again. The screen now comes back on its own whenever it goes missing with a choice outstanding, keeping the reward reveal where it left off
+- `/home` works again once a fight is decided. It is blocked mid-combat so it cannot be used to escape a losing fight, but that guard also covered the post-victory and game-over windows - the exact moments where a lost screen leaves you with nothing else to try. Winning is not escaping, so those two phases now let it through
+- Breaking the bed you slept in no longer respawns you into the void. Every world here is void-generated, so vanilla's "your bed is gone, use the world spawn" fallback hands back a coordinate in open air: you fall out of the world and die a second time, and that death is an ordinary one that drops your entire inventory. A respawn that lands over nothing is now dropped onto the highest solid block in the same column, or returned to your hub if that column is empty
+
+Combat Fixes
+
+- Enemies standing in fire are attacked instead of the fire being put out. Attacking a burning tile stamps the flames out, and that check claimed the click before it ever looked for a target - so hitting a mob that had walked into a fire spent your AP extinguishing the burn that was damaging it
+- Projectiles no longer count as kills. A boss fireball, wither skull or seeker is a real entity on the grid and is retired the instant it lands on anything, which ran the full kill pipeline: every hit the party took raised the kill streak, paid streak emeralds, healed Symbiote, refunded Rampage AP, and inflated the enemies-killed total
+- The Warden's fissure is telegraphed again. Telegraphs are dropped from the fourth biome onward, which is fair for an attack that damages a tile and not for one that permanently deletes a band of floor across the whole arena - especially since the Warden vaults the gap it just made and you cannot
+
+Enemy Scaling
+
+- Trial chamber and ominous trial enemies keep the difficulty they were built with. Their stats are authored as the biome baseline times a trial multiplier, then the ordinary per-biome damage cap clamped them straight back down to campaign numbers, so from the first ominous biome onward the multiplier did nothing and "the foes within are stronger" was not true
+- The ominous trial's Warden scales with the encounter instead of sitting at a flat 10 attack for the whole overworld, which left the scariest thing in the game barely above the damage cap it was already allowed to ignore
+- No enemy can spawn above 18 attack. Several spawn kinds legitimately skip the per-biome cap and none of them had a ceiling of their own, so a deep-biome NG+ run could stack them into a one-shot. Bosses are unaffected - they keep their own, lower ceiling
+
+Arena Cleanup
+
+- Items dropped during a fight are removed with it. Arena slots are reused per level and a dropped item outlived the fight that made it, so returning to a level opened it littered with old drops and every arena the world had ever built kept leaking entities
+
+0.3.6.2
+Combat, Events and Arena Fixes
+
+- Sandstorm's blindness now lasts 2 turns. It was configured for one turn despite the effect needing to cover the following enemy turn as well.
+- Event traders now open the same banked-emerald Trading Hall screen as the lobby instead of converting currency into physical emeralds and opening a vanilla trade UI. Offers refresh after each purchase, stock is shared within the event, purchases work even when your inventory is full, and party members take turns through the shared merchant without blocking one another.
+- Any combat reward that cannot fit in your inventory now opens the managed loot chest rather than dropping on the ground. Lootboxes use the same delivery path, so their rewards follow the same rule.
+
+Arena Terrain
+
+- Void Rift now makes a real visible shaft through the arena floor instead of only lowering the surface into a shallow pit.
+- Outer End Islands uses its packaged arena schematics until the editable disk copies are regenerated. The local overrides for that biome had been replaced by Soul Sand Valley layouts, causing arenas 2 and 4 to load the wrong map.
+
+Client Stability
+
+- Fixed the `Pose stack not empty` client crash when sculk darkness hid an entity during a bounce animation. The entity renderer now restores its transform with `try/finally` on every supported Minecraft version, including when another render mixin cancels the draw.
+- Abandoned combat cleanup now removes every transient arena-tagged entity. A client crash or disconnect can no longer leave an untracked, non-interactive Warden behind to overlap the next boss attempt.
+
 0.3.6.1
 Bleed
 
@@ -14,7 +54,6 @@ Raid Bosses
 Taming
 
 - Taming an animal with food now actually works. Every taming item that is also something you can eat - cod and salmon for cats and ocelots, carrot, potato and beetroot for pigs, golden apple and golden carrot for horses and donkeys, sweet and glow berries for foxes - was being caught by the "eat this" branch first and swallowed for a couple of HP. Those mobs could not be tamed at all. Taming is now checked ahead of eating, and only claims the click when the tile in front of you actually holds a live untamed animal that item breeds, so the same item still eats normally everywhere else
-- Wolves take a bone, and only a bone. Beef and cooked beef were listed as wolf taming items, which is not how the game works - beef breeds a wolf you already own - and it meant a steak eaten next to a wild wolf tamed it instead of feeding you
 
 Kill Streak
 

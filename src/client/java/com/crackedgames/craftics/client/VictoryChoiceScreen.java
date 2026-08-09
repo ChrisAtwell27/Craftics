@@ -31,6 +31,50 @@ public class VictoryChoiceScreen extends Screen {
     /** True when this screen is prompting for a trial/event, not a regular level victory. */
     private final boolean isEventPrompt;
 
+    /**
+     * The victory screen the player still owes an answer to, or null.
+     *
+     * <p>The server parks the whole party in {@code CombatPhase.LEVEL_COMPLETE} and waits for
+     * a {@link PostLevelChoicePayload} before doing anything else - movement, item use and
+     * turn input are all closed until that button is pressed. So if the screen goes away
+     * without a choice having been made, the player is left standing in the arena with no
+     * screen, no controls, and nothing that will ever ask them again: a softlock.
+     *
+     * <p>The screen cannot defend against that on its own. {@code shouldCloseOnEsc()} is
+     * already false, but {@code MinecraftClient.setScreen} does not route through
+     * {@link #close()} - anything that opens or clears a screen (another mod's HUD, a stale
+     * packet, the Esc menu being dismissed) replaces this one silently, and {@link #removed()}
+     * cannot veto it.
+     *
+     * <p>So instead of trying to hold the screen open, we re-open it. {@link #reopenIfLost}
+     * runs on the client tick and puts the screen back whenever no screen is showing and a
+     * choice is still outstanding. The same instance is restored, so the reward reveal keeps
+     * its progress rather than replaying. Cleared the moment a button is pressed, and by the
+     * combat enter/exit handlers, so it can never fight a legitimate screen change.
+     */
+    private static VictoryChoiceScreen awaitingChoice;
+
+    /** Arm the re-open guard for a freshly opened victory screen. */
+    public static void armReopen(VictoryChoiceScreen screen) {
+        awaitingChoice = screen;
+    }
+
+    /** Disarm: a choice was made, or combat moved on without one. */
+    public static void clearReopen() {
+        awaitingChoice = null;
+    }
+
+    /** Put the screen back if it was lost while a choice is still outstanding. */
+    public static void reopenIfLost(MinecraftClient client) {
+        if (awaitingChoice == null || client == null) return;
+        // Left the world (disconnect, quit to title): the choice died with the session, and
+        // holding it would re-open a dead screen over the next world the player joins.
+        if (client.world == null) { awaitingChoice = null; return; }
+        if (client.currentScreen != null) return;
+        client.setScreen(awaitingChoice);
+        client.mouse.unlockCursor();
+    }
+
     // ── Reward reveal animation (shares the Game Over sequence's feel) ──
     private static final long REVEAL_STAGGER_MS = 110; // gap between successive item drops
     private static final long REVEAL_DROP_MS    = 300; // per-item fall + settle
@@ -90,6 +134,7 @@ public class VictoryChoiceScreen extends Screen {
                 centerX - btnW / 2, btnY, btnW, btnH,
                 Text.literal(acceptLabel),
                 btn -> {
+                    clearReopen();
                     this.close();
                     TransitionOverlay.startTransition(
                         biomeName, "Entering...",
@@ -103,6 +148,7 @@ public class VictoryChoiceScreen extends Screen {
                 centerX - btnW / 2, btnY + 25, btnW, btnH,
                 Text.literal(declineLabel),
                 btn -> {
+                    clearReopen();
                     this.close();
                     TransitionOverlay.startTransition(
                         "Onward!", "",
@@ -117,6 +163,7 @@ public class VictoryChoiceScreen extends Screen {
                 centerX - btnW / 2, btnY, btnW, btnH,
                 Text.literal("§a⌂ Go Home (Keep loot, reset biome progress)"),
                 btn -> {
+                    clearReopen();
                     this.close();
                     TransitionOverlay.startTransition(
                         "Returning to Hub", "Safe travels...",

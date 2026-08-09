@@ -360,6 +360,36 @@ public class ArenaBuilder {
         return new GridArena(gridW, gridH, tiles, gridOrigin, level, finalPlayerStart, insideMask);
     }
 
+    /**
+     * Delete every dropped item lying in an arena's footprint.
+     *
+     * <p>The box is deliberately generous around the tile grid: a drop can bounce onto the
+     * border wall or roll a block past the edge, and an item that lands just outside the
+     * grid is still visibly inside the room. The Y span covers the floor slab through the
+     * wall tops so nothing survives on a ledge.
+     *
+     * <p>Only {@code ItemEntity} is touched. Arena mobs, armor stands and display entities
+     * have their own lifecycles and are cleaned up by their owners.
+     *
+     * @return how many item entities were removed
+     */
+    public static int sweepDroppedItems(ServerWorld world, BlockPos origin, int width, int height) {
+        if (world == null || origin == null) return 0;
+        net.minecraft.util.math.Box box = new net.minecraft.util.math.Box(
+            origin.getX() - 2, origin.getY() - 4, origin.getZ() - 2,
+            origin.getX() + width + 2, origin.getY() + 20, origin.getZ() + height + 2);
+        java.util.List<net.minecraft.entity.ItemEntity> stale =
+            world.getEntitiesByClass(net.minecraft.entity.ItemEntity.class, box, e -> true);
+        for (net.minecraft.entity.ItemEntity item : stale) {
+            item.discard();
+        }
+        if (!stale.isEmpty()) {
+            CrafticsMod.LOGGER.debug("Swept {} stale dropped item(s) from the arena at {}",
+                stale.size(), origin);
+        }
+        return stale.size();
+    }
+
     public static GridArena buildAt(ServerWorld world, LevelDefinition levelDef, BlockPos origin) {
         int level = levelDef.getLevelNumber();
         int w = levelDef.getWidth();
@@ -368,6 +398,13 @@ public class ArenaBuilder {
 
         CrafticsMod.LOGGER.info("Building arena for Level {} '{}' at {} ({}x{})",
             level, levelDef.getName(), origin, w, h);
+
+        // Anything the party dropped in here last time is still lying on the floor: arena
+        // slots are reused for the same level number, and an ItemEntity outlives the fight
+        // that produced it. Nothing ever removed them, so a reused arena opened littered
+        // with old drops - free loot that was never meant to be collectable twice, and a
+        // slow entity leak in every arena slot the world has ever built.
+        sweepDroppedItems(world, origin, w, h);
 
         int ox = origin.getX(), oy = origin.getY(), oz = origin.getZ();
         Random rng = new Random(System.nanoTime() ^ (level * 31L + ox + oz * 17L));
@@ -821,6 +858,12 @@ public class ArenaBuilder {
             }
         } catch (Exception e) {
             CrafticsMod.LOGGER.debug("Error while searching for .schem arenas: {}", e.getMessage());
+        }
+
+        // The editable disk copy of this biome was accidentally replaced with Soul Sand
+        // layouts. Use the packaged End arenas until that external asset set is regenerated.
+        if ("outer_end_islands".equals(biomeId)) {
+            diskSchemCandidates.clear();
         }
 
         // Disk overrides win - distribute by biome level index to avoid repeats.

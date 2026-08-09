@@ -18,7 +18,7 @@ import java.util.Random;
 public final class SandstormEffect implements BiomeEffect {
 
     private static final int CADENCE = 3;
-    private static final int BLIND_TURNS = 1; // player-facing turns; applyPartyEffect adds the
+    private static final int BLIND_TURNS = 2; // player-facing turns; applyPartyEffect adds the
                                               // enemy-phase-tick compensation so this lands on
                                               // the player's next turn.
 
@@ -43,7 +43,7 @@ public final class SandstormEffect implements BiomeEffect {
     public void onRoundStart(MinibossContext ctx) {
         if (ctx.round() % CADENCE != 0) return;
         ctx.applyPartyEffect(CombatEffects.EffectType.BLINDNESS, BLIND_TURNS);
-        ctx.message("§e☀ Sand whips into your eyes - blinded for a turn!");
+        ctx.message("§e☀ Sand whips into your eyes - blinded for " + BLIND_TURNS + " turns!");
         // One-shot louder gust + a burst of sand on the blind round, layered on top of the
         // steady ambient hiss so the blinding moment reads as a sudden intensification.
         ctx.playSound(SoundEvents.BLOCK_SAND_BREAK, 0.7f, 0.7f);

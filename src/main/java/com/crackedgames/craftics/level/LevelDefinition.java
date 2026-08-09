@@ -44,6 +44,18 @@ public abstract class LevelDefinition {
 
     public boolean isNightLevel() { return false; }
 
+    /**
+     * Campaign biome ordinal that should drive spawn-time progression for synthetic levels.
+     * Generated campaign levels derive this from their biome template; event levels override it.
+     */
+    public int getProgressionBiomeOrdinal() { return -1; }
+
+    /**
+     * Whether one synthetic spawn deliberately exceeds the ordinary non-boss damage ceiling.
+     * Events use this for authored elite encounters without changing their boss/loot behavior.
+     */
+    public boolean bypassesEnemyDamageCap(int spawnIndex) { return false; }
+
     /** Override to force a biome for schematic selection. Null = auto-detect */
     public String getArenaBiomeId() { return null; }
 

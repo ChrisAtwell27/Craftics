@@ -179,11 +179,20 @@ public final class Abilities {
             GridPos kbPos = target.getGridPos();
             int pushed = 0;
             boolean blocked = false;
+            boolean intoVoid = false;
             for (int step = 0; step < distance; step++) {
                 GridPos next = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
                 if (!arena.isInBounds(next) || arena.isOccupied(next)) { blocked = true; break; }
                 var tile = arena.getTile(next);
-                if (tile == null || !tile.isWalkable()) { blocked = true; break; }
+                if (tile == null) { blocked = true; break; }
+                if (tile.getType() == com.crackedgames.craftics.core.TileType.VOID
+                        && !target.isHazardImmune()) {
+                    kbPos = next;
+                    pushed++;
+                    intoVoid = true;
+                    break;
+                }
+                if (!tile.isWalkable()) { blocked = true; break; }
                 kbPos = next;
                 pushed++;
             }
@@ -194,6 +203,10 @@ public final class Abilities {
                     target.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
                 }
                 messages.add("§6Knocked back " + target.getDisplayName() + " " + pushed + " tile(s)!");
+                if (intoVoid) {
+                    target.takeDamage(target.getCurrentHp() + 100);
+                    messages.add("§4" + target.getDisplayName() + " fell into the void!");
+                }
             }
             if (crater && blocked && target.isAlive()) {
                 int dealt = target.takeDamage(SwordAxeEnchantEffects.CRATER_COLLISION_DAMAGE);

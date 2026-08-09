@@ -37,6 +37,25 @@ public class TrialChamberEvent {
     /** Breeze is the trial chamber signature mob - appears as a mini-boss. */
     private static final String[] BREEZE = {"minecraft:breeze", "20", "5", "2", "3"};
 
+    private static final int OMINOUS_TRIAL_START_BIOME = 10;
+    private static final int OMINOUS_WARDEN_BASE_ATTACK = 10;
+
+    /**
+     * The ominous trial's Warden hits for its base plus one per biome past the ominous
+     * start, then the trial's own difficulty multiplier on top - the same multiplier every
+     * other mob in the encounter gets. Without it the Warden was a flat 10 for the whole
+     * overworld, which put the scariest thing in the game barely above the ordinary
+     * per-biome damage cap it was already allowed to skip.
+     *
+     * <p>Bounded by {@link CombatManager#MAX_ENEMY_ATTACK}; the spawn loop clamps to the
+     * same value again, so this is belt-and-braces rather than the only guard.
+     */
+    static int ominousWardenAttack(int biomeOrdinal, float diffMultiplier) {
+        int base = OMINOUS_WARDEN_BASE_ATTACK
+            + Math.max(0, biomeOrdinal - OMINOUS_TRIAL_START_BIOME);
+        return Math.min(CombatManager.MAX_ENEMY_ATTACK, (int) (base * diffMultiplier));
+    }
+
     /** Generate a trial chamber level definition scaled to difficulty. */
     public static LevelDefinition generate(int currentBiomeOrdinal, int ngPlusLevel) {
         Random rng = new Random();
@@ -90,7 +109,10 @@ public class TrialChamberEvent {
         // Convert to array for LevelDefinition contract
         LevelDefinition.EnemySpawn[] spawns = spawnList.toArray(new LevelDefinition.EnemySpawn[0]);
 
-        return new TrialChamberLevelDef(width, height, spawns, rng);
+        TrialChamberLevelDef def =
+            new TrialChamberLevelDef(width, height, spawns, rng, currentBiomeOrdinal);
+        def.setTrialScaledDamage(true);
+        return def;
     }
 
     private static GridPos findSpawnPos(int width, int height, List<GridPos> used, Random rng) {
@@ -361,10 +383,16 @@ public class TrialChamberEvent {
         GridPos wardenPos = findSpawnPos(width, height, used, rng);
         if (wardenPos != null) {
             spawns.add(new LevelDefinition.EnemySpawn("minecraft:warden", wardenPos,
-                (int)((50 + hpBonus) * diffMultiplier), (int)((8 + atkBonus) * diffMultiplier), 4, 2));
+                (int)((50 + hpBonus) * diffMultiplier),
+                ominousWardenAttack(biomeOrdinal, diffMultiplier), 4, 2));
         }
 
-        return new TrialChamberLevelDef(width, height, spawns, rng) {
+        // Every spawn here skips the per-biome damage cap, not just the Warden. The whole
+        // encounter is authored at (base + biome bonus) x diffMultiplier, and the cap -
+        // 3 + biomeOrdinal/2 - sat below that from the first ominous biome onward, so it
+        // was deleting the multiplier for the adds and leaving them hitting exactly as
+        // hard as the ordinary mobs the trial is supposed to be a step up from.
+        TrialChamberLevelDef def = new TrialChamberLevelDef(width, height, spawns, rng, biomeOrdinal) {
             @Override public String getName() { return "Ominous Trial Chamber"; }
             @Override public Block getFloorBlock() { return Blocks.DEEPSLATE_BRICKS; }
             @Override public List<ItemStack> rollCompletionLoot(ServerWorld world) {
@@ -374,6 +402,8 @@ public class TrialChamberEvent {
                 return rollOminousLoot(world, new Random());
             }
         };
+        def.setTrialScaledDamage(true);
+        return def;
     }
 
     /** Treasure Vault - no enemies, just loot on the ground. Player gets 2-4 random items scaled to biome tier. */
@@ -533,18 +563,33 @@ public class TrialChamberEvent {
         private final EnemySpawn[] spawns;
         private final Block floorBlock;
         private final int levelNumber;
+        private final int progressionBiomeOrdinal;
+        /** See {@link #bypassesEnemyDamageCap(int)}. Off for the level kinds that reuse this
+         *  class without the trial's difficulty multiplier (ambush, raid, treasure vault). */
+        private boolean trialScaledDamage;
 
         TrialChamberLevelDef(int width, int height, EnemySpawn[] spawns, Random rng) {
+            this(width, height, spawns, rng, -1);
+        }
+
+        TrialChamberLevelDef(int width, int height, EnemySpawn[] spawns, Random rng,
+                             int progressionBiomeOrdinal) {
             this.width = width;
             this.height = height;
             this.spawns = spawns;
             // Trial chamber themed floors
             this.floorBlock = rng.nextBoolean() ? Blocks.TUFF_BRICKS : Blocks.POLISHED_TUFF;
             this.levelNumber = SYNTHETIC_LEVEL_BASE + rng.nextInt(900);
+            this.progressionBiomeOrdinal = progressionBiomeOrdinal;
         }
 
         TrialChamberLevelDef(int width, int height, List<EnemySpawn> spawnList, Random rng) {
-            this(width, height, spawnList.toArray(new EnemySpawn[0]), rng);
+            this(width, height, spawnList.toArray(new EnemySpawn[0]), rng, -1);
+        }
+
+        TrialChamberLevelDef(int width, int height, List<EnemySpawn> spawnList, Random rng,
+                             int progressionBiomeOrdinal) {
+            this(width, height, spawnList.toArray(new EnemySpawn[0]), rng, progressionBiomeOrdinal);
         }
 
         @Override public int getLevelNumber() { return levelNumber; }
@@ -555,6 +600,17 @@ public class TrialChamberEvent {
         @Override public Block getFloorBlock() { return floorBlock; }
         @Override public EnemySpawn[] getEnemySpawns() { return spawns; }
         @Override public boolean isNightLevel() { return true; } // dark atmosphere
+        @Override public int getProgressionBiomeOrdinal() { return progressionBiomeOrdinal; }
+
+        /**
+         * Trial spawns already carry the encounter's difficulty multiplier, so the per-biome
+         * enemy damage cap must not squash them back to campaign numbers - that cap is sized
+         * for mobs that were never multiplied. {@link CombatManager#MAX_ENEMY_ATTACK} is the
+         * ceiling that applies instead.
+         */
+        @Override public boolean bypassesEnemyDamageCap(int spawnIndex) { return trialScaledDamage; }
+
+        void setTrialScaledDamage(boolean scaled) { this.trialScaledDamage = scaled; }
 
         @Override public boolean hasOverrideOrigin() { return true; }
 

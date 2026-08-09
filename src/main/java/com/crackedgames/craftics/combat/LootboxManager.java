@@ -648,9 +648,7 @@ public final class LootboxManager {
         List<ItemStack> rewards = new ArrayList<>(rolled.size());
         for (RolledReward r : rolled) {
             rewards.add(r.stack());
-            if (!player.getInventory().insertStack(r.stack().copy())) {
-                player.dropItem(r.stack().copy(), false);
-            }
+            LootDelivery.deliver(player, r.stack().copy());
         }
         com.crackedgames.craftics.CrafticsMod.LOGGER.info(
             "{} opened a {} lootbox chest ({}): {}", player.getName().getString(),

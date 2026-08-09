@@ -4,13 +4,18 @@ import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.BundleContentsComponent;
 import net.minecraft.component.type.PotionContentsComponent;
 import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.inventory.SimpleInventory;
 import net.minecraft.item.BundleItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.potion.Potion;
 import net.minecraft.potion.Potions;
 import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+
+import com.crackedgames.craftics.screen.LootManagementScreenHandler;
 
 import java.util.List;
 import java.util.Random;
@@ -57,8 +62,8 @@ public final class LootDelivery {
      * Call instead of {@code player.getInventory().insertStack(stack)} whenever
      * granting combat rewards, event rewards, or post-victory loot.
      *
-     * @return the portion of {@code stack} that did not fit anywhere - empty if
-     *         the loot was fully delivered.
+    * @return the portion of {@code stack} that did not fit anywhere - empty if
+    *         the loot was fully delivered or moved into the overflow chest.
      */
     public static ItemStack deliver(ServerPlayerEntity player, ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
@@ -149,6 +154,20 @@ public final class LootDelivery {
         if (!stack.isEmpty()) {
             inv.insertStack(stack);
         }
+        if (!stack.isEmpty() && player.currentScreenHandler == player.playerScreenHandler) {
+            openOverflowChest(player, stack);
+        }
         return stack;
+    }
+
+    /** Put a full-inventory reward into the same movable overflow chest used after combat. */
+    private static void openOverflowChest(ServerPlayerEntity player, ItemStack stack) {
+        SimpleInventory overflow = new SimpleInventory(LootManagementScreenHandler.LOOT_SLOTS);
+        overflow.setStack(0, stack.copy());
+        stack.setCount(0);
+        player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
+            (syncId, playerInventory, viewer) ->
+                new LootManagementScreenHandler(syncId, playerInventory, overflow),
+            Text.literal("Inventory Full - Loot")));
     }
 }

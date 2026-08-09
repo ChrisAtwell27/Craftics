@@ -121,6 +121,10 @@ public class CrafticsClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(EnterCombatPayload.ID, (payload, context) -> {
             context.client().execute(() -> {
                 boolean wasInCombat = CombatState.isInCombat();
+                // The party moved on, so any outstanding victory choice is answered or moot -
+                // disarm before the sweep below closes the screen, or the tick handler would
+                // put it straight back.
+                com.crackedgames.craftics.client.VictoryChoiceScreen.clearReopen();
                 CombatState.enterCombat(
                     payload.originX(), payload.originY(), payload.originZ(),
                     payload.width(), payload.height()
@@ -354,6 +358,8 @@ public class CrafticsClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(ExitCombatPayload.ID, (payload, context) -> {
             context.client().execute(() -> {
                 CombatState.setInCombat(false);
+                // Combat is over on the server's terms; nothing is waiting on a choice.
+                com.crackedgames.craftics.client.VictoryChoiceScreen.clearReopen();
                 CombatVisualEffects.resetOverlays();
                 // Whatever mood the fight left the fog in dies with the fight, so the next
                 // arena doesn't open under the last boss's red.
@@ -380,11 +386,17 @@ public class CrafticsClient implements ClientModInitializer {
                 context.client().execute(() -> {
                     context.client().mouse.unlockCursor();
                     TransitionOverlay.startFadeOut();
-                    context.client().setScreen(new com.crackedgames.craftics.client.VictoryChoiceScreen(
+                    var victory = new com.crackedgames.craftics.client.VictoryChoiceScreen(
                         payload.emeraldsEarned(), payload.totalEmeralds(),
                         payload.biomeName(), payload.levelIndex(), payload.nextIsBoss(),
                         payload.isLeader(), payload.rewards()
-                    ));
+                    );
+                    // Until this screen's button is pressed the server holds the party in
+                    // LEVEL_COMPLETE with all input closed, so losing the screen strands the
+                    // player. Arm the re-open guard; the client tick restores it if anything
+                    // takes it away. See VictoryChoiceScreen.awaitingChoice.
+                    com.crackedgames.craftics.client.VictoryChoiceScreen.armReopen(victory);
+                    context.client().setScreen(victory);
                     CombatState.setEmeralds(payload.totalEmeralds());
                 });
             }
@@ -460,26 +472,19 @@ public class CrafticsClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.TraderOfferPayload.ID, (payload, context) -> {
                 context.client().execute(() -> {
-                    // Trading hall booth: open (or refresh in place) the parchment
-                    // shop screen. Refresh-in-place keeps the screen steady across
-                    // the server's post-purchase re-send, and a refresh payload
-                    // (openScreen == 0) is dropped when no screen is showing so an
-                    // in-flight re-send can't resurrect a shop the player closed.
-                    if (CombatState.isInScene()) {
-                        if (context.client().currentScreen
-                                instanceof com.crackedgames.craftics.client.TraderScreen ts) {
-                            ts.updateOffer(payload.tradeData(), payload.stacks(), payload.playerEmeralds());
-                        } else if (payload.openScreen() != 0) {
-                            context.client().setScreen(new com.crackedgames.craftics.client.TraderScreen(
-                                payload.traderName(), payload.traderIcon(),
-                                payload.tradeData(), payload.stacks(), payload.playerEmeralds()));
-                        }
-                        return;
+                    // Trading Hall booths and wandering-trader events share this
+                    // payload and the same parchment shop. The event runs as a
+                    // cinematic rather than a SceneController scene, so gating on
+                    // isInScene() left it in the retired vanilla-merchant path and
+                    // never opened its menu.
+                    if (context.client().currentScreen
+                            instanceof com.crackedgames.craftics.client.TraderScreen ts) {
+                        ts.updateOffer(payload.tradeData(), payload.stacks(), payload.playerEmeralds());
+                    } else if (payload.openScreen() != 0) {
+                        context.client().setScreen(new com.crackedgames.craftics.client.TraderScreen(
+                            payload.traderName(), payload.traderIcon(),
+                            payload.tradeData(), payload.stacks(), payload.playerEmeralds()));
                     }
-                    // Legacy event flow (vanilla merchant screen opens separately).
-                    CombatState.setTraderActive(true);
-                    CombatState.setEmeralds(payload.playerEmeralds());
-                    TransitionOverlay.startFadeOut();
                 });
             }
         );
@@ -877,6 +882,10 @@ public class CrafticsClient implements ClientModInitializer {
             AchievementToast.tick();
             RaidBossToast.tick();
             com.crackedgames.craftics.client.music.MusicToast.tick();
+
+            // Restore the victory screen if it was lost with a choice still outstanding.
+            // No-op whenever nothing is waiting, which is every tick outside that window.
+            com.crackedgames.craftics.client.VictoryChoiceScreen.reopenIfLost(client);
 
             // Lead-command ally glow is server-driven via LeadSelectPayload:
             // the server toggles glowing on the picked mob so the data tracker
