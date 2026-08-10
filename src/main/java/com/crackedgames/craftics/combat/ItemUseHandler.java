@@ -842,6 +842,7 @@ public class ItemUseHandler {
             case BLEEDING -> 3;
             case AIRTIME -> 1; // not vanilla-potion-driven; unreachable via this path
             case WARPED -> 1; // not vanilla-potion-driven; unreachable via this path
+            case MARKED -> 1; // not vanilla-potion-driven; unreachable via this path
         };
         // Extended potions (long vanilla duration > 4 min) double the combat turn count
         if (vanillaDurationTicks > 4800) {
@@ -1027,6 +1028,44 @@ public class ItemUseHandler {
                              Math.abs(playerPos.z() - nearest.z()));
         if (cheby > 1) return "§cToo far! Stand next to the target.";
         if (!Pathfinding.hasLineOfSight(arena, playerPos, nearest)) {
+            return "§cLine of sight blocked by an obstacle!";
+        }
+        return null;
+    }
+
+    /**
+     * Validate that {@code targetTile} is a tile the player can reach by hand: their own
+     * tile or one of the eight around it. THE rule for items that put something down
+     * (buckets, bell, spore blossom, jukebox, sponge) rather than throwing it.
+     *
+     * <p>Placement used to be per-item, and most items simply never checked, so a water
+     * or lava bucket could be poured on the far side of the arena and a bell could stun
+     * a boss from out of its reach - while the jukebox and sponge sitting next to them in
+     * this file already demanded adjacency for the same physical action. Thrown items keep
+     * their own rule ({@link #validateThrowReach} / {@link #THROWABLE_RANGE}); this is only
+     * for the ones the player is placing with their hands.
+     */
+    private static String requireHandReach(GridArena arena, GridPos targetTile) {
+        GridPos playerPos = arena.getPlayerGridPos();
+        if (playerPos == null || targetTile == null) return null;
+        int cheby = Math.max(Math.abs(playerPos.x() - targetTile.x()),
+                             Math.abs(playerPos.z() - targetTile.z()));
+        return cheby > 1 ? "§cToo far! You can only place that next to yourself." : null;
+    }
+
+    /**
+     * Validate a thrown item aimed at a TILE rather than an enemy: same
+     * {@link #THROWABLE_RANGE} + line-of-sight rule {@link #validateThrowReach} applies
+     * to enemy targets, so lobbing something at open ground can't outrange lobbing it at
+     * a mob standing on that same ground.
+     */
+    private static String validateThrowReach(GridArena arena, GridPos targetTile) {
+        GridPos playerPos = arena.getPlayerGridPos();
+        if (playerPos == null || targetTile == null) return null;
+        if (playerPos.manhattanDistance(targetTile) > THROWABLE_RANGE) {
+            return "§cToo far! Max throw range is " + THROWABLE_RANGE + " tiles.";
+        }
+        if (!Pathfinding.hasLineOfSight(arena, playerPos, targetTile)) {
             return "§cLine of sight blocked by an obstacle!";
         }
         return null;
@@ -1312,9 +1351,19 @@ public class ItemUseHandler {
                                          GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         CombatEntity enemy = arena.getOccupant(targetTile);
+        // A charge lobbed at your own pet used to burn it: an ally is alive, so it fell
+        // straight into the damage branch below. Allies are not a target for this at all.
+        if (enemy != null && enemy.isAlive() && enemy.isAlly()) {
+            return "§cThat's your ally!";
+        }
         // Empty ground: the charge bursts on the tile and sets it alight. Fire spreads from
         // there on its own, so lobbing one into dry brush upwind of the enemy is a play.
         if (enemy == null || !enemy.isAlive()) {
+            // Thrown, so it answers to the throwable rule every other thrown item uses.
+            // Without it the charge had no range or line-of-sight limit at all and could
+            // light the ground under a boss on the far side of a wall.
+            String reach = validateThrowReach(arena, targetTile);
+            if (reach != null) return reach;
             if (!canStrikeLightOn(arena.getTile(targetTile))) {
                 return "§cNothing there to burn - aim at an enemy or at open ground.";
             }
@@ -1322,6 +1371,9 @@ public class ItemUseHandler {
             return TILE_EFFECT_PREFIX + "fire:" + targetTile.x() + ":" + targetTile.z()
                 + "|§6The fire charge bursts! The ground catches.";
         }
+
+        String enemyReach = validateThrowReach(arena, enemy);
+        if (enemyReach != null) return enemyReach;
 
         consumeSpecialItem(player, stack);
         int dealt = applyTypedDamage(player, enemy, 4 + enemy.percentMaxHpDamage(0.08), DamageType.SPECIAL);
@@ -2087,18 +2139,24 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        String reach = requireHandReach(arena, targetTile);
+        if (reach != null) return reach;
+        // Distinct entities only: getOccupants() lists a multi-tile mob once per tile it
+        // stands on, which inflated the count and re-stunned the same spider three times.
+        java.util.Set<CombatEntity> seen = new java.util.HashSet<>();
         int stunned = 0;
         for (CombatEntity e : arena.getOccupants().values()) {
             if (!e.isAlive() || e.isAlly()) continue;
-            int dist = Math.abs(e.getGridPos().x() - targetTile.x()) + Math.abs(e.getGridPos().z() - targetTile.z());
-            if (dist <= 2) {
+            if (!seen.add(e)) continue;
+            if (e.minDistanceTo(targetTile) <= 2) {
                 e.setStunned(true);
                 stunned++;
             }
         }
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "bell:" + targetTile.x() + ":" + targetTile.z()
-            + "|§6Bell rings! " + stunned + " enemies stunned for 1 turn.";
+            + "|§6Bell rings! " + stunned + (stunned == 1 ? " enemy" : " enemies")
+            + " stunned for 1 turn.";
     }
 
     // --- Lava Bucket: place lava on tile - deals damage to enemies that step on it (1 AP) ---
@@ -2106,6 +2164,8 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        String reach = requireHandReach(arena, targetTile);
+        if (reach != null) return reach;
         GridTile tile = arena.getTile(targetTile);
         // Only pour onto a plain, walkable floor tile - not onto obstacles, hazards,
         // or existing water/lava.
@@ -2178,7 +2238,10 @@ public class ItemUseHandler {
     private static String useAnvil(ServerPlayerEntity player, GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target an enemy!";
         CombatEntity enemy = arena.getOccupant(targetTile);
-        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        // The ally half of this test was missing, so clicking your own tamed wolf dropped
+        // an anvil on it for half its max HP - the same hole the cobweb and the splash
+        // potion each had. Every other targeted item pairs isAlive() with !isAlly().
+        if (enemy == null || !enemy.isAlive() || enemy.isAlly()) return "§cNo enemy at target!";
 
         Item current = stack.getItem();
         // Damage denominator by condition: pristine 1/2, chipped 1/3, damaged 1/4.
@@ -2285,15 +2348,19 @@ public class ItemUseHandler {
         String ground = requireFlatGround(arena, targetTile);
         if (ground != null) return ground;
         stack.decrement(1);
+        // Distinct allies only - a multi-tile ally (a tamed ravager, an iron golem on a
+        // 2x2 footprint) is listed once per tile and was collecting +3 speed per tile.
+        java.util.Set<CombatEntity> seen = new java.util.HashSet<>();
         int buffed = 0;
         for (CombatEntity e : arena.getOccupants().values()) {
-            if (e.isAlive() && e.isAlly()) {
+            if (e.isAlive() && e.isAlly() && seen.add(e)) {
                 e.setSpeedBonus(e.getSpeedBonus() + 3);
                 buffed++;
             }
         }
         return TILE_EFFECT_PREFIX + "jukebox:" + targetTile.x() + ":" + targetTile.z()
-            + "|§dMusic plays across the arena! " + buffed + " allies buffed (+3 speed for this battle).";
+            + "|§dMusic plays across the arena! " + buffed + (buffed == 1 ? " ally" : " allies")
+            + " buffed (+3 speed for this battle).";
     }
 
     // --- Banner: plant defense zone - +2 defense (scaled by Special affinity)
@@ -2351,6 +2418,8 @@ public class ItemUseHandler {
         if (cm != null && cm.isNetherRegion()) {
             return "§cThe water flashes to steam before it hits the ground!";
         }
+        String reach = requireHandReach(arena, targetTile);
+        if (reach != null) return reach;
         GridTile tile = arena.getTile(targetTile);
         // Only pour onto a plain, walkable floor tile - not onto obstacles, hazards,
         // or existing water.
@@ -2367,6 +2436,11 @@ public class ItemUseHandler {
     // --- Empty Bucket: pick up water or lava from a tile ---
     private static String useEmptyBucket(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a water or lava tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        // Scooping is the same arm's-length action as pouring, so it answers to the same
+        // reach rule - otherwise the bucket could delete a lava moat from across the arena.
+        String reach = requireHandReach(arena, targetTile);
+        if (reach != null) return reach;
         GridTile tile = arena.getTile(targetTile);
         if (tile == null) return "§cInvalid tile!";
         if (tile.getType() == com.crackedgames.craftics.core.TileType.WATER) {
@@ -2394,20 +2468,14 @@ public class ItemUseHandler {
         GridPos playerPos = arena.getPlayerGridPos();
         int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
         if (dist > 1) return "§cMust place next to yourself.";
-        // Drain adjacent water tiles in a 1-tile cross.
-        int drained = 0;
-        for (int[] off : new int[][]{{0,0},{1,0},{-1,0},{0,1},{0,-1}}) {
-            GridPos near = new com.crackedgames.craftics.core.GridPos(
-                targetTile.x() + off[0], targetTile.z() + off[1]);
-            GridTile gt = arena.getTile(near);
-            if (gt != null && gt.isWater()) {
-                gt.setType(com.crackedgames.craftics.core.TileType.NORMAL);
-                drained++;
-            }
-        }
         stack.decrement(1);
+        // The drain itself belongs to CombatManager, not here. This method can only reach
+        // the grid model, and flipping a tile's TYPE without also clearing the water BLOCK
+        // left a pool the player could still see (and still fish) on ground the game had
+        // already decided was dry. The "sponge" tile-effect branch runs the same reset the
+        // empty bucket's "clear" does, world blocks included, and reports the count.
         return TILE_EFFECT_PREFIX + "sponge:" + targetTile.x() + ":" + targetTile.z()
-            + "|§eSponge placed! Drained " + drained + " water tile" + (drained == 1 ? "" : "s") + ".";
+            + "|§eSponge placed!";
     }
 
     // --- Pickaxe: three tile interactions on an adjacent tile (1 AP, durability cost) ---
@@ -2613,20 +2681,26 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        String reach = requireHandReach(arena, targetTile);
+        if (reach != null) return reach;
         String ground = requireFlatGround(arena, targetTile);
         if (ground != null) return ground;
+        // Distinct entities only: a 2x2 spider used to be listed four times here and lost
+        // 4 speed off one blossom, while a 1x1 zombie beside it lost 1.
+        java.util.Set<CombatEntity> seen = new java.util.HashSet<>();
         int slowed = 0;
         for (CombatEntity e : arena.getOccupants().values()) {
             if (!e.isAlive() || e.isAlly()) continue;
-            int dist = Math.abs(e.getGridPos().x() - targetTile.x()) + Math.abs(e.getGridPos().z() - targetTile.z());
-            if (dist <= 3) {
+            if (!seen.add(e)) continue;
+            if (e.minDistanceTo(targetTile) <= 3) {
                 e.setSpeedBonus(e.getSpeedBonus() - 1);
                 slowed++;
             }
         }
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "spore_blossom:" + targetTile.x() + ":" + targetTile.z()
-            + "|§dSpore cloud! " + slowed + " enemies slowed (-1 speed).";
+            + "|§dSpore cloud! " + slowed + (slowed == 1 ? " enemy" : " enemies")
+            + " slowed (-1 speed).";
     }
 
     // --- Lantern: reveals invisible/hidden enemies in 3-tile radius (1 AP, consumes) ---

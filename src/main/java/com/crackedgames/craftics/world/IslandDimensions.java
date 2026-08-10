@@ -45,12 +45,26 @@ public final class IslandDimensions {
                 // nothing should wander it), and Fantasy mirrors the overworld's
                 // game rules into runtime worlds by default. Islands must opt back
                 // IN explicitly or the Plains biome above would still spawn nothing.
-                .setGameRule(net.minecraft.world.GameRules.DO_MOB_SPAWNING, true);
-            handle = Fantasy.get(server).getOrOpenPersistentWorld(
-                Identifier.of("craftics", "island/" + owner.toString().toLowerCase()), config);
+                .setGameRule(net.minecraft.world.GameRules.DO_MOB_SPAWNING, true)
+                // Set here as well as on the lobby: Fantasy copies the overworld's rules when
+                // it opens a runtime world, but a persistent island keeps whatever copy it was
+                // opened with, so an island created before the rule existed would never see it.
+                .setGameRule(net.minecraft.world.GameRules.KEEP_INVENTORY, true);
+            handle = Fantasy.get(server).getOrOpenPersistentWorld(dimensionKeyOf(owner), config);
             HANDLES.put(owner, handle);
         }
         return handle.asWorld();
+    }
+
+    /** The dimension identifier an owner's island lives under. Single source of truth for the
+     *  naming scheme, so admin tooling reports exactly what Fantasy opens. */
+    public static Identifier dimensionKeyOf(UUID owner) {
+        return Identifier.of("craftics", "island/" + owner.toString().toLowerCase());
+    }
+
+    /** {@link #dimensionKeyOf} as a plain string, for records and command output. */
+    public static String dimensionIdOf(UUID owner) {
+        return dimensionKeyOf(owner).toString();
     }
 
     public static ServerWorld getLoaded(MinecraftServer server, UUID owner) {

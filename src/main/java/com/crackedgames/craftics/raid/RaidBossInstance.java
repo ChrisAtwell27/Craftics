@@ -610,22 +610,30 @@ public final class RaidBossInstance {
         // "put them back EXACTLY where they were" contract still holds everywhere it
         // can - clamping unconditionally would pop a raider who joined from inside a
         // building onto its roof.
-        double landY = origin.y();
+        double landX = origin.x(), landY = origin.y(), landZ = origin.z();
         if (!hasGroundBelow(target, origin.x(), origin.y(), origin.z())) {
-            int clamped = CrafticsMod.hubLandingY(target,
+            // Search outward, not just straight down. A raider who left from their own
+            // island and reshaped it while away has an origin column that is now open air,
+            // and the lobby is not where they want to end up - their island is still right
+            // there, it just moved under them.
+            net.minecraft.util.math.BlockPos landing = CrafticsMod.findLandingSpot(target,
                 (int) Math.floor(origin.x()), (int) Math.floor(origin.z()), (int) Math.floor(origin.y()));
-            if (clamped == Integer.MIN_VALUE) {
-                // Nothing solid anywhere in that column: the origin is pure void now.
+            if (landing == null) {
+                // Nothing solid anywhere around the origin: it really is pure void now.
                 // The lobby is the only guaranteed floor on the server.
                 CrafticsMod.LOGGER.warn(
-                    "Raid return origin for {} is over void at {} {},{},{} - routing to the lobby instead",
-                    p.getName().getString(), origin.dimensionId(), origin.x(), origin.y(), origin.z());
+                    "Raid return origin for {} is over void at {} {},{},{} with no ground within {} blocks"
+                        + " - routing to the lobby instead",
+                    p.getName().getString(), origin.dimensionId(), origin.x(), origin.y(), origin.z(),
+                    CrafticsMod.LANDING_SEARCH_RADIUS);
                 HubTeleports.toLobby(p);
                 return;
             }
-            landY = clamped;
+            landX = landing.getX() + 0.5;
+            landY = landing.getY();
+            landZ = landing.getZ() + 0.5;
         }
-        HubTeleports.teleportTo(p, target, origin.x(), landY, origin.z(), origin.yaw(), origin.pitch());
+        HubTeleports.teleportTo(p, target, landX, landY, landZ, origin.yaw(), origin.pitch());
     }
 
     /** True when something solid sits within a few blocks under this position, i.e. the

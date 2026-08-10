@@ -78,6 +78,24 @@ public class CrafticsSavedData extends PersistentState {
         public boolean inCombat = false;
         public boolean starterGuideGranted = false;
         public int worldSlot = -1;
+        // === Island creation record ===
+        // Frozen at the moment the island first came into existence and never rewritten, so a
+        // moderator can answer "where was this island, and since when" without the player
+        // being online. The dimension id and origin are derivable from the owner UUID TODAY,
+        // but they are recorded rather than recomputed on purpose: a stored answer stays true
+        // if the addressing scheme ever changes again (it already has once, when islands moved
+        // out of overworld lanes), and a record that silently re-derives itself is worth
+        // nothing in exactly the dispute it exists to settle.
+        /** Epoch millis the island was created, or 0 for islands that predate this record. */
+        public long islandCreatedAtMillis = 0L;
+        /** The owner's display name at creation. Names change; this is who it was then. */
+        public String islandCreatedName = "";
+        /** Dimension the island was created in, e.g. {@code craftics:island/<uuid>}. */
+        public String islandCreatedDimension = "";
+        /** Hub origin at creation. Sentinel {@link Integer#MIN_VALUE} when unrecorded. */
+        public int islandCreatedX = Integer.MIN_VALUE;
+        public int islandCreatedY = Integer.MIN_VALUE;
+        public int islandCreatedZ = Integer.MIN_VALUE;
         /** Hotbar slot index (0-8) where the Move item is force-locked. Default slot 9 (index 8). */
         public int lockedMoveSlot = 8;
         public boolean personalHubBuilt = false;
@@ -442,6 +460,12 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putBoolean("inCombat", inCombat);
             nbt.putBoolean("starterGuideGranted", starterGuideGranted);
             nbt.putInt("worldSlot", worldSlot);
+            nbt.putLong("islandCreatedAtMillis", islandCreatedAtMillis);
+            nbt.putString("islandCreatedName", islandCreatedName);
+            nbt.putString("islandCreatedDimension", islandCreatedDimension);
+            nbt.putInt("islandCreatedX", islandCreatedX);
+            nbt.putInt("islandCreatedY", islandCreatedY);
+            nbt.putInt("islandCreatedZ", islandCreatedZ);
             nbt.putInt("lockedMoveSlot", lockedMoveSlot);
             nbt.putBoolean("personalHubBuilt", personalHubBuilt);
             nbt.putInt("personalHubVersion", personalHubVersion);
@@ -514,6 +538,12 @@ public class CrafticsSavedData extends PersistentState {
             pd.inCombat = nbt.contains("inCombat") && nbt.getBoolean("inCombat");
             pd.starterGuideGranted = nbt.contains("starterGuideGranted") && nbt.getBoolean("starterGuideGranted");
             pd.worldSlot = nbt.contains("worldSlot") ? nbt.getInt("worldSlot") : -1;
+            pd.islandCreatedAtMillis = nbt.contains("islandCreatedAtMillis") ? nbt.getLong("islandCreatedAtMillis") : 0L;
+            pd.islandCreatedName = nbt.contains("islandCreatedName") ? nbt.getString("islandCreatedName") : "";
+            pd.islandCreatedDimension = nbt.contains("islandCreatedDimension") ? nbt.getString("islandCreatedDimension") : "";
+            pd.islandCreatedX = nbt.contains("islandCreatedX") ? nbt.getInt("islandCreatedX") : Integer.MIN_VALUE;
+            pd.islandCreatedY = nbt.contains("islandCreatedY") ? nbt.getInt("islandCreatedY") : Integer.MIN_VALUE;
+            pd.islandCreatedZ = nbt.contains("islandCreatedZ") ? nbt.getInt("islandCreatedZ") : Integer.MIN_VALUE;
             pd.lockedMoveSlot = nbt.contains("lockedMoveSlot") ? Math.max(0, Math.min(8, nbt.getInt("lockedMoveSlot"))) : 8;
             pd.personalHubBuilt = nbt.contains("personalHubBuilt") && nbt.getBoolean("personalHubBuilt");
             pd.personalHubVersion = nbt.contains("personalHubVersion") ? nbt.getInt("personalHubVersion") : 0;
@@ -621,6 +651,12 @@ public class CrafticsSavedData extends PersistentState {
             pd.inCombat = nbt.getBoolean("inCombat", false);
             pd.starterGuideGranted = nbt.getBoolean("starterGuideGranted", false);
             pd.worldSlot = nbt.getInt("worldSlot", -1);
+            pd.islandCreatedAtMillis = nbt.getLong("islandCreatedAtMillis", 0L);
+            pd.islandCreatedName = nbt.getString("islandCreatedName", "");
+            pd.islandCreatedDimension = nbt.getString("islandCreatedDimension", "");
+            pd.islandCreatedX = nbt.getInt("islandCreatedX", Integer.MIN_VALUE);
+            pd.islandCreatedY = nbt.getInt("islandCreatedY", Integer.MIN_VALUE);
+            pd.islandCreatedZ = nbt.getInt("islandCreatedZ", Integer.MIN_VALUE);
             pd.lockedMoveSlot = Math.max(0, Math.min(8, nbt.getInt("lockedMoveSlot", 8)));
             pd.personalHubBuilt = nbt.getBoolean("personalHubBuilt", false);
             pd.personalHubVersion = nbt.getInt("personalHubVersion", 0);
@@ -1056,11 +1092,54 @@ public class CrafticsSavedData extends PersistentState {
 
     /** Allocate a new world slot for a player. Returns the assigned slot index. */
     public int allocateWorldSlot(UUID playerId) {
+        return allocateWorldSlot(playerId, null);
+    }
+
+    /**
+     * Allocate a new world slot for a player and stamp the island creation record.
+     *
+     * <p>This is the one moment an island comes into existence - the slot is the "has an
+     * island" marker and is never reassigned - so it is the only honest place to record when
+     * that happened. {@code ownerName} is the owner's display name at the time, which is the
+     * part that cannot be recovered later: names change, and a moderator reading the record
+     * months on needs to know who this was then, not who holds the name now. Pass null when
+     * the caller has no name to hand; everything else is still recorded.
+     */
+    public int allocateWorldSlot(UUID playerId, String ownerName) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot >= 0) return pd.worldSlot; // already has one
         pd.worldSlot = nextWorldSlot++;
+        pd.islandCreatedAtMillis = System.currentTimeMillis();
+        pd.islandCreatedName = ownerName != null ? ownerName : "";
+        pd.islandCreatedDimension =
+            com.crackedgames.craftics.world.IslandDimensions.dimensionIdOf(playerId);
+        net.minecraft.util.math.BlockPos origin = new net.minecraft.util.math.BlockPos(0, HUB_Y, 0);
+        pd.islandCreatedX = origin.getX();
+        pd.islandCreatedY = origin.getY();
+        pd.islandCreatedZ = origin.getZ();
         markDirty();
         return pd.worldSlot;
+    }
+
+    /** The recorded island creation stamp, or null for an island that predates the record
+     *  (or a player who has none). Read-only view for admin tooling. */
+    public IslandCreationRecord getIslandCreation(UUID playerId) {
+        PlayerData pd = getPlayerData(playerId);
+        if (pd.worldSlot < 0) return null;
+        return new IslandCreationRecord(pd.islandCreatedAtMillis, pd.islandCreatedName,
+            pd.islandCreatedDimension, pd.islandCreatedX, pd.islandCreatedY, pd.islandCreatedZ);
+    }
+
+    /**
+     * Where and when an island was first created. Any field may be unset on an island that
+     * predates the record: {@code createdAtMillis} 0, blank strings, {@link Integer#MIN_VALUE}
+     * coordinates. Callers render "unknown" rather than inventing a value, because a
+     * plausible-looking guess is the one thing an audit record must never produce.
+     */
+    public record IslandCreationRecord(long createdAtMillis, String ownerName,
+                                        String dimensionId, int x, int y, int z) {
+        public boolean hasTimestamp() { return createdAtMillis > 0L; }
+        public boolean hasOrigin() { return x != Integer.MIN_VALUE; }
     }
 
     /** Get the world origin (hub center) for a player's personal island, or null if not

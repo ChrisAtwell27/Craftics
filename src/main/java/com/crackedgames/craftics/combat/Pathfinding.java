@@ -462,8 +462,22 @@ public class Pathfinding {
         return self != null && self.isBoss();
     }
 
-    /** Widest gap a boss will leap, in tiles. */
-    private static final int BOSS_MAX_GAP = 2;
+    /**
+     * Widest gap a boss will leap, in tiles. A boss clears far more than a player can (
+     * {@link #MAX_JUMP_GAP} is 2): the arena splitting itself in half, or a trench dug across
+     * the approach, should cost the party position and time, not switch the boss off.
+     */
+    private static final int BOSS_MAX_GAP = 4;
+
+    /**
+     * What a boss pays to vault, in movement, regardless of how wide the gap is.
+     *
+     * <p>Flat 1, unlike the player's {@code gap + 2}. A leap is one bound: charging it should
+     * not eat the boss's whole turn, and pricing it by width made the wide gaps the boss most
+     * needs to clear the ones it could never afford. The practical effect is that a chasing
+     * boss treats a hole in the floor as a single step.
+     */
+    private static final int BOSS_VAULT_COST = 1;
 
     /**
      * Add "leap over the gap" A* edges from {@code current} in one direction.
@@ -494,7 +508,7 @@ public class Pathfinding {
             if (!land.equals(to) && isBlockedBy(arena, land, self, false)) continue;
             if (land.equals(to) && isBlockedBy(arena, land, self)) continue;
 
-            relax(open, gScore, cameFrom, current, land, currentG + gap + 1, maxSteps);
+            relax(open, gScore, cameFrom, current, land, currentG + BOSS_VAULT_COST, maxSteps);
         }
     }
 
@@ -983,6 +997,37 @@ public class Pathfinding {
             var tile = arena.getTile(step);
             if (tile != null && tile.getType() == TileType.OBSTACLE) return false;
         }
+    }
+
+    /**
+     * Every tile the straight line from {@code from} to {@code to} passes through, {@code from}
+     * excluded and {@code to} included, walked with the same Bresenham trace
+     * {@link #hasLineOfSight} uses so a beam covers exactly the tiles sight is checked along.
+     *
+     * <p>Unlike the sight test this does not stop at obstacles: it is the geometry of a line,
+     * and what the caller does about a wall in the way is the caller's rule.
+     */
+    public static List<GridPos> traceLine(GridPos from, GridPos to) {
+        List<GridPos> out = new ArrayList<>();
+        if (from == null || to == null || from.equals(to)) return out;
+        int x = from.x();
+        int z = from.z();
+        int dx = Math.abs(to.x() - x);
+        int dz = Math.abs(to.z() - z);
+        int sx = x < to.x() ? 1 : -1;
+        int sz = z < to.z() ? 1 : -1;
+        int err = dx - dz;
+
+        // Bounded by the arena's own span so a malformed pair can never spin here.
+        int guard = dx + dz + 2;
+        while (guard-- > 0) {
+            int e2 = 2 * err;
+            if (e2 > -dz) { err -= dz; x += sx; }
+            if (e2 < dx) { err += dx; z += sz; }
+            out.add(new GridPos(x, z));
+            if (x == to.x() && z == to.z()) break;
+        }
+        return out;
     }
 
     private static List<GridPos> reconstructSizedPath(Map<GridPos, GridPos> cameFrom, GridPos end,

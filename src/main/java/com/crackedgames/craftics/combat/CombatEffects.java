@@ -32,7 +32,10 @@ public class CombatEffects {
         SOAKED("Soaked", "-1 speed, 2x lightning"),
         CONFUSION("Confusion", "attack allies"),
         AIRTIME("Airtime", "+2 ranged range/level; +0.5x next weapon hit/level"),
-        WARPED("Warped", "movement mirrored");
+        WARPED("Warped", "movement mirrored"),
+        // The player-side twin of CombatEntity's Marked, and it means the same thing on
+        // both sides of the grid: everything that hits you hits twice as hard.
+        MARKED("Marked", "2x damage taken");
 
         public final String displayName;
         public final String description;
@@ -442,7 +445,8 @@ public class CombatEffects {
     public static boolean isDebuff(EffectType type) {
         return switch (type) {
             case POISON, SLOWNESS, WEAKNESS, WITHER, BURNING, BLEEDING,
-                 BLINDNESS, MINING_FATIGUE, LEVITATION, DARKNESS, SOAKED, CONFUSION, WARPED -> true;
+                 BLINDNESS, MINING_FATIGUE, LEVITATION, DARKNESS, SOAKED, CONFUSION, WARPED,
+                 MARKED -> true;
             default -> false;
         };
     }

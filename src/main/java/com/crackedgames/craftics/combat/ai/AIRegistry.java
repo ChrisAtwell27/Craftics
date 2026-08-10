@@ -180,6 +180,18 @@ public class AIRegistry {
         registerStateful(key, factory);
     }
 
+    /**
+     * Drop a stateful registration from both maps. The counterpart to
+     * {@link #registerStateful}, for content that can be deleted at runtime: a raid boss
+     * removed by command or by deleting its JSON left its factory here forever, still
+     * holding the definition that no longer exists.
+     */
+    public static void unregisterStateful(String key) {
+        if (key == null) return;
+        BOSS_FACTORIES.remove(key);
+        STRATEGIES.remove(key);
+    }
+
     public static EnemyAI get(String entityTypeId) {
         return STRATEGIES.getOrDefault(entityTypeId, DEFAULT_AI);
     }

@@ -38,6 +38,7 @@ public final class SculkSensorEffect implements BiomeEffect {
     private static final int RANGE = 2;              // Chebyshev trigger + boundary radius
     private static final int REARM_ROUNDS = 2;        // re-arm every other round after firing
     private static final int SILVERFISH_PER_TRIGGER = 2;
+    private static final int MARKED_ON_TRIGGER = 2;   // rounds of Marked for tripping a sensor
     private static final int MIN_SENSORS = 1;
     private static final int MAX_SENSORS = 3;         // inclusive
 
@@ -135,8 +136,13 @@ public final class SculkSensorEffect implements BiomeEffect {
             // Trigger: darkness to the whole party, a shriek, a telegraphed silverfish ambush,
             // then disarm for REARM_ROUNDS.
             ctx.applyPartyEffect(CombatEffects.EffectType.DARKNESS, 1);
+            // Setting one off gives away where you are. The party is Marked for two rounds -
+            // double damage taken - which is a real cost on its own and the thing the Warden's
+            // own sonic boom keys off, so tripping a sensor in the deep dark hands the boss
+            // the opening it has been listening for.
+            ctx.applyPartyEffect(CombatEffects.EffectType.MARKED, MARKED_ON_TRIGGER);
             ctx.playSound(SoundEvents.BLOCK_SCULK_SHRIEKER_SHRIEK, 0.9f, 1.0f);
-            ctx.message("§3A sculk shrieker wails - the dark closes in!");
+            ctx.message("§3A sculk shrieker wails - the dark closes in, and something has your scent!");
 
             List<GridPos> spots = freeTilesNear(ctx, s.tile, SILVERFISH_PER_TRIGGER);
             pendingSpawns.addAll(spots);

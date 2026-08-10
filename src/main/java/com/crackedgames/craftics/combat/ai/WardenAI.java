@@ -3,13 +3,15 @@ package com.crackedgames.craftics.combat.ai;
 import com.crackedgames.craftics.combat.CombatEntity;
 import com.crackedgames.craftics.combat.Pathfinding;
 import com.crackedgames.craftics.combat.ai.boss.BossAI;
-import com.crackedgames.craftics.combat.ai.boss.BossWarning;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Deep Dark Boss - "The Warden" (Enhanced with Vibration Sense)
@@ -26,8 +28,14 @@ import java.util.List;
  * - Sculk Shrieker: trap tile, triggers on proximity, 3 damage + vibration override
  * - Darkness Pulse: all tiles go dark for 1 turn, Warden gets +2 speed
  * - Tremor Stomp: when confused, stomp sends tremors in 4 cardinal directions
+ * - Fissure: tears a band of floor out of the arena for good. Never under itself, and it
+ *   will not walk into one it has telegraphed. The hole fills itself back in over the
+ *   following rounds as the ceiling collapses into it (CombatManager#tickFissureDebris).
  * - (Existing) Melee: devastating close-range attack
- * - (Existing) Sonic Boom (Phase 2): range 4, ignores LOS
+ * - Sonic Boom (Phase 2): a 3-wide lane to EVERY player on the field, any range, no line of
+ *   sight needed, telegraphed a turn ahead. Whoever it catches is Marked, blinded and left
+ *   in the dark for 4 turns; while a mark is live the Warden hunts that player specifically
+ *   and gains speed, and no thrown distraction will pull it off them.
  *
  * Phase 2 - "The Ancient Awakens":
  * - +3 bonus damage, Sonic Boom unlocked
@@ -43,6 +51,16 @@ public class WardenAI extends BossAI {
     private static final String CD_SHRIEKER = "sculk_shrieker";
     private static final String CD_STOMP = "tremor_stomp";
     private static final String CD_FISSURE = "fissure";
+    private static final String CD_SONIC = "sonic_boom";
+
+    /**
+     * Rounds between booms. The boom now covers a lane to every player at once instead of
+     * poking one of them, so it needs a gap: uncapped, phase two was a beam every single
+     * turn and the Marked it leaves behind would never lapse.
+     */
+    private static final int SONIC_COOLDOWN = 3;
+    /** Tiles to each side of the beam's centre line. 1 makes the lane 3 wide. */
+    private static final int SONIC_SPREAD = 1;
 
     /** Turn the first fissure opens - late enough that the fight has a shape to ruin. */
     private static final int FISSURE_FIRST_TURN = 4;
@@ -56,6 +74,28 @@ public class WardenAI extends BossAI {
 
     /** Rows/columns already cracked, so a second fissure doesn't reopen the same ground. */
     private final List<Integer> fissureLines = new ArrayList<>();
+
+    /**
+     * The crack that is telegraphed right now, from the turn it is announced to the turn it
+     * opens. Ground the Warden refuses to walk onto, so it can never drop itself into its
+     * own hole.
+     *
+     * <p>The plain campaign flow ends the Warden's turn the moment it telegraphs, and the
+     * crack opens before it decides again, so today this mainly guards the charging-advance
+     * path (a boss deep enough in the campaign acts during its telegraph turn) and any future
+     * flow that lets it move with a fissure outstanding. It is the invariant that matters,
+     * not the one route that currently reaches it.
+     */
+    private final Set<GridPos> pendingFissureTiles = new HashSet<>();
+
+    /**
+     * The tile of a player its sonic boom has Marked, refreshed every round by
+     * {@code CombatManager.tickWardenMarkHunt}, or null when nobody is marked.
+     *
+     * <p>A live mark outranks every other lead: a marked player is one the Warden can
+     * genuinely track, so a thrown snowball no longer pulls it away from them.
+     */
+    private GridPos huntedTile = null;
 
     // Vibration tracking
     private GridPos vibrationTarget = null;
@@ -90,6 +130,14 @@ public class WardenAI extends BossAI {
     }
 
     /**
+     * Set (or clear, with null) the tile of the player its sonic boom has Marked. Pushed once
+     * per round by CombatManager, which owns the mark's lifetime.
+     */
+    public void setHuntedTile(GridPos target) {
+        this.huntedTile = target;
+    }
+
+    /**
      * Called by CombatManager when a shrieker is triggered.
      * Overrides projectile distraction.
      */
@@ -121,10 +169,23 @@ public class WardenAI extends BossAI {
      * <p>Returns an empty list when there's nowhere sensible left to split, which retires the
      * ability naturally on a board that's already in pieces.
      */
-    private List<GridPos> planFissure(GridArena arena, GridPos playerPos) {
+    private List<GridPos> planFissure(CombatEntity self, GridArena arena, GridPos playerPos) {
         int w = arena.getWidth();
         int h = arena.getHeight();
         int width = isPhaseTwo() ? FISSURE_WIDTH_P2 : FISSURE_WIDTH;
+
+        // Every tile the Warden itself covers. The crack is never laid under its own feet:
+        // the javadoc above has always promised that and the code never did it, so a fissure
+        // that happened to line up with the boss opened the floor beneath it.
+        Set<GridPos> ownFootprint = new HashSet<>();
+        GridPos base = self.getGridPos();
+        if (base != null) {
+            for (int dx = 0; dx < self.getSizeX(); dx++) {
+                for (int dz = 0; dz < self.getSizeZ(); dz++) {
+                    ownFootprint.add(new GridPos(base.x() + dx, base.z() + dz));
+                }
+            }
+        }
 
         // Split across the LONGER axis so the crack actually reaches both edges.
         boolean splitOnZ = h >= w;
@@ -145,6 +206,7 @@ public class WardenAI extends BossAI {
                 var tile = arena.getTile(pos);
                 if (tile == null) continue;
                 if (tile.getType() == TileType.VOID) continue;    // already open
+                if (ownFootprint.contains(pos)) continue;         // never under the Warden
                 crack.add(pos);
             }
         }
@@ -157,6 +219,11 @@ public class WardenAI extends BossAI {
     protected EnemyAction chooseAbility(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
         int bonusDamage = isPhaseTwo() ? 3 : 0;
+
+        // chooseAbility only runs once a telegraph has resolved (BossAI holds the turn while
+        // one is pending), so reaching here means last turn's crack has already opened and
+        // the no-go zone is spent.
+        pendingFissureTiles.clear();
 
         // Tick distraction timer
         if (distractionActive) {
@@ -172,8 +239,15 @@ public class WardenAI extends BossAI {
             self.heal(sculkTiles.size());
         }
 
-        // Determine effective target (vibration or player)
-        GridPos effectiveTarget = (vibrationTarget != null) ? vibrationTarget : playerPos;
+        // Determine effective target. A live sonic-boom mark wins outright; failing that,
+        // the last vibration it heard; failing that, the player.
+        GridPos effectiveTarget = huntedTile != null ? huntedTile
+            : (vibrationTarget != null) ? vibrationTarget : playerPos;
+        if (huntedTile != null) {
+            // A mark is a lock, so a projectile thrown while it is live is not a way out.
+            distractionActive = false;
+            isConfused = false;
+        }
 
         // If confused (reached distraction tile, found nothing) - Tremor Stomp or idle
         if (isConfused) {
@@ -200,7 +274,6 @@ public class WardenAI extends BossAI {
             }
         }
 
-        int distToTarget = self.minDistanceTo(effectiveTarget);
         int distToPlayer = self.minDistanceTo(playerPos);
 
         // FISSURE - the Warden splits the arena.
@@ -216,9 +289,13 @@ public class WardenAI extends BossAI {
         // opens costs damage, but the tile is lost either way.
         int fissureCooldown = isPhaseTwo() ? FISSURE_COOLDOWN / 2 : FISSURE_COOLDOWN;
         if (getTurnCounter() >= FISSURE_FIRST_TURN && !isOnCooldown(CD_FISSURE)) {
-            List<GridPos> crack = planFissure(arena, playerPos);
+            List<GridPos> crack = planFissure(self, arena, playerPos);
             if (!crack.isEmpty()) {
                 setCooldown(CD_FISSURE, fissureCooldown);
+                // Remembered for the telegraph turn: the Warden will not walk into the
+                // ground it is about to drop out from under itself.
+                pendingFissureTiles.clear();
+                pendingFissureTiles.addAll(crack);
                 // The "fissure" effect name is what turns these tiles to VOID in the resolver -
                 // the damage is incidental, the hole is the attack.
                 return new EnemyAction.BossAbility("fissure",
@@ -258,9 +335,18 @@ public class WardenAI extends BossAI {
             return new EnemyAction.Attack(self.getAttackPower() + bonusDamage + sculkBonus);
         }
 
-        // Sonic Boom (Phase 2) - target highest-priority vibration source
-        if (isPhaseTwo() && distToTarget <= 4) {
-            return new EnemyAction.RangedAttack(self.getAttackPower() + bonusDamage, "sonic_boom");
+        // Sonic Boom (Phase 2): a beam down every line it can hear, at any range, whether or
+        // not it is currently hunting anyone. Telegraphed like everything else, so the shape
+        // is on the floor for a turn before it fires and the play is to leave the lane.
+        if (isPhaseTwo() && !isOnCooldown(CD_SONIC)) {
+            List<GridPos> beam = sonicBeamTiles(self, arena, playerPos);
+            if (!beam.isEmpty()) {
+                setCooldown(CD_SONIC, SONIC_COOLDOWN);
+                return new EnemyAction.BossAbility("sonic_boom",
+                    new EnemyAction.TileAreaAttack(beam, myPos,
+                        self.getAttackPower() + bonusDamage, "sonic_boom"),
+                    beam);
+            }
         }
 
         // Rush toward effective target
@@ -274,9 +360,96 @@ public class WardenAI extends BossAI {
         if (endPos.manhattanDistance(playerPos) <= 1) {
             sculkTiles.add(endPos);
             int sculkBonus = countAdjacentSculk(endPos);
-            return new EnemyAction.MoveAndAttack(path, self.getAttackPower() + bonusDamage + sculkBonus);
+            return keepOffPendingFissure(
+                new EnemyAction.MoveAndAttack(path, self.getAttackPower() + bonusDamage + sculkBonus));
         }
-        return new EnemyAction.Move(path);
+        return keepOffPendingFissure(new EnemyAction.Move(path));
+    }
+
+    /**
+     * The shape of a sonic boom: one lane per player on the field, each a straight line from
+     * the Warden to them, widened by {@link #SONIC_SPREAD} tiles on either side.
+     *
+     * <p>Lanes overlap into one set, so a player standing behind another is in the same beam
+     * rather than granted a second one, and the Warden's own footprint is left out: the blast
+     * leaves it, it does not wash over it.
+     */
+    private List<GridPos> sonicBeamTiles(CombatEntity self, GridArena arena, GridPos playerPos) {
+        Set<GridPos> beam = new LinkedHashSet<>();
+        Set<GridPos> ownFootprint = new HashSet<>();
+        GridPos base = self.getGridPos();
+        if (base != null) {
+            for (int dx = 0; dx < self.getSizeX(); dx++) {
+                for (int dz = 0; dz < self.getSizeZ(); dz++) {
+                    ownFootprint.add(new GridPos(base.x() + dx, base.z() + dz));
+                }
+            }
+        }
+
+        List<GridPos> targets = new ArrayList<>(arena.getAllPlayerGridPositions());
+        if (targets.isEmpty() && playerPos != null) targets.add(playerPos);
+
+        for (GridPos target : targets) {
+            if (target == null) continue;
+            GridPos from = self.nearestTileTo(target);
+            List<GridPos> centre = Pathfinding.traceLine(from, target);
+            GridPos prev = from;
+            for (GridPos on : centre) {
+                addBeamTile(arena, beam, ownFootprint, on);
+                // Widen across the direction of travel. Using the per-step direction keeps
+                // the lane square to the beam even where a diagonal line staircases.
+                int sdx = on.x() - prev.x();
+                int sdz = on.z() - prev.z();
+                for (int off = 1; off <= SONIC_SPREAD; off++) {
+                    addBeamTile(arena, beam, ownFootprint,
+                        new GridPos(on.x() - sdz * off, on.z() + sdx * off));
+                    addBeamTile(arena, beam, ownFootprint,
+                        new GridPos(on.x() + sdz * off, on.z() - sdx * off));
+                }
+                prev = on;
+            }
+        }
+        return new ArrayList<>(beam);
+    }
+
+    /** Add one in-bounds tile to the beam, skipping the Warden's own ground. */
+    private static void addBeamTile(GridArena arena, Set<GridPos> beam,
+                                    Set<GridPos> ownFootprint, GridPos pos) {
+        if (!arena.isInBounds(pos) || ownFootprint.contains(pos)) return;
+        beam.add(pos);
+    }
+
+    /**
+     * The Warden advances during its telegraph turn like every other late-game boss, so the
+     * one turn it is most likely to walk into a fissure is the turn the fissure is pending.
+     * Route that advance through the same guard the normal chase uses.
+     */
+    @Override
+    public EnemyAction getChargingAdvanceAction(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return keepOffPendingFissure(super.getChargingAdvanceAction(self, arena, playerPos));
+    }
+
+    /**
+     * Trim a movement action so it stops short of ground that is about to fall away.
+     *
+     * <p>A truncated {@code MoveAndAttack} becomes a plain {@code Move}: the attack half was
+     * only valid because the path ended next to the target, and it no longer does. An action
+     * that never touches the crack is returned untouched, which is the usual case.
+     */
+    private EnemyAction keepOffPendingFissure(EnemyAction action) {
+        if (pendingFissureTiles.isEmpty()) return action;
+        List<GridPos> path = action instanceof EnemyAction.Move mv ? mv.path()
+            : action instanceof EnemyAction.MoveAndAttack maa ? maa.path()
+            : null;
+        if (path == null || path.isEmpty()) return action;
+
+        int stopAt = path.size();
+        for (int i = 0; i < path.size(); i++) {
+            if (pendingFissureTiles.contains(path.get(i))) { stopAt = i; break; }
+        }
+        if (stopAt == path.size()) return action;                 // never crosses the crack
+        if (stopAt == 0) return new EnemyAction.Idle();           // the first step is the crack
+        return new EnemyAction.Move(new ArrayList<>(path.subList(0, stopAt)));
     }
 
     private int countAdjacentSculk(GridPos pos) {

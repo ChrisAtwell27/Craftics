@@ -27,6 +27,13 @@ public final class RaidBossRegistry {
     /** Copy bundled examples if needed, then re-read the config directory. */
     public static void reload(MinecraftServer server) {
         RaidBossJsonLoader.copyBundledIfAbsent(server);
+        // Retire the AI keys of the bosses being dropped before clearing the map. Without
+        // this a boss whose JSON was deleted kept a live factory in AIRegistry pinned to
+        // the definition it was registered with, so the registry disagreed with the
+        // definitions it exists to serve. Re-registration below covers the ones that stay.
+        for (RaidBossDefinition def : DEFS.values()) {
+            AIRegistry.unregisterStateful(def.bossAiRegistryKey());
+        }
         DEFS.clear();
         for (RaidBossDefinition def : RaidBossJsonLoader.loadAll()) {
             put(def);
@@ -41,7 +48,8 @@ public final class RaidBossRegistry {
     }
 
     public static void remove(String id) {
-        DEFS.remove(id);
+        RaidBossDefinition gone = DEFS.remove(id);
+        if (gone != null) AIRegistry.unregisterStateful(gone.bossAiRegistryKey());
     }
 
     public static RaidBossDefinition get(String id) {

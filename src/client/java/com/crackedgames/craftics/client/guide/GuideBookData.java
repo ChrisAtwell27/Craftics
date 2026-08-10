@@ -658,7 +658,8 @@ public class GuideBookData {
                 "- Sculk Spread: corrupts floor tiles\n" +
                 "- Sculk Shriekers: alarm blocks that reveal you - destroy them\n" +
                 "- Darkness Pulse: dims the arena\n\n" +
-                "Phase 2 - The Ancient Awakens: unlocks Sonic Boom, a straight-line blast that IGNORES defense.")));
+                "- Fissure: rips a band of floor away for good. The ceiling then collapses into it, 1-5 loads of rock per turn, until it is filled back in - and a load that lands on you hits for 10.\n\n" +
+                "Phase 2 - The Ancient Awakens: +3 damage and Sonic Boom - a telegraphed 3-tile-wide lane down to EVERY player, at any range, through anything. It leaves you Marked (double damage taken), blinded and in the dark for 4 turns, and the Warden hunts whoever it marked until that wears off. Tripping a sculk sensor Marks you too.")));
         enemies.add(mob("The Molten King", "minecraft:magma_cream",
             st("Boss", "55", "6", "3", "2", "1", "4x4", "Water", "Blunt", null),
             new Page("The Molten King",
@@ -1429,14 +1430,14 @@ public class GuideBookData {
                 new Box("minecraft:tnt", "TNT", "2 AP",
                     "Detonates next round - 8/5/3 damage +24/15/9% max HP by distance, radius 2. Hurts everyone, including you."),
                 new Box("minecraft:bell", "Bell", "2 AP",
-                    "Stuns all enemies within 2 tiles."))),
+                    "Set down next to you. Stuns all enemies within 2 tiles of it."))),
             new Page("Offensive Items (2)", "", List.of(
                 new Box("minecraft:crossbow", "Crossbow Item-Throw", "2 AP",
                     "3 damage at 4-tile range."),
                 new Box("minecraft:fire_charge", "Fire Charge", "1 AP",
-                    "4 fire damage."),
+                    "Thrown, 4-tile range: 4 Special damage +8% max HP, or lights open ground."),
                 new Box("minecraft:spore_blossom", "Spore Blossom", "1 AP",
-                    "Radius-3 AoE, -1 Speed to enemies."))),
+                    "Set down next to you. Radius-3 AoE, -1 Speed to enemies."))),
             new Page("Defensive Items", "", List.of(
                 new Box("minecraft:totem_of_undying", "Totem of Undying", "passive",
                     "Auto-revive at half HP - or EAT it for a full heal."),
@@ -1478,7 +1479,7 @@ public class GuideBookData {
         items.add(new Entry("Tile Effects", "minecraft:campfire", List.of(
             new Page("Placed Items", "", List.of(
                 new Box("minecraft:lava_bucket", "Lava Bucket", "",
-                    "3 fire damage per turn to enemies. Keeps the empty bucket."),
+                    "Poured on an adjacent tile: 3 fire damage per turn to enemies. Keeps the empty bucket."),
                 new Box("minecraft:campfire", "Campfire", "",
                     "2 HP/turn to allies in the surrounding 5x5, plus light radius 3."),
                 new Box("minecraft:honey_block", "Honey Block", "",
@@ -1518,7 +1519,7 @@ public class GuideBookData {
         items.add(new Entry("Terrain Tools", "minecraft:iron_pickaxe", List.of(
             new Page("Modify the Arena", "", List.of(
                 new Box("minecraft:water_bucket", "Water Bucket", "",
-                    "Place a water tile on clean floor - fishable, keeps the bucket."),
+                    "Pour a water tile on clean floor next to you - fishable, keeps the bucket. Not in the Nether."),
                 new Box("minecraft:sponge", "Sponge", "",
                     "Absorbs adjacent water, but the sponge block itself blocks the tile."),
                 new Box("minecraft:iron_pickaxe", "Pickaxe", "",

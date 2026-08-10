@@ -1,16 +1,36 @@
 ﻿Changelog
-0.3.6.3
+0.3.7
 Softlocks and Lost Inventories
 
 - The victory screen could be lost with its choice still unanswered, which left you standing in the arena unable to move or use anything. The server holds the whole party still until that button is pressed, and closing the screen is not something the screen itself can refuse - anything that opens or clears a screen replaces it silently, and there was then nothing left that would ever ask again. The screen now comes back on its own whenever it goes missing with a choice outstanding, keeping the reward reveal where it left off
 - `/home` works again once a fight is decided. It is blocked mid-combat so it cannot be used to escape a losing fight, but that guard also covered the post-victory and game-over windows - the exact moments where a lost screen leaves you with nothing else to try. Winning is not escaping, so those two phases now let it through
-- Breaking the bed you slept in no longer respawns you into the void. Every world here is void-generated, so vanilla's "your bed is gone, use the world spawn" fallback hands back a coordinate in open air: you fall out of the world and die a second time, and that death is an ordinary one that drops your entire inventory. A respawn that lands over nothing is now dropped onto the highest solid block in the same column, or returned to your hub if that column is empty
+- Breaking the bed you slept in no longer respawns you into the void. Every world here is void-generated, so vanilla's "your bed is gone, use the world spawn" fallback hands back a coordinate in open air: you fall out of the world and die a second time, and that death is an ordinary one that drops your entire inventory
+- Getting back to your island no longer depends on your island keeping the shape it was generated with. Every safety net in the game used to check a single column of blocks - the coordinate it remembered, straight down. Dig out that spot, terraform the yard, move your base across the island, and the check meant to catch a void landing would confirm one instead, dropping you into open air above ground you built yourself. The game now searches outward from where you were headed until it finds somewhere you can actually stand, so it always lands you at the nearest solid ground rather than giving up on the one column it knew about
+- That search covers everything that puts you back on your island: respawning, `/home`, leaving a fight, finishing an infinite run, walking out of the trading hall, and returning from a raid boss. Coming back from a raid used to send you to the lobby if your exact departure spot had since lost its floor, which was a long way to walk home from
+- As a last resort, if there is genuinely nothing left to stand on anywhere near your hub, a single block is placed at your spawn point and you land on that. One block, not a rebuilt starter room: clearing the site is a decision as often as it is an accident, and coming home to the old hub stamped back over your plot would undo the work. You get a foothold on your own island and nothing more
+- Landing spots need two blocks of headroom now, not one. A single gap of air is a place you can technically stand and then suffocate in, which on a rescue is just a slower version of the problem
+- Keep inventory is on everywhere: the lobby, your island, and raid arenas. Every world here is void generated, so an ordinary misstep drops your gear into a place there is no walking back to, and dying to the world was never meant to be the difficulty - the fights are. Losing a fight still costs what the death-penalty config says it costs, which is a separate system and is unchanged
 
 Combat Fixes
 
 - Enemies standing in fire are attacked instead of the fire being put out. Attacking a burning tile stamps the flames out, and that check claimed the click before it ever looked for a target - so hitting a mob that had walked into a fire spent your AP extinguishing the burn that was damaging it
 - Projectiles no longer count as kills. A boss fireball, wither skull or seeker is a real entity on the grid and is retired the instant it lands on anything, which ran the full kill pipeline: every hit the party took raised the kill streak, paid streak emeralds, healed Symbiote, refunded Rampage AP, and inflated the enemies-killed total
-- The Warden's fissure is telegraphed again. Telegraphs are dropped from the fourth biome onward, which is fair for an attack that damages a tile and not for one that permanently deletes a band of floor across the whole arena - especially since the Warden vaults the gap it just made and you cannot
+- Special attacks always telegraph now, in every biome, for every boss. Warnings used to be dropped from the fourth biome onward, and that rule had been carved back four separate times - Void Walker's rifts, then infinite bosses, then raid bosses, then the Warden's fissure - each time because the un-telegraphed version turned out to be indefensible. The warning turn is the counterplay: it is the only thing separating a boss ability from unavoidable damage, and an attack you cannot see coming is not harder, it is a die roll. Late-game pressure still escalates, just not by hiding information - a deep-biome boss moves or strikes during its telegraph turn instead of standing still, and infinite and raid bosses stack actions per turn on top of that
+
+The Warden
+
+- The fissure never opens under the Warden itself. The code that picks where the arena tears has always been documented as skipping the boss's own footprint - "a boss that drops itself into the void is a comedy, not a threat" - and it never actually did it, so a crack that happened to line up took the ground out from under the Warden along with everything else
+- The Warden will not walk into a crack it has already telegraphed. Its movement stops at the edge of ground it is about to delete, which matters the moment anything lets it move with a fissure outstanding
+- The hole fills itself back in. From the round after a fissure opens, the ceiling of the deep dark starts collapsing into it: 1 to 5 loads of cobble come down per round on random tiles of the crack, never more than two on the same tile. The first load piles up rubble you can stand on a block down, the second brings the tile level with the floor again. A load that lands on a player or a mob deals 10 damage, which makes a half-filled crack a gamble rather than a free shortcut, and it means the arena repairs itself over several rounds instead of being permanently one band of floor poorer
+- Sonic Boom is a lane, not a poke. It draws a straight line from the Warden to every player on the field, widens each line by a tile on both sides, and telegraphs the whole shape a turn ahead. Range and line of sight are irrelevant - it is sound, it goes through walls and it reaches the far corner - so the counterplay is leaving the lane, not standing outside some radius. It fires whether or not the Warden is currently hunting anyone, on a 3 round cooldown
+- Anyone the boom catches is Marked, Blinded and left in Darkness for 4 turns, and while a mark is live the Warden hunts that player specifically and moves 2 faster. A thrown projectile will not pull it off a marked target: a mark is a lead it can actually follow, so the distraction trick stops working until the mark lapses, and then the Warden goes back to hunting by sound
+- Marked now exists on the player side and means exactly what it means on an enemy: everything that hits you hits twice as hard. It is applied after all mitigation, the same place the enemy version is applied, so no armor or resistance is skipped by it
+- Tripping a sculk sensor Marks the party for 2 turns on top of the darkness it already caused. Setting one off is announcing where you are, and in the deep dark the thing listening is the boss
+
+Boss Movement
+
+- Bosses clear a 4 tile gap, up from 2, and a leap costs 1 movement instead of scaling with the width. A pit dug across the approach or an arena split in half should cost the party position and time, not switch the boss off for the rest of the fight - and pricing a vault by its width made the wide gaps a boss most needs to clear the ones it could never afford. Ordinary mobs still cannot jump at all, so a pickaxe trench keeps its whole purpose against everything that is not a boss
+- A vault is visibly a jump. The boss arcs over the gap with the arc scaling to how far it is going, takes longer in the air than a walked tile, and roars on takeoff and thuds on landing. Before this it slid flat across the hole, which read as a teleport or a bug
 
 Enemy Scaling
 
@@ -21,6 +41,7 @@ Enemy Scaling
 Arena Cleanup
 
 - Items dropped during a fight are removed with it. Arena slots are reused per level and a dropped item outlived the fight that made it, so returning to a level opened it littered with old drops and every arena the world had ever built kept leaking entities
+- The sponge actually removes the water it soaks up. It was draining the tiles in the grid model only, so the water block stayed standing in the world: the arena showed a pool on ground the rules had already decided was dry, and you could still see it and fish it. Draining now runs through the same tile reset the empty bucket uses, world blocks included, and the sponge lands on dry floor rather than floating over the pool it was meant to absorb
 
 Nether Consistency
 
@@ -31,11 +52,17 @@ Item Targeting
 - Cobweb no longer reaches across the whole arena. It had no range check at all, so the strongest single-target control in the game - a full turn skipped - could be thrown at a boss on the far side of the map, through a wall. It now uses the same 4-tile line-of-sight rule as the snowball, egg, brick and ink sac
 - Cobweb no longer webs your own allies. There was no ally check behind the "No enemy at target!" message, so clicking a tamed wolf spent the web and made the wolf skip its turn while the game insisted nothing was there
 - Splash potions no longer hit your own allies. The blast list fed the enemy-side effect path, which only ever applies the harmful half of a potion, so a pet caught in the radius took the harming, poison or wither branch with no healing branch to answer it - a splash Instant Health did nothing to a wounded wolf and a splash Harming killed it. Every other area effect in the mod already filtered allies out
+- Buckets are poured at arm's length. Water, lava and the empty bucket had no range check of any kind, so lava could be poured onto a tile on the far side of the arena and the empty bucket could delete someone's lava moat from across the map. They now need an adjacent tile, which is the rule the sponge and the jukebox sitting beside them in the same file already demanded for the same physical action
+- The bell and the spore blossom are set down next to you as well. Both place a block and fire an area effect the instant they land, so with no reach limit the bell was a mass stun deliverable to a boss standing well outside its reach
+- Fire charges answer to the throwable rule. The charge had no range limit and no line of sight check on either of its branches, so it could light the ground under a boss through a wall on the other side of the arena. It now uses the same 4-tile line-of-sight rule as the snowball, egg, brick, ink sac and cobweb
+- Fire charges no longer burn your own pet. An ally is alive, so a charge aimed at one fell straight through to the damage branch - the same hole the cobweb and the splash potion each had
+- Anvils no longer drop on your own allies. The target test checked that something was alive but never that it was an enemy, so clicking a tamed wolf dropped an anvil on it for half its maximum HP
 
 Combat Resolution
 
 - A sword sweep no longer hits a big enemy once per tile it stands on. A 2x2 spider occupies several of the squares around your target and was returned once for each, so one swing landed on it two or three times - and a two-target sweep could be spent entirely on that one mob while the genuine second neighbour beside it was never touched
 - The Enderman lands next to you when it blinks in. Its four approach tiles are offsets from your position, and when it started off-axis every one of them came out diagonal - two tiles away, not adjacent - while the teleport-and-strike action still resolved into a melee hit regardless. It now collapses onto the dominant axis first, the way the spider and cave spider ambushes already do
+- Area items count a big enemy once. The same "listed once per tile it stands on" mistake the sword sweep had was also in the bell and the spore blossom, so one blossom took 4 speed off a 2x2 spider while the zombie beside it lost 1, and the bell reported three enemies stunned when it had stunned one. The jukebox was doing the same thing in the party's favour, handing a multi-tile ally its speed buff once per tile
 
 Hub Effects
 
@@ -45,6 +72,10 @@ Achievements
 
 - Five boss achievements named the wrong boss. The descriptions were shifted one biome late, so killing the Ender Dragon read "Dragon Slayer - Defeat the Void Herald", and "Defeat the Hexweaver" and "Defeat the Void Walker" each appeared on two different achievements. Soul Sand Valley, Warped Forest, Basalt Deltas, Outer End Islands and Dragon's Nest now name the boss you actually fought, in both the toast and the advancement entry
 - The weapon-skills section header still counted the feat that was removed for having no spears in 1.21.1
+
+Raid Bosses
+
+- Deleting a raid boss actually removes it. Every definition registers a boss AI under its own key, and nothing ever unregistered one: `/raidboss edit delete` and a reload after removing a JSON both dropped the definition while leaving a live AI factory behind, still holding the boss that no longer existed. Registering something now has a matching way to retire it
 
 Config Screen
 
@@ -57,6 +88,9 @@ Documentation
 - The Armor Class summary quoted a 40% dodge cap. The cap is 60%. It also still listed Resistance as an Armor Class source, which the body of the same method has a note explaining it is not: Resistance reduces incoming damage directly
 - The enemy-defense table's full-set totals were computed as though the compression ran once over the set. It runs per piece, so leather is 4 not 2, iron and copper 6 not 4, and netherite 10 not 8 - up to 2 points, a tenth of an enemy's whole mitigation budget
 - The README claimed version 0.2.10 in its fact box and 0.1.0 in its status section, and headed a nine-biome Overworld table "8 Biomes" three lines above text saying you visit all nine
+- The README has been rewritten from 814 lines to about 130. Most of what it said was wrong and outdated.
+- The guide book described a Sonic Boom that did not exist: "a straight-line blast that IGNORES defense", when it was neither a line nor unblockable. Its entry, the Warden's page and the fissure are now written the way they actually behave
+- The guide book now states the reach on the items that just gained one, so the bell, spore blossom and the buckets say they are placed next to you and the fire charge gives its throw range
 
 0.3.6.2
 Combat, Events and Arena Fixes
@@ -232,7 +266,13 @@ Lobby
 - The lobby is protected. Blocks cannot be broken or placed, containers cannot be opened and entities cannot be interacted with within sixty-four blocks of the lobby spawn. Operators and creative mode are exempt so the room can still be built in place, and lootbox kiosks still open normally
 - /spawn now works as another way back to the lobby, alongside /lobby
 
-0.3.3
+Island Moderation
+
+- Islands now keep a creation record: when the island was made, the name its owner was going by at the time, the dimension it was created in and its origin. Written once, when the island first comes into existence, and never rewritten afterwards
+- The dimension and origin are recorded rather than worked out on demand even though they can be derived from a player's UUID today. That derivation has already changed once, when islands moved out of the old overworld lanes, and a record that quietly recalculates itself is worth nothing in exactly the argument it exists to settle
+- `/craftics island info <player>` reports all of it, along with where the hub sits now and whether the dimension is currently loaded. If the recorded dimension ever stops matching the live one, both are shown, because that difference is the whole answer
+- `/craftics island info` and `/craftics island tp` now accept a plain name or a UUID instead of only online players. A moderator looking into an island is usually doing it because the owner is not connected, and the old form could not name them. `tp` opens the island if it had been unloaded, which is the normal state for an offline player's world
+- Islands created before this release report their creation details as unknown rather than guessing. An audit record that invents a plausible answer is worse than one that admits it does not know
 Fire
 
 - Fire is a real thing on the battlefield now. It used to be a magma block painted onto the floor; it is now an actual flame standing on the ground, lit with flint and steel on an adjacent tile or a fire charge thrown at range

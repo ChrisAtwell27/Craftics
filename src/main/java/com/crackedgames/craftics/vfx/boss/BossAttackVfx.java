@@ -89,8 +89,8 @@ public final class BossAttackVfx {
 
     /** The payoff at resolve time: a category-shaped, boss-themed impact -
      *  slams ripple shockwaves, lines sweep tile-by-tile, magic bursts from a
-     *  final convergence, summons breathe souls out of cracked earth. Fired on
-     *  BOTH the telegraphed and the skip-telegraph (late-biome) paths. */
+     *  final convergence, summons breathe souls out of cracked earth. Fired both
+     *  when a telegraph resolves and when an untelegraphed (tile-less) ability lands. */
     public static void impact(ServerWorld world, GridArena arena,
                               CombatEntity boss, EnemyAction.BossAbility ba,
                               GridPos playerPos) {

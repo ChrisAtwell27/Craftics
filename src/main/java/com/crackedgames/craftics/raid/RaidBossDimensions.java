@@ -62,7 +62,11 @@ public final class RaidBossDimensions {
                 .setDifficulty(net.minecraft.world.Difficulty.NORMAL)
                 .setShouldTickTime(false)
                 // A raid arena is a stage. Nothing should wander into it.
-                .setGameRule(net.minecraft.world.GameRules.DO_MOB_SPAWNING, false);
+                .setGameRule(net.minecraft.world.GameRules.DO_MOB_SPAWNING, false)
+                // Keep inventory here too. A raid wipe is a scripted loss with its own rules
+                // (no item loss by design); this makes sure a stray death inside the arena
+                // cannot scatter someone's gear in a dimension that is about to be deleted.
+                .setGameRule(net.minecraft.world.GameRules.KEEP_INVENTORY, true);
             handle = Fantasy.get(server).openTemporaryWorld(
                 Identifier.of("craftics", PATH_PREFIX + instanceId.toString().toLowerCase()), config);
             HANDLES.put(instanceId, handle);

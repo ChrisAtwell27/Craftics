@@ -64,6 +64,25 @@ public final class HubTeleports {
             data.markDirty();
         }
         BlockPos hub = data.getHubTeleportPos(p.getUuid());
+        // Last resort. personalHubBuilt only tracks whether the game ever BUILT a hub, not
+        // whether one is still standing, so a player who mined theirs out (or moved their
+        // base and cleared the original site) keeps the flag and skips the self-heal above
+        // while having nowhere to land. If there is no ground anywhere near the hub
+        // coordinate, lay ONE block under the spawn point and put them on it.
+        //
+        // Deliberately a single block and not a rebuilt hub room: the island is theirs, and
+        // an empty site is a decision as often as it is an accident - somebody clearing space
+        // to build should not come home to the starter room stamped back over their plot. All
+        // this owes them is a foothold on their own island; what they do from there is theirs.
+        if (CrafticsMod.findLandingSpot(island, hub.getX(), hub.getZ(), hub.getY()) == null) {
+            CrafticsMod.LOGGER.warn("Island of {} has no ground within {} blocks of its hub; "
+                + "placing a single rescue block under the spawn at {}.",
+                owner, CrafticsMod.LANDING_SEARCH_RADIUS, hub);
+            island.setBlockState(hub.down(),
+                net.minecraft.block.Blocks.SMOOTH_STONE.getDefaultState());
+            p.sendMessage(net.minecraft.text.Text.literal(
+                "§eThere was nothing to stand on, so a block was placed at your spawn point."), false);
+        }
         crossDimMove(server, p, previousWorld, island, hub);
     }
 
@@ -123,10 +142,14 @@ public final class HubTeleports {
     private static void crossDimMove(MinecraftServer server, ServerPlayerEntity p,
                                       ServerWorld previousWorld, ServerWorld target, BlockPos pos) {
         dismountForTeleport(p);
-        // Clamp against the TARGET world (not the world the player is leaving).
-        int landY = CrafticsMod.hubLandingY(target, pos.getX(), pos.getZ(), pos.getY());
-        int y = landY != Integer.MIN_VALUE ? landY : pos.getY();
-        teleportTo(p, target, pos.getX() + 0.5, y, pos.getZ() + 0.5);
+        // Clamp against the TARGET world (not the world the player is leaving). Searching
+        // outward rather than probing the one stored column is what keeps a rebuilt island
+        // reachable: the stored hub coordinate stops being ground the moment somebody digs
+        // it out, and the old single-column check answered that by handing back the raw
+        // stored Y - a teleport into open air above their own island.
+        BlockPos landing = CrafticsMod.findLandingSpot(target, pos.getX(), pos.getZ(), pos.getY());
+        BlockPos dest = landing != null ? landing : pos;
+        teleportTo(p, target, dest.getX() + 0.5, dest.getY(), dest.getZ() + 0.5);
         // If we crossed out of a DIFFERENT island dim, unload it when now empty so
         // idle islands cost zero tick time. (No-op when previousWorld isn't an island
         // or is the same island we just entered.)
@@ -151,9 +174,9 @@ public final class HubTeleports {
         int fz = spawn != null ? spawn.getZ() : 0;
         int fy = spawn != null ? spawn.getY() : 65;
         dismountForTeleport(p);
-        int landY = CrafticsMod.hubLandingY(overworld, fx, fz, fy);
-        int y = landY != Integer.MIN_VALUE ? landY : fy;
-        teleportTo(p, overworld, fx + 0.5, y, fz + 0.5);
+        BlockPos lobbyLanding = CrafticsMod.findLandingSpot(overworld, fx, fz, fy);
+        BlockPos lobbyDest = lobbyLanding != null ? lobbyLanding : new BlockPos(fx, fy, fz);
+        teleportTo(p, overworld, lobbyDest.getX() + 0.5, lobbyDest.getY(), lobbyDest.getZ() + 0.5);
         if (spawn != null) p.setYaw(data.lobbySpawnYaw);
         if (previousWorld != overworld && IslandDimensions.isIslandWorld(previousWorld)) {
             java.util.UUID leftOwner = IslandDimensions.ownerOf(previousWorld);

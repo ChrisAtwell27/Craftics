@@ -365,6 +365,15 @@ public class CrafticsMod implements ModInitializer {
                     // Disable mob spawning in Craftics void worlds
                     world.getGameRules().get(net.minecraft.world.GameRules.DO_MOB_SPAWNING).set(false, server);
                     world.getGameRules().get(net.minecraft.world.GameRules.DO_INSOMNIA).set(false, server);
+                    // Keep inventory, everywhere. Dying to the world here is not the game's
+                    // difficulty - the fights are - and every world this mod makes is void
+                    // generated, so an ordinary misstep drops your gear somewhere it cannot be
+                    // walked back to. Losing a fight still costs you what the death-penalty
+                    // config says it costs; that is a separate system and is untouched by this.
+                    // Set on load beside the two rules above, so it also applies to the worlds
+                    // that predate it. Runtime dimensions set it in their own config, because
+                    // Fantasy hands each one its own copy of the rules.
+                    world.getGameRules().get(net.minecraft.world.GameRules.KEEP_INVENTORY).set(true, server);
                 }
             }
         });
@@ -720,24 +729,28 @@ public class CrafticsMod implements ModInitializer {
             if (!(newPlayer.getEntityWorld() instanceof ServerWorld respawnWorld)) return;
             if (hasGroundBelow(respawnWorld, newPlayer.getX(), newPlayer.getY(), newPlayer.getZ())) return;
 
-            // Something solid further down the same column is still the closest thing to
-            // where the player expected to be, so prefer it over a teleport across worlds.
-            int landY = hubLandingY(respawnWorld,
+            // Ground anywhere near where they expected to be beats a teleport across worlds,
+            // so search outward from the respawn coordinate rather than straight down it.
+            // Down-the-column only works while the island keeps its generated shape; a player
+            // who rebuilt their base has an empty column there and would be bounced home from
+            // a spot they were standing on ten seconds ago.
+            net.minecraft.util.math.BlockPos landing = findLandingSpot(respawnWorld,
                 (int) Math.floor(newPlayer.getX()), (int) Math.floor(newPlayer.getZ()),
                 (int) Math.floor(newPlayer.getY()));
-            if (landY != Integer.MIN_VALUE) {
+            if (landing != null) {
                 com.crackedgames.craftics.world.HubTeleports.teleportTo(newPlayer, respawnWorld,
-                    newPlayer.getX(), landY, newPlayer.getZ());
-                LOGGER.warn("Respawn for {} landed over void in {}; clamped to y={} in the same column.",
-                    newPlayer.getName().getString(), respawnWorld.getRegistryKey().getValue(), landY);
+                    landing.getX() + 0.5, landing.getY(), landing.getZ() + 0.5);
+                LOGGER.warn("Respawn for {} landed over void in {}; moved to solid ground at {},{},{}.",
+                    newPlayer.getName().getString(), respawnWorld.getRegistryKey().getValue(),
+                    landing.getX(), landing.getY(), landing.getZ());
                 return;
             }
 
-            // The whole column is empty. The player's own hub is the guaranteed floor;
-            // toHub falls back to the lobby itself when there is no personal world yet.
-            LOGGER.warn("Respawn for {} landed in open void in {} with no floor in the column; "
+            // Nothing solid anywhere around them. The player's own hub is the guaranteed
+            // floor; toHub falls back to the lobby itself when there is no personal world yet.
+            LOGGER.warn("Respawn for {} landed in open void in {} with no ground within {} blocks; "
                 + "routing to their hub.", newPlayer.getName().getString(),
-                respawnWorld.getRegistryKey().getValue());
+                respawnWorld.getRegistryKey().getValue(), LANDING_SEARCH_RADIUS);
             com.crackedgames.craftics.world.HubTeleports.toHub(newPlayer);
             newPlayer.sendMessage(Text.literal(
                 "\u00a7eYour respawn point was gone, so you were returned home."), false);
@@ -1959,6 +1972,7 @@ public class CrafticsMod implements ModInitializer {
                         true, "Creating World...", "Building hub..."));
 
                 final java.util.UUID playerUuid = player.getUuid();
+                final String playerName = player.getName().getString();
                 final ServerWorld finalOverworld = overworld;
 
                 // Island creation only builds the hub now. Arenas are created on
@@ -1968,7 +1982,10 @@ public class CrafticsMod implements ModInitializer {
                 // lower-end servers for multiple seconds.
                 overworld.getServer().execute(() -> {
                     CrafticsSavedData d = CrafticsSavedData.get(finalOverworld);
-                    d.allocateWorldSlot(playerUuid); // dormant marker; no longer a coordinate
+                    // Dormant marker; no longer a coordinate. The name is passed so the island
+                    // creation record keeps who this was AT creation, which no later lookup
+                    // can recover once they change it.
+                    d.allocateWorldSlot(playerUuid, playerName);
                     if (hardcore) {
                         d.getPlayerData(playerUuid).hardcoreIsland = true;
                         d.markDirty();
@@ -2186,7 +2203,8 @@ public class CrafticsMod implements ModInitializer {
                 return 0;
             }
 
-            int slot = data.allocateWorldSlot(player.getUuid()); // dormant marker; no longer a coordinate
+            // Dormant marker; no longer a coordinate. Name recorded for the creation stamp.
+            int slot = data.allocateWorldSlot(player.getUuid(), player.getName().getString());
             net.minecraft.util.math.BlockPos hubCenter = data.getHubOrigin(player.getUuid());
 
             // Build the hub in the OWNER'S island dim, then cross-dim teleport into it.
@@ -2869,12 +2887,74 @@ public class CrafticsMod implements ModInitializer {
         for (int yy = top; yy > bottom; yy--) {
             probe.setY(yy);
             net.minecraft.block.BlockState st = world.getBlockState(probe);
-            if (!st.isAir() && st.isSolidBlock(world, probe)
-                    && world.getBlockState(probe.up()).isAir()) {
+            if (st.isAir() || !st.isSolidBlock(world, probe)) continue;
+            // Two blocks of clearance, not one. A single air gap is a standable Y that
+            // suffocates the player in the block at head height, which on a rescue path
+            // is just a slower version of the problem being rescued from.
+            if (world.getBlockState(probe.up()).isAir()
+                    && world.getBlockState(probe.up(2)).isAir()) {
                 return yy + 1; // stand on top of the highest solid block
             }
         }
         return Integer.MIN_VALUE;
+    }
+
+    /**
+     * How far out a rescue search will look for ground, in blocks. Comfortably covers the
+     * built island (the yard spans x -30..30, z -20..40 around the hub origin), so a player
+     * who reshaped or relocated their base is still found.
+     */
+    public static final int LANDING_SEARCH_RADIUS = 48;
+
+    /**
+     * Somewhere on this island the player can actually stand, starting at {@code (x, z)} and
+     * widening outward a ring at a time. Returns null when the whole search area is empty.
+     *
+     * <p>Why this exists rather than a single {@link #hubLandingY} probe: every safety net in
+     * the mod used to check ONE column - the stored hub coordinate, the stored respawn
+     * coordinate, the lobby spawn. That is only a safety net while the island keeps the shape
+     * it was generated with. A player who digs out the hub, terraforms the yard, or rebuilds
+     * their base somewhere else on the island leaves that one column empty, and the check
+     * that was supposed to catch a void landing instead confirms one: the caller shrugs and
+     * uses the raw stored Y, which is open air, and the player falls out of the world holding
+     * their inventory. Reshaping your own island should never be able to lock you out of it.
+     *
+     * <p>Rings widen outward so the result is always the standable spot NEAREST the place the
+     * player was trying to reach, and the common case (the hub is intact and exactly where it
+     * has always been) returns from the first ring having probed a single column. Only a
+     * genuinely broken island pays for the full sweep.
+     */
+    public static net.minecraft.util.math.BlockPos findLandingSpot(ServerWorld world,
+                                                                   int x, int z, int fallbackY) {
+        for (int r = 0; r <= LANDING_SEARCH_RADIUS; r++) {
+            if (r == 0) {
+                int y = hubLandingY(world, x, z, fallbackY);
+                if (y != Integer.MIN_VALUE) return new net.minecraft.util.math.BlockPos(x, y, z);
+                continue;
+            }
+            // Perimeter of the square ring at radius r. The two horizontal edges cover the
+            // full width; the vertical edges skip the corners those already visited.
+            for (int dx = -r; dx <= r; dx++) {
+                net.minecraft.util.math.BlockPos hit = probeColumn(world, x + dx, z - r, fallbackY);
+                if (hit != null) return hit;
+                hit = probeColumn(world, x + dx, z + r, fallbackY);
+                if (hit != null) return hit;
+            }
+            for (int dz = -r + 1; dz <= r - 1; dz++) {
+                net.minecraft.util.math.BlockPos hit = probeColumn(world, x - r, z + dz, fallbackY);
+                if (hit != null) return hit;
+                hit = probeColumn(world, x + r, z + dz, fallbackY);
+                if (hit != null) return hit;
+            }
+        }
+        return null;
+    }
+
+    /** One column of {@link #findLandingSpot}, as a position rather than a bare Y. */
+    private static net.minecraft.util.math.BlockPos probeColumn(ServerWorld world,
+                                                                 int x, int z, int fallbackY) {
+        int y = hubLandingY(world, x, z, fallbackY);
+        return y == Integer.MIN_VALUE ? null : new net.minecraft.util.math.BlockPos(x, y, z);
     }
 
     // teleportToHub(player, island, hub) and its non-void-world fallback

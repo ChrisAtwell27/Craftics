@@ -2,6 +2,7 @@ package com.crackedgames.craftics.command;
 
 import com.crackedgames.craftics.world.CrafticsSavedData;
 import com.crackedgames.craftics.world.HubTeleports;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.command.argument.EntityArgumentType;
 import net.minecraft.server.command.CommandManager;
@@ -101,35 +102,20 @@ public final class CrafticsServerCommands {
             });
 
         var island = CommandManager.literal("island").requires(src -> src.hasPermissionLevel(2));
-        island.then(CommandManager.literal("info").then(CommandManager.argument("player", EntityArgumentType.player())
-            .executes(ctx -> {
-                ServerPlayerEntity t = EntityArgumentType.getPlayer(ctx, "player");
-                var server = ctx.getSource().getServer();
-                CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
-                java.util.UUID owner = data.getEffectiveWorldOwner(t.getUuid());
-                net.minecraft.server.world.ServerWorld dim =
-                    com.crackedgames.craftics.world.IslandDimensions.getLoaded(server, owner);
-                String line = "§6Island of " + t.getName().getString()
-                    + "§7 owner=" + owner
-                    + " loaded=" + (dim != null)
-                    + (dim != null ? " players=" + dim.getPlayers().size() : "");
-                ctx.getSource().sendFeedback(() -> Text.literal(line), false);
-                return 1;
-            })));
-        island.then(CommandManager.literal("tp").then(CommandManager.argument("player", EntityArgumentType.player())
-            .executes(ctx -> {
-                ServerPlayerEntity admin = ctx.getSource().getPlayerOrThrow();
-                ServerPlayerEntity t = EntityArgumentType.getPlayer(ctx, "player");
-                var server = ctx.getSource().getServer();
-                CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
-                java.util.UUID owner = data.getEffectiveWorldOwner(t.getUuid());
-                net.minecraft.server.world.ServerWorld dim =
-                    com.crackedgames.craftics.world.IslandDimensions.getOrCreate(server, owner);
-                net.minecraft.util.math.BlockPos hub = data.getHubTeleportPos(t.getUuid());
-                // cross-dim teleport, same pattern as HubTeleports.toHub
-                com.crackedgames.craftics.world.HubTeleports.adminTeleport(admin, dim, hub);
-                return 1;
-            })));
+        // Both take a raw name-or-UUID string rather than an online-player argument. A
+        // moderator investigating an island is very often doing it precisely BECAUSE the
+        // owner is not connected, and an argument type that can only name online players
+        // makes the tool useless in the case it exists for.
+        island.then(CommandManager.literal("info")
+            .then(CommandManager.argument("player", StringArgumentType.word())
+                .suggests(CrafticsServerCommands::suggestKnownPlayers)
+                .executes(ctx -> islandInfo(ctx.getSource(),
+                    StringArgumentType.getString(ctx, "player")))));
+        island.then(CommandManager.literal("tp")
+            .then(CommandManager.argument("player", StringArgumentType.word())
+                .suggests(CrafticsServerCommands::suggestKnownPlayers)
+                .executes(ctx -> islandTp(ctx.getSource(),
+                    StringArgumentType.getString(ctx, "player")))));
         island.then(CommandManager.literal("unload").then(CommandManager.argument("player", EntityArgumentType.player())
             .executes(ctx -> {
                 var server = ctx.getSource().getServer();
@@ -196,5 +182,121 @@ public final class CrafticsServerCommands {
         root.then(status);
         root.then(island);
         root.then(visit);
+    }
+
+    /** Online names only. The command itself accepts any name or UUID, including players the
+     *  server has never seen; this just saves typing for the common case. */
+    private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions>
+            suggestKnownPlayers(com.mojang.brigadier.context.CommandContext<ServerCommandSource> ctx,
+                                com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+        return net.minecraft.command.CommandSource.suggestMatching(
+            ctx.getSource().getPlayerNames(), builder);
+    }
+
+    /**
+     * Resolve a name or UUID string to a player UUID, working for offline players.
+     * Returns null when nothing matches.
+     *
+     * <p>Order matters: a literal UUID is taken at face value first, because it is the only
+     * form that stays correct after a name change and is what an admin pastes from a log.
+     * Then online players, then the server's user cache for anyone who has logged in before.
+     */
+    private static java.util.UUID resolveOwnerUuid(net.minecraft.server.MinecraftServer server,
+                                                    String nameOrUuid) {
+        try {
+            return java.util.UUID.fromString(nameOrUuid);
+        } catch (IllegalArgumentException notAUuid) {
+            // Fall through to a name lookup.
+        }
+        ServerPlayerEntity online = server.getPlayerManager().getPlayer(nameOrUuid);
+        if (online != null) return online.getUuid();
+        var cache = server.getUserCache();
+        if (cache == null) return null;
+        return cache.findByName(nameOrUuid)
+            .map(com.mojang.authlib.GameProfile::getId)
+            .orElse(null);
+    }
+
+    /** A recorded epoch-millis stamp as readable UTC, or "unknown" when unrecorded. */
+    private static String formatStamp(long epochMillis) {
+        if (epochMillis <= 0L) return "unknown (predates this record)";
+        return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'")
+            .withZone(java.time.ZoneOffset.UTC)
+            .format(java.time.Instant.ofEpochMilli(epochMillis));
+    }
+
+    /** Report where and when a player's island was created, plus its live state. */
+    private static int islandInfo(ServerCommandSource src, String query) {
+        net.minecraft.server.MinecraftServer server = src.getServer();
+        java.util.UUID target = resolveOwnerUuid(server, query);
+        if (target == null) {
+            src.sendError(Text.literal("§cNo player found for '" + query
+                + "'. Try their exact name or a UUID."));
+            return 0;
+        }
+        CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
+        java.util.UUID owner = data.getEffectiveWorldOwner(target);
+        if (!data.hasPersonalWorld(owner)) {
+            src.sendError(Text.literal("§c" + query + " has no island."));
+            return 0;
+        }
+        var record = data.getIslandCreation(owner);
+        net.minecraft.server.world.ServerWorld dim =
+            com.crackedgames.craftics.world.IslandDimensions.getLoaded(server, owner);
+        // The dimension the island is addressed by TODAY, which is worth showing next to the
+        // recorded one: if they ever disagree, that difference is the whole answer.
+        String liveDim = com.crackedgames.craftics.world.IslandDimensions.dimensionIdOf(owner);
+        net.minecraft.util.math.BlockPos hubNow = data.getHubTeleportPos(owner);
+
+        src.sendFeedback(() -> Text.literal("§6Island of §f" + query), false);
+        src.sendFeedback(() -> Text.literal("§7  owner   §f" + owner
+            + (owner.equals(target) ? "" : " §7(party owner, queried player is a member)")), false);
+        src.sendFeedback(() -> Text.literal("§7  created §f"
+            + formatStamp(record != null ? record.createdAtMillis() : 0L)), false);
+        if (record != null && !record.ownerName().isEmpty()) {
+            src.sendFeedback(() -> Text.literal("§7  as      §f" + record.ownerName()), false);
+        }
+        src.sendFeedback(() -> Text.literal("§7  dim     §f"
+            + (record != null && !record.dimensionId().isEmpty() ? record.dimensionId() : liveDim)
+            + (record != null && !record.dimensionId().isEmpty()
+               && !record.dimensionId().equals(liveDim) ? " §c(now " + liveDim + ")" : "")), false);
+        src.sendFeedback(() -> Text.literal("§7  origin  §f"
+            + (record != null && record.hasOrigin()
+               ? record.x() + ", " + record.y() + ", " + record.z()
+               : "unknown (predates this record)")), false);
+        src.sendFeedback(() -> Text.literal("§7  hub now §f"
+            + (hubNow != null ? hubNow.getX() + ", " + hubNow.getY() + ", " + hubNow.getZ()
+                              : "unset")), false);
+        src.sendFeedback(() -> Text.literal("§7  loaded  §f" + (dim != null
+            ? "yes (" + dim.getPlayers().size() + " inside)" : "no")), false);
+        return 1;
+    }
+
+    /** Teleport the running operator into the island dimension recorded for a player. */
+    private static int islandTp(ServerCommandSource src, String query)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity admin = src.getPlayerOrThrow();
+        net.minecraft.server.MinecraftServer server = src.getServer();
+        java.util.UUID target = resolveOwnerUuid(server, query);
+        if (target == null) {
+            src.sendError(Text.literal("§cNo player found for '" + query
+                + "'. Try their exact name or a UUID."));
+            return 0;
+        }
+        CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
+        java.util.UUID owner = data.getEffectiveWorldOwner(target);
+        if (!data.hasPersonalWorld(owner)) {
+            src.sendError(Text.literal("§c" + query + " has no island to visit."));
+            return 0;
+        }
+        // getOrCreate rather than getLoaded: the island is very likely unloaded precisely
+        // because its owner is offline, which is the case this command exists to serve.
+        net.minecraft.server.world.ServerWorld dim =
+            com.crackedgames.craftics.world.IslandDimensions.getOrCreate(server, owner);
+        net.minecraft.util.math.BlockPos hub = data.getHubTeleportPos(owner);
+        HubTeleports.adminTeleport(admin, dim, hub);
+        src.sendFeedback(() -> Text.literal("§aTeleported to the island of " + query
+            + " §7(" + com.crackedgames.craftics.world.IslandDimensions.dimensionIdOf(owner) + ")"), true);
+        return 1;
     }
 }

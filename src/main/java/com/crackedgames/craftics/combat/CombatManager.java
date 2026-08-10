@@ -93,19 +93,6 @@ public class CombatManager {
     private int getMoveTicks() { return CrafticsMod.CONFIG.skipEnemyAnimations() ? 1 : MOVE_TICKS; }
 
     /**
-     * Abilities that keep their warning turn no matter how deep the biome is.
-     *
-     * <p>The late-game rule drops telegraphs from biome ordinal 3 onward, which is fair for
-     * an attack that hits a tile: you take the damage and the arena is unchanged. It is not
-     * fair for one that DELETES the tile. The Warden's fissure drops a band of floor across
-     * the whole board permanently, cutting the arena in two and stranding whoever is on the
-     * wrong side - and the Warden vaults gaps, so the hole only ever traps the party. The
-     * deep dark sits well past ordinal 3, so that ability had lost its telegraph entirely
-     * and opened with no warning at all.
-     */
-    private static final java.util.Set<String> ALWAYS_TELEGRAPHED = java.util.Set.of("fissure");
-
-    /**
      * Hard ceiling on any spawned enemy's attack, applied after every bonus at spawn time.
      *
      * <p>The per-biome cap ({@code 3 + biomeOrdinal / 2}) is the normal governor, but several
@@ -3004,6 +2991,14 @@ public class CombatManager {
         // Addon combat effects: modify incoming damage
         actual = fireEffectHookChained(actual, (h, dmg) -> h.onTakeDamage(effectContext, attacker, dmg));
         if (actual <= 0) return 0;
+
+        // Marked: the player-side twin of CombatEntity's mark, and it works the same way -
+        // everything that reaches you reaches twice as hard. Applied here, last, for the
+        // same reason the enemy side applies it inside applyDirectDamage: on the number
+        // that is actually about to land, so no mitigation is skipped by it.
+        if (combatEffects.hasEffect(CombatEffects.EffectType.MARKED)) {
+            actual = Math.max(1, actual * 2);
+        }
 
         // Worn armor takes 1 durability per hit (dodged/blocked hits
         // returned earlier, so reaching here means the hit landed).
@@ -10952,22 +10947,7 @@ public class CombatManager {
             int tz = Integer.parseInt(tileInfo[2]);
             if ("clear".equals(effectType)) {
                 // Empty bucket: revert tile to NORMAL and remove any existing effect
-                GridPos clearPos = new GridPos(tx, tz);
-                GridTile clearTile = arena.getTile(clearPos);
-                if (clearTile != null) {
-                    clearTile.setType(TileType.NORMAL);
-                    clearTile.setBlockType(getBiomeFloorBlock());
-                }
-                tileEffects.remove(clearPos);
-                unregisterLightZone(clearPos);
-                // gridToBlockPos is Y+1 overlay space; restore floor on Y and clear overlay
-                BlockPos bp = arena.gridToBlockPos(clearPos);
-                BlockPos floorBp = bp.down();
-                ServerWorld sw = (ServerWorld) player.getEntityWorld();
-                sw.setBlockState(bp, net.minecraft.block.Blocks.AIR.getDefaultState());
-                sw.setBlockState(floorBp, clearTile != null
-                    ? clearTile.getBlockType().getDefaultState()
-                    : getBiomeFloorBlock().getDefaultState());
+                resetTileToFloor(new GridPos(tx, tz));
             } else if ("beehive".equals(effectType) || "armor_stand".equals(effectType)) {
                 // Both are block-backed objects with HP that sit on the field.
                 // The hive keeps releasing allied bees; the stand just soaks
@@ -11160,6 +11140,25 @@ public class CombatManager {
                     recordPlacedBlock(cactusBp);
                     cactusWorld.setBlockState(cactusBp, Blocks.CACTUS.getDefaultState(),
                         net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+                }
+
+                // Sponge: soak the four tiles around it. Its own tile is already handled by
+                // the bridging flip above, and must NOT go through resetTileToFloor - that
+                // clears tileEffects, which by this point holds the sponge's own entry.
+                if ("sponge".equals(effectType)) {
+                    int drained = 0;
+                    for (int[] off : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+                        GridPos near = new GridPos(effectPos.x() + off[0], effectPos.z() + off[1]);
+                        GridTile wet = arena.getTile(near);
+                        if (wet != null && wet.isWater()) {
+                            resetTileToFloor(near);
+                            drained++;
+                        }
+                    }
+                    if (drained > 0) {
+                        sendMessage("§eThe sponge soaks up " + drained + " water tile"
+                            + (drained == 1 ? "" : "s") + ".");
+                    }
                 }
 
                 // Player-placed utility blocks: physically drop the right block
@@ -11937,6 +11936,35 @@ public class CombatManager {
             return banked;
         }
         return 0;
+    }
+
+    /**
+     * Return one tile to plain biome floor: grid type, floor block, any registered tile
+     * effect or light zone, and the burn cycle. THE reset every "this tile is no longer
+     * water / fire / a pit" path runs.
+     *
+     * <p>Split out because the grid half and the world half have to happen together. A
+     * caller that only reached the grid model (the sponge's drain lived in ItemUseHandler)
+     * flipped the TYPE and left the fluid block standing, so the arena showed water on a
+     * tile the rules treated as dry ground.
+     */
+    private void resetTileToFloor(GridPos pos) {
+        if (pos == null || arena == null || player == null) return;
+        GridTile tile = arena.getTile(pos);
+        if (tile != null) {
+            tile.setType(TileType.NORMAL);
+            tile.setBlockType(getBiomeFloorBlock());
+        }
+        tileEffects.remove(pos);
+        unregisterLightZone(pos);
+        burningTiles.remove(pos);
+        // gridToBlockPos is Y+1 overlay space; restore floor on Y and clear overlay
+        BlockPos bp = arena.gridToBlockPos(pos);
+        ServerWorld sw = (ServerWorld) player.getEntityWorld();
+        sw.setBlockState(bp, net.minecraft.block.Blocks.AIR.getDefaultState());
+        sw.setBlockState(bp.down(), tile != null
+            ? tile.getBlockType().getDefaultState()
+            : getBiomeFloorBlock().getDefaultState());
     }
 
     /**
@@ -13937,6 +13965,8 @@ public class CombatManager {
             // Advance fire AFTER existing temporary tiles decay, so a tile lit
             // this tick keeps its full burn duration instead of losing a turn.
             tickFire();
+            tickFissureDebris();
+            tickWardenMarkHunt();
             tickTidecallerWave();
             detonatePendingTnts();
 
@@ -14931,28 +14961,22 @@ public class CombatManager {
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
             case EnemyAction.BossAbility ba -> {
-                // Warning telegraph -store and resolve next turn, or resolve immediately if no warning tiles.
-                // Late-game bosses (ordinal >= 3) normally skip the telegraph and fire immediately,
-                // but Void Walker needs its telegraphs: the player has to see where rifts open,
-                // and the null bursts / beams / roars are unfair without warnings.
-                boolean isVoidWalker = currentEnemy != null
-                    && "boss:warped_forest".equals(currentEnemy.getAiKey());
-                // Infinite bosses NEVER skip the telegraph: currentBiomeOrdinal is the
-                // unbounded infiniteBiomesCleared there, so from the 4th biome onward every
-                // pool ability became an instant, undodgeable nuke on the player's tile
-                // (12 dmg = 6 hearts per hit, doubled by multi-action phases). The pool's
-                // design contract says fairness IS the warning turn; escalation comes from
-                // actionsPerTurn + charging advances instead. Raid bosses draw from the
-                // same ability pool and routinely carry a double-move power on top, so they
-                // need this exemption even more than infinite bosses do: without it, every
-                // raid boss fight past ordinal 3 nukes the whole party with zero counterplay.
-                boolean isInfiniteBoss = currentEnemy != null
-                    && InfiniteRunManager.BOSS_AI_KEY.equals(currentEnemy.getAiKey());
-                boolean isRaidBoss = raidBossContext != null;
-                boolean skipTelegraph = currentBiomeOrdinal >= 3
-                    && !isVoidWalker && !isInfiniteBoss && !isRaidBoss
-                    && !ALWAYS_TELEGRAPHED.contains(ba.abilityName());
-                if (!skipTelegraph && ba.warningTiles() != null && !ba.warningTiles().isEmpty()) {
+                // A special attack that marks tiles ALWAYS shows those tiles first, in every
+                // biome, for every boss. The warning turn is the counterplay: it is the only
+                // thing that separates a boss ability from unavoidable damage, and an attack
+                // you cannot see coming is not harder, it is just a die roll.
+                //
+                // This used to be dropped from the fourth biome onward (ordinal >= 3), and
+                // that rule was carved back four separate times - Void Walker's rifts, then
+                // infinite bosses, then raid bosses, then the Warden's fissure - each time
+                // because the un-telegraphed version turned out to be indefensible. It has
+                // no defenders left, so it is gone.
+                //
+                // Late-game pressure still escalates, just not by hiding information: the
+                // charging-advance path above lets a deep-biome boss move or strike during
+                // its telegraph turn instead of standing still, and infinite/raid bosses add
+                // actions per turn on top of that.
+                if (ba.warningTiles() != null && !ba.warningTiles().isEmpty()) {
                     sendMessage("§e" + currentEnemy.getDisplayName() + " prepares " +
                         ba.abilityName().replace('_', ' ') + "! §7("
                         + com.crackedgames.craftics.vfx.boss.BossAttackVfx.hintFor(ba.abilityName())
@@ -14986,16 +15010,11 @@ public class CombatManager {
                         bai.clearPendingWarning();
                     }
                 } else {
-                    // Immediate resolve -no telegraph (or ordinal >= 3 override)
+                    // No warning tiles to show: an ability that targets nothing on the grid
+                    // (a self-buff, a summon, an arena-wide state change) resolves the turn
+                    // it is used. Anything that DOES mark tiles took the branch above.
                     sendMessage("§c" + currentEnemy.getDisplayName() + " uses " +
                         ba.abilityName().replace('_', ' ') + "!");
-                    // void_rift has an Idle() resolved action (the rift itself is registered
-                    // as persistent state on the CombatManager), so we still need to register
-                    // it here for the skip-telegraph path -otherwise the rift silently vanishes.
-                    if ("void_rift".equals(ba.abilityName())
-                            && ba.warningTiles() != null && ba.warningTiles().size() >= 2) {
-                        registerVoidRift(currentEnemy, ba.warningTiles().get(0), ba.warningTiles().get(1));
-                    }
                     // Even without a telegraph the hit must LAND: themed,
                     // category-shaped impact instead of an unheralded damage tick.
                     com.crackedgames.craftics.vfx.boss.BossAttackVfx.impact(
@@ -16277,9 +16296,15 @@ public class CombatManager {
                             player.getX(), player.getY() + 1.0, player.getZ(), 10, 0.4, 0.5, 0.4, 0.02);
                         world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
                             player.getX(), player.getY() + 0.6, player.getZ(), 6, 0.3, 0.3, 0.3, 0.01);
-                        // Sonic boom ruptures your hearing and sight -you go blind.
-                        addEffectHooked(CombatEffects.EffectType.BLINDNESS, 3, 0);
-                        sendMessage("§8  The sonic boom blinds you! (3 turns)");
+                        // Same payload as the Warden's beam version (see applyBossAreaEffect):
+                        // a sonic boom means one thing wherever it comes from. Infinite and raid
+                        // bosses draw this from the ability pool as a single-target shot rather
+                        // than a lane, but what it does to whoever it catches is identical.
+                        addEffectHooked(CombatEffects.EffectType.MARKED, SONIC_MARK_TURNS, 0);
+                        addEffectHooked(CombatEffects.EffectType.DARKNESS, SONIC_MARK_TURNS, 0);
+                        addEffectHooked(CombatEffects.EffectType.BLINDNESS, SONIC_MARK_TURNS, 0);
+                        sendMessage("§3  The sonic boom rips through you! §8Marked, blinded and lost in the dark ("
+                            + SONIC_MARK_TURNS + " turns)");
                     }
                     case "poison_arrow" -> {
                         world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME,
@@ -17289,6 +17314,10 @@ public class CombatManager {
             tile.setType(TileType.VOID);
             tile.setBlockType(net.minecraft.block.Blocks.AIR);
 
+            // Noted for the collapse: the ceiling starts filling this tile back in from the
+            // next round on (see tickFissureDebris).
+            fissureDebris.put(pos, 0);
+
             world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
                 floor.getX() + 0.5, floor.getY(), floor.getZ() + 0.5, 8, 0.3, 0.4, 0.3, 0.02);
         }
@@ -17298,6 +17327,187 @@ public class CombatManager {
         sendMessage("§8§lThe ground tears open!");
         sendSync();
         refreshHighlights();
+    }
+
+    // ── Sonic boom mark hunt ─────────────────────────────────────────────────
+
+    /** Turns of Marked / Darkness / Blindness a sonic boom leaves on whoever it catches. */
+    private static final int SONIC_MARK_TURNS = 4;
+    /** Speed the Warden gains while it has someone marked to run down. */
+    private static final int WARDEN_HUNT_SPEED = 2;
+
+    /** Players a sonic boom has marked. Emptied as the marks lapse. */
+    private final Set<java.util.UUID> sonicMarkedPlayers = new HashSet<>();
+    /** Whether the hunt speed bonus is currently on the Warden, so it is added once and removed once. */
+    private boolean wardenHuntSpeedApplied = false;
+
+    /**
+     * Keep the Warden pointed at whoever its boom marked.
+     *
+     * <p>A mark is a lead, not a debuff it can forget: while one is live the Warden abandons
+     * whatever vibration it was chasing, runs at the marked player specifically, and moves
+     * faster doing it. When the last mark lapses the lead goes cold - the bonus comes off and
+     * it drops back to hunting by sound like normal.
+     */
+    private void tickWardenMarkHunt() {
+        if (arena == null) return;
+
+        // Retire marks that have run out (or players who have left the fight).
+        sonicMarkedPlayers.removeIf(uuid -> {
+            CombatEffects fx = playerCombatEffects.get(uuid);
+            return fx == null || !fx.hasEffect(CombatEffects.EffectType.MARKED)
+                || deadPartyMembers.contains(uuid);
+        });
+
+        CombatEntity warden = null;
+        com.crackedgames.craftics.combat.ai.WardenAI wardenAi = null;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive()) continue;
+            if (resolveAi(e) instanceof com.crackedgames.craftics.combat.ai.WardenAI w) {
+                warden = e;
+                wardenAi = w;
+                break;
+            }
+        }
+        if (warden == null) { wardenHuntSpeedApplied = false; return; }
+
+        // The marked player's LIVE tile, refreshed every round - the lead follows them as
+        // they run, which is the whole point of being marked.
+        GridPos hunted = null;
+        for (ServerPlayerEntity member : allCombatPlayers()) {
+            if (member == null || !sonicMarkedPlayers.contains(member.getUuid())) continue;
+            hunted = gridPosOf(member);
+            if (hunted != null) break;
+        }
+
+        wardenAi.setHuntedTile(hunted);
+        boolean shouldBoost = hunted != null;
+        if (shouldBoost && !wardenHuntSpeedApplied) {
+            warden.setSpeedBonus(warden.getSpeedBonus() + WARDEN_HUNT_SPEED);
+            wardenHuntSpeedApplied = true;
+            sendMessage("§3The Warden has your scent - it moves faster!");
+        } else if (!shouldBoost && wardenHuntSpeedApplied) {
+            warden.setSpeedBonus(warden.getSpeedBonus() - WARDEN_HUNT_SPEED);
+            wardenHuntSpeedApplied = false;
+            sendMessage("§7The Warden loses the scent.");
+        }
+    }
+
+    // ── Fissure debris ───────────────────────────────────────────────────────
+    // The hole the Warden tears is not permanent. The ceiling of the Deep Dark keeps
+    // shedding into it: every round, a few blocks of cobble crash down on random tiles of
+    // the crack until the whole thing is filled back in. Two loads fill a tile - the first
+    // piles up enough rubble to stand on, the second brings it level with the floor - so the
+    // arena repairs itself over several rounds instead of being one turn poorer forever.
+    //
+    // Standing in a half-filled crack is a gamble, not a shortcut: a load that lands on
+    // anything, player or mob, hits it for DEBRIS_DAMAGE.
+
+    /** Cobble loads already dropped per fissure tile. Two fills the hole and retires it. */
+    private final java.util.Map<GridPos, Integer> fissureDebris = new java.util.HashMap<>();
+
+    /** Loads that fill one tile: rubble to stand on, then floor. */
+    private static final int DEBRIS_TO_FILL = 2;
+    /** Damage a falling load deals to whatever is standing where it lands. */
+    private static final int DEBRIS_DAMAGE = 10;
+    /** Loads that come down per round, inclusive range. */
+    private static final int DEBRIS_MIN_PER_TURN = 1;
+    private static final int DEBRIS_MAX_PER_TURN = 5;
+
+    /**
+     * Drop this round's ceiling collapse into the open fissures.
+     *
+     * <p>Runs at the top of the player's turn beside the other terrain ticks, so the state of
+     * the floor the player is about to plan around is already settled.
+     */
+    private void tickFissureDebris() {
+        if (arena == null || player == null || fissureDebris.isEmpty()) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+        // Only tiles still short of a full fill can take a load.
+        List<GridPos> open = new ArrayList<>();
+        for (var entry : fissureDebris.entrySet()) {
+            if (entry.getValue() < DEBRIS_TO_FILL) open.add(entry.getKey());
+        }
+        if (open.isEmpty()) { fissureDebris.clear(); return; }
+
+        int loads = DEBRIS_MIN_PER_TURN
+            + combatRng.nextInt(DEBRIS_MAX_PER_TURN - DEBRIS_MIN_PER_TURN + 1);
+        sendMessage("§8The ceiling gives way over the crack...");
+
+        for (int i = 0; i < loads && !open.isEmpty(); i++) {
+            GridPos target = open.remove(combatRng.nextInt(open.size()));
+            int filled = fissureDebris.merge(target, 1, Integer::sum);
+            dropDebrisOn(world, target, filled);
+            // A tile that is only part-filled can still take this round's later loads.
+            if (filled < DEBRIS_TO_FILL) open.add(target);
+            if (!active) return;   // a debris kill ended the fight
+        }
+        sendSync();
+        refreshHighlights();
+    }
+
+    /**
+     * One load of cobble landing on {@code pos}, with {@code filled} counting this load.
+     *
+     * <p>First load: rubble piles up from the bottom of the pit into a sunken ledge that can
+     * be walked on. Second: the tile is whole again, ordinary cobblestone floor. Anything
+     * caught underneath takes the hit either way.
+     */
+    private void dropDebrisOn(ServerWorld world, GridPos pos, int filled) {
+        GridTile tile = arena.getTile(pos);
+        if (tile == null) return;
+
+        BlockPos overlay = arena.gridToBlockPos(pos);   // floorY+1
+        BlockPos floor = overlay.down();                // floorY
+        BlockPos pitFloor = floor.down();               // floorY-1
+
+        if (filled >= DEBRIS_TO_FILL) {
+            setArenaBlock(world, pitFloor, net.minecraft.block.Blocks.COBBLESTONE, false);
+            setArenaBlock(world, floor, net.minecraft.block.Blocks.COBBLESTONE, false);
+            setArenaBlock(world, overlay, net.minecraft.block.Blocks.AIR, false);
+            tile.setType(TileType.NORMAL);
+            tile.setBlockType(net.minecraft.block.Blocks.COBBLESTONE);
+        } else {
+            // Half-filled: rubble in the bottom of the pit. LOW_GROUND is the arena's
+            // existing "walkable, but you are standing a block down" tile, which is exactly
+            // what a partly-filled hole is - and it means the client, the pathfinder and the
+            // fall checks all already understand it.
+            setArenaBlock(world, pitFloor, net.minecraft.block.Blocks.COBBLESTONE, false);
+            setArenaBlock(world, floor, net.minecraft.block.Blocks.AIR, false);
+            setArenaBlock(world, overlay, net.minecraft.block.Blocks.AIR, false);
+            tile.setType(TileType.LOW_GROUND);
+            tile.setBlockType(net.minecraft.block.Blocks.COBBLESTONE);
+        }
+
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+            floor.getX() + 0.5, floor.getY() + 0.5, floor.getZ() + 0.5, 12, 0.35, 0.4, 0.35, 0.03);
+        world.playSound(null, floor, net.minecraft.sound.SoundEvents.BLOCK_STONE_BREAK,
+            net.minecraft.sound.SoundCategory.BLOCKS, 1.1f, 0.6f);
+
+        // Anyone caught under it. Players first: damagePartyVictims handles the co-op
+        // player swap, death and game-over path.
+        java.util.Set<GridPos> hitTile = java.util.Set.of(pos);
+        List<ServerPlayerEntity> victims = new ArrayList<>();
+        for (ServerPlayerEntity member : allCombatPlayers()) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            if (pos.equals(gridPosOf(member))) victims.add(member);
+        }
+        if (!victims.isEmpty()) {
+            boolean gameOver = damagePartyVictims(victims, DEBRIS_DAMAGE, null,
+                (victim, actual, swapped) -> sendMessage("§8Falling rock crushes "
+                    + (swapped ? victim.getName().getString() : "you")
+                    + " for " + actual + " damage!"));
+            if (gameOver) return;
+        }
+
+        for (CombatEntity e : new ArrayList<>(enemies)) {
+            if (!e.isAlive() || !entityTouchesAnyTile(e, hitTile)) continue;
+            int dealt = e.takeDamage(DEBRIS_DAMAGE);
+            sendMessage("§8Falling rock crushes " + e.getDisplayName() + " for " + dealt + "!");
+            checkAndHandleDeath(e);
+        }
     }
 
     /** True when any tile of {@code e}'s footprint is in {@code tiles}. */
@@ -17470,6 +17680,17 @@ public class CombatManager {
             case "darkness_pulse" -> {
                 addEffectHooked(CombatEffects.EffectType.BLINDNESS, 3, 0);
                 sendMessage("§8  The Warden's darkness pulse blinds you! (3 turns)");
+            }
+            case "sonic_boom" -> {
+                // The boom does not just hurt: it finds you. Marked doubles what everything
+                // does to you from here, and the Warden hunts whoever is wearing it (see
+                // tickWardenMarkHunt) until it lapses.
+                addEffectHooked(CombatEffects.EffectType.MARKED, SONIC_MARK_TURNS, 0);
+                addEffectHooked(CombatEffects.EffectType.DARKNESS, SONIC_MARK_TURNS, 0);
+                addEffectHooked(CombatEffects.EffectType.BLINDNESS, SONIC_MARK_TURNS, 0);
+                sonicMarkedPlayers.add(player.getUuid());
+                sendMessage("§3  The sonic boom rips through you! §8Marked, blinded and lost in the dark ("
+                    + SONIC_MARK_TURNS + " turns)");
             }
             case "tremor_stomp" -> {
                 // Tremor pushes dust into your eyes -short blindness
@@ -17776,6 +17997,11 @@ public class CombatManager {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 20, spread + 0.5, 0.3, spread + 0.5, 0.02);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, cx, cy + 0.2, cz, 12, spread, 0.4, spread, 0.01);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.SCULK_SOUL, cx, cy + 0.5, cz, 8, spread, 0.5, spread, 0.02);
+            }
+            case "sonic_boom" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SONIC_BOOM, cx, cy + 1.0, cz, 1, 0.0, 0.0, 0.0, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SCULK_SOUL, cx, cy + 0.8, cz, 12, spread, 0.6, spread, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE, cx, cy + 0.4, cz, 8, spread, 0.4, spread, 0.02);
             }
             // === Void Walker ===
             case "null_burst" -> {
@@ -19276,7 +19502,7 @@ public class CombatManager {
             case "fortify_shell", "fortify_shell_reflect" -> { primary = net.minecraft.particle.ParticleTypes.END_ROD; secondary = net.minecraft.particle.ParticleTypes.ENCHANTED_HIT; }
             case "soul_chain" -> { primary = net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME; secondary = net.minecraft.particle.ParticleTypes.SOUL; }
             case "void_rift", "void_beam", "null_burst", "ender_roar" -> { primary = net.minecraft.particle.ParticleTypes.PORTAL; secondary = net.minecraft.particle.ParticleTypes.REVERSE_PORTAL; }
-            case "darkness_pulse", "tremor_stomp" -> { primary = net.minecraft.particle.ParticleTypes.SCULK_SOUL; secondary = net.minecraft.particle.ParticleTypes.LARGE_SMOKE; }
+            case "darkness_pulse", "tremor_stomp", "sonic_boom" -> { primary = net.minecraft.particle.ParticleTypes.SCULK_SOUL; secondary = net.minecraft.particle.ParticleTypes.LARGE_SMOKE; }
             case "lights_out" -> { primary = net.minecraft.particle.ParticleTypes.LARGE_SMOKE; secondary = net.minecraft.particle.ParticleTypes.SMOKE; }
             default -> { primary = net.minecraft.particle.ParticleTypes.ENCHANT; secondary = net.minecraft.particle.ParticleTypes.CRIT; }
         }
@@ -21107,11 +21333,45 @@ public class CombatManager {
         double endY = arena.getEntityY(next, currentEnemy != null && currentEnemy.isFlying());
         double endZ = endBlock.getZ() + (currentEnemy != null ? currentEnemy.getSizeZ() / 2.0 : 0.5);
 
+        // A vault reaches a tile that is not adjacent: the boss cleared the ground between
+        // in one bound (see Pathfinding#addVaultEdges). Those in-between tiles are never
+        // entries in the path, so the step length is what identifies the leap.
+        GridPos lerpFrom = enemyMovePathIndex == 0
+            ? currentEnemy.getGridPos() : enemyMovePath.get(enemyMovePathIndex - 1);
+        int leapSpan = lerpFrom == null ? 1
+            : Math.max(Math.abs(next.x() - lerpFrom.x()), Math.abs(next.z() - lerpFrom.z()));
+        boolean vaulting = leapSpan > 1;
+
+        // Takeoff cue, once per leap. Without one the boss simply appears on the far side of
+        // the hole, which reads as a teleport rather than a jump.
+        if (vaulting && enemyMoveTickCounter == 1 && mob.getWorld() instanceof ServerWorld jumpWorld) {
+            jumpWorld.playSound(null, mob.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_RAVAGER_ROAR,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.7f, 1.6f);
+            jumpWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                mob.getX(), mob.getY() + 0.1, mob.getZ(), 14, 0.4, 0.05, 0.4, 0.06);
+            sendMessage("§7" + currentEnemy.getDisplayName() + " leaps the gap!");
+        }
+
         int emTicks2 = getMoveTicks();
+        // A leap gets more ticks than a step so the arc is legible instead of a blur, and it
+        // scales with the span: a 4-tile bound reads as a bigger commitment than a 2-tile one.
+        if (vaulting) emTicks2 = Math.max(emTicks2, getMoveTicks() * leapSpan);
         float progress = Math.min(1.0f, (float) enemyMoveTickCounter / emTicks2);
         double x = enemyLerpStartX + (endX - enemyLerpStartX) * progress;
         double y = enemyLerpStartY + (endY - enemyLerpStartY) * progress;
         double z = enemyLerpStartZ + (endZ - enemyLerpStartZ) * progress;
+        if (vaulting) {
+            // Parabola peaking at the halfway point. Height grows with the span so a wide
+            // leap visibly clears more air; 4*p*(1-p) is 1.0 at p=0.5 and 0 at both ends,
+            // so the mob still lands exactly on the tile.
+            double apex = 1.2 + 0.4 * leapSpan;
+            y += apex * 4.0 * progress * (1.0 - progress);
+            if (mob.getWorld() instanceof ServerWorld leapWorld) {
+                leapWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    x, y, z, 2, 0.2, 0.1, 0.2, 0.01);
+            }
+        }
         mob.requestTeleport(x, y, z);
 
         // Sync visual projectile entity position with the invisible tracking mob
@@ -21141,6 +21401,17 @@ public class CombatManager {
 
         if (enemyMoveTickCounter >= emTicks2) {
             arena.moveEntity(currentEnemy, next);
+
+            // Landing: the thud is the other half of the leap read.
+            if (vaulting && mob.getWorld() instanceof ServerWorld landWorld) {
+                landWorld.playSound(null, arena.gridToBlockPos(next),
+                    net.minecraft.sound.SoundEvents.BLOCK_ANVIL_LAND,
+                    net.minecraft.sound.SoundCategory.HOSTILE, 0.6f, 0.6f);
+                BlockPos landBlock = arena.gridToBlockPos(next);
+                landWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    landBlock.getX() + 0.5, landBlock.getY(), landBlock.getZ() + 0.5,
+                    18, 0.5, 0.05, 0.5, 0.08);
+            }
 
             // Void Walker rift: teleport the enemy if they landed on one of the
             // portals. Cancel the remaining path so the lerp doesn't snap back.
@@ -31443,7 +31714,7 @@ public class CombatManager {
             case HASTE -> net.minecraft.entity.effect.StatusEffects.HASTE;
             case SLOW_FALLING -> net.minecraft.entity.effect.StatusEffects.SLOW_FALLING;
             case WATER_BREATHING -> net.minecraft.entity.effect.StatusEffects.WATER_BREATHING;
-            case BURNING, SOAKED, CONFUSION, BLEEDING, AIRTIME, WARPED -> null; // no vanilla equivalent
+            case BURNING, SOAKED, CONFUSION, BLEEDING, AIRTIME, WARPED, MARKED -> null; // no vanilla equivalent
         };
     }
 
@@ -32940,7 +33211,9 @@ public class CombatManager {
     }
     private String pendingMoltenSplitKey = null;     // Molten King: AI key for next split generation
     private int pendingMoltenSplitSize = 0;           // Molten King: grid size for next split (0 = none)
-    /** Position of the current combat's biome in the full dimension path. Used to gate late-game tuning (e.g. bosses skipping their telegraphed "waiting" turn). */
+    /** Position of the current combat's biome in the full dimension path. Used to gate late-game
+     *  tuning (e.g. whether a boss advances during its telegraph turn instead of standing still).
+     *  It does NOT gate the telegraph itself: warnings are unconditional. */
     private int currentBiomeOrdinal = 0;
 
     /** The infinite-mode spec stamped on the current level, or null outside infinite runs. */
@@ -32956,7 +33229,7 @@ public class CombatManager {
     private int computeCurrentBiomeOrdinal() {
         if (levelDef == null || player == null) return 0;
         // Infinite runs: the virtual ordinal (cleared-biome count) drives all the
-        // late-game tuning, so telegraph-skips etc. keep escalating forever.
+        // late-game tuning, so charging advances etc. keep escalating forever.
         com.crackedgames.craftics.level.InfiniteSpec infSpec = currentInfiniteSpec();
         if (infSpec != null) return Math.max(0, infSpec.virtualOrdinal());
         // Raid bosses: stats are authored flat and must never scale. Without this check,
