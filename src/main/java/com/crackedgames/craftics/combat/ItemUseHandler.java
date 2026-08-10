@@ -589,7 +589,7 @@ public class ItemUseHandler {
         } else if (isBanner(item)) {
             return useBanner(player, arena, targetTile, held);
         } else if (item == Items.WATER_BUCKET) {
-            return useWaterBucket(arena, targetTile, held);
+            return useWaterBucket(player, arena, targetTile, held);
         } else if (item == Items.BUCKET) {
             return useEmptyBucket(arena, targetTile, held);
         } else if (item == Items.SPONGE) {
@@ -1233,10 +1233,15 @@ public class ItemUseHandler {
             int hitCount = 0;
             StringBuilder msg = new StringBuilder();
 
-            // Collect all enemies in 3x3 AoE (manhattan distance <= 1 from target)
+            // Collect all enemies in 3x3 AoE (manhattan distance <= 1 from target).
+            // Allies are excluded: this list feeds applyPotionEffectsToEnemies, which only
+            // ever applies the HARMFUL half of a potion, so a tamed wolf caught in the blast
+            // took the harming/poison/wither branch with no matching heal branch to balance
+            // it. Every other AoE path here (water throwables, bell, spore blossom, lightning
+            // rod, placed cactus, ItemEffects.aoeDamage) already filters allies out.
             java.util.List<CombatEntity> aoeEnemies = new java.util.ArrayList<>();
             for (CombatEntity ce : arena.getOccupants().values()) {
-                if (!ce.isAlive()) continue;
+                if (!ce.isAlive() || ce.isAlly()) continue;
                 if (ce.getGridPos().manhattanDistance(targetTile) <= 1) {
                     aoeEnemies.add(ce);
                 }
@@ -1772,7 +1777,15 @@ public class ItemUseHandler {
                                      GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         CombatEntity enemy = arena.getOccupant(targetTile);
-        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        // Allies are not a valid target - without this the "No enemy" message was a lie and
+        // the web was spent stunning your own tamed animal. Every sibling single-target
+        // throwable (ink sac, spyglass, breeding item) already checks this.
+        if (enemy == null || !enemy.isAlive() || enemy.isAlly()) return "§cNo enemy at target!";
+        // Cobweb is a full turn skip and had no reach check at all, so it could be applied
+        // to a boss on the far side of the arena through a wall. Same 4-tile line-of-sight
+        // rule the snowball, egg, brick and ink sac throws use.
+        String reach = validateThrowReach(arena, enemy);
+        if (reach != null) return reach;
 
         stack.decrement(1);
         enemy.setStunned(true);
@@ -2261,7 +2274,7 @@ public class ItemUseHandler {
     }
 
     // --- Jukebox: place a jukebox block (full cube, obstacle) on a target tile.
-    //     Music plays - buffs all allies +1 speed for this battle. (2 AP)
+    //     Music plays - buffs all allies +3 speed for this battle. (2 AP)
     private static String useJukebox(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
@@ -2323,10 +2336,21 @@ public class ItemUseHandler {
     }
 
     // --- Water Bucket: place water tile on empty walkable tile (1 AP) ---
-    private static String useWaterBucket(GridArena arena, GridPos targetTile, ItemStack stack) {
+    private static String useWaterBucket(ServerPlayerEntity player, GridArena arena,
+                                          GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        // Water does not exist in the Nether. Every other campaign region pours normally,
+        // but a Nether arena would otherwise hand you a permanent water tile - a Soaked
+        // source, a doubling of all lightning damage, and a fishable pool - out of a
+        // bucket that vanilla flashes to steam. Same region read the bed already uses,
+        // because the arena physically runs in an island dimension and is never literally
+        // minecraft:the_nether. The End is excluded: water works there in vanilla.
+        CombatManager cm = CombatManager.getActiveCombat(player.getUuid());
+        if (cm != null && cm.isNetherRegion()) {
+            return "§cThe water flashes to steam before it hits the ground!";
+        }
         GridTile tile = arena.getTile(targetTile);
         // Only pour onto a plain, walkable floor tile - not onto obstacles, hazards,
         // or existing water.

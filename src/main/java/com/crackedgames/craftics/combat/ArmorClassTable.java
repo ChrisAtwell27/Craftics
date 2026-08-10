@@ -167,7 +167,10 @@ public final class ArmorClassTable {
      * <p>Enemies use the flat 5%-per-point / 60%-cap DEF stat, not the player's
      * AC dodge system, so a piece's AC ({@link #getPieceAC}) is compressed by a
      * third (⌈AC/3⌉) to stay inside that budget while still ranking materials.
-     * Per full set: leather ~2, iron/copper ~4, diamond ~7, netherite ~8 DEF.
+     * Per full set: leather 4, iron/copper 6, diamond 7, netherite 10 DEF.
+     * (The compression is applied PER PIECE and then summed, not once over the
+     * set total - the old figures here were the latter and understated three of
+     * the four materials by up to 2 DEF, which is 10% of an enemy's mitigation.)
      * Non-armor / unknown materials contribute 0 (modded armor without an AC
      * falls back to the caller's flat +1, same as before).
      */

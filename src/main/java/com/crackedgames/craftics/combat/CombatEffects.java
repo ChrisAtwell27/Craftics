@@ -129,11 +129,16 @@ public class CombatEffects {
         effects.put(type, effect);
     }
 
+    /**
+     * Start the clock on every effect that was applied in the hub. {@code defaultTurns} is
+     * only a fallback: each frozen effect already recorded the duration it was applied with,
+     * and {@link ActiveEffect#unfreeze} honours it. Overwriting {@code turnsRemaining}
+     * directly here discarded that, so a 3-turn buff and an 8-turn buff both entered combat
+     * at exactly the caller's blanket value - and left {@code unfreeze} with no call sites.
+     */
     public void unfreezeAll(int defaultTurns) {
         for (ActiveEffect effect : effects.values()) {
-            if (effect.isFrozen()) {
-                effect.turnsRemaining = defaultTurns;
-            }
+            effect.unfreeze(defaultTurns);
         }
     }
 

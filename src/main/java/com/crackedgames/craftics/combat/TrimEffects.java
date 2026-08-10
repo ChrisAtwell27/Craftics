@@ -203,7 +203,7 @@ public class TrimEffects {
             case PATHFINDER     -> "Movement ignores obstacle tiles";
             case TERRAFORMER    -> "Moving 3+ tiles deals 2 damage to all enemies adjacent to your destination";
             case PHANTOM        -> "Invisible for first 2 turns (enemies don't act)";
-            case RALLY          -> "Tamed allies get +2 Speed and +1 Attack";
+            case RALLY          -> "Tamed allies get +1 Attack";
             case SYMBIOTE       -> "Heal 1 HP for each enemy killed";
             case CURRENT        -> "Killing an enemy refunds 1 AP";
             case THUNDERSTRIKE  -> "Critical hits stun the target for 1 turn";

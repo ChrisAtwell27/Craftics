@@ -22,6 +22,42 @@ Arena Cleanup
 
 - Items dropped during a fight are removed with it. Arena slots are reused per level and a dropped item outlived the fight that made it, so returning to a level opened it littered with old drops and every arena the world had ever built kept leaking entities
 
+Nether Consistency
+
+- Water can no longer be poured in the Nether. A water bucket handed you a permanent water tile there - a Soaked source, a doubling of every lightning hit that lands on it, and a fishable pool - out of a bucket vanilla flashes to steam on contact. It reads the campaign region the same way the bed already does, because an arena physically runs inside an island dimension and is never literally the Nether. The End is left alone: water works there in vanilla, so it works here
+
+Item Targeting
+
+- Cobweb no longer reaches across the whole arena. It had no range check at all, so the strongest single-target control in the game - a full turn skipped - could be thrown at a boss on the far side of the map, through a wall. It now uses the same 4-tile line-of-sight rule as the snowball, egg, brick and ink sac
+- Cobweb no longer webs your own allies. There was no ally check behind the "No enemy at target!" message, so clicking a tamed wolf spent the web and made the wolf skip its turn while the game insisted nothing was there
+- Splash potions no longer hit your own allies. The blast list fed the enemy-side effect path, which only ever applies the harmful half of a potion, so a pet caught in the radius took the harming, poison or wither branch with no healing branch to answer it - a splash Instant Health did nothing to a wounded wolf and a splash Harming killed it. Every other area effect in the mod already filtered allies out
+
+Combat Resolution
+
+- A sword sweep no longer hits a big enemy once per tile it stands on. A 2x2 spider occupies several of the squares around your target and was returned once for each, so one swing landed on it two or three times - and a two-target sweep could be spent entirely on that one mob while the genuine second neighbour beside it was never touched
+- The Enderman lands next to you when it blinks in. Its four approach tiles are offsets from your position, and when it started off-axis every one of them came out diagonal - two tiles away, not adjacent - while the teleport-and-strike action still resolved into a melee hit regardless. It now collapses onto the dominant axis first, the way the spider and cave spider ambushes already do
+
+Hub Effects
+
+- A potion drunk in the hub keeps the duration it was drunk with. Frozen effects each record their own length and there is a helper that honours it, but the unfreeze that runs when combat starts overwrote every one of them with a single blanket value, so a 3-turn buff and an 8-turn buff both opened the fight at 5
+
+Achievements
+
+- Five boss achievements named the wrong boss. The descriptions were shifted one biome late, so killing the Ender Dragon read "Dragon Slayer - Defeat the Void Herald", and "Defeat the Hexweaver" and "Defeat the Void Walker" each appeared on two different achievements. Soul Sand Valley, Warped Forest, Basalt Deltas, Outer End Islands and Dragon's Nest now name the boss you actually fought, in both the toast and the advancement entry
+- The weapon-skills section header still counted the feat that was removed for having no spears in 1.21.1
+
+Config Screen
+
+- Four config sections showed their raw translation key as a heading. Infinite Scaling, Death Penalty, Bug Reports and Daily Raid Bosses were declared in the config but never given a name, so Mod Menu printed strings like `text.config.craftics-config.section.raidBosses` where the heading should be
+
+Documentation
+
+- The jukebox tooltip and its trader label both advertised +1 ally Speed. It grants +3, which is what the item's own message and the guide book have always said
+- The Raiser set bonus promised tamed allies "+2 Speed and +1 Attack". The speed half is implemented nowhere - Rally has only ever added attack - and it was quoted in both description tables at once
+- The Armor Class summary quoted a 40% dodge cap. The cap is 60%. It also still listed Resistance as an Armor Class source, which the body of the same method has a note explaining it is not: Resistance reduces incoming damage directly
+- The enemy-defense table's full-set totals were computed as though the compression ran once over the set. It runs per piece, so leather is 4 not 2, iron and copper 6 not 4, and netherite 10 not 8 - up to 2 points, a tenth of an enemy's whole mitigation budget
+- The README claimed version 0.2.10 in its fact box and 0.1.0 in its status section, and headed a nine-biome Overworld table "8 Biomes" three lines above text saying you visit all nine
+
 0.3.6.2
 Combat, Events and Arena Fixes
 

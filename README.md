@@ -9,7 +9,7 @@ Craftics is a Fabric mod that turns Minecraft into a tactical RPG. Fight through
 > **No new items. No new blocks.** (Except the Level Select.) Every item already in the game has a purpose in battle.
 
 - **Mod ID:** `craftics`
-- **Version:** 0.2.10
+- **Version:** 0.3.6.3
 - **Minecraft:** 1.21.1, 1.21.3, 1.21.4, 1.21.5
 - **Mod Loader:** Fabric (Fabric Loader ≥0.16.0, Fabric API)
 - **Required:** owo-lib
@@ -54,7 +54,7 @@ Full documentation and guides:
   - [Player Progression](#player-progression)
   - [New Game Plus](#new-game-plus)
 - [Biome Progression](#biome-progression)
-  - [Overworld (8 Biomes)](#overworld-8-biomes)
+  - [Overworld (9 Biomes)](#overworld-9-biomes)
   - [Nether (5 Biomes)](#nether-5-biomes)
   - [The End (4 Biomes)](#the-end-4-biomes)
 - [Controls](#controls)
@@ -432,7 +432,7 @@ See the [Recommended Builds guide](https://chrisatwell27.github.io/Craftics/prog
 
 The mod features 18 biomes across three dimensions. The Overworld has two possible orderings; the Nether and End are linear.
 
-### Overworld (8 Biomes)
+### Overworld (9 Biomes)
 
 The Overworld has two fixed orderings. One is chosen per world seed, and you visit all 9 biomes either way.
 
@@ -788,7 +788,7 @@ You're free to create addons, datapacks, resource packs, and mods that interact 
 
 ## Development Status
 
-The mod is in active development (v0.1.0). The following systems are implemented:
+The mod is in active development (v0.3.6.3). The following systems are implemented:
 
 - [x] Void world generation with Craftics world preset
 - [x] Hub cottage with crafting stations and Level Select Block

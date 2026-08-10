@@ -580,7 +580,7 @@ public class TraderSystem {
             pool.add(trade(Items.POWDER_SNOW_BUCKET, 1, 6, "§bPowder Snow §7(freeze)"));
             pool.add(trade(Items.SPONGE, 1, 4, "Sponge §7(absorb water)"));
             pool.add(trade(Items.SPORE_BLOSSOM, 1, 5, "Spore Blossom §7(AoE slow)"));
-            pool.add(trade(Items.JUKEBOX, 1, 6, "Jukebox §7(+1 ally speed)"));
+            pool.add(trade(Items.JUKEBOX, 1, 6, "Jukebox §7(+3 ally speed)"));
             pool.add(trade(Items.BELL, 1, 6, "Bell §7(stun AoE)"));
         }
         if (tier >= 6) {

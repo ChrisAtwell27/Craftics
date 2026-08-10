@@ -136,6 +136,17 @@ public class EndermanAI implements EnemyAI {
         int dx = Integer.signum(playerPos.x() - self.x());
         int dz = Integer.signum(playerPos.z() - self.z());
 
+        // Collapse an off-axis approach onto the dominant axis first. With both components
+        // non-zero every one of the four candidates below is a DIAGONAL offset - manhattan
+        // distance 2 from the player, i.e. not adjacent at all - and TeleportAndAttack
+        // resolves into an unconditional melee hit, so the enderman blinked two tiles clear
+        // and still connected. The other ambushers (spider, cave spider) already offset
+        // cardinally.
+        if (dx != 0 && dz != 0) {
+            if (Math.abs(playerPos.x() - self.x()) >= Math.abs(playerPos.z() - self.z())) dz = 0;
+            else dx = 0;
+        }
+
         // Try behind, flanks, then front - varied approach angles
         GridPos[] candidates = {
             new GridPos(playerPos.x() + dx, playerPos.z() + dz),   // behind

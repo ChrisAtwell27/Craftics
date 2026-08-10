@@ -16,14 +16,14 @@ public enum Achievement {
     BOSS_CAVE("Depths Delver", "Defeat the Underground Caverns boss", Category.BOSS),
     BOSS_DEEP_DARK("Silence the Dark", "Defeat the Warden", Category.BOSS),
     BOSS_NETHER_WASTES("Nether Survivor", "Defeat the Nether Wastes boss", Category.BOSS),
-    BOSS_SOUL_SAND("Soul Reaper", "Defeat the Hollow King", Category.BOSS),
+    BOSS_SOUL_SAND("Soul Reaper", "Defeat the Wailing Revenant", Category.BOSS),
     BOSS_CRIMSON("Crimson Clearer", "Defeat the Bastion Brute", Category.BOSS),
-    BOSS_WARPED("Hex Breaker", "Defeat the Hexweaver", Category.BOSS),
-    BOSS_BASALT("Molten Slayer", "Defeat the Molten King", Category.BOSS),
-    BOSS_OUTER_END("Void Touched", "Defeat the Void Walker", Category.BOSS),
+    BOSS_WARPED("Hex Breaker", "Defeat the Void Walker", Category.BOSS),
+    BOSS_BASALT("Molten Slayer", "Defeat the Wither", Category.BOSS),
+    BOSS_OUTER_END("Void Touched", "Defeat the Void Herald", Category.BOSS),
     BOSS_END_CITY("Architect's Fall", "Defeat the Shulker Architect", Category.BOSS),
     BOSS_CHORUS("Mind Over Matter", "Defeat the Chorus Mind", Category.BOSS),
-    BOSS_DRAGONS_NEST("Dragon Slayer", "Defeat the Void Herald", Category.BOSS),
+    BOSS_DRAGONS_NEST("Dragon Slayer", "Defeat the Ender Dragon", Category.BOSS),
 
     // === Dimension Mastery (3) ===
     DIM_OVERWORLD("Overworld Champion", "Defeat all Overworld bosses", Category.BOSS),
@@ -49,7 +49,7 @@ public enum Achievement {
     ARMOR_JUGGERNAUT("Juggernaut", "Defeat the Dragon's Nest boss in full Netherite armor", Category.CLASS),
     ARMOR_AQUATIC("Aquatic Assault", "Defeat a Nether boss in full Turtle armor", Category.CLASS),
 
-    // === Combat Feats - Weapon Skills (12) ===
+    // === Combat Feats - Weapon Skills (11) ===
     FEAT_SKEWER("Skewer", "Hit 3+ enemies with a single Crossbow pierce shot", Category.COMBAT),
     FEAT_WHIRLWIND("Whirlwind", "Sweep 4+ enemies with a single sword swing", Category.COMBAT),
     FEAT_EXECUTION("Execution", "Kill an enemy with Netherite Sword's Execute ability", Category.COMBAT),

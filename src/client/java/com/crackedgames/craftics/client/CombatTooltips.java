@@ -794,7 +794,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "wayfinder" -> "Movement ignores obstacle tiles";
             case "shaper"    -> "Place a free barrier block each turn";
             case "silence"   -> "Invisible for first 2 turns (enemies don't act)";
-            case "raiser"    -> "Tamed allies get +2 Speed and +1 Attack";
+            case "raiser"    -> "Tamed allies get +1 Attack";
             case "host"      -> "Heal 1 HP for each enemy killed";
             case "flow"      -> "Killing an enemy refunds 1 AP";
             case "bolt"      -> "Critical hits stun the target for 1 turn";
@@ -1160,7 +1160,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.HONEY_BLOCK) return "\u00a7e1 AP \u00a77- Place sticky trap\n\u00a77Enemies that step on it lose all movement";
         if (item == Items.SLIME_BLOCK) return "\u00a7a1 AP \u00a77- Place bouncy wall\n\u00a77Blocks movement and knocks adjacent enemies back when they end their turn beside it";
         if (item == Items.POWDER_SNOW_BUCKET) return "\u00a7b1 AP \u00a77- Freeze an enemy\n\u00a7c1 DMG \u00a77+ stun (skip next turn)";
-        if (item == Items.JUKEBOX) return "\u00a7d2 AP \u00a77- Play music\n\u00a77Buffs all ally pets +1 Speed\n\u00a77Consumed on use";
+        if (item == Items.JUKEBOX) return "\u00a7d2 AP \u00a77- Play music\n\u00a77Buffs all ally pets +3 Speed\n\u00a77Consumed on use";
         if (item == Items.GOAT_HORN) return "\u00a76" + com.crackedgames.craftics.combat.GoatHornEffects.HORN_AP_COST
             + " AP \u00a77- Combat horn. A setup tool: it costs more than a base turn's AP\n\u00a77Each variant gives a different buff or debuff\n\u00a77(see horn name for specific effect)\n\u00a77Never consumed";
         if (item == Items.ECHO_SHARD) return "\u00a751 AP \u00a77- Echo teleport\n\u00a77Return to start-of-turn position\n\u00a77Consumed on use";

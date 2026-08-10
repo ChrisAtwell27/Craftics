@@ -131,7 +131,7 @@ public final class VanillaContent {
         TrimPatternRegistry.register(new TrimPatternEntry("raiser",
             TrimEffects.Bonus.ALLY_DAMAGE, "+1 ally damage per piece",
             TrimEffects.SetBonus.RALLY, "Rally",
-            "Tamed allies get +2 Speed and +1 Attack"));
+            "Tamed allies get +1 Attack"));
         TrimPatternRegistry.register(new TrimPatternEntry("host",
             TrimEffects.Bonus.MAX_HP, "+4 max HP per piece",
             TrimEffects.SetBonus.SYMBIOTE, "Symbiote",

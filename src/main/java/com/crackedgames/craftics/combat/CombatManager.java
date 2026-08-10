@@ -19990,6 +19990,20 @@ public class CombatManager {
     }
 
     /**
+     * True when the arena being fought sits in the Nether campaign region, where poured
+     * water flashes to steam instead of forming a pool - the same vanilla rule the bed
+     * already follows here.
+     *
+     * <p>Reads the campaign region rather than the world's dimension key for the same
+     * reason {@link #isExplosiveBedRegion()} does: every arena physically runs inside an
+     * island runtime dimension, so the world is never literally {@code minecraft:the_nether}.
+     * The End is deliberately excluded - water behaves normally there in vanilla.
+     */
+    public boolean isNetherRegion() {
+        return "nether".equals(currentRegionId());
+    }
+
+    /**
      * Whether a sleep-item detonates here instead of doing its job. Both items follow
      * the same vanilla rule - each works only in its own home region and explodes
      * everywhere else - so the two differ by one string:

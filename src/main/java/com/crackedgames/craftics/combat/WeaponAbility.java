@@ -92,6 +92,12 @@ public class WeaponAbility {
     /**
      * Find up to maxTargets adjacent enemies around a target (for sweep and other AoE).
      * Checks all 8 surrounding tiles. Excludes allies and dead entities.
+     *
+     * <p>A multi-tile enemy (a 2x2 spider, say) occupies several of those tiles, so it was
+     * returned once per tile it stood on: the sweep hit it two or three times for one swing,
+     * and a maxTargets of 2 could be spent entirely on that one mob while a genuine second
+     * neighbour was never touched. Results are de-duplicated by identity, matching the
+     * LinkedHashSet the splash-potion and water-throwable AoEs already use.
      */
     public static List<CombatEntity> findAdjacentEnemies(GridArena arena, CombatEntity target, int maxTargets) {
         List<CombatEntity> found = new ArrayList<>();
@@ -101,6 +107,7 @@ public class WeaponAbility {
                 GridPos adj = new GridPos(target.getGridPos().x() + dx, target.getGridPos().z() + dz);
                 CombatEntity other = arena.getOccupant(adj);
                 if (other != null && other.isAlive() && other != target && !other.isAlly()) {
+                    if (found.contains(other)) continue;
                     found.add(other);
                     if (found.size() >= maxTargets) return found;
                 }

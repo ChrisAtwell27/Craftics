@@ -39,10 +39,12 @@ public class PlayerCombatStats {
     /**
      * Total Armor Class used for the incoming-damage dodge roll. Sums the
      * per-piece AC of worn armor ({@link ArmorClassTable}) with every defense
-     * bonus source: Protection enchants, armor-set bonus, Resistance, the
-     * DEFENSE progression stat, trim defense, banner aura, and the shield
-     * passive. There is no soft-cap - the dodge formula's 40% cap bounds the
-     * benefit of stacking AC. See {@code DodgeRoll} and the AC overhaul spec.
+     * bonus source: Protection enchants, armor-set bonus, the DEFENSE
+     * progression stat, trim defense, banner aura, and the shield passive.
+     * Resistance is deliberately NOT in that list - it reduces incoming damage
+     * directly instead, per the note in the body. There is no soft-cap - the
+     * dodge formula's 60% cap ({@code DodgeRoll.CAP}) bounds the benefit of
+     * stacking AC. See {@code DodgeRoll} and the AC overhaul spec.
      *
      * @param combatEffects    active combat effects (may be null)
      * @param trimScan         active trim scan (may be null)
