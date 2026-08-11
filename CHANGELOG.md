@@ -1,4 +1,47 @@
 ﻿Changelog
+0.3.8.1
+Mobs Acting Out of Turn
+
+- Nothing can hurt you in a fight except the fight.
+- Your allies get the same protection, so nothing chews through your wolf while it waits for its turn
+- Uninvited mobs are removed.
+- Removed the stalker as a miniboss
+- Removed herobrine
+
+0.3.8
+Softlocks
+
+- A fight can no longer end up with nothing in it and no way out. A room can empty DURING the enemy phase - a mob burns to death on its own turn, walks into lava, or is killed by another mob - and every victory check in the game was attached to a player action, so none of them ever saw it happen. What was left was a fight containing nothing, which the player could only end by taking another turn. The enemy phase now checks the room the same way every player action does
+- Added a watchdog over the enemy phase. It is a state machine spread across about sixty places that arm the next step, and any one of them that returns without arming anything leaves the phase spinning on the same tick forever. The player is locked out completely while that happens, because every input that is not their turn is dropped - which is why it showed up as "end turn does nothing" rather than as a freeze. Ten seconds of no progress now forces the rotation onward and logs which entity and which step it was stuck on, so the next one names itself
+
+Multiplayer
+
+- Party pets belong to whoever brought them, not to whoever pressed start. Pets were collected for the run leader alone, so a member could add animals, see them in their party list, and then fight without them - the only party that ever turned up was the host's
+- That fix came with two traps worth naming. The collector deletes party entries whose animal it cannot find, and a member's pets live on THEIR island rather than the leader's, so the obvious version of this would have quietly wiped every member's party list on the first run. It now searches the owner's island too, and treats "could not look there" as a lookup that failed rather than as proof the animal is gone. Restoring afterwards had the mirror of the same bug: pets carried no owner, so a member's wolf would have been rehomed onto the leader's island
+- Fixed the ghost lobby: leaving an island no longer strands you in an empty void where you can hear the people around you but see nothing, and nobody can see you. An island is unloaded once the last person leaves it, and that was happening in the same tick as the teleport - pulling the world out from under a dimension change still in flight. The server then believes you arrived, which is why the sound is right, while the handover that would have sent you any terrain never finishes. No command fixes it, which is why operators were as stuck as everyone else. The unload now waits a tick, the way the logout path always has. That is the difference between logging out of an island and walking out of one
+- The same race was in three places, and the worst of them was a host logging out while guests were visiting: everyone was teleported out and the island was torn down immediately, so it could strand several people at once
+- Arriving at a hub or the lobby also takes you out of spectator now. A downed party member is put into spectator while the rest of the party fights on, and the exits that forgot to put them back left them stuck that way. Only spectator is touched, so an operator in creative stays in creative
+
+Auction House
+
+- `/auction`, `/shop` and `/store` open a chest screen of everything players have listed, cheapest first, 45 to a page. Clicking an item opens a confirm step showing the price, your balance and what you get, so nothing is ever bought on a single click. The bottom row pages through the board, switches to your own listings, and collects anything waiting for you
+- Sell with `/auction sell <price>` for emeralds, or `/auction sell barter <item> <count>` to ask for items instead. Barter only ever accepts plain stacks as payment: nothing enchanted, renamed or damaged is taken, so clicking Buy on a listing that wants a diamond sword can never quietly spend the enchanted one you were saving
+- The board holds 500 listings, 10 per player, and a listing lasts 14 days before it goes back to its seller. Nothing here ever destroys an item: an expired listing, a cancelled one, or a purchase that will not fit in your inventory all go to a mailbox you collect from
+- The whole thing is built so an item exists in exactly one place at every moment - in an inventory or on the board, never both, and it moves between them in a single tick. Buying claims the listing before a single emerald is spent, so two people clicking the same item in the same tick can only ever have one of them succeed, and the one who loses pays nothing. There is no pending or reserved state anywhere, because a pending state is one a crash can strand
+
+Fire
+
+- Fire has a reach. Every flame now carries an intensity: how much further it can travel. A light struck by hand starts with three tiles of it and each tile the fire spreads to is born one weaker, so flint and steel is a tool with a radius rather than something that slowly eats the whole arena. A fire that has run out still burns where it stands, it just stops passing itself on
+- Soul fire never runs out of reach, and anything it lights inherits that. It burns without fuel and it does not tire
+- Soul fire has its own burn. Soul Burning holds longer than ordinary Burning and bites harder, and fire resistance no longer switches it off - the potion and the armour take a point off each tick and nothing more. Fire resistance is what makes ordinary fire a non-event, and soul fire is supposed to still be a reason to move even for someone who has solved fire. It shows the flame icon in soul-fire blue
+- Mobs take soul burn too, on their own timer, so one can carry an ordinary burn and a soul burn at once after walking out of one flame into the other. Fire immunity is not a way out of this one either: a blaze standing in soul fire still burns, it just takes a slightly smaller bite. Water still puts both out, which is a rule older than fire immunity
+- Sculk jaws are no longer generated, and one baked into a schematic is left as scenery. The tile was backed by a real Deeper and Darker block that kept running its own logic inside the arena, biting whoever stood on it over and over in real time, on nobody's turn, on top of the single once-per-step bite the grid rule applies. A hazard the turn system cannot see or bound is not a hazard, it is a death with no counterplay
+- Two fires meeting resolve to the fiercer one. Ground that was already alight used to simply refuse a second flame; now the stronger one takes it over, so soul fire washing across an ordinary burn turns it blue and endless instead of stopping at its edge, and a fresh strike re-arms ground whose fire had nearly gone out. The weaker flame never drags the stronger one down
+
+Interface
+
+- The Continue button on the victory screen is now the bigger of the two. It is the one that gets pressed, over and over, and an infinite run is nothing but that button between fights, so it is sized as the primary action instead of matching Go Home
+
 0.3.7
 Softlocks and Lost Inventories
 

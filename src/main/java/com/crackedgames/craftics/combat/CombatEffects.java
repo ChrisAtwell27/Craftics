@@ -24,6 +24,11 @@ public class CombatEffects {
         WEAKNESS("Weakness", "-2 attack/level"),
         WITHER("Wither", "-(1+level) HP/turn, ramping each turn"),
         BURNING("Burning", "-(1+level) HP/turn"),
+        // Soul fire's own burn. Same shape as BURNING but it holds longer and bites harder,
+        // and fire resistance only blunts it instead of turning it off - being fireproof is
+        // what makes ordinary fire a non-event, and soul fire is meant to still be a threat
+        // to someone who has solved fire.
+        SOUL_BURNING("Soul Burning", "-(2+level) HP/turn; fire resistance only softens it"),
         BLEEDING("Bleeding", "Stacking HP loss/turn (1, 1, 3, 5, 7...)"),
         BLINDNESS("Blindness", "-2 range/level"),
         MINING_FATIGUE("Mining Fatigue", "-1 AP/level"),
@@ -82,6 +87,13 @@ public class CombatEffects {
     /** Fallback duration cap used when the config isn't loaded (unit tests, or an effect
      *  applied before mod init). Matches the config default. */
     private static final int DEFAULT_MAX_DURATION = 10;
+
+    /** Damage soul burning adds on top of the ordinary burn tick. */
+    public static final int SOUL_BURN_EXTRA = 1;
+    /** All that fire resistance takes off a soul burn tick. It softens; it does not stop it. */
+    public static final int SOUL_BURN_RESISTED_REDUCTION = 1;
+    /** Turns a soul burn holds, against BURN_TURNS for the ordinary kind. */
+    public static final int SOUL_BURN_TURNS = 5;
 
     /**
      * The configured cap on effect duration, or {@link #DEFAULT_MAX_DURATION} if the config
@@ -235,6 +247,20 @@ public class CombatEffects {
         ActiveEffect burning = effects.get(EffectType.BURNING);
         if (burning != null && !burning.isFrozen() && !hasFireResistance()) {
             hpChange -= EffectFormulas.burningTick(burning.amplifier + 1, specialAffinity);
+        }
+
+        // Soul burning: hotter than ordinary fire, and fire resistance does not switch it
+        // off. Being fireproof reduces it by SOUL_BURN_RESISTED_REDUCTION and no more, so
+        // the gear and the potion that make ordinary fire a non-event still leave soul fire
+        // worth running out of. Never reduced below 1 - "resisted" is not "immune".
+        ActiveEffect soulBurning = effects.get(EffectType.SOUL_BURNING);
+        if (soulBurning != null && !soulBurning.isFrozen()) {
+            int soulTick = EffectFormulas.burningTick(soulBurning.amplifier + 1, specialAffinity)
+                + SOUL_BURN_EXTRA;
+            if (hasFireResistance()) {
+                soulTick = Math.max(1, soulTick - SOUL_BURN_RESISTED_REDUCTION);
+            }
+            hpChange -= soulTick;
         }
 
         ActiveEffect bleeding = effects.get(EffectType.BLEEDING);
@@ -436,7 +462,7 @@ public class CombatEffects {
      *  long enough to actually tick. See the floor applied in {@link #addEffect}. */
     public static boolean isDamageOverTime(EffectType type) {
         return switch (type) {
-            case POISON, WITHER, BURNING, BLEEDING -> true;
+            case POISON, WITHER, BURNING, SOUL_BURNING, BLEEDING -> true;
             default -> false;
         };
     }
@@ -444,7 +470,7 @@ public class CombatEffects {
     /** True if {@code type} is a harmful effect (removed by a cleanse). */
     public static boolean isDebuff(EffectType type) {
         return switch (type) {
-            case POISON, SLOWNESS, WEAKNESS, WITHER, BURNING, BLEEDING,
+            case POISON, SLOWNESS, WEAKNESS, WITHER, BURNING, SOUL_BURNING, BLEEDING,
                  BLINDNESS, MINING_FATIGUE, LEVITATION, DARKNESS, SOAKED, CONFUSION, WARPED,
                  MARKED -> true;
             default -> false;

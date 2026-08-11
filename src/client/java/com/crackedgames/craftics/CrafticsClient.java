@@ -105,18 +105,35 @@ public class CrafticsClient implements ClientModInitializer {
             );
         };
 
-        // /bugreport - purely client-side; opens the report form. setScreen is
-        // deferred a tick (client.send) so the closing chat screen doesn't
-        // immediately stomp the new one.
+        // /bugreport, /bug, /debug - purely client-side, three names for one thing because
+        // nobody guesses which one a mod chose. Two forms each:
+        //   bare            -> opens the report form (setScreen is deferred a tick via
+        //                      client.send so the closing chat screen doesn't stomp it)
+        //   <shots> <text>  -> sends immediately with the N most recent screenshots attached,
+        //                      for when you already know what went wrong and do not want a form
         net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback.EVENT.register(
-            (dispatcher, registryAccess) -> dispatcher.register(
-                net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal("bugreport")
-                    .executes(ctx -> {
-                        var client = net.minecraft.client.MinecraftClient.getInstance();
-                        client.send(() -> client.setScreen(
-                            new com.crackedgames.craftics.client.bugreport.BugReportScreen()));
-                        return 1;
-                    })));
+            (dispatcher, registryAccess) -> {
+                for (String name : new String[]{"bugreport", "bug", "debug"}) {
+                    dispatcher.register(
+                        net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal(name)
+                            .executes(ctx -> {
+                                var client = net.minecraft.client.MinecraftClient.getInstance();
+                                client.send(() -> client.setScreen(
+                                    new com.crackedgames.craftics.client.bugreport.BugReportScreen()));
+                                return 1;
+                            })
+                            .then(net.fabricmc.fabric.api.client.command.v2.ClientCommandManager
+                                .argument("screenshots", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, 3))
+                                .then(net.fabricmc.fabric.api.client.command.v2.ClientCommandManager
+                                    .argument("description", com.mojang.brigadier.arguments.StringArgumentType.greedyString())
+                                    .executes(ctx -> {
+                                        sendInlineBugReport(
+                                            com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "screenshots"),
+                                            com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "description"));
+                                        return 1;
+                                    }))));
+                }
+            });
 
         ClientPlayNetworking.registerGlobalReceiver(EnterCombatPayload.ID, (payload, context) -> {
             context.client().execute(() -> {
@@ -1081,5 +1098,51 @@ public class CrafticsClient implements ClientModInitializer {
             client.options.write();
             CrafticsMod.LOGGER.info("Resolved {} keybind conflict(s)", cleared);
         }
+    }
+
+    /**
+     * The no-form path of {@code /bug <shots> <description>}: attach the N newest screenshots
+     * and send, reporting progress in chat instead of on a screen.
+     *
+     * <p>Runs the same validation and the same {@link com.crackedgames.craftics.client.bugreport.BugReportSender}
+     * the form does, so a report filed this way is indistinguishable at the other end - and it
+     * inherits the same safety net, where a failed upload is written to
+     * {@code craftics-bugreports/} rather than losing what the player typed.
+     */
+    private static void sendInlineBugReport(int screenshotCount, String description) {
+        var client = net.minecraft.client.MinecraftClient.getInstance();
+        java.util.function.Consumer<String> say = msg -> {
+            if (client.player != null) {
+                client.player.sendMessage(net.minecraft.text.Text.literal(msg), false);
+            }
+        };
+
+        String text = description == null ? "" : description.trim();
+        if (text.length() < 10) {
+            say.accept("§cSay a bit more about what happened (10 characters or more).");
+            return;
+        }
+        String endpoint = CrafticsMod.CONFIG.bugReportEndpoint();
+        if (endpoint == null || endpoint.isBlank() || !endpoint.startsWith("http")) {
+            say.accept("§cNo report endpoint configured (Craftics config).");
+            return;
+        }
+
+        var shots = com.crackedgames.craftics.client.bugreport.BugReportSender
+            .recentScreenshots(screenshotCount);
+        if (screenshotCount > 0 && shots.isEmpty()) {
+            say.accept("§7No screenshots found to attach - sending the report without them.");
+        }
+
+        // The form asks for a title and a summary; the inline form only has the one sentence,
+        // so the first line becomes the title and the whole thing stays as the body. Truncated
+        // rather than split on a period: a title is a label, not the first sentence.
+        String title = text.length() <= 60 ? text : text.substring(0, 57) + "...";
+
+        say.accept("§6Sending bug report" + (shots.isEmpty() ? "" : " with " + shots.size()
+            + " screenshot" + (shots.size() == 1 ? "" : "s")) + "...");
+        com.crackedgames.craftics.client.bugreport.BugReportSender.sendAsync(
+            endpoint, title, text, shots, true,
+            result -> say.accept((result.sent() ? "§a" : "§c") + result.detail()));
     }
 }

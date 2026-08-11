@@ -3227,6 +3227,16 @@ public class CombatManager {
 
     private enum EnemyTurnState { DECIDING, MOVING, ANIMATING, ATTACKING, TANTRUM_HOPPING, DONE }
     private int enemyTurnIndex;
+
+    /**
+     * Watchdog state for the enemy phase (see {@link #tickEnemyTurn}). {@code lastEnemyStallKey}
+     * packs the rotation index and the state machine's step; if that pair stops changing for
+     * {@link #ENEMY_STALL_TICKS}, the phase is stuck and gets forced forward.
+     */
+    private long lastEnemyStallKey = -1;
+    private int enemyStallTicks = 0;
+    /** Ticks of no progress in the enemy phase before the watchdog steps in. 10 seconds. */
+    private static final int ENEMY_STALL_TICKS = 200;
     private int enemyTurnDelay;
     /** Guards {@link #tickEnemyTurn} so a freshly-armed {@code enemyTurnDelay} is
      *  stretched at most once for cinematic pacing, not re-multiplied every tick. */
@@ -3261,6 +3271,7 @@ public class CombatManager {
     private int tickCounter;
 
     public boolean isActive() { return active; }
+
     public CombatPhase getPhase() { return phase; }
     public int getApRemaining() { return apRemaining; }
     public CombatEffects getCombatEffects() { return combatEffects; }
@@ -13420,6 +13431,42 @@ public class CombatManager {
     private void tickEnemyTurn() {
         // Trapper: spring any trap an enemy has stepped onto since the last tick.
         springTrapperTraps();
+
+        // The room can empty DURING the enemy phase - a mob burns to death on its own turn,
+        // walks into lava, or is killed by another mob - and every victory check in the file
+        // is bolted onto a player action, so none of them see it. What is left is a fight with
+        // nothing in it that the player can only end by taking another turn, and if anything
+        // stalls the rotation they cannot even do that. Ending it here closes both.
+        if (phase == CombatPhase.ENEMY_TURN && !anyEnemyBlockingVictory()) {
+            handleVictory();
+            return;
+        }
+
+        // Stall watchdog. The enemy phase is a state machine spread over ~60 arming sites, and
+        // any one of them that returns without arming a delay or advancing the state leaves the
+        // phase spinning on the same tick forever. The player is locked out entirely while that
+        // happens: handleAction drops every input that is not PLAYER_TURN, so the reported
+        // symptom is "end turn does nothing". Rather than trusting every site to be correct,
+        // notice that nothing has changed for ENEMY_STALL_TICKS and force the rotation on.
+        long stallKey = (long) enemyTurnIndex << 8 | enemyTurnState.ordinal();
+        if (stallKey == lastEnemyStallKey) {
+            if (++enemyStallTicks >= ENEMY_STALL_TICKS) {
+                CrafticsMod.LOGGER.warn(
+                    "Enemy turn stalled at index {} state {} ({}); forcing it forward",
+                    enemyTurnIndex, enemyTurnState,
+                    currentEnemy != null ? currentEnemy.getEntityTypeId() : "no entity");
+                enemyStallTicks = 0;
+                enemyLerpInitialized = false;
+                pendingAction = null;
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = 0;
+                tickEnemyDone();
+                return;
+            }
+        } else {
+            lastEnemyStallKey = stallKey;
+            enemyStallTicks = 0;
+        }
         // Cinematic pacing: stretch each freshly-armed action delay (~1.8x, clamped)
         // so the camera has time to pan onto the acting unit and linger before
         // returning. enemyTurnDelay is written in ~60 places but read only here, so
@@ -13641,6 +13688,28 @@ public class CombatManager {
                 }
                 if (e.getBurningTurns() <= 0) {
                     e.setBurningAmplifier(0);
+                }
+                if (wasAlive && !e.isAlive()) achievementTracker.recordBurnKill();
+                checkAndHandleDeath(e);
+            }
+
+            // --- Soul burn DOT: the same cycle as burning, on its own timer so a mob can
+            // carry both at once (walking a soul fire into an ordinary one). Fire-immune
+            // mobs tick too, just for less - the reduction lives in getSoulBurningTickDamage.
+            for (CombatEntity e : enemies) {
+                if (!e.isAlive() || e.getSoulBurningTurns() <= 0) continue;
+                boolean wasAlive = e.isAlive();
+                int soulDmg = applyStatusDot(e, e.getSoulBurningTickDamage());
+                e.setSoulBurningTurns(e.getSoulBurningTurns() - 1);
+                sendMessage("§3" + e.getDisplayName() + " is scorched by soul fire for " + soulDmg + ".");
+                if (e.getMobEntity() != null) {
+                    ((ServerWorld) player.getEntityWorld()).spawnParticles(
+                        net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME,
+                        e.getMobEntity().getX(), e.getMobEntity().getY() + 1.0, e.getMobEntity().getZ(),
+                        10, 0.3, 0.5, 0.3, 0.02);
+                }
+                if (e.getSoulBurningTurns() <= 0) {
+                    e.setSoulBurningAmplifier(0);
                 }
                 if (wasAlive && !e.isAlive()) achievementTracker.recordBurnKill();
                 checkAndHandleDeath(e);
@@ -18098,8 +18167,26 @@ public class CombatManager {
         STRUCK
     }
 
-    /** @param restores tile comes back as itself (netherrack) rather than burning to dirt. */
-    private record BurnState(BurnStage stage, int turnsLeft, boolean restores) {}
+    /**
+     * @param restores  tile comes back as itself (netherrack) rather than burning to dirt.
+     * @param intensity how much further this flame can travel: each tile it spreads to is
+     *                  born one weaker, and a fire at 0 has run out of reach and only burns
+     *                  where it stands. {@link #INFINITE_INTENSITY} never decays.
+     */
+    private record BurnState(BurnStage stage, int turnsLeft, boolean restores, int intensity) {}
+
+    /**
+     * Spread budget by source.
+     *
+     * <p>A fire is not just "lit" or "not lit" - it carries how far it can still travel.
+     * A hand-struck light gets {@link #STRUCK_INTENSITY} tiles of reach and dies out at the
+     * edge of it, so flint and steel is a tool with a radius rather than something that
+     * eventually eats the arena. Soul fire is the exception: it burns without fuel and it
+     * does not tire, so it never loses reach.
+     */
+    private static final int STRUCK_INTENSITY = 3;
+    /** Soul fire, and anything it lights. Never decays. */
+    private static final int INFINITE_INTENSITY = Integer.MAX_VALUE;
 
     /** Long enough that tickTemporaryTerrain never expires a stage out from under us,
      *  short of permanent so endCombat's temporary-terrain restore still claims the tile. */
@@ -18197,13 +18284,45 @@ public class CombatManager {
      * @return true if the tile was ignited
      */
     private boolean igniteTile(GridPos pos, Ignition kind) {
+        return igniteTile(pos, kind, defaultIntensity(kind));
+    }
+
+    /** The reach a flame from {@code kind} starts with when no parent hands one down. */
+    private static int defaultIntensity(Ignition kind) {
+        return kind == Ignition.SOUL_SPREAD ? INFINITE_INTENSITY : STRUCK_INTENSITY;
+    }
+
+    /**
+     * As {@link #igniteTile(GridPos, Ignition)}, but with an explicit spread budget - what a
+     * spreading fire hands its children, one less than its own.
+     *
+     * <p>Also where fires MERGE. A tile already alight is not simply refused: if the arriving
+     * flame is the stronger one it overwrites what is there, so a soul fire washing over an
+     * ordinary burn turns it blue and endless rather than bouncing off it, and a fresh strike
+     * re-arms ground whose fire had nearly run out. The weaker flame never downgrades the
+     * stronger, so two fires meeting always resolve to the fiercer of the two.
+     */
+    private boolean igniteTile(GridPos pos, Ignition kind, int intensity) {
         if (arena == null || player == null || pos == null) return false;
         if (!arena.isInBounds(pos)) return false;
+        BurnState existing = burningTiles.get(pos);
+        if (existing != null) {
+            if (intensity > existing.intensity()) {
+                boolean toSoul = kind == Ignition.SOUL_SPREAD;
+                burningTiles.put(pos, new BurnState(existing.stage(), existing.turnsLeft(),
+                    existing.restores(), intensity));
+                GridTile merging = arena.getTile(pos);
+                if (toSoul && merging != null && merging.getType() == TileType.FIRE) {
+                    merging.setTemporaryType(TileType.SOUL_FIRE, BURN_HOLD_TURNS);
+                    paintTileBlock((ServerWorld) player.getEntityWorld(), pos, merging);
+                }
+            }
+            return false;   // no NEW tile caught; the count of spread tiles is unchanged
+        }
         // The cooldown is the ONE thing soul fire respects: a tile that has already burned
         // gets its turn off, or a soul fire would sit on the same ground relighting it
         // forever and the front would never actually go out.
         if (fireproofTiles.containsKey(pos)) return false;   // still cooling down
-        if (burningTiles.containsKey(pos)) return false;     // already alight
         GridTile tile = arena.getTile(pos);
         if (tile == null) return false;
 
@@ -18240,9 +18359,11 @@ public class CombatManager {
 
         tile.setTemporaryType(soul ? TileType.SOUL_FIRE : TileType.FIRE, BURN_HOLD_TURNS);
         paintTileBlock(world, pos, tile);
+        // Soul fire is endless whatever lit it - ground that burns blue makes a blue fire,
+        // and a blue fire never runs out of reach.
         burningTiles.put(pos, new BurnState(BurnStage.FLAMES,
             soul ? FlammableTiles.SOUL_FIRE_BURN_TURNS : FlammableTiles.FIRE_BURN_TURNS,
-            restores));
+            restores, soul ? INFINITE_INTENSITY : Math.max(0, intensity)));
 
         world.spawnParticles(soul ? net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME
                 : net.minecraft.particle.ParticleTypes.FLAME,
@@ -18352,7 +18473,8 @@ public class CombatManager {
             if (tile == null) { burningTiles.remove(pos); continue; }
             int left = state.turnsLeft() - 1;
             if (left > 0) {
-                burningTiles.put(pos, new BurnState(state.stage(), left, state.restores()));
+                burningTiles.put(pos, new BurnState(state.stage(), left, state.restores(),
+                    state.intensity()));
                 continue;
             }
             if (state.stage() == BurnStage.FLAMES) {
@@ -18360,7 +18482,7 @@ public class CombatManager {
                 tile.setTemporaryType(TileType.EMBER, BURN_HOLD_TURNS);
                 paintTileBlock(world, pos, tile);
                 burningTiles.put(pos, new BurnState(BurnStage.MAGMA,
-                    FlammableTiles.MAGMA_TURNS, state.restores()));
+                    FlammableTiles.MAGMA_TURNS, state.restores(), state.intensity()));
                 BlockPos floor = tileFloorPos(pos);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
                     floor.getX() + 0.5, floor.getY() + 1.1, floor.getZ() + 0.5,
@@ -18375,20 +18497,35 @@ public class CombatManager {
         // Spread from the snapshot. Each candidate remembers whether ANY adjacent source was
         // soul fire - soul wins the tie, because a tile touched by both should take the flame
         // that doesn't care whether there's fuel there.
+        // Each candidate carries the soul flag AND the reach it would inherit: one less than
+        // the strongest neighbour feeding it. A source with no reach left (intensity 0) is
+        // still burning, it just cannot hand anything on, so it is skipped as a parent - that
+        // is what makes a struck fire stop after STRUCK_INTENSITY tiles instead of walking
+        // the whole arena. Soul fire is infinite and stays infinite in its children.
         java.util.LinkedHashMap<GridPos, Boolean> toIgnite = new java.util.LinkedHashMap<>();
+        java.util.HashMap<GridPos, Integer> inherited = new java.util.HashMap<>();
         int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         for (var src : flameFront.entrySet()) {
+            BurnState parent = burningTiles.get(src.getKey());
+            // A flame tile with no burn state is painted terrain (a boss's fire, an arena
+            // hazard) rather than something this cycle lit; give it the standard reach.
+            int parentIntensity = parent != null ? parent.intensity() : STRUCK_INTENSITY;
+            if (parentIntensity <= 0) continue;                       // burning, but spent
+            int childIntensity = parentIntensity == INFINITE_INTENSITY
+                ? INFINITE_INTENSITY : parentIntensity - 1;
             for (int[] d : dirs) {
                 GridPos n = new GridPos(src.getKey().x() + d[0], src.getKey().z() + d[1]);
                 if (!arena.isInBounds(n)) continue;
                 toIgnite.merge(n, src.getValue(), (a, b) -> a || b);
+                inherited.merge(n, childIntensity, Math::max);
             }
         }
         int spread = 0;
         int soulSpread = 0;
         for (var candidate : toIgnite.entrySet()) {
             if (!igniteTile(candidate.getKey(),
-                    candidate.getValue() ? Ignition.SOUL_SPREAD : Ignition.SPREAD)) continue;
+                    candidate.getValue() ? Ignition.SOUL_SPREAD : Ignition.SPREAD,
+                    inherited.getOrDefault(candidate.getKey(), 0))) continue;
             spread++;
             if (candidate.getValue()) soulSpread++;
         }
@@ -18515,7 +18652,25 @@ public class CombatManager {
      * fire goes 2 turns -&gt; 4 turns -&gt; 6 turns instead of being pinned at two.
      */
     private void applyFireTileBurnToPlayer(TileType flames) {
-        if (player == null || combatEffects.hasFireResistance()) return;
+        if (player == null) return;
+        // Soul fire is its own burn, and fire resistance does NOT keep it off you - it only
+        // takes the edge off each tick (see CombatEffects). Ordinary fire still bounces off
+        // a fireproof player entirely, which is the whole point of being fireproof.
+        if (flames == TileType.SOUL_FIRE) {
+            int soulLevel = Math.max(burnLevelFor(flames),
+                combatEffects.getAmplifier(CombatEffects.EffectType.SOUL_BURNING) + 1);
+            int soulTurns = CombatEffects.SOUL_BURN_TURNS
+                + combatEffects.getTurnsRemaining(CombatEffects.EffectType.SOUL_BURNING);
+            if (addEffectHooked(CombatEffects.EffectType.SOUL_BURNING, soulTurns, soulLevel - 1)) {
+                sendMessage("§b  You're standing in soul fire! §3Soul Burning "
+                    + "I".repeat(Math.max(1, soulLevel)) + " for "
+                    + combatEffects.getTurnsRemaining(CombatEffects.EffectType.SOUL_BURNING)
+                    + " turns."
+                    + (combatEffects.hasFireResistance() ? " §7Your fire resistance barely helps." : ""));
+            }
+            return;
+        }
+        if (combatEffects.hasFireResistance()) return;
         int level = burnLevelFor(flames);
         // addEffect REPLACES the timer, so the extension has to be summed in here. The
         // LEVEL takes the max rather than the new value: stepping from soul fire into
@@ -18536,7 +18691,21 @@ public class CombatManager {
     /** Mob/ally half of the fire-tile burn: same rule, same extend-don't-refresh behaviour
      *  ({@link CombatEntity#stackBurning} already adds turns, so only the level is pinned). */
     private void applyFireTileBurn(CombatEntity victim, TileType flames) {
-        if (victim == null || !victim.isAlive() || victim.isFireImmune()) return;
+        if (victim == null || !victim.isAlive()) return;
+        // Soul fire burns the fire-immune too - a blaze standing in it is not safe, it just
+        // takes a slightly smaller bite. Same rule as the player side.
+        if (flames == TileType.SOUL_FIRE) {
+            int soulLevel = burnLevelFor(flames);
+            int before = victim.getSoulBurningTurns();
+            victim.stackSoulBurning(CombatEffects.SOUL_BURN_TURNS, 0);
+            if (victim.getSoulBurningTurns() == before) return;   // soaked - nothing caught
+            victim.setSoulBurningAmplifier(
+                Math.max(victim.getSoulBurningAmplifier(), soulLevel - 1));
+            sendMessage("§b" + victim.getDisplayName() + " is standing in soul fire! §3Soul Burning "
+                + "I".repeat(Math.max(1, soulLevel)) + ".");
+            return;
+        }
+        if (victim.isFireImmune()) return;
         int level = burnLevelFor(flames);
         int before = victim.getBurningTurns();
         victim.stackBurning(FlammableTiles.BURN_TURNS, 0);
@@ -31018,11 +31187,13 @@ public class CombatManager {
                 //? if <=1.21.4 {
                 savedPets.add(new HubPetCollector.PetData(
                     n.getString("type"), n.getInt("hp"), n.getInt("maxHp"),
-                    n.getInt("atk"), n.getInt("def"), n.getInt("speed"), n.getInt("range"), null, false));
+                    n.getInt("atk"), n.getInt("def"), n.getInt("speed"), n.getInt("range"), null, false,
+                    player.getUuid()));
                 //?} else {
                 /*savedPets.add(new HubPetCollector.PetData(
                     n.getString("type", ""), n.getInt("hp", 0), n.getInt("maxHp", 0),
-                    n.getInt("atk", 0), n.getInt("def", 0), n.getInt("speed", 0), n.getInt("range", 0), null, false));
+                    n.getInt("atk", 0), n.getInt("def", 0), n.getInt("speed", 0), n.getInt("range", 0), null, false,
+                    player.getUuid()));
                 *///?}
             }
             if (!savedPets.isEmpty()) saveData.markDirty();
@@ -31714,7 +31885,7 @@ public class CombatManager {
             case HASTE -> net.minecraft.entity.effect.StatusEffects.HASTE;
             case SLOW_FALLING -> net.minecraft.entity.effect.StatusEffects.SLOW_FALLING;
             case WATER_BREATHING -> net.minecraft.entity.effect.StatusEffects.WATER_BREATHING;
-            case BURNING, SOAKED, CONFUSION, BLEEDING, AIRTIME, WARPED, MARKED -> null; // no vanilla equivalent
+            case BURNING, SOUL_BURNING, SOAKED, CONFUSION, BLEEDING, AIRTIME, WARPED, MARKED -> null; // no vanilla equivalent
         };
     }
 
@@ -32865,6 +33036,7 @@ public class CombatManager {
             else if (e.getSpeedBonus() < 0) efx.append(";Slowed");
             if (e.getPoisonTurns() > 0) efx.append(";Poisoned(" + e.getPoisonTurns() + "t)");
             if (e.getAttackPenaltyTurns() > 0) efx.append(";Weakened(-" + e.getAttackPenalty() + "ATK," + e.getAttackPenaltyTurns() + "t)");
+            if (e.getSoulBurningTurns() > 0) efx.append(";Soul Burning(" + e.getSoulBurningTurns() + "t)");
             if (e.getBurningTurns() > 0) efx.append(";Burning(" + e.getBurningTurns() + "t)");
             else if (e.getMobEntity() != null && e.getMobEntity().isOnFire()) efx.append(";Burning");
             if (e.getSoakedTurns() > 0) efx.append(";Soaked(" + e.getSoakedTurns() + "t)");

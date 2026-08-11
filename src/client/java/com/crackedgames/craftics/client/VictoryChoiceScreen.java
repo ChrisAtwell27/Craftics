@@ -173,9 +173,15 @@ public class VictoryChoiceScreen extends Screen {
             ));
 
             int nextLevel = levelIndex + 1; // payload is already next level index (0-based)
+            // Continue is the button of the two that gets pressed, over and over - an
+            // infinite run is nothing but this button between fights - so it is sized as the
+            // primary action rather than matching Go Home. Wider and taller, same top edge.
+            int contW = btnW + 60;
+            int contH = btnH + 10;
+            int contX = centerX - contW / 2;
             if (nextIsBoss) {
                 this.addDrawableChild(GuideButton.of(
-                    centerX - btnW / 2, btnY + 25, btnW, btnH,
+                    contX, btnY + 25, contW, contH,
                     Text.literal("§4§l☠ BOSS FIGHT: " + biomeName + " ☠ (Risk it all!)"),
                     btn -> {
                         this.close();
@@ -188,7 +194,7 @@ public class VictoryChoiceScreen extends Screen {
                 ));
             } else {
                 this.addDrawableChild(GuideButton.of(
-                    centerX - btnW / 2, btnY + 25, btnW, btnH,
+                    contX, btnY + 25, contW, contH,
                     Text.literal("§c⚔ Continue to Level " + nextLevel + " (Risk it all!)"),
                     btn -> {
                         this.close();

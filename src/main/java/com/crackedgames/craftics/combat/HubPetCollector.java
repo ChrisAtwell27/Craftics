@@ -55,6 +55,14 @@ public class HubPetCollector {
         List<UUID> party = pd.getPartyMobs();
         if (party.isEmpty()) return List.of();
 
+        // A party member's pets live on THEIR island, not on the leader's, and a run starts in
+        // the leader's world - so searching only `world` found nothing for anyone but the
+        // leader, and then pruned their whole party list as dangling for good measure. Search
+        // the owner's island as well, and treat "not in either world" as inconclusive rather
+        // than as proof the animal is gone.
+        ServerWorld ownerIsland = ownerIslandOrNull(world, player);
+        boolean searchedEverywhere = ownerIsland != null;
+
         int cap = PartyMobs.partyCap(player);
         UUID ownerUuid = player.getUuid();
         List<TamedPetSnapshot> results = new ArrayList<>();
@@ -63,8 +71,15 @@ public class HubPetCollector {
 
         for (UUID mobUuid : party) {
             Entity entity = world.getEntity(mobUuid);
+            if (entity == null && ownerIsland != null && ownerIsland != world) {
+                entity = ownerIsland.getEntity(mobUuid);
+            }
             if (!(entity instanceof MobEntity mob) || !mob.isAlive()) {
-                continue; // dead / despawned / unloaded - drop this party entry
+                // Only a search that actually covered the owner's island is allowed to
+                // conclude the animal is gone. Otherwise keep the entry: an unopened island
+                // is a lookup that could not answer, not an answer.
+                if (!searchedEverywhere) survivors.add(mobUuid);
+                continue;
             }
             survivors.add(mobUuid);
             if (results.size() >= cap) continue;
@@ -108,6 +123,40 @@ public class HubPetCollector {
         PartyMobSync.sync(player);
 
         return results;
+    }
+
+    /**
+     * The island world {@code player} owns, or null when they have none or it is not
+     * resolvable. Returns {@code world} itself when the player is already standing on their
+     * own island, so the common single-player path does no extra work.
+     */
+    private static ServerWorld ownerIslandOrNull(ServerWorld world, ServerPlayerEntity player) {
+        try {
+            var server = world.getServer();
+            CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
+            if (!data.hasPersonalWorld(player.getUuid())) return world;
+            ServerWorld island = com.crackedgames.craftics.world.IslandDimensions
+                .getOrCreate(server, player.getUuid());
+            return island != null ? island : world;
+        } catch (Exception e) {
+            // A pet that cannot be looked up is a pet that stays in the party list; never
+            // let a failure here delete someone's animals.
+            CrafticsMod.LOGGER.warn("Could not resolve island for pet lookup: {}", e.toString());
+            return null;
+        }
+    }
+
+    /** The island world belonging to {@code owner}, or null if it cannot be resolved. */
+    private static ServerWorld islandWorldOf(ServerWorld world, UUID owner) {
+        try {
+            var server = world.getServer();
+            CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
+            if (!data.hasPersonalWorld(owner)) return null;
+            return com.crackedgames.craftics.world.IslandDimensions.getOrCreate(server, owner);
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.warn("Could not resolve island for pet restore: {}", e.toString());
+            return null;
+        }
     }
 
     /**
@@ -155,11 +204,25 @@ public class HubPetCollector {
      */
     public static void restorePetsToHub(ServerWorld world, ServerPlayerEntity player,
                                          List<PetData> survivingPets, CrafticsSavedData data) {
-        BlockPos hubPos = data.getHubTeleportPos(player.getUuid());
-        if (hubPos == null) return;
+        BlockPos defaultHub = data.getHubTeleportPos(player.getUuid());
+        if (defaultHub == null) return;
 
         int offset = 0;
         for (PetData pet : survivingPets) {
+            // Each animal goes home to ITS owner's island, not to whoever this restore was
+            // called for. Same-owner pets (every single-player case) resolve to exactly what
+            // the old code did.
+            ServerWorld petWorld = world;
+            BlockPos hubPos = defaultHub;
+            if (pet.owner() != null && !pet.owner().equals(player.getUuid())) {
+                BlockPos ownerHub = data.getHubTeleportPos(pet.owner());
+                ServerWorld ownerWorld = islandWorldOf(world, pet.owner());
+                if (ownerHub != null && ownerWorld != null) {
+                    hubPos = ownerHub;
+                    petWorld = ownerWorld;
+                }
+            }
+            final ServerWorld world0 = petWorld;   // the loop body below spawns into this
             // Defensive guard: never resurrect a dead pet. Restoration reads the
             // pre-combat NBT (full Health tag), so a fallen pet that slipped into
             // this list would otherwise reappear at the hub alive and well. Every
@@ -249,20 +312,32 @@ public class HubPetCollector {
      * @param mounted whether this pet was acting as the player's rideable mount -
      *                so it can be re-mounted after a between-level transition.
      */
+    /**
+     * A pet carried between levels and back to the hub afterwards.
+     *
+     * <p>{@code owner} is who it belongs to, and it matters now that a party fight can hold
+     * pets from several players at once: without it every animal went back to whichever
+     * player the restore happened to be called for, which in multiplayer meant a member's
+     * wolf being rehomed onto the leader's island. Null means "the player being restored",
+     * which is what every single-player path wants.
+     */
     public record PetData(String entityType, int hp, int maxHp, int atk, int def, int speed, int range,
-                          @org.jetbrains.annotations.Nullable NbtCompound originalNbt, boolean mounted) {
+                          @org.jetbrains.annotations.Nullable NbtCompound originalNbt, boolean mounted,
+                          @org.jetbrains.annotations.Nullable UUID owner) {
 
         /** Create from a TamedPetSnapshot (first level entry). */
         public static PetData fromSnapshot(TamedPetSnapshot snapshot) {
             var a = snapshot.allyEntry();
             return new PetData(snapshot.entityTypeId(), a.hp(), a.hp(), a.attack(), a.defense(),
-                a.speed(), a.range(), snapshot.fullEntityNbt(), snapshot.saddledMount());
+                a.speed(), a.range(), snapshot.fullEntityNbt(), snapshot.saddledMount(),
+                snapshot.playerUuid());
         }
 
         /** Create from a surviving combat entity (between levels). */
         public static PetData fromCombatEntity(CombatEntity e, @org.jetbrains.annotations.Nullable NbtCompound originalNbt) {
             return new PetData(e.getEntityTypeId(), e.getCurrentHp(), e.getMaxHp(),
-                e.getAttackPower(), e.getDefense(), e.getMoveSpeed(), e.getRange(), originalNbt, e.isMounted());
+                e.getAttackPower(), e.getDefense(), e.getMoveSpeed(), e.getRange(), originalNbt,
+                e.isMounted(), e.getOwnerUuid());
         }
     }
 }

@@ -425,6 +425,18 @@ public class CrafticsConfig {
     @SectionHeader("bugReports")
     public String bugReportEndpoint = "https://crackedgames.co/api/bugreport";
 
+    /**
+     * Bearer token sent with in-game bug reports, when the intake wants one. Blank sends no
+     * Authorization header at all, which is correct when reports go through a relay that
+     * holds the real secret.
+     *
+     * <p>Anything put here is only as private as the client it sits on. A token distributed
+     * with a modpack is a public token: it can be read out of the config folder or watched on
+     * the wire, so it turns away scanners and nothing else. The controls that actually hold
+     * are the ones on the server - rate limits, a global ceiling, and a kill switch.
+     */
+    public String bugReportToken = "";
+
     // ===== Daily Raid Bosses =====
 
     @SectionHeader("raidBosses")

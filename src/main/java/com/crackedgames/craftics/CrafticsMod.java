@@ -131,7 +131,12 @@ public class CrafticsMod implements ModInitializer {
             new com.crackedgames.craftics.combat.miniboss.mechanics.SnowyBlizzardMechanic(),
             new com.crackedgames.craftics.combat.miniboss.mechanics.MountainRockbreakerMechanic(),
             new com.crackedgames.craftics.combat.miniboss.mechanics.CaveInMechanic(),
-            new com.crackedgames.craftics.combat.miniboss.mechanics.DeepDarkWaveMechanic(),
+            // No deep_dark miniboss. Both candidates for that slot were withdrawn: the
+            // Deeper and Darker Stalker could not be held to the turn system (its behaviour
+            // lives in its own entity code, so the NoAI flag every arena mob is frozen with
+            // did not stop it acting between turns), and the vanilla wave went with it. The
+            // biome's level 4 is an ordinary level. DeepDarkWaveMechanic and
+            // StalkerMinibossMechanic are left on disk, unregistered, rather than deleted.
             new com.crackedgames.craftics.combat.miniboss.mechanics.NetherFireRainMechanic(),
             new com.crackedgames.craftics.combat.miniboss.mechanics.SoulSandColossusMechanic(),
             new com.crackedgames.craftics.combat.miniboss.mechanics.CrimsonFungalBloomMechanic(),
@@ -142,13 +147,6 @@ public class CrafticsMod implements ModInitializer {
             new com.crackedgames.craftics.combat.miniboss.mechanics.ChorusGroveBloomMechanic(),
         }) {
             com.crackedgames.craftics.combat.miniboss.MinibossRegistry.register(m);
-        }
-        // Deeper and Darker: when the mod is installed, the Stalker replaces the
-        // vanilla deep_dark Swarm miniboss. Registered AFTER the array above so it
-        // supersedes DeepDarkWaveMechanic's "deep_dark" key. No-op without the mod.
-        if (com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.isLoaded()) {
-            com.crackedgames.craftics.combat.miniboss.MinibossRegistry.register(
-                new com.crackedgames.craftics.combat.miniboss.mechanics.StalkerMinibossMechanic());
         }
         // Mid-biome weather effects (biome JSON "biomeEffect" block picks them up by id).
         com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.BlizzardWindsEffect());
@@ -343,6 +341,9 @@ public class CrafticsMod implements ModInitializer {
             com.crackedgames.craftics.raid.RaidBossOrigins.clear();
             com.crackedgames.craftics.raid.RaidBossSchedule.reset();
             com.crackedgames.craftics.raid.RaidBossLobby.reset();
+            // Static, like the raid state above: without this a singleplayer world switch
+            // inherits the previous save's countdown.
+            com.crackedgames.craftics.util.ChatNudges.reset();
             CURRENT_SERVER = null;
         });
 
@@ -771,6 +772,12 @@ public class CrafticsMod implements ModInitializer {
             }
 
             try {
+                com.crackedgames.craftics.util.ChatNudges.tick(server);
+            } catch (Throwable t) {
+                LOGGER.error("ChatNudges.tick() crashed; continuing server tick", t);
+            }
+
+            try {
                 com.crackedgames.craftics.scene.SceneOfferStore.tick();
             } catch (Throwable t) {
                 LOGGER.error("SceneOfferStore.tick() crashed; continuing server tick", t);
@@ -983,11 +990,17 @@ public class CrafticsMod implements ModInitializer {
         // Debug / admin commands: /craftics <subcommand>
         registerCommands();
 
+        // Refuses any damage a fight did not sanction - see ArenaGuards for why NoAI is not
+        // enough on its own.
+        com.crackedgames.craftics.combat.ArenaGuards.register();
+
         LOGGER.info("Craftics initialized.");
     }
 
     private void registerCommands() {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            com.crackedgames.craftics.auction.AuctionCommands.register(dispatcher);
+
             var root = CommandManager.literal("craftics");
 
             // The player an admin command should act on: the optional "player" argument when

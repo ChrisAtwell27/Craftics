@@ -128,7 +128,10 @@ public final class VisitManager {
             ServerPlayerEntity p = server.getPlayerManager().getPlayer(v);
             if (p != null) HubTeleports.toLobby(p);
         }
-        IslandDimensions.unloadIfEmpty(server, owner);
+        // A tick later, for the same reason HubTeleports defers it: the visitors above were
+        // only just teleported out, and unloading the world in the same tick as a dimension
+        // change in flight strands them in a chunkless void.
+        server.execute(() -> IslandDimensions.unloadIfEmpty(server, owner));
     }
 
     public static void tick() {

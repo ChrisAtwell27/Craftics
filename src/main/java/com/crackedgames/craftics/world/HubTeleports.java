@@ -150,13 +150,13 @@ public final class HubTeleports {
         BlockPos landing = CrafticsMod.findLandingSpot(target, pos.getX(), pos.getZ(), pos.getY());
         BlockPos dest = landing != null ? landing : pos;
         teleportTo(p, target, dest.getX() + 0.5, dest.getY(), dest.getZ() + 0.5);
-        // If we crossed out of a DIFFERENT island dim, unload it when now empty so
-        // idle islands cost zero tick time. (No-op when previousWorld isn't an island
-        // or is the same island we just entered.)
-        if (previousWorld != target && IslandDimensions.isIslandWorld(previousWorld)) {
-            java.util.UUID leftOwner = IslandDimensions.ownerOf(previousWorld);
-            if (leftOwner != null) IslandDimensions.unloadIfEmpty(server, leftOwner);
-        }
+        // Same reason as the lobby path: arriving at a hub still flagged as a downed
+        // spectator is a state nobody can get out of on their own.
+        clearSpectator(p);
+        // If we crossed out of a DIFFERENT island dim, unload it when now empty so idle
+        // islands cost zero tick time - but a tick later, never in the same tick as the
+        // teleport. See unloadLeftIslandNextTick.
+        unloadLeftIslandNextTick(server, previousWorld, target);
     }
 
     /** Send a player to the central lobby spawn in the overworld, honoring a custom
@@ -178,9 +178,48 @@ public final class HubTeleports {
         BlockPos lobbyDest = lobbyLanding != null ? lobbyLanding : new BlockPos(fx, fy, fz);
         teleportTo(p, overworld, lobbyDest.getX() + 0.5, lobbyDest.getY(), lobbyDest.getZ() + 0.5);
         if (spawn != null) p.setYaw(data.lobbySpawnYaw);
-        if (previousWorld != overworld && IslandDimensions.isIslandWorld(previousWorld)) {
-            java.util.UUID leftOwner = IslandDimensions.ownerOf(previousWorld);
-            if (leftOwner != null) IslandDimensions.unloadIfEmpty(server, leftOwner);
+        clearSpectator(p);
+        unloadLeftIslandNextTick(server, previousWorld, overworld);
+    }
+
+    /**
+     * Unload the island a player just left, ONE TICK LATER.
+     *
+     * <p>The delay is the whole point. Tearing the world down in the same tick as the
+     * teleport pulls it out from under a dimension change that is still in flight: the
+     * server ends up believing the player is at their destination - they can hear the people
+     * standing around them - while the transition that would have sent them chunks never
+     * finishes. What the player sees is a void with no terrain, invisible to everyone else,
+     * and no command fixes it because nothing is wrong with their game mode or permissions.
+     *
+     * <p>The disconnect path in {@code CrafticsMod} already learned this and defers for the
+     * same reason; the two teleport paths did not, which is the difference between logging
+     * out of an island cleanly and walking out of one into a ghost lobby.
+     */
+    private static void unloadLeftIslandNextTick(MinecraftServer server,
+                                                 ServerWorld previousWorld, ServerWorld target) {
+        if (previousWorld == target || !IslandDimensions.isIslandWorld(previousWorld)) return;
+        java.util.UUID leftOwner = IslandDimensions.ownerOf(previousWorld);
+        if (leftOwner == null) return;
+        server.execute(() -> IslandDimensions.unloadIfEmpty(server, leftOwner));
+    }
+
+    /**
+     * Take a player out of spectator on arrival.
+     *
+     * <p>A downed party member is put into SPECTATOR while the rest of their party fights on
+     * (see {@code CombatManager.handlePlayerDowned}). Most exits from a run restore the mode
+     * on the way out, but not all of them do, and the ones that miss it leave a player who
+     * reaches the lobby still a spectator: floating in the void, able to hear the people
+     * around them, invisible to every one of them. That reads as a broken lobby rather than
+     * as a game mode, and it is unrecoverable without an operator.
+     *
+     * <p>Only SPECTATOR is corrected. An operator in creative teleporting to the lobby stays
+     * in creative - this fixes the state the game put someone in, it does not police modes.
+     */
+    private static void clearSpectator(ServerPlayerEntity p) {
+        if (p.interactionManager.getGameMode() == net.minecraft.world.GameMode.SPECTATOR) {
+            p.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
         }
     }
 

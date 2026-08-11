@@ -786,6 +786,11 @@ public class CrafticsSavedData extends PersistentState {
         data.lobbySpawnYaw = nbt.contains("lobbySpawnYaw") ? nbt.getFloat("lobbySpawnYaw") : 0f;
         data.raidBossState = nbt.contains("raidBossState") ? nbt.getString("raidBossState") : "";
 
+        // Static, like the store itself: loading a save replaces the board wholesale instead
+        // of merging into whatever the previous world left in memory.
+        com.crackedgames.craftics.auction.AuctionStore.readNbt(
+            nbt.contains("auction") ? nbt.getCompound("auction") : null);
+
         if (nbt.contains("players")) {
             NbtCompound playersNbt = nbt.getCompound("players");
             for (String key : playersNbt.getKeys()) {
@@ -865,6 +870,10 @@ public class CrafticsSavedData extends PersistentState {
         nbt.putString("pendingHardcoreWipe", joinPendingHardcoreWipe());
         nbt.putString("lootboxChests", lootboxChestsSerialized());
 
+        // The auction board and its mailbox. The store owns the data and the rules; this is
+        // only where they get written down, so nothing else has to know their shape.
+        nbt.put("auction", com.crackedgames.craftics.auction.AuctionStore.writeNbt());
+
         return nbt;
     }
 
@@ -889,6 +898,10 @@ public class CrafticsSavedData extends PersistentState {
         data.lobbySpawnZ = nbt.getInt("lobbySpawnZ", 0);
         data.lobbySpawnYaw = nbt.getFloat("lobbySpawnYaw", 0f);
         data.raidBossState = nbt.getString("raidBossState", "");
+
+        // See the note in the other branch: the board is replaced wholesale on load.
+        com.crackedgames.craftics.auction.AuctionStore.readNbt(
+            nbt.getCompoundOrEmpty("auction"));
 
         NbtCompound playersNbt = nbt.getCompoundOrEmpty("players");
         for (String key : playersNbt.getKeys()) {
@@ -962,6 +975,10 @@ public class CrafticsSavedData extends PersistentState {
 
         nbt.putString("pendingHardcoreWipe", joinPendingHardcoreWipe());
         nbt.putString("lootboxChests", lootboxChestsSerialized());
+
+        // The auction board and its mailbox. The store owns the data and the rules; this is
+        // only where they get written down, so nothing else has to know their shape.
+        nbt.put("auction", com.crackedgames.craftics.auction.AuctionStore.writeNbt());
 
         return nbt;
     }

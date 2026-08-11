@@ -385,6 +385,30 @@ public class CombatEntity {
         return EffectFormulas.burningTick(burningAmplifier + 1, 0) + getMaxHpDotBonus();
     }
 
+    // ── Soul burning ──
+    // Soul fire's burn, mirroring CombatEffects.SOUL_BURNING on the player side: longer,
+    // hotter, and fire immunity only blunts it rather than preventing it.
+    private int soulBurningTurns = 0;
+    private int soulBurningAmplifier = 0;
+    public int getSoulBurningTurns() { return soulBurningTurns; }
+    public void setSoulBurningTurns(int t) { this.soulBurningTurns = t; }
+    public int getSoulBurningAmplifier() { return soulBurningAmplifier; }
+    public void setSoulBurningAmplifier(int a) { this.soulBurningAmplifier = a; }
+
+    /**
+     * Per-turn soul burn damage: the ordinary burn tick plus
+     * {@code CombatEffects.SOUL_BURN_EXTRA}, less
+     * {@code CombatEffects.SOUL_BURN_RESISTED_REDUCTION} for a fire-immune mob, floored at 1.
+     * Same numbers the player takes, from the same constants.
+     */
+    public int getSoulBurningTickDamage() {
+        if (soulBurningTurns <= 0) return 0;
+        int tick = EffectFormulas.burningTick(soulBurningAmplifier + 1, 0)
+            + CombatEffects.SOUL_BURN_EXTRA + getMaxHpDotBonus();
+        if (isFireImmune()) tick -= CombatEffects.SOUL_BURN_RESISTED_REDUCTION;
+        return Math.max(1, tick);
+    }
+
     public MobEntity getMobEntity() { return mobEntity; }
     public void setMobEntity(MobEntity mob) { this.mobEntity = mob; }
 
@@ -858,6 +882,25 @@ public class CombatEntity {
      * It used to be read as a per-turn damage number at about half its call sites, so burning's
      * strength depended on which site applied it; {@link EffectFormulas} owns that number now.
      */
+    /**
+     * Set this entity alight with SOUL fire, the mob-side twin of
+     * {@code CombatEffects.EffectType.SOUL_BURNING}.
+     *
+     * <p>Unlike {@link #stackBurning}, being fire-immune is not a way out. A blaze standing in
+     * soul fire still burns; its immunity only softens the tick (see
+     * {@link #getSoulBurningTickDamage}). Soul fire needs no fuel and respects nothing else,
+     * so a mob shrugging it off entirely made the deep-dark hazard meaningless against exactly
+     * the mobs it should be used on. Water still puts it out - that rule is older than fire
+     * immunity and applies to both kinds of flame.
+     */
+    public void stackSoulBurning(int turns, int ampIncrease) {
+        if (isDrenched()) return;
+        var cfg = com.crackedgames.craftics.CrafticsMod.CONFIG;
+        int maxDur = cfg != null ? cfg.maxCombatEffectDuration() : 10;
+        soulBurningTurns = Math.min(maxDur, Math.max(MIN_DOT_TURNS, soulBurningTurns + turns));
+        soulBurningAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, soulBurningAmplifier + ampIncrease);
+    }
+
     public void stackBurning(int turns, int ampIncrease) {
         if (isFireImmune()) return; // fire-immune mobs (blaze, magma cube, ...) don't burn
         // A drenched target can't catch light. Without this, Soaked's douse could be undone
@@ -895,6 +938,9 @@ public class CombatEntity {
     public void extinguish() {
         burningTurns = 0;
         burningAmplifier = 0;
+        // Water beats both flames. Soul fire ignores fire immunity, not a bucket.
+        soulBurningTurns = 0;
+        soulBurningAmplifier = 0;
         if (mobEntity != null) {
             mobEntity.setFireTicks(0);
             mobEntity.setOnFire(false);

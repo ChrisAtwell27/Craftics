@@ -99,6 +99,9 @@ public final class EffectIcons {
         put(new Icon("poison", DARK_GREEN, true),    "poison", "poisoned");
         put(new Icon("wither", BLACK, true),         "wither", "withered");
         put(new Icon("burning", ORANGE, true),       "burning", "burn");
+        // Soul burning reuses the flame sprite in soul-fire blue rather than getting its own
+        // art: it IS burning, just the colder-looking, meaner kind.
+        put(new Icon("soul_burning", AQUA, true),    "soul_burning", "soul burning");
         put(new Icon("bleeding", DARK_RED, true),    "bleeding", "bleed");
         put(new Icon("slowness", BROWN, true),       "slowness", "slowed");
         put(new Icon("weakness", GRAY, true),        "weakness", "weakened");

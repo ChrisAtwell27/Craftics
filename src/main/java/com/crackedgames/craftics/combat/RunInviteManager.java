@@ -345,7 +345,19 @@ public final class RunInviteManager {
 
         starter.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
 
-        var hubPetSnapshots = HubPetCollector.collectFollowingPets(world, starter, data);
+        // Every participant brings their own party, not just whoever pressed start. This used
+        // to collect for `starter` alone, so in multiplayer a member could add pets, see them
+        // in their party list, and then fight without them - and the only party that ever
+        // showed up was the run leader's. Each snapshot carries its owner's UUID, so one
+        // merged list is enough for the leader's CombatManager to spawn them to the right side.
+        var hubPetSnapshots = new java.util.ArrayList<>(
+            HubPetCollector.collectFollowingPets(world, starter, data));
+        for (UUID memberUuid : participants) {
+            if (memberUuid.equals(starter.getUuid())) continue;
+            ServerPlayerEntity petOwner = world.getServer().getPlayerManager().getPlayer(memberUuid);
+            if (petOwner == null) continue;
+            hubPetSnapshots.addAll(HubPetCollector.collectFollowingPets(world, petOwner, data));
+        }
         CombatManager.get(starter).setHubPetSnapshots(hubPetSnapshots);
 
         // Clear the host's "waiting for party" overlay, then enter combat.

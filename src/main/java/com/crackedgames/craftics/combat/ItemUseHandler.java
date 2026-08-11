@@ -836,6 +836,7 @@ public class ItemUseHandler {
             case FIRE_RESISTANCE, INVISIBILITY, WATER_BREATHING -> 4;
             case POISON, SLOWNESS, WEAKNESS -> 3;
             case WITHER, BURNING -> 3;
+            case SOUL_BURNING -> 5; // not vanilla-potion-driven; unreachable via this path
             case LUCK, HASTE, SLOW_FALLING -> 4;
             case BLINDNESS, MINING_FATIGUE, LEVITATION, DARKNESS -> 3;
             case SOAKED, CONFUSION -> 3;

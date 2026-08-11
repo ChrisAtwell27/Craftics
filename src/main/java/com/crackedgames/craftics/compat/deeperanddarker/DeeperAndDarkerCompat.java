@@ -298,15 +298,24 @@ public final class DeeperAndDarkerCompat {
         com.crackedgames.craftics.combat.LootPool pool =
             new com.crackedgames.craftics.combat.LootPool();
         switch (entityTypeId) {
-            case SHATTERED -> { addItem(pool, "sculk_bone", 5); addItem(pool, "grime_ball", 3); }
+            // The Shattered inherited the Stalker's role as the reliable source of the
+            // reinforced shard. That shard gates the Warden gear tier, and the Stalker was
+            // the only mob that dropped it dependably - withdrawing the Stalker without
+            // rehoming this would have quietly walled off a whole tier of progression.
+            case SHATTERED -> {
+                addItem(pool, "sculk_bone", 5);
+                addItem(pool, "grime_ball", 3);
+                addItem(pool, "reinforced_echo_shard", 2);
+            }
             case SCULK_CENTIPEDE -> { addItem(pool, "sculk_bone", 4); addItem(pool, "soul_dust", 3); }
             case SCULK_LEECH -> { addItem(pool, "soul_dust", 5); addItem(pool, "grime_ball", 2); }
             case SCULK_SNAPPER -> { addItem(pool, "sculk_bone", 5); addItem(pool, "resonarium", 1); }
             case SHRIEK_WORM -> { addItem(pool, "soul_crystal", 2); addItem(pool, "sculk_bone", 4); }
             case ANGLER -> { addItem(pool, "soul_dust", 4); addItem(pool, "grime_ball", 3); }
             case SLUDGE -> { addItem(pool, "grime_ball", 6); addItem(pool, "soul_dust", 2); }
-            // The Stalker is the biome's miniboss, so it is the one reliable source
-            // of the reinforced shard that gates the Warden tier.
+            // Unreachable now that nothing spawns a Stalker, and kept anyway: an admin
+            // summoning one by command, or a future decision to bring it back, should not
+            // find it dropping nothing. Its shard has moved to the Shattered above.
             case STALKER -> {
                 addItem(pool, "reinforced_echo_shard", 2);
                 addItem(pool, "soul_crystal", 3);
@@ -372,20 +381,13 @@ public final class DeeperAndDarkerCompat {
             }
             placedAny = true;
         }
-        // Sculk jaws. Unlike the two props above these are TILES, not HP objects, so
-        // they never count toward clearing the room - they just make the floor hostile.
-        // A long duration rather than a true permanent: placeTemporaryTile is the only
-        // tile seam a biome effect gets, and no fight lasts 999 rounds.
-        int jaws = 1 + rng.nextInt(3); // 1-3
+        // Sculk jaws are NOT generated. The tile is backed by a real Deeper and Darker
+        // block, and that block keeps running its own logic every tick inside the arena -
+        // biting whoever stands on it over and over in real time, on nobody's turn, on top
+        // of the single once-per-step bite the grid rule applies. A hazard the turn system
+        // cannot see or bound is not a hazard, it is a death sentence with no counterplay,
+        // so the floor here stays hostile through the growths and the geysers instead.
         int jawsPlaced = 0;
-        for (int i = 0; i < jaws; i++) {
-            GridPos pos = com.crackedgames.craftics.combat.miniboss.MinibossSpawns
-                .findOpen(width, height, used, rng);
-            if (pos == null) continue;
-            used.add(pos);
-            ctx.placeTemporaryTile(pos, TileType.SCULK_JAW, 999);
-            jawsPlaced++;
-        }
 
         if (placedAny || jawsPlaced > 0) {
             ctx.message("§8Infested growths, old pottery and waiting jaws litter the dark.");
@@ -444,8 +446,12 @@ public final class DeeperAndDarkerCompat {
                 bp.getX() + 0.5, bp.getY() + 0.8, bp.getZ() + 0.5, 30, 0.4, 0.6, 0.4, 0.08);
             world.playSound(null, bp, net.minecraft.sound.SoundEvents.ENTITY_WARDEN_ROAR,
                 net.minecraft.sound.SoundCategory.HOSTILE, 0.8f, 1.2f);
-            if (cm.spawnPropAmbusher(STALKER, pos, 45, 9, 3, 1) != null) {
-                cm.propMessage("§4The vase shatters - a Stalker unfolds out of it!");
+            // A Shattered, not a Stalker. The Stalker's behaviour lives in its own entity
+            // code rather than in vanilla goals, so the NoAI flag every arena mob is frozen
+            // with never held it - it acted between turns and summoned its own minions. It
+            // is no longer spawned anywhere in this mod.
+            if (cm.spawnPropAmbusher(SHATTERED, pos, 45, 9, 3, 1) != null) {
+                cm.propMessage("§4The vase shatters - something unfolds out of it!");
             } else {
                 cm.propMessage("§4Something moved inside the vase, but found no room to emerge.");
             }
@@ -694,7 +700,8 @@ public final class DeeperAndDarkerCompat {
         String path = id.getPath();
         if (path.equals("gloomy_geyser")) return TileType.GEYSER;
         if (path.equals("gloomy_cactus")) return TileType.BLOOM;
-        if (path.equals("sculk_jaw")) return TileType.SCULK_JAW;
+        // A sculk jaw baked into a schematic is deliberately NOT classified as a live jaw
+        // tile - see the placement site above. Left unclassified it is ordinary scenery.
         return null;
     }
 }

@@ -56,6 +56,32 @@ public final class BugReportSender {
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(20);
 
     /**
+     * The {@code count} most recently written screenshots, newest first.
+     *
+     * <p>What the inline {@code /bug <count> <description>} form attaches, and the same
+     * newest-first ordering the report screen lists. Capped at {@link #MAX_IMAGES} whatever
+     * the caller asks for, since that is what the upload accepts anyway. Returns an empty
+     * list when the folder is missing or empty - a report with no pictures still sends.
+     */
+    public static List<File> recentScreenshots(int count) {
+        List<File> out = new ArrayList<>();
+        if (count <= 0) return out;
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) return out;
+        File dir = new File(client.runDirectory, "screenshots");
+        File[] files = dir.listFiles((d, name) -> {
+            String lower = name.toLowerCase();
+            return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg");
+        });
+        if (files == null) return out;
+        java.util.Arrays.sort(files, java.util.Comparator.comparingLong(File::lastModified).reversed());
+        for (int i = 0; i < files.length && out.size() < Math.min(count, MAX_IMAGES); i++) {
+            out.add(files[i]);
+        }
+        return out;
+    }
+
+    /**
      * Fire the report. Never throws; always calls {@code onDone} on the client thread.
      */
     public static void sendAsync(String endpoint, String title, String summary,
@@ -90,11 +116,16 @@ public final class BugReportSender {
             String boundary = "----CrafticsBugReport" + UUID.randomUUID();
             byte[] body = buildMultipart(boundary, title, summary, meta, log, images);
 
-            HttpRequest request = HttpRequest.newBuilder()
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(endpoint))
                 .timeout(HTTP_TIMEOUT)
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                .header("X-Craftics-Report", modVersion())
+                .header("X-Craftics-Report", modVersion());
+            String token = CrafticsMod.CONFIG.bugReportToken();
+            if (token != null && !token.isBlank()) {
+                builder.header("Authorization", "Bearer " + token.trim());
+            }
+            HttpRequest request = builder
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                 .build();
 
@@ -109,8 +140,16 @@ public final class BugReportSender {
             }
             CrafticsMod.LOGGER.warn("Bug report endpoint returned {}: {}",
                 response.statusCode(), truncate(response.body(), 200));
-            return saveFallback(title, summary, meta, log, screenshots,
-                "Server said " + response.statusCode());
+            // The intake's own failure codes, said plainly. A player who is rate limited or
+            // blocked needs to know that retrying is pointless, not read "upload failed".
+            String reason = switch (response.statusCode()) {
+                case 401, 403 -> "Reporting is not available for this client.";
+                case 413 -> "Too large - try fewer or smaller screenshots.";
+                case 429 -> "You have sent several reports recently. Try again later.";
+                case 503 -> "The report service is starting up. Try again shortly.";
+                default -> "Server said " + response.statusCode();
+            };
+            return saveFallback(title, summary, meta, log, screenshots, reason);
         } catch (Exception e) {
             CrafticsMod.LOGGER.warn("Bug report upload failed", e);
             return saveFallback(title, summary, meta, log, screenshots, "No connection");
@@ -122,6 +161,21 @@ public final class BugReportSender {
     private static String modVersion() {
         return FabricLoader.getInstance().getModContainer("craftics")
             .map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("unknown");
+    }
+
+    /**
+     * The reporter's Minecraft name, read from the session rather than typed by anyone.
+     *
+     * <p>Worth being clear about what this is: a CLAIM. It is accurate for every player using
+     * the mod normally, and it is whatever an abuser wants it to be, because the intake cannot
+     * tell a real client's POST from a hand-rolled one. Treat it as a label on the report, not
+     * as an identity to ban on.
+     */
+    private static String playerName() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.getSession() == null) return "";
+        String name = client.getSession().getUsername();
+        return name == null ? "" : name;
     }
 
     private static String gatherMetadata() {
@@ -203,16 +257,23 @@ public final class BugReportSender {
                                          String meta, String log, List<byte[]> images)
             throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        writeField(out, boundary, "title", title);
-        writeField(out, boundary, "summary", summary);
-        writeField(out, boundary, "meta", meta);
+        // Field names are the mcdebug intake contract: version, description, logs, username,
+        // screenshots. All three images go under the SAME "screenshots" name - that is what
+        // makes multer collect them as an array rather than only seeing the last one.
+        writeField(out, boundary, "version", modVersion());
+        // The title is the first line of the description rather than its own field: the
+        // intake has no title, and dropping it would lose what the form asked the player for.
+        String break2 = System.lineSeparator() + System.lineSeparator();
+        writeField(out, boundary, "description",
+            (title == null || title.isBlank() ? "" : title + break2) + summary
+                + (meta == null || meta.isBlank() ? "" : break2 + meta));
+        writeField(out, boundary, "username", playerName());
         if (log != null && !log.isEmpty()) {
-            writeFile(out, boundary, "log", "latest-log.txt", "text/plain",
+            writeFile(out, boundary, "logs", "latest-log.txt", "text/plain",
                 log.getBytes(StandardCharsets.UTF_8));
         }
-        for (int i = 0; i < images.size(); i++) {
-            writeFile(out, boundary, "screenshot" + i, "screenshot" + i + ".png",
-                "image/png", images.get(i));
+        for (byte[] image : images) {
+            writeFile(out, boundary, "screenshots", "screenshot.png", "image/png", image);
         }
         out.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
         return out.toByteArray();
