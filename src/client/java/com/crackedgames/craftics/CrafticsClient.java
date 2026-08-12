@@ -936,6 +936,17 @@ public class CrafticsClient implements ClientModInitializer {
                 }
             }
 
+            // Sneak while riding: ask to get down. Read as a press rather than a hold, so
+            // holding sneak for anything else cannot fire it repeatedly, and only in combat
+            // with no screen open. The server decides whether it is allowed and charges the
+            // AP; a refusal just prints a reason.
+            while (client.options.sneakKey.wasPressed()) {
+                if (CombatState.isInCombat() && client.currentScreen == null
+                        && client.player != null && client.player.hasVehicle()) {
+                    CombatInputHandler.sendDismount();
+                }
+            }
+
             while (affinityRespecKey.wasPressed()) {
                 if (client.currentScreen == null && !CombatState.isInCombat()) {
                     client.setScreen(new com.crackedgames.craftics.client.AffinityRespecScreen());

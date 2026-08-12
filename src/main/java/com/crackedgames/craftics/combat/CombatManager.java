@@ -1928,6 +1928,17 @@ public class CombatManager {
 
     private boolean playerMounted = false;
     private MobEntity mountMob = null;
+    /** Who the mount belongs to. They cannot step off it; everyone else can. */
+    private java.util.UUID mountOwnerUuid = null;
+    /**
+     * True while an AREA attack is being resolved across its victims.
+     *
+     * <p>The one thing that tells a blast from a sword swing at the point damage lands. Every
+     * area effect in the game applies itself through {@link #damagePartyVictims}; a single
+     * target hit does not. Mounted riders read this to decide whether the mount soaks the hit
+     * or whether the whole party wears it.
+     */
+    private boolean resolvingAreaDamage = false;
     /** Ally type id of the current mount (e.g. golemoverhaul:netherite_golem), or null. */
     private String mountTypeId = null;
     private static final int MOUNT_SPEED_BONUS = 3;
@@ -2814,6 +2825,24 @@ public class CombatManager {
     private int damagePlayer(int incomingRaw, CombatEntity attacker, DamageType incomingType,
                              boolean mitigable) {
         lastHitAvoided = false; // set true below only if the hit is fully avoided
+
+        // Mounted: an ordinary single-target swing or shot hits the ANIMAL, not the people on
+        // it. A zombie swinging at a camel carrying four players is hitting the camel, and
+        // routing that to whichever rider happened to be the turn holder meant one person ate
+        // every hit the party took. Area attacks are exempt and fall through to the normal
+        // path, because a creeper going off under the camel catches everyone standing on it -
+        // resolvingAreaDamage is what separates the two.
+        if (mitigable && attacker != null && !resolvingAreaDamage
+                && playerMounted && mountMob != null && player != null && player.hasVehicle()) {
+            CombatEntity mount = findMountEntity();
+            if (mount != null && mount.isAlive()) {
+                int dealt = mount.takeDamage(Math.max(0, incomingRaw));
+                sendMessage("§6" + mount.getDisplayName() + " takes the hit for "
+                    + dealt + "! §7(" + mount.getCurrentHp() + "/" + mount.getMaxHp() + ")");
+                checkAndHandleDeath(mount);
+                return 0;
+            }
+        }
         // Hard ceiling on a single boss hit. LevelGenerator caps a boss's BASE attack, but
         // per-ability riders (Tidecaller riptide +3, Deluge +2 on water, and the like) stack on
         // top of that base, so the actual hit can exceed the base cap. Clamp the resolved hit
@@ -4663,6 +4692,7 @@ public class CombatManager {
                 handleUseItem(new GridPos(action.targetX(), action.targetZ()));
             }
             case CombatActionPayload.ACTION_MINE -> handleMine(new GridPos(action.targetX(), action.targetZ()));
+            case CombatActionPayload.ACTION_DISMOUNT -> handleDismount();
         }
     }
 
@@ -6777,14 +6807,26 @@ public class CombatManager {
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
             BlockPos playerBlock = arena.gridToBlockPos(pPos);
             BlockPos targetBlockForProj = arena.gridToBlockPos(tPos);
-            ProjectileSpawner.spawnPlayerProjectile(
-                (ServerWorld) player.getEntityWorld(), playerBlock, targetBlockForProj, isTridentThrow);
+            // A REAL arrow, flying. The particle trail this replaced was drawn in a single
+            // tick with the damage already applied, so nothing was ever seen travelling.
+            rangedFlightTicks = launchPlayerProjectile(playerBlock, targetBlockForProj,
+                isTridentThrow, getWeaponImpactDelay(weapon));
         }
 
         sendSync(); // Update AP display immediately
 
         // === DELAYED: Damage, effects, particles, death -fires when animation impacts ===
-        pendingAttackDelay = getWeaponImpactDelay(weapon);
+        // For a shot that is genuinely in the air, impact means ARRIVAL: the existing delay is
+        // stretched to the flight's own length so the damage lands with the arrow rather than
+        // while it is still halfway there.
+        // Damage waits for the ARROW, not the other way round. A walker added this tick gets
+        // its first tick on the next one (see activeWalkers), and the flight needs a tick to
+        // settle at its destination, so the shot lands a couple of ticks after the raw flight
+        // time - which is exactly how far behind the hit the projectile looked.
+        pendingAttackDelay = rangedFlightTicks > 0
+            ? rangedFlightTicks + FLIGHT_SCHEDULING_LAG
+            : getWeaponImpactDelay(weapon);
+        rangedFlightTicks = 0;
         pendingAttackAction = () -> {
             if (!active || player == null || !fTarget.isAlive()) return;
 
@@ -10753,7 +10795,19 @@ public class CombatManager {
             if (tt != null) terraformPriorType = tt.getType();
         }
 
+        // Remember what was thrown BEFORE the handler decrements the stack, so the flight
+        // below can show the right item.
+        ItemStack thrownStack = player.getMainHandStack().copyWithCount(1);
+
         String result = ItemUseHandler.useItem(player, arena, targetTile);
+
+        // Anything genuinely thrown gets seen crossing the arena. The damage was applied by
+        // the handler above - item use is synchronous, same as a weapon ability - so this is
+        // the visual half only, but it still holds the turn until the throw lands.
+        if (targetTile != null && result != null && !result.startsWith("§c")
+                && isThrownItem(thrownStack.getItem())) {
+            flyThrownItem(thrownStack, targetTile);
+        }
         if (result == null) {
             sendMessage("§cCan't use that item!");
             return;
@@ -12422,6 +12476,12 @@ public class CombatManager {
             activeWalkers.removeIf(EntityWalker::isComplete);
         }
 
+        // Projectiles in the air, ticked HERE for the same reason the walkers are: this runs
+        // before every guard and early return below. Ticking it further down meant a flight
+        // simply stopped moving whenever any of those fired, and the projectile hung in the
+        // air at the thrower's feet until its ceiling forced it down.
+        tickProjectileFlight();
+
         // Deferred event-return: hold the loading screen, then enter battle. Runs
         // outside active combat (events live between levels), so it's before the guard.
         if (eventReturnTicks > 0) {
@@ -12594,11 +12654,12 @@ public class CombatManager {
         // Mount cleanup + re-attach safety net.
         if (playerMounted && mountMob != null) {
             if (mountMob.isRemoved() || !mountMob.isAlive()) {
-                playerMounted = false;
-                mountMob = null;
-                mountTypeId = null;
                 mountFurnaceTicks = 0; // mount gone -stop the furnace glow timer
                 clearMountWall(); // mount died mid-combat -drop its wall
+                // Everyone riding it needs their own tile back. Clearing the fields without
+                // this left passengers attached to a corpse with no legal square to act from.
+                dismountAllRiders();
+                sendMessage("§7The mount falls - everyone hits the ground.");
             } else if (player != null && !player.hasVehicle()) {
                 player.startRiding(mountMob, true);
             }
@@ -16160,6 +16221,14 @@ public class CombatManager {
         // died before it resolved can't keep broadcasting its tiles into later levels.
         pendingBossWarnings.clear();
         pendingWeatherArrows.clear();
+        // Anything still in the air is brought down and its damage settled. A flight that
+        // outlived its fight would hold the input lock into the next one.
+        if (activeFlight != null) {
+            activeFlight.abort();
+            activeFlight = null;
+        }
+        flightCeiling = 0;
+        spellAnimCooldown = 0;
     }
 
     /**
@@ -16993,6 +17062,12 @@ public class CombatManager {
     private boolean damagePartyVictims(java.util.List<ServerPlayerEntity> victims, int damage,
                                        CombatEntity attacker,
                                        PartyHitCallback afterDamage) {
+        // Everything routed through here is an AREA effect, and riders wear those personally
+        // rather than hiding behind the mount. The mount is caught too - see the block after
+        // the loop.
+        boolean wasResolvingArea = resolvingAreaDamage;
+        resolvingAreaDamage = true;
+        try {
         for (ServerPlayerEntity victim : victims) {
             ServerPlayerEntity savedPlayer = this.player;
             boolean swapped = victim != savedPlayer;
@@ -17010,7 +17085,29 @@ public class CombatManager {
                 if (!victimDied) { this.player = savedPlayer; retargetEffectsToCurrentPlayer(); }
             }
         }
+        // The mount is standing in the blast too. Caught once for the whole area effect, not
+        // once per rider, so a camel carrying four people is not hit four times by one bomb.
+        if (playerMounted && mountMob != null && damage > 0) {
+            CombatEntity mount = findMountEntity();
+            if (mount != null && mount.isAlive()) {
+                int dealt = mount.takeDamage(damage);
+                sendMessage("§6" + mount.getDisplayName() + " is caught in the blast for " + dealt + "!");
+                checkAndHandleDeath(mount);
+            }
+        }
         return false;
+        } finally {
+            resolvingAreaDamage = wasResolvingArea;
+        }
+    }
+
+    /** The mount's grid entity, matched by the ridden mob's id. Null if it is gone. */
+    private CombatEntity findMountEntity() {
+        if (mountMob == null) return null;
+        for (CombatEntity e : enemies) {
+            if (e.getEntityId() == mountMob.getId()) return e;
+        }
+        return null;
     }
 
     /** ProjectileAI is handed one target tile (the closest member), so in co-op its
@@ -17403,7 +17500,7 @@ public class CombatManager {
     /** Turns of Marked / Darkness / Blindness a sonic boom leaves on whoever it catches. */
     private static final int SONIC_MARK_TURNS = 4;
     /** Speed the Warden gains while it has someone marked to run down. */
-    private static final int WARDEN_HUNT_SPEED = 2;
+    private static final int WARDEN_HUNT_SPEED = 5;
 
     /** Players a sonic boom has marked. Emptied as the marks lapse. */
     private final Set<java.util.UUID> sonicMarkedPlayers = new HashSet<>();
@@ -17531,23 +17628,33 @@ public class CombatManager {
         BlockPos floor = overlay.down();                // floorY
         BlockPos pitFloor = floor.down();               // floorY-1
 
+        // Deepslate, not cobble: this is the deep dark's own ceiling coming down, and the
+        // patch should read as part of that floor rather than as something built into it.
+        var debris = net.minecraft.block.Blocks.DEEPSLATE;
         if (filled >= DEBRIS_TO_FILL) {
-            setArenaBlock(world, pitFloor, net.minecraft.block.Blocks.COBBLESTONE, false);
-            setArenaBlock(world, floor, net.minecraft.block.Blocks.COBBLESTONE, false);
+            setArenaBlock(world, pitFloor, debris, false);
+            setArenaBlock(world, floor, debris, false);
             setArenaBlock(world, overlay, net.minecraft.block.Blocks.AIR, false);
             tile.setType(TileType.NORMAL);
-            tile.setBlockType(net.minecraft.block.Blocks.COBBLESTONE);
+            tile.setBlockType(debris);
         } else {
             // Half-filled: rubble in the bottom of the pit. LOW_GROUND is the arena's
             // existing "walkable, but you are standing a block down" tile, which is exactly
             // what a partly-filled hole is - and it means the client, the pathfinder and the
             // fall checks all already understand it.
-            setArenaBlock(world, pitFloor, net.minecraft.block.Blocks.COBBLESTONE, false);
+            setArenaBlock(world, pitFloor, debris, false);
             setArenaBlock(world, floor, net.minecraft.block.Blocks.AIR, false);
             setArenaBlock(world, overlay, net.minecraft.block.Blocks.AIR, false);
             tile.setType(TileType.LOW_GROUND);
-            tile.setBlockType(net.minecraft.block.Blocks.COBBLESTONE);
+            tile.setBlockType(debris);
         }
+
+        // The rock is SEEN coming down. The block placement above is authoritative and
+        // immediate - the grid must agree with itself the moment the fill happens - so this
+        // entity is pure theatre: DropItem false so it never becomes an item if it lands
+        // somewhere odd, HurtEntities false because the 10 damage is applied below by the
+        // grid rather than by vanilla's falling-block physics.
+        spawnDebrisVisual(world, floor, debris);
 
         world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
             floor.getX() + 0.5, floor.getY() + 0.5, floor.getZ() + 0.5, 12, 0.35, 0.4, 0.35, 0.03);
@@ -17577,6 +17684,343 @@ public class CombatManager {
             sendMessage("§8Falling rock crushes " + e.getDisplayName() + " for " + dealt + "!");
             checkAndHandleDeath(e);
         }
+    }
+
+    /**
+     * A block of ceiling visibly falling into {@code floor}.
+     *
+     * <p>Cosmetic only, and deliberately so: it is spawned ABOVE a tile that has already been
+     * filled, so it lands on solid ground and vanishes rather than placing anything. The
+     * authoritative block is set by the caller in the same tick, which keeps the grid model
+     * and the world in agreement even if the entity is culled, the chunk unloads, or the
+     * fight ends mid-fall.
+     */
+    private void spawnDebrisVisual(ServerWorld world, BlockPos floor, net.minecraft.block.Block block) {
+        //? if <=1.21.1 {
+        net.minecraft.entity.FallingBlockEntity fbe =
+            net.minecraft.entity.EntityType.FALLING_BLOCK.create(world);
+        //?} else {
+        /*net.minecraft.entity.FallingBlockEntity fbe =
+            net.minecraft.entity.EntityType.FALLING_BLOCK.create(world, net.minecraft.entity.SpawnReason.TRIGGERED);
+        *///?}
+        if (fbe == null) return;
+        net.minecraft.nbt.NbtCompound nbt = new net.minecraft.nbt.NbtCompound();
+        fbe.writeNbt(nbt);
+        nbt.put("BlockState", net.minecraft.nbt.NbtHelper.fromBlockState(block.getDefaultState()));
+        nbt.putBoolean("DropItem", false);
+        nbt.putBoolean("HurtEntities", false);
+        nbt.putInt("Time", 1);
+        fbe.readNbt(nbt);
+        // High enough to read as coming out of the dark overhead, close enough to land fast.
+        fbe.setPosition(floor.getX() + 0.5, floor.getY() + 14.0, floor.getZ() + 0.5);
+        fbe.setVelocity(0, -0.6, 0);
+        fbe.timeFalling = 1;
+        fbe.addCommandTag("craftics_arena");
+        world.spawnEntity(fbe);
+    }
+
+    /**
+     * Fly the held item along {@code waypoints} and optionally back to the thrower.
+     *
+     * <p>The visible half of a thrown-weapon ability. The damage for these is applied
+     * synchronously by the ability handler before this is called - a {@code WeaponAbility}
+     * must return its total on the spot - so this is spectacle over an already-decided
+     * outcome. It still holds the player's turn for the duration, so the next action waits
+     * for the disc to come home rather than firing while it is mid-air.
+     *
+     * @param waypoints grid tiles to visit in order, first hop leaving the thrower
+     * @param returnHome fly back to the thrower at the end (a chakram does; an arrow does not)
+     */
+    public void flyHeldItemChain(java.util.List<GridPos> waypoints, boolean returnHome) {
+        if (!active || player == null || arena == null || waypoints == null || waypoints.isEmpty()) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        ItemStack held = player.getMainHandStack();
+        if (held.isEmpty()) return;
+
+        BlockPos originBp = arena.gridToBlockPos(arena.getPlayerGridPos());
+        double ox = originBp.getX() + 0.5, oy = originBp.getY() + 1.1, oz = originBp.getZ() + 0.5;
+
+        // An ITEM DISPLAY, not a dropped item. A dropped ItemEntity always renders upright and
+        // its pitch cannot be set, so a chakram thrown that way stands on edge like a coin. A
+        // display entity carries a full transform, which is what lets the disc lie flat and
+        // spin about its own axis on the way out - a frisbee rather than a tossed sword.
+        net.minecraft.entity.decoration.DisplayEntity.ItemDisplayEntity disc =
+            new net.minecraft.entity.decoration.DisplayEntity.ItemDisplayEntity(
+                net.minecraft.entity.EntityType.ITEM_DISPLAY, world);
+        disc.refreshPositionAndAngles(ox, oy, oz, 0f, 0f);
+        ((com.crackedgames.craftics.mixin.ItemDisplayInvoker) disc)
+            .craftics$setItemStack(held.copyWithCount(1));
+        var discInv = (com.crackedgames.craftics.mixin.DisplayEntityInvoker) disc;
+        discInv.craftics$setBillboardMode(
+            net.minecraft.entity.decoration.DisplayEntity.BillboardMode.FIXED);
+        // Interpolate between the positions the walker sets, or the disc stutters one tile at
+        // a time instead of gliding.
+        discInv.craftics$setTeleportDuration(2);
+        discInv.craftics$setInterpolationDuration(2);
+        discInv.craftics$setBrightness(new net.minecraft.entity.decoration.Brightness(15, 15));
+        disc.addCommandTag("craftics_arena");
+        world.spawnEntity(disc);
+        // Spin counter, advanced by the mover below.
+        final int[] spin = {0};
+
+        java.util.List<ProjectileFlight.Hop> hops = new java.util.ArrayList<>();
+        for (GridPos wp : waypoints) hops.add(new ProjectileFlight.Hop(wp, -1, 0));
+
+        final double[] home = {ox, oy, oz};
+        ProjectileFlight flight = new ProjectileFlight(
+            disc, hops,
+            h -> false,   // damage already applied by the ability handler
+            new ProjectileFlight.Flightpath() {
+                @Override public double[] originOf(ProjectileFlight.Hop h) { return home; }
+                @Override public double[] arrivalOf(ProjectileFlight.Hop h) {
+                    BlockPos bp = arena.gridToBlockPos(h.target());
+                    return new double[]{bp.getX() + 0.5, bp.getY() + 1.1, bp.getZ() + 0.5};
+                }
+                @Override public EntityWalker.Mover moverFor(net.minecraft.entity.Entity e) {
+                    EntityWalker.Mover base = ProjectileFlight.holdingMover(e);
+                    return (x, y, z, yaw) -> {
+                        base.apply(x, y, z, yaw);
+                        // Lay it flat (90 degrees about X) and spin it about the vertical.
+                        // Composed in that order so the spin turns the disc in its own plane
+                        // rather than tumbling it end over end.
+                        spin[0]++;
+                        float angle = (float) (spin[0] * Math.PI / 4);
+                        var flat = new org.joml.Quaternionf(
+                            new org.joml.AxisAngle4f((float) Math.toRadians(90f), 1f, 0f, 0f));
+                        var turn = new org.joml.Quaternionf(
+                            new org.joml.AxisAngle4f(angle, 0f, 0f, 1f));
+                        discInv.craftics$setTransformation(
+                            new net.minecraft.util.math.AffineTransformation(
+                                new org.joml.Vector3f(0f, 0f, 0f),
+                                flat.mul(turn),
+                                new org.joml.Vector3f(0.8f, 0.8f, 0.8f),
+                                new org.joml.Quaternionf()));
+                    };
+                }
+            },
+            returnHome ? home : null, FLIGHT_TICKS_PER_TILE * 3, activeWalkers::add, this::onFlightFinished);
+        launchFlight(flight);
+    }
+
+    /**
+     * The projectile body every flight uses: an item display showing {@code stack}.
+     *
+     * <p>Not a real arrow or a dropped item. Those are client-predicted - the client
+     * extrapolates their position from velocity, and this system pins velocity to zero so the
+     * walker owns the movement. The result was a projectile the server flew across the arena
+     * while every client rendered it sitting by the thrower's head. A display entity has no
+     * physics and no prediction: it goes exactly where the server puts it, and its
+     * interpolation makes the per-tick steps read as a glide instead of a stutter.
+     */
+    private net.minecraft.entity.decoration.DisplayEntity.ItemDisplayEntity spawnFlightBody(
+            ServerWorld world, ItemStack stack, double x, double y, double z) {
+        var body = new net.minecraft.entity.decoration.DisplayEntity.ItemDisplayEntity(
+            net.minecraft.entity.EntityType.ITEM_DISPLAY, world);
+        body.refreshPositionAndAngles(x, y, z, 0f, 0f);
+        ((com.crackedgames.craftics.mixin.ItemDisplayInvoker) body)
+            .craftics$setItemStack(stack.copyWithCount(1));
+        var inv = (com.crackedgames.craftics.mixin.DisplayEntityInvoker) body;
+        inv.craftics$setBillboardMode(
+            net.minecraft.entity.decoration.DisplayEntity.BillboardMode.FIXED);
+        inv.craftics$setTeleportDuration(2);
+        inv.craftics$setInterpolationDuration(2);
+        inv.craftics$setBrightness(new net.minecraft.entity.decoration.Brightness(15, 15));
+        body.addCommandTag("craftics_arena");
+        world.spawnEntity(body);
+        return body;
+    }
+
+    /**
+     * A mover that lays a display's item flat and points it along the direction of travel.
+     *
+     * <p>An item display renders its sprite standing up and facing one way; left alone, an
+     * arrow flies broadside like a thrown card. Laying it flat (90 degrees about X) puts it in
+     * the horizontal plane the fight is fought on, and yawing it by the heading points the
+     * shaft at what it was shot at. Composed flat-then-turn so the turn happens in the disc's
+     * own plane rather than tumbling it.
+     */
+    private EntityWalker.Mover flatPointingMover(
+            net.minecraft.entity.Entity e,
+            com.crackedgames.craftics.mixin.DisplayEntityInvoker inv,
+            double dirX, double dirZ) {
+        EntityWalker.Mover base = ProjectileFlight.holdingMover(e);
+        float heading = (float) Math.atan2(-dirX, dirZ);
+        var flat = new org.joml.Quaternionf(
+            new org.joml.AxisAngle4f((float) Math.toRadians(90f), 1f, 0f, 0f));
+        var turn = new org.joml.Quaternionf(new org.joml.AxisAngle4f(heading, 0f, 0f, 1f));
+        var pose = new org.joml.Quaternionf(flat).mul(turn);
+        return (x, y, z, yaw) -> {
+            base.apply(x, y, z, yaw);
+            inv.craftics$setTransformation(new net.minecraft.util.math.AffineTransformation(
+                new org.joml.Vector3f(0f, 0f, 0f),
+                pose,
+                new org.joml.Vector3f(0.9f, 0.9f, 0.9f),
+                new org.joml.Quaternionf()));
+        };
+    }
+
+    /** Items that visibly cross the arena when used on a tile. */
+    private static boolean isThrownItem(net.minecraft.item.Item item) {
+        return item == Items.SNOWBALL || item == Items.EGG || item == Items.FIRE_CHARGE
+            || item == Items.WIND_CHARGE || item == Items.BRICK || item == Items.INK_SAC
+            || item == Items.SPLASH_POTION || item == Items.LINGERING_POTION
+            || item == Items.ENDER_PEARL;
+    }
+
+    /**
+     * Show {@code stack} flying to {@code target}. Single hop, no return, no damage of its
+     * own - the item's own handler has already resolved everything by the time this runs.
+     */
+    private void flyThrownItem(ItemStack stack, GridPos target) {
+        if (!active || player == null || arena == null || stack.isEmpty()) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos fromBp = arena.gridToBlockPos(arena.getPlayerGridPos());
+        BlockPos toBp = arena.gridToBlockPos(target);
+        double sx = fromBp.getX() + 0.5, sy = fromBp.getY() + 1.2, sz = fromBp.getZ() + 0.5;
+        double ex = toBp.getX() + 0.5, ey = toBp.getY() + 1.0, ez = toBp.getZ() + 0.5;
+
+        var thrown = spawnFlightBody(world, stack, sx, sy, sz);
+        var thrownInv = (com.crackedgames.craftics.mixin.DisplayEntityInvoker) thrown;
+
+        ProjectileFlight flight = new ProjectileFlight(
+            thrown, java.util.List.of(new ProjectileFlight.Hop(target, -1, 0)),
+            h -> false,
+            new ProjectileFlight.Flightpath() {
+                @Override public double[] originOf(ProjectileFlight.Hop h) { return new double[]{sx, sy, sz}; }
+                @Override public double[] arrivalOf(ProjectileFlight.Hop h) { return new double[]{ex, ey, ez}; }
+                @Override public EntityWalker.Mover moverFor(net.minecraft.entity.Entity e) {
+                    return flatPointingMover(e, thrownInv, ex - sx, ez - sz);
+                }
+            },
+            null, THROWN_ITEM_TICKS, activeWalkers::add, this::onFlightFinished);
+        launchFlight(flight);
+    }
+
+    /** Flight length of the shot just launched, folded into pendingAttackDelay. */
+    private int rangedFlightTicks = 0;
+
+    /** Ticks a projectile spends crossing one tile. Slow enough to read, fast enough to
+     *  not stall the turn. */
+    private static final int FLIGHT_TICKS_PER_TILE = 2;
+    /**
+     * Flight time for a thrown item, whatever the distance.
+     *
+     * <p>Short on purpose. An item's damage and its burst are applied synchronously the
+     * moment it is used, so every tick the item spends in the air is a tick the explosion has
+     * already happened without it. Until item use can defer its effects, the throw has to
+     * keep up with them rather than the other way round.
+     */
+    private static final int THROWN_ITEM_TICKS = 4;
+    /**
+     * Ticks between arming a flight and it actually arriving, beyond its own travel time.
+     *
+     * <p>activeWalkers hands a newly added walker its first tick on the NEXT server tick, and
+     * the final step needs a tick to be seen. Anything timed to coincide with a landing has to
+     * account for both or it fires while the projectile is still visibly in the air.
+     */
+    private static final int FLIGHT_SCHEDULING_LAG = 2;
+
+    /**
+     * Send a visible projectile from {@code from} to {@code to} and return how many ticks it
+     * will take.
+     *
+     * <p>The entity is the spectacle only: the damage stays where it already was, in
+     * {@code pendingAttackAction}, whose delay the caller stretches to match this. Keeping the
+     * two apart means a culled or lost arrow cannot swallow a hit the player paid AP for.
+     */
+    private int launchPlayerProjectile(BlockPos from, BlockPos to, boolean trident, int impactTicks) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        double sx = from.getX() + 0.5, sy = from.getY() + 1.2, sz = from.getZ() + 0.5;
+        double ex = to.getX() + 0.5, ey = to.getY() + 1.0, ez = to.getZ() + 0.5;
+        ItemStack body = new ItemStack(trident ? Items.TRIDENT : Items.ARROW);
+        var shot = spawnFlightBody(world, body, sx, sy, sz);
+        var shotInv = (com.crackedgames.craftics.mixin.DisplayEntityInvoker) shot;
+
+        // The flight lasts exactly as long as the damage takes to land. Timing it off tile
+        // count instead meant the arrow arrived on its own schedule while the hit, the
+        // particles and the damage number fired on the weapon's - visibly out of step.
+        int ticks = Math.max(3, impactTicks);
+
+        ProjectileFlight.Hop hop = new ProjectileFlight.Hop(null, -1, 0);
+        ProjectileFlight flight = new ProjectileFlight(
+            shot, java.util.List.of(hop),
+            h -> false,                                  // damage lives in pendingAttackAction
+            new ProjectileFlight.Flightpath() {
+                @Override public double[] originOf(ProjectileFlight.Hop h) { return new double[]{sx, sy, sz}; }
+                @Override public double[] arrivalOf(ProjectileFlight.Hop h) { return new double[]{ex, ey, ez}; }
+                @Override public EntityWalker.Mover moverFor(net.minecraft.entity.Entity e) {
+                    return flatPointingMover(e, shotInv, ex - sx, ez - sz);
+                }
+            },
+            null, ticks, activeWalkers::add, this::onFlightFinished);
+        launchFlight(flight);
+        return ticks;
+    }
+
+    // ── Projectiles in flight ────────────────────────────────────────────────
+
+    /** The flight currently in the air, or null. One at a time: a turn cannot throw twice. */
+    private ProjectileFlight activeFlight = null;
+    /**
+     * Ticks left before the flight is forced to end no matter what.
+     *
+     * <p>The input lock is what makes the next action wait, and a lock that is never released
+     * is a fight nobody can act in. Every ordinary exit releases it, and this catches the ones
+     * that are not ordinary - an entity culled by a chunk unload, a world change, a bug.
+     */
+    private int flightCeiling = 0;
+
+    /** Drive the live flight and enforce its ceiling. */
+    private void tickProjectileFlight() {
+        if (activeFlight == null) return;
+        if (flightCeiling > 0 && --flightCeiling <= 0 && !activeFlight.isFinished()) {
+            CrafticsMod.LOGGER.warn("Projectile flight overran its ceiling; forcing it down");
+            activeFlight.abort();
+        }
+        activeFlight.tick();
+        if (activeFlight.isFinished()) activeFlight = null;
+    }
+
+    /**
+     * Put a flight in the air and hold the player's turn until it lands.
+     *
+     * <p>{@code spellAnimCooldown} is the existing input gate - handleAction refuses every
+     * player action while it is above zero - so the lock costs no new machinery. It is set
+     * generously and cleared by the flight's own finish callback, which is the only place
+     * that releases it.
+     */
+    private void launchFlight(ProjectileFlight flight) {
+        if (flight == null) return;
+        if (activeFlight != null) activeFlight.abort();   // never two at once
+        activeFlight = flight;
+        int planned = flight.plannedTicks();
+        spellAnimCooldown = Math.max(spellAnimCooldown, planned);
+        flightCeiling = planned + 20;
+        flight.start();
+        if (flight.isFinished()) activeFlight = null;     // nothing to fly; do not hold the turn
+    }
+
+    /** Called by a flight when it ends: give the turn back and resync. */
+    private void onFlightFinished() {
+        // Hold the turn until the DAMAGE has resolved too, not merely until the arrow has
+        // landed. pendingAttackDelay is what actually applies the hit, and it can still have
+        // a tick or two left; releasing here would let the player act before their own shot
+        // had connected.
+        spellAnimCooldown = Math.max(0, pendingAttackDelay);
+        flightCeiling = 0;
+        sendSync();
+        refreshHighlights();
+        // A projectile can land the killing blow, and the room must be re-checked THEN rather
+        // than when it was thrown - otherwise the fight ends while the arrow is still moving.
+        if (phase != CombatPhase.GAME_OVER && phase != CombatPhase.LEVEL_COMPLETE
+                && !anyEnemyBlockingVictory()) {
+            handleVictory();
+        }
+    }
+
+    /** True while something is in the air. Callers must not start a second flight. */
+    public boolean hasFlightInAir() {
+        return activeFlight != null && !activeFlight.isFinished();
     }
 
     /** True when any tile of {@code e}'s footprint is in {@code tiles}. */
@@ -17747,8 +18191,12 @@ public class CombatManager {
                 sendMessage("§5  The Void Walker's roar blinds you! (-2 range for 2 turns)");
             }
             case "darkness_pulse" -> {
-                addEffectHooked(CombatEffects.EffectType.BLINDNESS, 3, 0);
-                sendMessage("§8  The Warden's darkness pulse blinds you! (3 turns)");
+                // Darkness, not blindness: the pulse is the arena going dark around you, which
+                // is what hides the things in it, rather than a range penalty on your own
+                // attacks. Both are applied - it blinds AND it hides - for the same 4 turns.
+                addEffectHooked(CombatEffects.EffectType.DARKNESS, 4, 0);
+                addEffectHooked(CombatEffects.EffectType.BLINDNESS, 4, 0);
+                sendMessage("§8  The Warden's darkness pulse swallows the light! (4 turns)");
             }
             case "sonic_boom" -> {
                 // The boom does not just hurt: it finds you. Marked doubles what everything
@@ -31094,6 +31542,10 @@ public class CombatManager {
     private void mountPlayerOn(CombatEntity e) {
         e.setMounted(true);
         playerMounted = true;
+        // The pet's owner, not whoever happens to be holding the turn: a party member must
+        // not be able to dismount the animal out from under the person who brought it.
+        mountOwnerUuid = e.getOwnerUuid() != null ? e.getOwnerUuid()
+            : (player != null ? player.getUuid() : null);
         mountTypeId = e.getEntityTypeId();
         mountMob = e.getMobEntity();
         if (mountMob != null) {
@@ -31113,6 +31565,20 @@ public class CombatManager {
                 player.getX(), player.getY(), player.getZ(),
                 player.getYaw(), 0f);
             player.startRiding(mountMob, true);
+
+            // Everyone boards NOW, at the start, rather than being collected one at a time.
+            // The per-tick safety net further down re-attaches whoever is holding the turn if
+            // they are not riding, and with the party mounting lazily that meant the mount
+            // travelled to each member as the turn passed to them - the camel doing a circuit
+            // of the arena picking people up. Seating the whole party up front removes the
+            // trip entirely; the safety net stays as a net rather than as the way they board.
+            for (ServerPlayerEntity member : allCombatPlayers()) {
+                if (member == null || member == player) continue;
+                if (member.isRemoved() || member.isDisconnected()) continue;
+                if (deadPartyMembers.contains(member.getUuid())) continue;
+                if (member.hasVehicle()) member.stopRiding();
+                member.startRiding(mountMob, true);
+            }
         }
         arena.removeEntity(e);
         // Mount's CombatEntity is no longer on the grid, but other systems
@@ -31172,6 +31638,81 @@ public class CombatManager {
             }
         }
         return null;
+    }
+
+    /** AP charged to step off a mount mid-fight. */
+    private static final int DISMOUNT_AP = 1;
+
+    /**
+     * Step off the mount, for 1 AP.
+     *
+     * <p>The mount's owner cannot: the animal is theirs, they brought it, and letting a
+     * passenger strand the owner on foot in the middle of a fight would make bringing one a
+     * liability. Everyone else riding along may leave whenever they can pay for it.
+     *
+     * <p>Dismounting has to land somewhere legal. Detaching alone would leave the rider
+     * standing inside the mount's own footprint, which is not a tile they can act from, so a
+     * free tile is found first and the whole thing is refused if there is not one.
+     */
+    private void handleDismount() {
+        if (player == null || arena == null) return;
+        if (!playerMounted || mountMob == null || !player.hasVehicle()) {
+            sendMessage("§cYou are not riding anything.");
+            return;
+        }
+        if (mountOwnerUuid != null && mountOwnerUuid.equals(player.getUuid())) {
+            sendMessage("§cIt is your mount - you are not getting off it.");
+            return;
+        }
+        if (apRemaining < DISMOUNT_AP) {
+            sendMessage("§cNot enough AP to dismount.");
+            return;
+        }
+        GridPos landing = findPetSpawnTile(arena.getPlayerGridPos());
+        if (landing == null) {
+            sendMessage("§cNo room to get down here.");
+            return;
+        }
+
+        apRemaining -= DISMOUNT_AP;
+        player.stopRiding();
+        BlockPos bp = arena.gridToBlockPos(landing);
+        player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+        arena.setPlayerGridPos(landing);
+        sendMessage("§7You slide down off " + mountMob.getName().getString() + ".");
+        sendSync();
+        refreshHighlights();
+    }
+
+    /**
+     * Put every rider back on the ground when the mount is gone.
+     *
+     * <p>A dead mount leaves its passengers attached to a corpse: no tile of their own, no
+     * legal place to act from, and the grid still believing they are wherever the mount last
+     * stood. Each of them gets their own free tile, searched outward from where the mount
+     * fell, so two people never land on the same square.
+     */
+    private void dismountAllRiders() {
+        if (arena == null) return;
+        GridPos from = arena.getPlayerGridPos();
+        for (ServerPlayerEntity member : allCombatPlayers()) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (!member.hasVehicle()) continue;
+            member.stopRiding();
+            GridPos landing = findPetSpawnTile(from);
+            if (landing == null) continue;   // nowhere free; they stay where they fell
+            BlockPos bp = arena.gridToBlockPos(landing);
+            member.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+            if (member == player) arena.setPlayerGridPos(landing);
+            // Claimed so the next rider searching from the same origin cannot pick it too.
+            arena.setAllPlayerGridPositions(java.util.List.of(landing));
+        }
+        playerMounted = false;
+        mountMob = null;
+        mountTypeId = null;
+        mountOwnerUuid = null;
+        refreshAllPlayerGridPositions();
+        sendSync();
     }
 
     /** Spawn previously saved pets into the current arena near the player start. */

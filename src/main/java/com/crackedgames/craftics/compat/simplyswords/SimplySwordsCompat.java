@@ -368,11 +368,16 @@ public final class SimplySwordsCompat {
                 extras.add(bounce);
                 total += dmg;
                 msgs.add("§b✦ Ricochet! The chakram bounces to " + bounce.getDisplayName() + " for " + dmg + "!");
-                if (player.getEntityWorld() instanceof net.minecraft.server.world.ServerWorld sw) {
-                    com.crackedgames.craftics.combat.ProjectileSpawner.spawnProjectile(sw,
-                        arena.gridToBlockPos(target.getGridPos()),
-                        arena.gridToBlockPos(bounce.getGridPos()), "arrow");
-                }
+            }
+            // Fly the disc for real: out to the target, on to whatever it bounced off, then
+            // back to the hand. The old particle line was drawn between two points in a single
+            // tick and never showed the weapon at all.
+            var cm = com.crackedgames.craftics.combat.CombatManager.getActiveCombat(player.getUuid());
+            if (cm != null) {
+                java.util.List<com.crackedgames.craftics.core.GridPos> path = new ArrayList<>();
+                path.add(target.getGridPos());
+                if (bounce != null) path.add(bounce.getGridPos());
+                cm.flyHeldItemChain(path, true);
             }
             return new WeaponAbility.AttackResult(total, msgs, extras);
         };

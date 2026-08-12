@@ -309,7 +309,7 @@ public class WardenAI extends BossAI {
         int darknessCooldown = isPhaseTwo() ? 2 : 4;
         if (!isOnCooldown(CD_DARKNESS)) {
             setCooldown(CD_DARKNESS, darknessCooldown);
-            int pulseRadius = isPhaseTwo() ? 3 : 2;
+            int pulseRadius = isPhaseTwo() ? 4 : 3;
             List<GridPos> pulseTiles = getAreaTiles(arena, playerPos, pulseRadius);
             return new EnemyAction.BossAbility("darkness_pulse",
                 new EnemyAction.AreaAttack(playerPos, pulseRadius, 2, "darkness_pulse"),
@@ -338,7 +338,7 @@ public class WardenAI extends BossAI {
         // Sonic Boom (Phase 2): a beam down every line it can hear, at any range, whether or
         // not it is currently hunting anyone. Telegraphed like everything else, so the shape
         // is on the floor for a turn before it fires and the play is to leave the lane.
-        if (isPhaseTwo() && !isOnCooldown(CD_SONIC)) {
+        if (!isOnCooldown(CD_SONIC)) {
             List<GridPos> beam = sonicBeamTiles(self, arena, playerPos);
             if (!beam.isEmpty()) {
                 setCooldown(CD_SONIC, SONIC_COOLDOWN);
@@ -392,7 +392,13 @@ public class WardenAI extends BossAI {
         for (GridPos target : targets) {
             if (target == null) continue;
             GridPos from = self.nearestTileTo(target);
-            List<GridPos> centre = Pathfinding.traceLine(from, target);
+            // The beam does not stop where the player is standing - it carries on to the far
+            // wall. Stepping one tile back along the lane was never an escape from a sound
+            // wave, and a beam that halts exactly at whoever it is aimed at reads as a dart
+            // rather than a blast. The line is extended past the target far enough to leave
+            // the board, and addBeamTile discards whatever falls outside it.
+            GridPos beyond = extendPastTarget(arena, from, target);
+            List<GridPos> centre = Pathfinding.traceLine(from, beyond);
             GridPos prev = from;
             for (GridPos on : centre) {
                 addBeamTile(arena, beam, ownFootprint, on);
@@ -410,6 +416,24 @@ public class WardenAI extends BossAI {
             }
         }
         return new ArrayList<>(beam);
+    }
+
+    /**
+     * The point the beam is traced to: the same heading as {@code from -> target}, pushed out
+     * far enough that the line certainly leaves the arena. Scaled by the board's own span, so
+     * it reaches the wall on any arena size without guessing at a fixed length.
+     */
+    private static GridPos extendPastTarget(GridArena arena, GridPos from, GridPos target) {
+        int dx = target.x() - from.x();
+        int dz = target.z() - from.z();
+        if (dx == 0 && dz == 0) return target;
+        int span = arena.getWidth() + arena.getHeight();
+        // Normalised by the longer leg so the heading is preserved exactly; a diagonal beam
+        // keeps its diagonal rather than drifting toward a cardinal.
+        int longest = Math.max(Math.abs(dx), Math.abs(dz));
+        return new GridPos(
+            from.x() + (dx * span) / longest,
+            from.z() + (dz * span) / longest);
     }
 
     /** Add one in-bounds tile to the beam, skipping the Warden's own ground. */

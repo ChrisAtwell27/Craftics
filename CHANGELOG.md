@@ -1,5 +1,5 @@
 ﻿Changelog
-0.3.8.1
+0.3.8.2
 Mobs Acting Out of Turn
 
 - Nothing can hurt you in a fight except the fight.
@@ -7,6 +7,8 @@ Mobs Acting Out of Turn
 - Uninvited mobs are removed.
 - Removed the stalker as a miniboss
 - Removed herobrine
+- Projectiles are visually distinct when attacking
+- Fissure fills with deepslate now, and visually falls from the sky.
 
 0.3.8
 Softlocks

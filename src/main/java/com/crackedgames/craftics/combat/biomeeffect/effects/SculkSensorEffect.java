@@ -39,8 +39,8 @@ public final class SculkSensorEffect implements BiomeEffect {
     private static final int REARM_ROUNDS = 2;        // re-arm every other round after firing
     private static final int SILVERFISH_PER_TRIGGER = 2;
     private static final int MARKED_ON_TRIGGER = 2;   // rounds of Marked for tripping a sensor
-    private static final int MIN_SENSORS = 1;
-    private static final int MAX_SENSORS = 3;         // inclusive
+    private static final int MIN_SENSORS = 4;
+    private static final int MAX_SENSORS = 6;         // inclusive
 
     @Override
     public String id() {

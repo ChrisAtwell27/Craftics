@@ -714,13 +714,28 @@ public class CombatState {
      * mobs map several tiles to one id), so it updates live as either moves.
      * Returns false when positions are unknown so nothing flickers wrongly.
      */
+    /**
+     * Last answer given per enemy, so a frame where the grid data is briefly unavailable
+     * reuses it instead of guessing. Cleared when combat ends.
+     */
+    private static final java.util.Map<Integer, Boolean> lastDarknessHidden = new java.util.HashMap<>();
+
     public static boolean isEnemyHiddenByDarkness(int entityId) {
         if (!isDarknessShrouded()) return false;
         if (allyHpMap.containsKey(entityId)) return false; // never hide allies/pets
         if (!enemyHpMap.containsKey(entityId)) return false; // not a tracked enemy
         net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
         com.crackedgames.craftics.core.GridPos playerPos = ClientGridHelper.getPlayerGridPos(client);
-        if (playerPos == null) return false;
+        // Unknown state FAILS CLOSED, which is the whole fix for the flicker. The player's
+        // tile is unavailable while they are lerping between tiles, and the enemy grid map is
+        // momentarily empty while a sync rebuilds it - both happen every time anyone moves or
+        // ends a turn. Answering "visible" on those frames made every enemy strobe in and out
+        // of the dark. The last known answer is reused if there is one, and failing that they
+        // stay hidden: under Darkness, not knowing where something is is a reason to keep it
+        // hidden, not a reason to show it.
+        if (playerPos == null) {
+            return lastDarknessHidden.getOrDefault(entityId, Boolean.TRUE);
+        }
         int best = Integer.MAX_VALUE;
         for (var entry : enemyGridMap.entrySet()) {
             if (entry.getValue() != entityId) continue;
@@ -728,8 +743,12 @@ public class CombatState {
             int cheb = Math.max(Math.abs(p.x() - playerPos.x()), Math.abs(p.z() - playerPos.z()));
             if (cheb < best) best = cheb;
         }
-        if (best == Integer.MAX_VALUE) return false; // position unknown - don't hide
-        return best > DARKNESS_REVEAL_RADIUS;
+        if (best == Integer.MAX_VALUE) {
+            return lastDarknessHidden.getOrDefault(entityId, Boolean.TRUE);
+        }
+        boolean hidden = best > DARKNESS_REVEAL_RADIUS;
+        lastDarknessHidden.put(entityId, hidden);
+        return hidden;
     }
 
     /**
@@ -1268,6 +1287,9 @@ public class CombatState {
         inCombat = false;
         cinematicActive = false;
         inScene = false;
+        // Entity ids are reused across fights, so a stale "was hidden" answer would carry
+        // into the next one and shroud something that is standing in plain sight.
+        lastDarknessHidden.clear();
         clearTileSets();
         resetCombatStats();
         combatPitch = 55.0f;

@@ -93,6 +93,11 @@ public final class EffectIconRenderer {
             Vec3d pos = entity.getLerpedPos(tickDelta);
             if (pos.squaredDistanceTo(cam) > MAX_DIST_SQ) continue;
 
+            // A hidden enemy is hidden, status bar included. The model and the roster entry
+            // already respect Darkness; a row of effect icons floating over an invisible mob
+            // gave its position away exactly as well as the model would have.
+            if (CombatState.isEnemyHiddenByDarkness(entity.getId())) continue;
+
             List<String> effects = effectsFor(entity, enemyTypes, allyTypes);
             if (effects.isEmpty()) continue;
 

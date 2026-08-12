@@ -403,6 +403,14 @@ public class CombatInputHandler {
         hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.USED_ITEM);
     }
 
+    /** Ask the server to step off the mount. It decides whether that is allowed and what it
+     *  costs; this only reports the intent. */
+    public static void sendDismount() {
+        ClientPlayNetworking.send(new CombatActionPayload(
+            CombatActionPayload.ACTION_DISMOUNT, 0, 0, 0
+        ));
+    }
+
     public static void sendEndTurn() {
         ClientPlayNetworking.send(new CombatActionPayload(
             CombatActionPayload.ACTION_END_TURN, 0, 0, 0
