@@ -67,12 +67,18 @@ class ArenaBiomeStampTest {
     }
 
     /**
-     * Older saves predate the stamp entirely. They are trusted so an update doesn't force a mass
-     * rebuild of every arena; they self-correct the first time each level is rebuilt.
+     * Older saves predate the stamp entirely, and an unstamped arena is rebuilt rather than
+     * reused. Biomes went from five levels to seven, so every global level number resolves to a
+     * different biome than it did when those arenas were built: global 51 was Soul Sand Valley I
+     * and is now Underground Caverns II. Trusting the unstamped row is what left a cave level
+     * being fought in a netherrack arena, permanently - the corruption check only looks for
+     * missing floor, and that arena's floor is intact.
      */
     @Test
-    void unstampedLegacySavesAreTrusted() {
-        assertTrue(ArenaBiomeStamp.stampMatches(null, "forest"));
-        assertTrue(ArenaBiomeStamp.stampMatches(null, "forest/pale_garden"));
+    void unstampedLegacySavesAreRebuilt() {
+        assertFalse(ArenaBiomeStamp.stampMatches(null, "forest"),
+            "an arena with no stamp cannot be shown to belong to this level's biome");
+        assertFalse(ArenaBiomeStamp.stampMatches(null, "cave"),
+            "the cave-level-in-a-nether-arena case: unstamped must not be reused");
     }
 }

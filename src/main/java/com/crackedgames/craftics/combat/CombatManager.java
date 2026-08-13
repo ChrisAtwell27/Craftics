@@ -6813,6 +6813,23 @@ public class CombatManager {
                 isTridentThrow, getWeaponImpactDelay(weapon));
         }
 
+        // A thrown weapon that declares a PLAN leaves the hand here, before a point of damage
+        // is dealt. That ordering is the fix: the chakram used to be launched from inside its
+        // own ability handler, which runs after the hit has landed and its particles have
+        // played, so the disc was always chasing an outcome the player had already seen. The
+        // hit is timed to the disc's arrival by the same pendingAttackDelay stretch a bow shot
+        // uses, and every ricochet past the first resolves as the disc reaches it.
+        //
+        // isPlanned() is what keeps this off every other weapon: asking an unconverted handler
+        // for its plan would resolve its whole effect right here, at the top of the swing.
+        if (!suppressDirectHit && !isRangedWeapon && !isTridentThrow) {
+            var attackPlan = WeaponAbility.planAbility(player, weapon, target, arena, baseDamage,
+                attackerStats, luckPoints);
+            if (attackPlan != null && !attackPlan.hops().isEmpty()) {
+                rangedFlightTicks = flyAbilityPlan(attackPlan, weapon, attackerStats, luckPoints);
+            }
+        }
+
         sendSync(); // Update AP display immediately
 
         // === DELAYED: Damage, effects, particles, death -fires when animation impacts ===
@@ -6824,7 +6841,7 @@ public class CombatManager {
         // settle at its destination, so the shot lands a couple of ticks after the raw flight
         // time - which is exactly how far behind the hit the projectile looked.
         pendingAttackDelay = rangedFlightTicks > 0
-            ? rangedFlightTicks + FLIGHT_SCHEDULING_LAG
+            ? rangedFlightTicks + 1   // the walker's first tick is one late; nothing more
             : getWeaponImpactDelay(weapon);
         rangedFlightTicks = 0;
         pendingAttackAction = () -> {
@@ -17378,7 +17395,12 @@ public class CombatManager {
 
         // Special scripted effect: prime a TNT charge on this tile.
         if ("hollow_tnt_prime".equals(aa.effectName())) {
-            primePendingTnt(center, "§6  The Hollow King primes a TNT cache! §c(2-round fuse)", 2);
+            // "2-round fuse" was counting the fuse's own decrements, not the window the player
+            // gets. The charge is primed during the enemy phase, the round transition
+            // immediately after takes it to 1, and it blows on the NEXT one - so what the
+            // player actually has is one turn. Say that.
+            primePendingTnt(center,
+                "§6  The Hollow King primes a TNT cache! §c§lGet off it before your turn ends!", 2);
         }
     }
 
@@ -17580,6 +17602,67 @@ public class CombatManager {
     private static final int DEBRIS_MIN_PER_TURN = 1;
     private static final int DEBRIS_MAX_PER_TURN = 5;
 
+    /** What a solid drop does to whoever is standing where it lands. */
+    private static final int CRUSH_DAMAGE = 6;
+
+    /**
+     * Is a live combatant standing here?
+     *
+     * <p>The question a boss must ask before it puts a solid block down. A block written into
+     * an occupied tile does not politely fail - vanilla's push-out ejects whatever it overlaps,
+     * so the victim is shoved to a tile they did not choose, and the arenas here are full of
+     * fissures, ledges and void pits for them to be shoved into. Being killed by a shove is
+     * not a mechanic anyone can play around, because nothing about the telegraph says which way
+     * you will be pushed.
+     */
+    private boolean isTileOccupiedByCombatant(GridPos pos) {
+        if (arena == null || pos == null) return false;
+        if (arena.isOccupied(pos)) return true;
+        java.util.Set<GridPos> one = java.util.Set.of(pos);
+        for (CombatEntity e : enemies) {
+            if (e.isAlive() && entityTouchesAnyTile(e, one)) return true;
+        }
+        for (ServerPlayerEntity member : allCombatPlayers()) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            if (pos.equals(gridPosOf(member))) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Land a collapse on whoever is standing on {@code pos} instead of building on top of them.
+     *
+     * <p>The counterpart to the guard above: the stone still comes down and it still hurts,
+     * it just resolves as damage on the grid rather than as a block that displaces a hitbox.
+     * Same shape as the Warden's fissure debris, which is the rule this arena already teaches.
+     *
+     * @return true if the fight ended here
+     */
+    private boolean crushOccupantsOn(GridPos pos, int damage, String what) {
+        java.util.Set<GridPos> hitTile = java.util.Set.of(pos);
+        List<ServerPlayerEntity> victims = new ArrayList<>();
+        for (ServerPlayerEntity member : allCombatPlayers()) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            if (pos.equals(gridPosOf(member))) victims.add(member);
+        }
+        if (!victims.isEmpty()) {
+            boolean gameOver = damagePartyVictims(victims, damage, null,
+                (victim, actual, swapped) -> sendMessage("§8" + what + " crushes "
+                    + (swapped ? victim.getName().getString() : "you")
+                    + " for " + actual + " damage!"));
+            if (gameOver) return true;
+        }
+        for (CombatEntity e : new ArrayList<>(enemies)) {
+            if (!e.isAlive() || !entityTouchesAnyTile(e, hitTile)) continue;
+            int dealt = e.takeDamage(damage);
+            sendMessage("§8" + what + " crushes " + e.getDisplayName() + " for " + dealt + "!");
+            checkAndHandleDeath(e);
+        }
+        return !active;
+    }
+
     /**
      * Drop this round's ceiling collapse into the open fissures.
      *
@@ -17722,20 +17805,31 @@ public class CombatManager {
     /**
      * Fly the held item along {@code waypoints} and optionally back to the thrower.
      *
-     * <p>The visible half of a thrown-weapon ability. The damage for these is applied
-     * synchronously by the ability handler before this is called - a {@code WeaponAbility}
-     * must return its total on the spot - so this is spectacle over an already-decided
-     * outcome. It still holds the player's turn for the duration, so the next action waits
-     * for the disc to come home rather than firing while it is mid-air.
+     * <p>The visible half of a thrown-weapon ability. It holds the player's turn for the
+     * duration, so the next action waits for the disc to come home rather than firing while it
+     * is mid-air.
      *
      * @param waypoints grid tiles to visit in order, first hop leaving the thrower
      * @param returnHome fly back to the thrower at the end (a chakram does; an arrow does not)
      */
     public void flyHeldItemChain(java.util.List<GridPos> waypoints, boolean returnHome) {
-        if (!active || player == null || arena == null || waypoints == null || waypoints.isEmpty()) return;
+        flyHeldItemChain(waypoints, returnHome, h -> false);
+    }
+
+    /**
+     * As above, but each waypoint does something when the disc reaches it.
+     *
+     * @param impact run when a hop lands; returns true if that landing killed its target, which
+     *               ends the chain there rather than bouncing off a corpse
+     * @return ticks the disc takes to reach its FIRST waypoint, for the caller to time the
+     *         primary hit to, or 0 if nothing was launched
+     */
+    public int flyHeldItemChain(java.util.List<GridPos> waypoints, boolean returnHome,
+                                ProjectileFlight.ImpactHandler impact) {
+        if (!active || player == null || arena == null || waypoints == null || waypoints.isEmpty()) return 0;
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         ItemStack held = player.getMainHandStack();
-        if (held.isEmpty()) return;
+        if (held.isEmpty()) return 0;
 
         BlockPos originBp = arena.gridToBlockPos(arena.getPlayerGridPos());
         double ox = originBp.getX() + 0.5, oy = originBp.getY() + 1.1, oz = originBp.getZ() + 0.5;
@@ -17766,10 +17860,22 @@ public class CombatManager {
         java.util.List<ProjectileFlight.Hop> hops = new java.util.ArrayList<>();
         for (GridPos wp : waypoints) hops.add(new ProjectileFlight.Hop(wp, -1, 0));
 
+        // Speed off distance, not a fixed count. A flat six ticks a leg made a disc thrown at
+        // the tile next door drift across it, and one thrown to the edge of its range look no
+        // faster - the same "needs to be faster" the arrows had before they were timed this way.
+        int legTiles = 1;
+        GridPos prev = arena.getPlayerGridPos();
+        for (GridPos wp : waypoints) {
+            legTiles = Math.max(legTiles,
+                Math.max(Math.abs(wp.x() - prev.x()), Math.abs(wp.z() - prev.z())));
+            prev = wp;
+        }
+        final int discTicks = Math.max(3, Math.round(legTiles * DISC_TICKS_PER_TILE));
+
         final double[] home = {ox, oy, oz};
         ProjectileFlight flight = new ProjectileFlight(
             disc, hops,
-            h -> false,   // damage already applied by the ability handler
+            impact,
             new ProjectileFlight.Flightpath() {
                 @Override public double[] originOf(ProjectileFlight.Hop h) { return home; }
                 @Override public double[] arrivalOf(ProjectileFlight.Hop h) {
@@ -17798,8 +17904,108 @@ public class CombatManager {
                     };
                 }
             },
-            returnHome ? home : null, FLIGHT_TICKS_PER_TILE * 3, activeWalkers::add, this::onFlightFinished);
+            returnHome ? home : null, discTicks, activeWalkers::add, this::onFlightFinished);
         launchFlight(flight);
+        return discTicks;
+    }
+
+    /** Ticks a thrown weapon spends crossing one tile. Heavier than an arrow, lighter than a
+     *  lobbed item. */
+    private static final float DISC_TICKS_PER_TILE = 1.5f;
+
+    /**
+     * Throw the weapon along an ability's plan, resolving each hop as it arrives.
+     *
+     * <p>The order this exists to fix: the disc leaves the hand FIRST, and the damage follows it
+     * to each target. Every hop past the primary is a ricochet, and it lands through
+     * {@link #resolveAbilityHop} rather than a bare {@code takeDamage} - which is what puts
+     * knockback, Fire Aspect and the weapon's own proc back on the enemies a bounce touches.
+     *
+     * <p>Hop 0 is deliberately NOT applied here. The engine deals the primary hit itself from
+     * its own damage chain (crits, resistances, the whole ladder), timed by the caller to this
+     * flight's first arrival; applying it again here would hit the same enemy twice for one
+     * throw.
+     *
+     * @return ticks until the disc reaches the primary target, or 0 if it never left
+     */
+    private int flyAbilityPlan(com.crackedgames.craftics.api.AbilityPlan plan, Item weapon,
+                               PlayerProgression.PlayerStats stats, int luckPoints) {
+        if (plan == null || plan.hops().isEmpty() || arena == null) return 0;
+        java.util.List<GridPos> waypoints = new java.util.ArrayList<>();
+        java.util.List<com.crackedgames.craftics.api.AbilityPlan.Hop> hops = plan.hops();
+        for (var h : hops) {
+            if (h.target() == null || h.target().getGridPos() == null) return 0;
+            waypoints.add(h.target().getGridPos());
+        }
+        final int[] landed = {0};
+        return flyHeldItemChain(waypoints, plan.returnsToThrower(), h -> {
+            int i = landed[0]++;
+            if (i == 0 || i >= hops.size()) return false;   // primary belongs to the damage chain
+            return resolveAbilityHop(hops.get(i), weapon, stats, luckPoints);
+        });
+    }
+
+    /** Guards {@link #resolveAbilityHop} against a weapon whose ability bounces into itself. */
+    private boolean resolvingAbilityHop = false;
+
+    /**
+     * Land one ricochet, with everything a normal strike would carry.
+     *
+     * <p>This is the whole point of the plan. The bounce used to be
+     * {@code bounce.takeDamage(n)} inside the ability handler, which is around the outside of
+     * every on-hit effect the game has: a Punch chakram knocked back the enemy it was aimed at
+     * and nothing it bounced to, and a Chomp'olotl rolled its axolotl only on the first target.
+     * Routing through the universal enchant pass and the weapon's own handler means a ricochet
+     * gets whatever the swing would have.
+     *
+     * @return true if this hop killed its target, which ends the chain
+     */
+    private boolean resolveAbilityHop(com.crackedgames.craftics.api.AbilityPlan.Hop hop,
+                                      Item weapon, PlayerProgression.PlayerStats stats,
+                                      int luckPoints) {
+        CombatEntity t = hop.target();
+        if (t == null || !t.isAlive() || player == null || arena == null) return false;
+        int dealt = t.takeDamage(hop.damage());
+        sendMessage("§b✦ Ricochet! " + t.getDisplayName() + " takes " + dealt + "!");
+        sendToAllParty(new CombatEventPayload(
+            CombatEventPayload.EVENT_DAMAGED, t.getEntityId(), dealt, t.getCurrentHp(),
+            t.getGridPos().x(), t.getGridPos().z()));
+        if (hop.appliesOnHitEffects() && t.isAlive() && !resolvingAbilityHop) {
+            resolvingAbilityHop = true;
+            try {
+                // Sharpness, Smite, Bane, Knockback, Serrated - the same pass the primary
+                // target gets. Sweeping Edge is suppressed: a ricochet is already the weapon's
+                // extra target, and letting it open a second AoE per bounce is not the ability.
+                var uni = com.crackedgames.craftics.api.VanillaWeapons.universalEnchantEffects(
+                    player, t, arena, hop.damage(), stats, luckPoints, true);
+                for (String msg : uni.messages()) {
+                    if (msg.startsWith("[WB_SELF:")) {
+                        applyWindBurstRecoil(Integer.parseInt(msg.substring(9, msg.length() - 1)));
+                        continue;
+                    }
+                    sendMessage(msg);
+                }
+                int fireAspect = PlayerCombatStats.getFireAspect(player);
+                if (fireAspect > 0 && t.isAlive()) {
+                    t.stackBurning(fireAspect * 2, Math.max(0, fireAspect - 1));
+                    if (t.getMobEntity() != null) t.getMobEntity().setFireTicks(fireAspect * 160);
+                }
+                // The weapon's own ability, on the enemy it bounced to. This is what carries a
+                // unique's signature onto every target in the throw. Re-entry is blocked by the
+                // flag above, so an ability that itself plans a chain cannot fork here.
+                if (t.isAlive() && WeaponAbility.hasAbility(weapon)) {
+                    var extra = WeaponAbility.applyAbility(player, weapon, t, arena, hop.damage(),
+                        stats, luckPoints);
+                    for (String msg : extra.messages()) {
+                        if (!msg.startsWith("[WB_SELF:")) sendMessage(msg);
+                    }
+                }
+            } finally {
+                resolvingAbilityHop = false;
+            }
+        }
+        checkAndHandleDeath(t);
+        return !t.isAlive();
     }
 
     /**
@@ -17979,6 +18185,8 @@ public class CombatManager {
      * account for both or it fires while the projectile is still visibly in the air.
      */
     private static final int FLIGHT_SCHEDULING_LAG = 2;
+    /** Ticks per tile for an arrow. Deliberately quick - an arrow is not a thrown rock. */
+    private static final float ARROW_TICKS_PER_TILE = 1.0f;
 
     /**
      * Send a visible projectile from {@code from} to {@code to} and return how many ticks it
@@ -17996,10 +18204,13 @@ public class CombatManager {
         var shot = spawnFlightBody(world, body, sx, sy, sz);
         var shotInv = (com.crackedgames.craftics.mixin.DisplayEntityInvoker) shot;
 
-        // The flight lasts exactly as long as the damage takes to land. Timing it off tile
-        // count instead meant the arrow arrived on its own schedule while the hit, the
-        // particles and the damage number fired on the weapon's - visibly out of step.
-        int ticks = Math.max(3, impactTicks);
+        // Arrows are FAST. Timing the flight off the weapon's impact delay made a bow shot
+        // take half a second to cross two tiles, which is nothing like an arrow. Distance
+        // drives it instead, at roughly a tile per tick, floored so a point-blank shot is
+        // still seen leaving the bow.
+        int tiles = Math.max(1, Math.max(Math.abs(to.getX() - from.getX()),
+                                         Math.abs(to.getZ() - from.getZ())));
+        int ticks = Math.max(3, Math.round(tiles * ARROW_TICKS_PER_TILE));
 
         ProjectileFlight.Hop hop = new ProjectileFlight.Hop(null, -1, 0);
         ProjectileFlight flight = new ProjectileFlight(
@@ -18745,7 +18956,10 @@ public class CombatManager {
             return;
         }
         clearFlameOverlay(world, floor);
-        if (tile.getType() == TileType.OBSTACLE) {
+        // RUBBLE rides with OBSTACLE: it is a blocking tile, and painting it at floor level
+        // left a boulder that read as a paving slab while the grid refused to let anything
+        // cross it - a wall you can neither see nor walk through.
+        if (tile.getType() == TileType.OBSTACLE || tile.getType() == TileType.RUBBLE) {
             // Walls stand in the obstacle layer (Y+1), same slot placeObstacleTile uses, with
             // the floor left alone underneath. Matters when soul fire has eaten a stone wall
             // and the tile restores: painted at floor Y the wall would come back as a paving
@@ -19258,11 +19472,26 @@ public class CombatManager {
         if (ct.terrainType() == TileType.NORMAL) {
             biomeFloorBlock = getBiomeFloorBlock();
         }
+        // Terrain that occupies the space a body stands in, rather than the ground under it.
+        boolean blocking = ct.terrainType() == TileType.OBSTACLE
+            || ct.terrainType() == TileType.RUBBLE;
+
         int changed = 0;
+        int crushed = 0;
         for (GridPos pos : ct.tiles()) {
             if (!arena.isInBounds(pos)) continue;
             GridTile tile = arena.getTile(pos);
             if (tile == null) continue;
+
+            // A wall is never built on top of somebody. See isTileOccupiedByCombatant: the
+            // block would shove them off the tile, and a cave-in that kills by pushing its
+            // victim into a pit is not something the telegraph gave them any way to read. The
+            // stone lands on them instead, which is what a cave-in should have been doing.
+            if (blocking && isTileOccupiedByCombatant(pos)) {
+                if (crushOccupantsOn(pos, CRUSH_DAMAGE, "Falling stone")) return;
+                crushed++;
+                continue;
+            }
 
             if (duration > 0) {
                 tile.setTemporaryType(ct.terrainType(), duration);
@@ -19292,20 +19521,20 @@ public class CombatManager {
             }
             if (snowyIceWall) {
                 world.setBlockState(bp.up(), Blocks.PACKED_ICE.getDefaultState());
-            } else if (ct.terrainType().isFlames()) {
-                // Flames are placed at Y+1 on top of an intact floor, not painted onto it.
+            } else if (ct.terrainType().isFlames() || blocking) {
+                // Flames and walls both belong ABOVE an intact floor, not painted onto it.
+                // Written at floor level, a cave-in boulder replaced the paving and came out
+                // looking like a slightly different colour of ground that the grid then
+                // refused to let anything walk across - a wall nobody could see. Y+1 is the
+                // obstacle layer every other wall in the game already uses, and it is what
+                // paintTileBlock restores to when the temporary terrain expires.
                 paintTileBlock(world, pos, tile);
             } else {
                 world.setBlockState(bp, tile.getBlockType().getDefaultState());
-                // Snow-layer overlays can hide newly-created obstacle terrain in
-                // snowy arenas; clear the overlay so unwalkable tiles are visible.
-                if (ct.terrainType() == TileType.OBSTACLE) {
-                    BlockPos abovePos = bp.up();
-                    if (world.getBlockState(abovePos).getBlock() instanceof net.minecraft.block.SnowBlock) {
-                        world.setBlockState(abovePos, Blocks.AIR.getDefaultState());
-                    }
-                }
             }
+            // The snow-overlay clear that used to sit here is gone with the reason for it: the
+            // overlay lives in the obstacle layer, which is now exactly where the wall is
+            // written, so paintTileBlock replaces it rather than being buried under it.
 
             // Particles for the transformation
             world.spawnParticles(net.minecraft.particle.ParticleTypes.POOF,
@@ -19320,6 +19549,10 @@ public class CombatManager {
             String terrainName = ct.terrainType().name().toLowerCase();
             sendMessage("§e  " + currentEnemy.getDisplayName() + " reshapes " + changed
                 + " tiles to " + terrainName + "!");
+        }
+        if (crushed > 0 && currentEnemy != null) {
+            sendMessage("§8  " + crushed + " tile" + (crushed == 1 ? "" : "s")
+                + " came down on whoever was standing there instead of walling it off.");
         }
     }
 
@@ -20410,6 +20643,26 @@ public class CombatManager {
 
         BlockPos tntBp = arena.gridToBlockPos(tile);
         ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+        // A charge primed where somebody is standing goes off THERE, now. gridToBlockPos is
+        // standing height, so the alternative is a solid TNT block written inside a body:
+        // vanilla ejects whatever it overlaps, and the shove is what put a player in a void
+        // pit with no telegraph that could have warned them which way they were going. A
+        // demolition charge planted at your feet detonating is also just the honest reading.
+        // The rest of the board is lifted out first so this cannot clip anyone else's fuse.
+        if (isTileOccupiedByCombatant(tile)) {
+            sendMessage("§c§l  The charge goes off the instant it lands!");
+            List<PendingTnt> others = new ArrayList<>(pendingTnts);
+            pendingTnts.clear();
+            pendingTnts.add(new PendingTnt(tile, tntBp, 1));
+            try {
+                detonatePendingTnts();
+            } finally {
+                pendingTnts.addAll(others);
+            }
+            return;
+        }
+
         world.setBlockState(tntBp, Blocks.TNT.getDefaultState());
         world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
             tntBp.getX() + 0.5, tntBp.getY() + 0.8, tntBp.getZ() + 0.5,
@@ -26278,6 +26531,16 @@ public class CombatManager {
         }
 
         if (isBoss) {
+            // Network coins for the hub's cosmetic lootboxes -every boss, campaign and
+            // infinite alike, so this sits ahead of the mode branch below. Fire-and-forget
+            // and a no-op without the CrackedGames lobby mod; the run never waits on it.
+            // The occasion tag carries the world tick so replaying a boss pays again,
+            // while a retry of THIS award (which only the lobby's journal issues) does not.
+            long victoryTick = world.getTime();
+            com.crackedgames.craftics.compat.crackedlobby.CrackedLobbyCoins.awardBossDefeat(rewardRecipients,
+                Long.toString(victoryTick, 36) + "o" + biomeOrdinal
+                    + (InfiniteRunManager.isHostOfActiveRun(data, infiniteHostOwner) ? "i" : "c"));
+
             // INFINITE MODE: a boss clear banks score and parks the party in the
             // rest room instead of unlocking biomes / going home. No campaign
             // side-effects (unlocks, NG+, boss-kill HP ramp) are touched.

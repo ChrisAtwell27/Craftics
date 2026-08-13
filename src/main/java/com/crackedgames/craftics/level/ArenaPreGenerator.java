@@ -106,8 +106,9 @@ public class ArenaPreGenerator {
             // cache is keyed by level number alone, so a cached arena from a prior
             // cycle can belong to a different biome (e.g. mountain boss / jungle
             // arena). On a biome mismatch, drop the stale entry and fall through to
-            // rebuild. Older saves with no stamp (null) are trusted to avoid mass
-            // rebuilds; they self-correct the first time each level is rebuilt.
+            // rebuild. An unstamped row from an older save counts as a mismatch: the
+            // biome-to-level layout has changed since those were built, so the arena
+            // sitting there belongs to a different biome entirely.
             String cachedBiome = pd.getArenaBiome(level);
             if (ArenaBiomeStamp.stampMatches(cachedBiome, wantedBiome)) {
                 return existing;

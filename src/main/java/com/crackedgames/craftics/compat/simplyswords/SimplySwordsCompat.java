@@ -352,35 +352,67 @@ public final class SimplySwordsCompat {
     /** Chakram: thrown disc ricochets to the nearest other enemy within 2 tiles of the target.
      *  Package-private: the Tempest and Chomp'olotl uniques compose it with their own procs. */
     static WeaponAbilityHandler chakramAbility() {
-        return (player, target, arena, baseDamage, stats, luckPoints) -> {
-            List<String> msgs = new ArrayList<>();
-            List<CombatEntity> extras = new ArrayList<>();
-            int total = baseDamage;
-            CombatEntity bounce = null;
-            int bestDist = Integer.MAX_VALUE;
-            for (CombatEntity e : arena.getOccupants().values()) {
-                if (e == target || !e.isAlive() || e.isAlly()) continue;
-                int d = e.getGridPos().manhattanDistance(target.getGridPos());
-                if (d <= 2 && d < bestDist) { bestDist = d; bounce = e; }
+        return new WeaponAbilityHandler() {
+            @Override
+            public boolean isPlanned() {
+                return true;
             }
-            if (bounce != null) {
-                int dmg = bounce.takeDamage(Math.max(1, (int) Math.round(baseDamage * CHAKRAM_BOUNCE_MULT)));
-                extras.add(bounce);
-                total += dmg;
-                msgs.add("§b✦ Ricochet! The chakram bounces to " + bounce.getDisplayName() + " for " + dmg + "!");
+
+            /**
+             * The chakram as a PLAN: out to the target, on to whatever is within two tiles of
+             * it, and back. Nothing is applied here, which is the whole point - the combat
+             * manager asks for this BEFORE the swing resolves, throws the disc, and times the
+             * damage to its arrival. The old order was the reverse: the hit landed, and only
+             * then did the disc set off after an enemy that had already taken it.
+             *
+             * <p>The bounce hop matters just as much as the timing. It used to be a bare
+             * {@code takeDamage} inside {@code apply}, around the entire on-hit pipeline, which
+             * is why a Punch ricochet never knocked anything back and a Chomp'olotl never
+             * rolled its axolotl on the second enemy. As a hop it is resolved by the same
+             * routine a normal strike goes through, so it gets all of that for free.
+             */
+            @Override
+            public com.crackedgames.craftics.api.AbilityPlan plan(
+                    net.minecraft.server.network.ServerPlayerEntity player, CombatEntity target,
+                    com.crackedgames.craftics.core.GridArena arena, int baseDamage,
+                    com.crackedgames.craftics.combat.PlayerProgression.PlayerStats stats,
+                    int luckPoints) {
+                List<com.crackedgames.craftics.api.AbilityPlan.Hop> hops = new ArrayList<>();
+                hops.add(new com.crackedgames.craftics.api.AbilityPlan.Hop(target, baseDamage));
+                CombatEntity bounce = findBounceTarget(arena, target);
+                if (bounce != null) {
+                    hops.add(new com.crackedgames.craftics.api.AbilityPlan.Hop(bounce,
+                        Math.max(1, (int) Math.round(baseDamage * CHAKRAM_BOUNCE_MULT))));
+                }
+                return new com.crackedgames.craftics.api.AbilityPlan(hops, true, List.of());
             }
-            // Fly the disc for real: out to the target, on to whatever it bounced off, then
-            // back to the hand. The old particle line was drawn between two points in a single
-            // tick and never showed the weapon at all.
-            var cm = com.crackedgames.craftics.combat.CombatManager.getActiveCombat(player.getUuid());
-            if (cm != null) {
-                java.util.List<com.crackedgames.craftics.core.GridPos> path = new ArrayList<>();
-                path.add(target.getGridPos());
-                if (bounce != null) path.add(bounce.getGridPos());
-                cm.flyHeldItemChain(path, true);
+
+            @Override
+            public WeaponAbility.AttackResult apply(
+                    net.minecraft.server.network.ServerPlayerEntity player, CombatEntity target,
+                    com.crackedgames.craftics.core.GridArena arena, int baseDamage,
+                    com.crackedgames.craftics.combat.PlayerProgression.PlayerStats stats,
+                    int luckPoints) {
+            // The bounce and the throw both moved into the plan above. What is left is the
+            // primary hit, which the engine deals itself - so this reports the base and stops.
+            // Re-adding a ricochet here would double it: the flight resolves every hop.
+            return new WeaponAbility.AttackResult(baseDamage, List.of(), List.of());
             }
-            return new WeaponAbility.AttackResult(total, msgs, extras);
         };
+    }
+
+    /** The nearest other living enemy within two tiles of {@code target}, or null. THE bounce
+     *  rule, shared by the legacy apply path and the plan above so the two cannot disagree. */
+    private static CombatEntity findBounceTarget(
+            com.crackedgames.craftics.core.GridArena arena, CombatEntity target) {
+        CombatEntity best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (CombatEntity e : arena.getOccupants().values()) {
+            if (e == target || !e.isAlive() || e.isAlly()) continue;
+            int d = e.getGridPos().manhattanDistance(target.getGridPos());
+            if (d <= 2 && d < bestDist) { bestDist = d; best = e; }
+        }
+        return best;
     }
 
     /** Scythe: reaping arc - half damage across the sweep line, bleeding each enemy caught. */

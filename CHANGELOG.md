@@ -4,12 +4,28 @@ Mobs Acting Out of Turn
 
 - Nothing can hurt you in a fight except the fight.
 - Your allies get the same protection, so nothing chews through your wolf while it waits for its turn
-- Uninvited mobs are removed.
 - Removed the stalker as a miniboss
 - Removed herobrine
 - Projectiles are visually distinct when attacking
 - Fissure fills with deepslate now, and visually falls from the sky.
 
+Thrown Weapons
+
+- A chakram is thrown before it hits anything. It used to be launched by its own ability handler, which runs after the swing has been resolved, so the damage and the particles had already played by the time the disc left your hand and it spent the whole flight chasing an outcome you had watched happen. The throw now goes out first and the hit is timed to the disc arriving, using the same delay a bow shot has always used for its arrow
+- A ricochet carries the weapon's effects. Every bounce used to be a bare point of damage applied around the outside of the entire on-hit pipeline, which is why a Punch chakram knocked back only the enemy you aimed at, and a Chomp'olotl rolled its axolotl only on the first target it touched. A bounce now lands through the same pass a normal strike does: Sharpness, Smite, Bane, Knockback, Serrated, Fire Aspect, and the weapon's own unique proc all apply to every enemy in the throw
+- The disc's speed comes off the distance it is covering rather than a fixed count per bounce, so a throw at the tile next door snaps across it and one thrown to the edge of its range takes the time it should
+
+The Hollow King
+
+- A boss can no longer build on top of you. Any solid block written into a tile someone is standing on gets that person ejected by vanilla's own push-out, so a cave-in did not block your path, it shoved you off the tile - into a fissure, off a ledge, into a void pit. Nothing in the telegraph told you which way you were going to be pushed, which made it a death with no counterplay. The stone lands on whoever is standing there and hurts them instead, which is what a cave-in should have been doing all along
+- The same rule covers his TNT. A charge is primed at standing height, so priming one under somebody used to materialise a block of TNT inside them. It detonates on the spot now, which is also the honest reading of a demolition charge planted at your feet
+- Cave-in stone stands in the obstacle layer instead of replacing the floor. Painted at floor level it came out looking like a slightly different shade of ground that the grid then refused to let anything cross - a wall you could neither see nor walk through
+- The TNT warning says what you actually get. It read "2-round fuse", which was counting the fuse's own ticks rather than the window you have: the charge is primed during the boss's turn and blows at the end of your next one. It now says so
+
+Arenas
+
+- Fixed cave levels being fought in a nether arena. Arenas are cached per level number and validated against the biome they were built for, and a cache entry from before that stamp existed was trusted rather than rebuilt. That was a safe assumption until biomes went from five levels to seven, at which point every level number resolved to a different biome than it had when its arena was built - Underground Caverns II is global level 51, which used to be Soul Sand Valley I. It could never fix itself either, because the corruption check only looks for missing floor and a netherrack floor is perfectly solid. An unstamped arena is now rebuilt on the spot the next time you enter that level, once, and stamped so it never happens again
+- Ricochets now apply the effect of the weapon.
 0.3.8
 Softlocks
 

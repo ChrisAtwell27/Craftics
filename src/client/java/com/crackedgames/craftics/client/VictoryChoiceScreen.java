@@ -184,6 +184,10 @@ public class VictoryChoiceScreen extends Screen {
                     contX, btnY + 25, contW, contH,
                     Text.literal("§4§l☠ BOSS FIGHT: " + biomeName + " ☠ (Risk it all!)"),
                     btn -> {
+                        // Disarm the reopen watchdog FIRST. Without this the screen keeps
+                        // putting itself back until the server changes phase, so the level
+                        // loads behind a menu that will not go away.
+                        clearReopen();
                         this.close();
                         TransitionOverlay.startTransition(
                             "§4§l☠ BOSS FIGHT ☠",
@@ -197,6 +201,7 @@ public class VictoryChoiceScreen extends Screen {
                     contX, btnY + 25, contW, contH,
                     Text.literal("§c⚔ Continue to Level " + nextLevel + " (Risk it all!)"),
                     btn -> {
+                        clearReopen();   // see the boss branch above
                         this.close();
                         TransitionOverlay.startTransition(
                             biomeName + " — Level " + nextLevel, "Onward!",

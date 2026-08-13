@@ -305,27 +305,64 @@ public final class Abilities {
     }
 
     /**
-     * Hits the first enemy behind the target in the player-to-target direction.
-     * Full base damage is dealt to the pierced entity.
+     * Drives a shot through everything standing in its line, for full damage each.
+     *
+     * <p>Used to hit exactly one enemy: the single tile directly behind the target. That is not
+     * what pierce means to a player - a bolt that goes through the first body should keep going
+     * through the second and the third - and it is why a crossbow shot into a queue of skeletons
+     * only ever killed two of them. The line now runs from the target to the edge of the arena,
+     * stopping at a wall, and every enemy on it is a hop.
+     *
+     * <p>Planned rather than applied, so the arrow can be seen crossing all of them instead of
+     * stopping at the first, and so each pierced enemy takes the shot through the ordinary
+     * on-hit path (Flame, Punch, the lot) rather than as a bare point of damage.
      */
     public static WeaponAbilityHandler pierce() {
-        return (player, target, arena, baseDamage, stats, luckPoints) -> {
-            List<String> messages = new ArrayList<>();
-            List<CombatEntity> extraTargets = new ArrayList<>();
-            GridPos pPos = arena.getPlayerGridPos();
-            int dx = Integer.signum(target.getGridPos().x() - pPos.x());
-            int dz = Integer.signum(target.getGridPos().z() - pPos.z());
-            GridPos check = new GridPos(target.getGridPos().x() + dx, target.getGridPos().z() + dz);
-            if (arena.isInBounds(check)) {
-                CombatEntity pierced = arena.getOccupant(check);
-                if (pierced != null && pierced.isAlive() && !pierced.isAlly()) {
-                    int pierceDmg = pierced.takeDamage(baseDamage);
-                    extraTargets.add(pierced);
-                    messages.add("§bPIERCE! Hit " + pierced.getDisplayName()
-                            + " behind for " + pierceDmg + ".");
-                }
+        return new WeaponAbilityHandler() {
+            @Override
+            public boolean isPlanned() {
+                return true;
             }
-            return new WeaponAbility.AttackResult(baseDamage, messages, extraTargets);
+
+            @Override
+            public AbilityPlan plan(net.minecraft.server.network.ServerPlayerEntity player,
+                                    CombatEntity target, GridArena arena, int baseDamage,
+                                    PlayerProgression.PlayerStats stats, int luckPoints) {
+                List<AbilityPlan.Hop> hops = new ArrayList<>();
+                hops.add(new AbilityPlan.Hop(target, baseDamage));
+
+                GridPos pPos = arena.getPlayerGridPos();
+                GridPos tPos = target.getGridPos();
+                int dx = Integer.signum(tPos.x() - pPos.x());
+                int dz = Integer.signum(tPos.z() - pPos.z());
+                if (dx == 0 && dz == 0) return new AbilityPlan(hops, false, List.of());
+
+                // Identity, not position: a multi-tile mob stands on several tiles of the line
+                // and must be pierced once, not once per tile it covers.
+                List<CombatEntity> struck = new ArrayList<>();
+                struck.add(target);
+                GridPos step = new GridPos(tPos.x() + dx, tPos.z() + dz);
+                while (arena.isInBounds(step)) {
+                    var tile = arena.getTile(step);
+                    // A wall stops the bolt. Anything it can be shot over does not.
+                    if (tile != null && tile.getType() == com.crackedgames.craftics.core.TileType.OBSTACLE) break;
+                    CombatEntity e = arena.getOccupant(step);
+                    if (e != null && e.isAlive() && !e.isAlly() && !struck.contains(e)) {
+                        struck.add(e);
+                        hops.add(new AbilityPlan.Hop(e, baseDamage));
+                    }
+                    step = new GridPos(step.x() + dx, step.z() + dz);
+                }
+                return new AbilityPlan(hops, false, List.of());
+            }
+
+            @Override
+            public WeaponAbility.AttackResult apply(net.minecraft.server.network.ServerPlayerEntity player,
+                                                    CombatEntity target, GridArena arena, int baseDamage,
+                                                    PlayerProgression.PlayerStats stats, int luckPoints) {
+                // The line belongs to the plan. Re-piercing here would hit everything twice.
+                return new WeaponAbility.AttackResult(baseDamage, List.of(), List.of());
+            }
         };
     }
 

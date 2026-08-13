@@ -35,12 +35,22 @@ public final class ArenaBiomeStamp {
      * Whether a cached arena stamped {@code cachedStamp} may be reused for a level that now
      * wants {@code wantedStamp}.
      *
-     * <p>A null cached stamp means the save predates stamping. Those are trusted rather than
-     * invalidated, so an update doesn't force a mass rebuild of every arena in every save; they
-     * self-correct the first time each level is rebuilt for any other reason.
+     * <p>A null cached stamp means the save predates stamping, and it is treated as a MISS. It
+     * used to be trusted, on the reasoning that an unstamped arena was probably still the right
+     * one and trusting it avoided a mass rebuild. That reasoning died when biomes went from five
+     * levels to seven: every global level number now resolves to a different biome than it did
+     * when those arenas were built, so an unstamped row is not merely unverified, it is
+     * positively wrong. Underground Caverns II is global level 51, which under the old five-level
+     * layout was Soul Sand Valley I - which is why a cave level was being fought in a netherrack
+     * arena, and why it never fixed itself: the corruption check only looks for missing floor,
+     * and a netherrack floor is perfectly solid.
+     *
+     * <p>The cost is one rebuild per level in a pre-existing save, at the moment that level is
+     * next entered. The mismatch path already wipes and rebuilds cleanly, and each rebuild writes
+     * a stamp, so it happens once and never again.
      */
     public static boolean stampMatches(String cachedStamp, String wantedStamp) {
-        if (cachedStamp == null) return true;
+        if (cachedStamp == null) return false;
         return cachedStamp.equals(wantedStamp);
     }
 }

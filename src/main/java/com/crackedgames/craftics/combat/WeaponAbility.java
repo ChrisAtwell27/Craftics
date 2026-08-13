@@ -58,6 +58,25 @@ public class WeaponAbility {
         return entry.ability().apply(player, target, arena, baseDamage, playerStats, luckPoints);
     }
 
+    /**
+     * The weapon's intended chain of hits, or {@code null} if it has none to declare.
+     *
+     * <p>Asked BEFORE the attack resolves, so the projectile can be launched first and the
+     * damage timed to its arrival. {@code null} means "not converted" and the caller must fall
+     * back to {@link #applyAbility} at impact - it is never a licence to call {@code plan}
+     * anyway, because the default implementation of {@code plan} resolves the whole hit on the
+     * spot (see {@link com.crackedgames.craftics.api.WeaponAbilityHandler#isPlanned}).
+     *
+     * @since 0.3.9
+     */
+    public static com.crackedgames.craftics.api.AbilityPlan planAbility(
+            ServerPlayerEntity player, Item weapon, CombatEntity target, GridArena arena,
+            int baseDamage, PlayerProgression.PlayerStats playerStats, int luckPoints) {
+        WeaponEntry entry = WeaponRegistry.get(weapon);
+        if (entry.ability() == null || !entry.ability().isPlanned()) return null;
+        return entry.ability().plan(player, target, arena, baseDamage, playerStats, luckPoints);
+    }
+
     /** Backwards-compatible overload for callers that don't have PlayerStats. */
     public static AttackResult applyAbility(ServerPlayerEntity player, Item weapon,
                                              CombatEntity target, GridArena arena,
