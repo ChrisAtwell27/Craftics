@@ -1363,6 +1363,29 @@ public class CrafticsSavedData extends PersistentState {
         return new net.minecraft.util.math.BlockPos(0, 65, 0);
     }
 
+    /**
+     * Forget everything about a player's island, so their next visit builds a brand new one.
+     *
+     * <p>Drops the whole {@link PlayerData} entry rather than clearing the island fields one by
+     * one. There are two dozen of them - world slot, hub version, arena metadata per level, the
+     * created-at coordinates, met traders - and a reset that enumerates fields is a reset that
+     * misses one the day somebody adds a field and does not think of this method. Removing the
+     * entry cannot miss anything by construction.
+     *
+     * <p>The world slot is NOT recycled: the next island takes a fresh slot from the counter.
+     * Slot reuse would drop a new island on top of the old one's coordinates, and the old
+     * blocks are in a void dimension being deleted anyway.
+     *
+     * <p>Deletes bookkeeping only. The dimension itself is
+     * {@link com.crackedgames.craftics.world.IslandDimensions#delete}'s job, and the caller
+     * must have evacuated it first.
+     */
+    public void forgetIsland(UUID playerId) {
+        if (playerId == null) return;
+        players.remove(playerId);
+        markDirty();
+    }
+
     /** Check if a player has a personal world. */
     public boolean hasPersonalWorld(UUID playerId) {
         return getPlayerData(playerId).worldSlot >= 0;

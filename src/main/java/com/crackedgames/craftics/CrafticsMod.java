@@ -1020,6 +1020,129 @@ public class CrafticsMod implements ModInitializer {
         LOGGER.info("Craftics initialized.");
     }
 
+    /**
+     * Delete a player's island outright, so their next visit builds a fresh one.
+     *
+     * <p>For starting over, and for the player who would rather live on a friend's island than
+     * keep one of their own. It does NOT stop them having an island again: the moment they go
+     * home, a new one is built.
+     *
+     * <p>Order matters and is the whole risk here. Everyone standing on the island - the owner,
+     * visitors, party guests - is sent to the lobby FIRST, because deleting a dimension out
+     * from under someone standing in it is undefined behaviour in Fantasy, not a clean error.
+     * Only then is the dimension deleted from disk, and only then is the bookkeeping dropped.
+     */
+    private static int deleteIsland(net.minecraft.server.command.ServerCommandSource source,
+                                    ServerPlayerEntity target) {
+        var server = source.getServer();
+        ServerWorld overworld = server.getOverworld();
+        CrafticsSavedData data = CrafticsSavedData.get(overworld);
+        java.util.UUID owner = target.getUuid();
+
+        if (!data.hasPersonalWorld(owner)) {
+            source.sendError(net.minecraft.text.Text.literal(
+                "§c" + target.getName().getString() + " has no island to delete."));
+            return 0;
+        }
+        for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
+            if (com.crackedgames.craftics.combat.CombatManager.isEngaged(p.getUuid())) {
+                source.sendError(net.minecraft.text.Text.literal(
+                    "§c" + p.getName().getString() + " is in a fight. Wait for it to finish."));
+                return 0;
+            }
+        }
+
+        // Evacuate first - everyone, not just the owner. A visitor left inside a dimension
+        // being deleted is the one case Fantasy gives no guarantees about.
+        ServerWorld island = com.crackedgames.craftics.world.IslandDimensions.getLoaded(server, owner);
+        if (island != null) {
+            for (ServerPlayerEntity inside : new java.util.ArrayList<>(island.getPlayers())) {
+                com.crackedgames.craftics.world.HubTeleports.toLobby(inside);
+                inside.sendMessage(net.minecraft.text.Text.literal(
+                    "§eThis island is being deleted; you have been sent to the lobby."), false);
+            }
+        }
+
+        com.crackedgames.craftics.world.IslandDimensions.delete(server, owner);
+        data.forgetIsland(owner);
+        // The campaign goes with the island. Leaving progress behind would give them a save
+        // that has forgotten where it lives but not how far it got - the level select still
+        // showing biome twelve unlocked over a world that no longer exists.
+        com.crackedgames.craftics.combat.PlayerProgression.get(overworld).wipeProgress(owner);
+
+        LOGGER.info("Craftics: island and progress for {} deleted by {}", owner, source.getName());
+        target.sendMessage(net.minecraft.text.Text.literal(
+            "§eYour island and campaign progress have been deleted. "
+                + "Going home will build you a new island."), false);
+        source.sendFeedback(() -> net.minecraft.text.Text.literal(
+            "§aDeleted " + target.getName().getString() + "'s island."), true);
+        return 1;
+    }
+
+    /**
+     * Rebuild every arena on every island that exists in save data.
+     *
+     * <p>Every island, not every online player: an island belongs to its owner whether or not
+     * they are logged in, and the arenas that need fixing are usually on the ones nobody has
+     * visited lately. Guests are skipped because they do not own an island - rebuilding "their"
+     * arenas would mean rebuilding the host's a second time.
+     *
+     * <p>Refused while anybody is mid-fight. Regenerating an arena wipes and re-lays its blocks,
+     * and doing that under a live fight would pull the floor out from under it.
+     *
+     * <p>This is a heavy, blocking operation - potentially hundreds of arenas - so it reports
+     * what it is about to do and logs per island. It is op-gated for that reason as much as any
+     * other.
+     */
+    private static int rebuildAllArenas(net.minecraft.server.command.ServerCommandSource source) {
+        ServerWorld overworld = source.getServer().getOverworld();
+        CrafticsSavedData data = CrafticsSavedData.get(overworld);
+
+        for (ServerPlayerEntity p : source.getServer().getPlayerManager().getPlayerList()) {
+            if (com.crackedgames.craftics.combat.CombatManager.isEngaged(p.getUuid())) {
+                source.sendError(net.minecraft.text.Text.literal(
+                    "§c" + p.getName().getString() + " is in a fight right now. "
+                        + "Rebuilding would pull the arena out from under them - try again after."));
+                return 0;
+            }
+        }
+
+        java.util.List<java.util.UUID> owners = new java.util.ArrayList<>();
+        for (java.util.UUID id : data.getAllPlayerData().keySet()) {
+            if (data.hasPersonalWorld(id)) owners.add(id);
+        }
+        if (owners.isEmpty()) {
+            source.sendFeedback(() -> net.minecraft.text.Text.literal(
+                "§7No islands to rebuild."), false);
+            return 0;
+        }
+
+        source.sendFeedback(() -> net.minecraft.text.Text.literal(
+            "§eRebuilding arenas for " + owners.size() + " island"
+                + (owners.size() == 1 ? "" : "s") + "... the server will hang while this runs."), true);
+
+        int islands = 0;
+        int arenas = 0;
+        for (java.util.UUID owner : owners) {
+            try {
+                int built = com.crackedgames.craftics.level.ArenaPreGenerator
+                    .regenerate(overworld, owner, null);
+                arenas += built;
+                islands++;
+                LOGGER.info("Craftics rebuild_arenas all: {} arenas rebuilt for island {}",
+                    built, owner);
+            } catch (Exception e) {
+                LOGGER.error("Craftics rebuild_arenas all: island {} failed", owner, e);
+            }
+        }
+
+        final int fIslands = islands;
+        final int fArenas = arenas;
+        source.sendFeedback(() -> net.minecraft.text.Text.literal(
+            "§aRebuilt §f" + fArenas + "§a arenas across §f" + fIslands + "§a islands."), true);
+        return fArenas;
+    }
+
     /** Ticks between peaceful-difficulty checks. Two seconds; the check itself is a field read. */
     private static final int PEACEFUL_CHECK_INTERVAL = 40;
     private static int peacefulCheckTicks = 0;
@@ -1432,6 +1555,21 @@ public class CrafticsMod implements ModInitializer {
             // otherwise open to any player (they can only rebuild their own world).
             // The predicate reads the config live so toggling it takes effect without
             // re-registering commands.
+            // /craftics deleteisland <player> confirm - irreversible, so the confirm literal
+            // is mandatory rather than a flag. Op-only: it destroys somebody's save.
+            root.then(CommandManager.literal("deleteisland")
+                .requires(src -> src.hasPermissionLevel(2))
+                .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                    .executes(ctx -> {
+                        ctx.getSource().sendError(net.minecraft.text.Text.literal(
+                            "§cThis DELETES that island, everything built on it, and their "
+                                + "campaign progress, permanently. Add §fconfirm§c if you mean it."));
+                        return 0;
+                    })
+                    .then(CommandManager.literal("confirm")
+                        .executes(ctx -> deleteIsland(ctx.getSource(),
+                            net.minecraft.command.argument.EntityArgumentType.getPlayer(ctx, "player"))))));
+
             // /craftics difficulty [easy|medium|hard] - per ISLAND, not per server.
             var difficultyNode = CommandManager.literal("difficulty")
                 .executes(ctx -> reportDifficulty(ctx.getSource()));
@@ -1445,6 +1583,13 @@ public class CrafticsMod implements ModInitializer {
             var rebuildArenasNode = CommandManager.literal("rebuild_arenas")
                 .requires(src -> !CONFIG.rebuildArenasAdminOnly() || src.hasPermissionLevel(2))
                 .executes(rebuildArenasExec);
+
+            // Every island on the server, not just the caller's. Always op-gated regardless of
+            // rebuildArenasAdminOnly: that flag exists so a player can rebuild THEIR OWN world,
+            // and this rebuilds everybody's.
+            rebuildArenasNode.then(CommandManager.literal("all")
+                .requires(src -> src.hasPermissionLevel(2))
+                .executes(ctx -> rebuildAllArenas(ctx.getSource())));
 
             // Register a literal child per biome so tab-completion suggests valid ids.
             for (var biome : com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes()) {

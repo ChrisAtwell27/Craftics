@@ -508,6 +508,25 @@ public class PlayerProgression extends PersistentState {
     }
 
     /**
+     * Wipe a player's campaign progress back to a fresh profile.
+     *
+     * <p>For island deletion. Deleting the island without this leaves the world gone but the
+     * level select still showing biome twelve unlocked and a shelf of boss kills - a save that
+     * has forgotten where it lives but not how far it got, which is neither a fresh start nor
+     * the old one.
+     *
+     * <p>Unlike {@link #resetForInfiniteRun} this keeps NOTHING, achievements included. That is
+     * the difference between a temporary run reset and starting over: an infinite run is
+     * something you come back from, and this is not.
+     */
+    public void wipeProgress(UUID playerId) {
+        PlayerStats fresh = new PlayerStats();
+        cache.put(playerId, fresh);
+        playerData.put(playerId.toString(), fresh.serialize());
+        markDirty();
+    }
+
+    /**
      * Restore a stashed pre-run snapshot after an infinite run ends. Any
      * achievements earned DURING the run are merged into the restored profile
      * so they aren't lost with the run stats.

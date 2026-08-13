@@ -9,6 +9,12 @@ Mobs Acting Out of Turn
 - Projectiles are visually distinct when attacking
 - Fissure fills with deepslate now, and visually falls from the sky.
 
+Islands and Admin Tools
+
+- `/craftics rebuild_arenas all` rebuilds every arena on every island the save knows about, not just the ones whose owners happen to be online. It refuses while anyone is mid-fight, since regenerating an arena re-lays its blocks and doing that under a live battle pulls the floor out from under it. Op-only and deliberately loud about the fact that it will hang the server while it runs
+- `/craftics deleteisland <player> confirm` deletes an island for someone who wants to start over, or who would rather just live on a friend's. The island, everything built on it, and their campaign progress all go - leaving the progress behind would give them a save that has forgotten where it lives but not how far it got, with the level select still showing biome twelve unlocked over a world that no longer exists. It does not stop them having an island again: going home builds a fresh one
+- Everyone on the island is sent to the lobby BEFORE the dimension is deleted, visitors included. Deleting a dimension out from under someone standing in it is undefined behaviour, not a clean error. The `confirm` is mandatory rather than a flag, and the whole thing is op-gated
+
 Difficulty
 
 - Difficulty is a thing you can choose now. `/craftics difficulty easy|medium|hard`, with no argument to see where you stand. **Easy** is exactly what the game was before this existed, **Medium** gives enemies 1.5x health and +1 damage on every attack, **Hard** gives them 2x health and +2
