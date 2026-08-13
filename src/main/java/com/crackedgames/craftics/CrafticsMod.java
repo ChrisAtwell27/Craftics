@@ -838,6 +838,13 @@ public class CrafticsMod implements ModInitializer {
                 LOGGER.error("VFX tick crashed; continuing server tick", t);
             }
 
+            // Peaceful is not a difficulty this mod can run at, so it is not allowed to stick.
+            try {
+                enforceNonPeaceful(server);
+            } catch (Throwable t) {
+                LOGGER.error("Peaceful-difficulty guard crashed; continuing server tick", t);
+            }
+
             // Keep the Move item locked to its hotbar slot for every player. Cheap
             // when nothing's out of place; auto-repairs drag/drop/Q-throw attempts.
             try {
@@ -1011,6 +1018,91 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.combat.ArenaGuards.register();
 
         LOGGER.info("Craftics initialized.");
+    }
+
+    /** Ticks between peaceful-difficulty checks. Two seconds; the check itself is a field read. */
+    private static final int PEACEFUL_CHECK_INTERVAL = 40;
+    private static int peacefulCheckTicks = 0;
+
+    /**
+     * Put the world back off Peaceful, whoever set it.
+     *
+     * <p>Peaceful is not a difficulty this mod has a degraded mode for, it is one it cannot run
+     * at: vanilla despawns every hostile mob on the spot and refuses to spawn more, and this
+     * mod's entire content is fights against those mobs. An arena would build itself and then
+     * stand empty, which reads as the mod being broken rather than as a setting being wrong.
+     *
+     * <p>Enforced on a timer rather than once at startup because there are several ways in -
+     * the {@code /difficulty} command, the pause menu in singleplayer, an edited
+     * server.properties, another mod - and catching only the startup case would leave all of
+     * them working. Craftics has its OWN difficulty setting for players who want the fights
+     * easier ({@code /craftics difficulty}); that is the lever, not this one.
+     */
+    private static void enforceNonPeaceful(net.minecraft.server.MinecraftServer server) {
+        if (server == null) return;
+        if (++peacefulCheckTicks < PEACEFUL_CHECK_INTERVAL) return;
+        peacefulCheckTicks = 0;
+        if (server.getOverworld() == null) return;
+        if (server.getOverworld().getDifficulty() != net.minecraft.world.Difficulty.PEACEFUL) return;
+
+        // force = true so a difficulty-locked world is corrected too; a locked Peaceful world
+        // would otherwise be permanently unplayable with the mod installed.
+        server.setDifficulty(net.minecraft.world.Difficulty.EASY, true);
+        LOGGER.info("Craftics: world difficulty was Peaceful; forced to Easy "
+            + "(Peaceful despawns the mobs every fight is made of).");
+        for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
+            p.sendMessage(net.minecraft.text.Text.literal(
+                "§eCraftics needs hostile mobs, so Peaceful has been set back to Easy. "
+                    + "§7Use §f/craftics difficulty easy§7 to make the fights themselves easier."), false);
+        }
+    }
+
+    /** Show the island's difficulty and where the value came from. */
+    private static int reportDifficulty(net.minecraft.server.command.ServerCommandSource source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity who = source.getPlayerOrThrow();
+        ServerWorld overworld = source.getServer().getOverworld();
+        CrafticsSavedData data = CrafticsSavedData.get(overworld);
+        java.util.UUID owner = data.getEffectiveWorldOwner(who.getUuid());
+        String stored = data.getPlayerData(owner).difficulty;
+        var current = com.crackedgames.craftics.combat.CrafticsDifficulty.of(overworld, owner);
+        source.sendFeedback(() -> net.minecraft.text.Text.literal(
+            "§6Craftics difficulty: §f" + current.label()
+                + (stored == null ? " §7(default)" : "")
+                + "\n§7Enemies x" + current.hpMultiplier + " HP, +" + current.damageBonus
+                + " damage on every enemy attack."
+                + "\n§8/craftics difficulty easy | medium | hard"), false);
+        return 1;
+    }
+
+    /**
+     * Set this island's difficulty.
+     *
+     * <p>Refused mid-fight. Enemy HP is decided as each mob spawns, so raising the difficulty
+     * during a battle would leave the mobs already on the field at their old health while
+     * everything spawned afterwards arrived at the new value - a fight running at two
+     * difficulties at once. Between fights there is nothing to be inconsistent with, and the
+     * change is live from the next level.
+     */
+    private static int setDifficulty(net.minecraft.server.command.ServerCommandSource source,
+                                     com.crackedgames.craftics.combat.CrafticsDifficulty level)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity who = source.getPlayerOrThrow();
+        if (com.crackedgames.craftics.combat.CombatManager.isEngaged(who.getUuid())) {
+            source.sendError(net.minecraft.text.Text.literal(
+                "§cYou can't change difficulty in the middle of a fight - finish this one first."));
+            return 0;
+        }
+        ServerWorld overworld = source.getServer().getOverworld();
+        CrafticsSavedData data = CrafticsSavedData.get(overworld);
+        java.util.UUID owner = data.getEffectiveWorldOwner(who.getUuid());
+        data.getPlayerData(owner).difficulty = level.name();
+        data.markDirty();
+        source.sendFeedback(() -> net.minecraft.text.Text.literal(
+            "§6Craftics difficulty set to §f§l" + level.label()
+                + "§r§6. §7Enemies x" + level.hpMultiplier + " HP, +" + level.damageBonus
+                + " damage on every enemy attack."), false);
+        return 1;
     }
 
     private void registerCommands() {
@@ -1340,6 +1432,16 @@ public class CrafticsMod implements ModInitializer {
             // otherwise open to any player (they can only rebuild their own world).
             // The predicate reads the config live so toggling it takes effect without
             // re-registering commands.
+            // /craftics difficulty [easy|medium|hard] - per ISLAND, not per server.
+            var difficultyNode = CommandManager.literal("difficulty")
+                .executes(ctx -> reportDifficulty(ctx.getSource()));
+            for (var level : com.crackedgames.craftics.combat.CrafticsDifficulty.values()) {
+                difficultyNode.then(CommandManager
+                    .literal(level.name().toLowerCase(java.util.Locale.ROOT))
+                    .executes(ctx -> setDifficulty(ctx.getSource(), level)));
+            }
+            root.then(difficultyNode);
+
             var rebuildArenasNode = CommandManager.literal("rebuild_arenas")
                 .requires(src -> !CONFIG.rebuildArenasAdminOnly() || src.hasPermissionLevel(2))
                 .executes(rebuildArenasExec);

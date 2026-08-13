@@ -108,6 +108,15 @@ public class CrafticsSavedData extends PersistentState {
          * effective world owner - guests inherit whatever the owner has set.
          */
         public boolean scaleHpPerLevelEnabled = false;
+        /**
+         * This island's difficulty, by enum name, or null to follow the world's own difficulty.
+         *
+         * <p>Per island rather than per server: on a shared server one player wanting a harder
+         * campaign should not drag everyone else's runs up with them. Null is not "easy" - it
+         * means the island has never been told, and takes the world setting, so an existing
+         * save keeps behaving exactly as it did.
+         */
+        public String difficulty = null;
         /** Hardcore island: full-party combat defeat deletes the island and
          *  wipes every run participant. Set by {@code /new hardcore}; dies with
          *  the record on {@link CrafticsSavedData#resetPlayerData}. */
@@ -470,6 +479,7 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putBoolean("personalHubBuilt", personalHubBuilt);
             nbt.putInt("personalHubVersion", personalHubVersion);
             nbt.putBoolean("scaleHpPerLevelEnabled", scaleHpPerLevelEnabled);
+            if (difficulty != null) nbt.putString("difficulty", difficulty);
             nbt.putBoolean("hardcoreIsland", hardcoreIsland);
             nbt.putBoolean("islandMigrated", islandMigrated);
             nbt.putBoolean("raidDefeated", raidDefeated);
@@ -550,6 +560,7 @@ public class CrafticsSavedData extends PersistentState {
             // Default: true (matches global config default) - islands created before this
             // field existed keep the old scaling behavior.
             pd.scaleHpPerLevelEnabled = !nbt.contains("scaleHpPerLevelEnabled") || nbt.getBoolean("scaleHpPerLevelEnabled");
+            pd.difficulty = nbt.contains("difficulty") ? nbt.getString("difficulty") : null;
             pd.hardcoreIsland = nbt.contains("hardcoreIsland") && nbt.getBoolean("hardcoreIsland");
             pd.islandMigrated = nbt.contains("islandMigrated") && nbt.getBoolean("islandMigrated");
             pd.raidDefeated = nbt.contains("raidDefeated") && nbt.getBoolean("raidDefeated");
@@ -661,6 +672,8 @@ public class CrafticsSavedData extends PersistentState {
             pd.personalHubBuilt = nbt.getBoolean("personalHubBuilt", false);
             pd.personalHubVersion = nbt.getInt("personalHubVersion", 0);
             pd.scaleHpPerLevelEnabled = nbt.getBoolean("scaleHpPerLevelEnabled", true);
+            String storedDifficulty = nbt.getString("difficulty", "");
+            pd.difficulty = storedDifficulty.isEmpty() ? null : storedDifficulty;
             pd.hardcoreIsland = nbt.getBoolean("hardcoreIsland", false);
             pd.islandMigrated = nbt.getBoolean("islandMigrated", false);
             pd.raidDefeated = nbt.getBoolean("raidDefeated", false);

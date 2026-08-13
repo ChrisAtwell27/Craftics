@@ -2861,9 +2861,25 @@ public class CombatManager {
         // ceiling on what any single boss swing can deal to a 20 HP player. Only boss attackers
         // are clamped; regular mobs and environmental damage are unaffected. Single-assign into
         // rawDamage so it stays effectively final for the downstream lambdas that capture it.
+        // Difficulty's flat addition, applied at the one point every enemy attack passes
+        // through - so a boss ability, a skeleton's arrow and a zombie's swing all feel it
+        // without any of them being taught about it separately.
+        //
+        // Gated on `mitigable && attacker != null`, which is exactly "an enemy attacked you".
+        // Terrain damage comes through here with mitigable false and DoT ticks with no
+        // attacker, and neither should be scaled: a burn tick is one point by design, and
+        // adding two to it on Hard would make standing in fire three times worse than the
+        // number the fire was balanced around.
+        int difficultyBonus = (mitigable && attacker != null)
+            ? CrafticsDifficulty.enemyDamageBonus(activeDifficulty()) : 0;
+        int scaledRaw = incomingRaw + difficultyBonus;
+        // The boss single-hit ceiling rises with difficulty rather than swallowing it. Left
+        // alone, the cap would eat the bonus entirely for any boss already hitting at the
+        // ceiling - the exact fights where the difficulty is supposed to be felt - while
+        // dropping the cap would break the guarantee it exists for.
         int bossCap = (mitigable && attacker != null && attacker.isBoss())
-            ? com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAttack() : 0;
-        int rawDamage = (bossCap > 0) ? Math.min(incomingRaw, bossCap) : incomingRaw;
+            ? com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAttack() + difficultyBonus : 0;
+        int rawDamage = (bossCap > 0) ? Math.min(scaledRaw, bossCap) : scaledRaw;
         // AC dodge roll -only enemy attacks roll. Environmental/self damage
         // (attacker == null) and DoT ticks bypass the roll and apply directly.
         // The attack's resolved damage (rawDamage) doubles as the enemy's
@@ -3736,7 +3752,7 @@ public class CombatManager {
                     double perPlayer = com.crackedgames.craftics.CrafticsMod.CONFIG.partyHpPerPlayer();
                     double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * perPlayer : 1.0;
                     int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult
-                        * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier() * partyHpMult));
+                        * CrafticsDifficulty.enemyHpMultiplier(activeDifficulty()) * partyHpMult));
                     CombatEntity ce = new CombatEntity(
                         heartStand.getId(), "craftics:creaking_heart", resolvedPos,
                         scaledHp, 0, spawn.defense(), 0
@@ -4006,7 +4022,7 @@ public class CombatManager {
                 // excluded for the reason above: flat, authored numbers only.
                 double effNgMult = (infiniteRun || raidBossFight) ? 1.0 : ngMult;
                 double hpMult = (isBoss || infiniteRun)
-                    ? 1.0 : com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier();
+                    ? 1.0 : CrafticsDifficulty.enemyHpMultiplier(activeDifficulty());
                 double bossKillMult = 1.0;
                 if (isBoss && !infiniteRun && bossBiomeId != null && worldOwnerUuid != null) {
                     int kills = CrafticsSavedData.get(world)
@@ -4212,7 +4228,7 @@ public class CombatManager {
                 double perPlayer = com.crackedgames.craftics.CrafticsMod.CONFIG.partyHpPerPlayer();
                 double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * perPlayer : 1.0;
                 int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult
-                    * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier() * partyHpMult));
+                    * CrafticsDifficulty.enemyHpMultiplier(activeDifficulty()) * partyHpMult));
                 int scaledAtk = Math.max(1, (int)(spawn.attack() * ngMult));
                 CombatEntity ce = new CombatEntity(
                     rawEntity.getId(), spawn.entityTypeId(), resolvedPos,
@@ -8699,7 +8715,7 @@ public class CombatManager {
         int partySize = getAllParticipants().size();
         double perPlayer = com.crackedgames.craftics.CrafticsMod.CONFIG.partyHpPerPlayer();
         double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * perPlayer : 1.0;
-        double hpMult = com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier();
+        double hpMult = CrafticsDifficulty.enemyHpMultiplier(activeDifficulty());
         int scaledHp = Math.max(1, (int)(baseLayer.hp() * ngMult * hpMult * partyHpMult));
         int scaledAtk = Math.max(1, (int)(baseLayer.attack() * ngMult));
 
@@ -17737,6 +17753,29 @@ public class CombatManager {
     private static final int CRUSH_DAMAGE = 6;
 
     // ── Support pillars ──────────────────────────────────────────────────────
+
+    /**
+     * The difficulty this fight is being played at.
+     *
+     * <p>Resolved live rather than snapshotted at the start of combat, so changing it takes
+     * effect straight away. That is safe because of WHERE the two levers land: the HP
+     * multiplier is read once per mob as it spawns, so nothing already on the field changes
+     * size underneath the player, and the damage bonus is read per hit, which is the only part
+     * that could sensibly change mid-fight anyway. The command that sets it refuses while a
+     * fight is running regardless.
+     *
+     * <p>Read from the ISLAND OWNER, using the same owner id the per-level HP scaling already
+     * uses - in a party the island being played is the leader's, so the leader's setting is the
+     * one that counts, and the two settings cannot disagree about whose island it is.
+     */
+    private CrafticsDifficulty activeDifficulty() {
+        if (player == null || !(player.getEntityWorld() instanceof ServerWorld sw)) {
+            return CrafticsDifficulty.EASY;
+        }
+        java.util.UUID owner = worldOwnerUuid != null ? worldOwnerUuid
+            : (leaderUuid != null ? leaderUuid : player.getUuid());
+        return CrafticsDifficulty.of(sw, owner);
+    }
 
     /** Tiles carrying a standing support pillar. The Hollow King's armour, and the shape of
      *  the collapse he is loading. */

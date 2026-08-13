@@ -9,6 +9,15 @@ Mobs Acting Out of Turn
 - Projectiles are visually distinct when attacking
 - Fissure fills with deepslate now, and visually falls from the sky.
 
+Difficulty
+
+- Difficulty is a thing you can choose now. `/craftics difficulty easy|medium|hard`, with no argument to see where you stand. **Easy** is exactly what the game was before this existed, **Medium** gives enemies 1.5x health and +1 damage on every attack, **Hard** gives them 2x health and +2
+- It is **per island, not per server**. On a shared server one player wanting a harder campaign should not drag everyone else's runs up with them, and in a party fight the island being played is the leader's, so the leader's setting is the one that counts
+- Easy is the default everywhere, and stays that way until somebody chooses otherwise. It deliberately does not read the world's own difficulty: a server that happens to run on Hard would otherwise silently double every islander's enemy health, and existing saves would get harder just for updating
+- Only two levers, on purpose. A difficulty that quietly changes ten things cannot be reasoned about by the person picking it. The damage is a flat addition rather than a multiplier because a multiplier makes the big hits enormous and leaves chip damage free - this raises the floor instead, and the boss single-hit ceiling rises with it so the setting is still felt in the fights it is meant to be
+- It cannot be changed mid-fight. Enemy health is decided as each mob spawns, so switching during a battle would leave what is already on the field at its old health while everything after it arrived at the new value - one fight running at two difficulties
+- **Peaceful is no longer allowed.** It is not a difficulty this mod has a degraded mode for, it is one it cannot run at: vanilla despawns every hostile mob on the spot, so an arena would build itself and stand empty. Setting it puts the world back to Easy and says why. If you want the fights easier, that is what the Craftics difficulty is for
+
 Main Menu
 
 - A big PLAY ONLINE card on the right of the title screen drops you straight onto `play.crackedgames.co`. It is built as a peer of the CONTINUE card rather than another row on the menu list - same bevel, same accent bar, same hover - because it is a destination rather than a client setting, and at the bottom of that column it would have read as one
