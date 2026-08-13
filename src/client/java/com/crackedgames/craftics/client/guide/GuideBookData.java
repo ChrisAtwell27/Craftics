@@ -636,18 +636,28 @@ public class GuideBookData {
                 "- Pounce: leap 3 tiles, 2x2 AoE\n\n" +
                 "Phase 2 - Nest Awakening: faster, pounce range +1, webs poison, egg sacs respawn.")));
         enemies.add(mob("The Hollow King", "minecraft:tnt",
-            st("Boss", "55", "6", "3", "1", "1", null, "Blunt, Cleaving", null, null),
+            st("Boss", "55", "6", "3+1/pillar", "2-6", "1", null, "Blunt, Cleaving", null, null),
             new Page("The Hollow King",
-                "Caverns boss - a buried tyrant with a miner's arsenal.\n\n" +
+                "Caverns boss - a corrupted miner who fights by unmaking the room.\n\n" +
+                "THE PILLARS ARE THE FIGHT. He drives in timber supports and takes +1 DEF from "
+                    + "every one still standing, then knocks them out and drops the ceiling down "
+                    + "the whole ROW and COLUMN of each one.\n\n" +
                 "Abilities:\n" +
-                "- Demolition Cache: telegraphed TNT that detonates next round\n" +
-                "- Rubble Toss: mines an obstacle, throws it at a marked tile\n" +
-                "- Cave-In: boulders fall on telegraphed tiles\n" +
-                "- Miner's Fury: line charge that destroys obstacles\n" +
+                "- Shore Up: raises 3 pillars (5 enraged), +1 DEF each\n" +
+                "- Total Collapse: every pillar's row and column at once, after they've stood 2 turns\n" +
+                "- Shrapnel: shatters one of his own pillars down a lane\n" +
+                "- Demolition Cache: telegraphed TNT - it goes off instantly if you're standing on it\n" +
+                "- Miner's Fury: line charge that ploughs through obstacles, his own included\n" +
                 "- Swarm Call: 3-4 Silverfish from the rubble\n" +
-                "- Lights Out: casts darkness - enemies gain +2 ATK in the dark\n\n" +
-                "Phase 2 - Total Collapse: permanent darkness, automatic cave-ins, extra TNT pressure.\n\n" +
-                "COUNTERPLAY: bring Torches, Lanterns or Campfires to hold light zones.")));
+                "- Lights Out: casts darkness - enemies gain +2 ATK in the dark\n" +
+                "- Mines through walls: block his path and he digs through it\n\n" +
+                "RANGE: inside 3 tiles he puts the spells away and comes at you with the pickaxe. "
+                    + "From 4-5 he plants his feet and casts. At 6+ he moves AND casts, at Speed 6.\n\n" +
+                "Phase 2 - Total Collapse: 5 pillars, permanent darkness, heavier collapses.\n\n" +
+                "COUNTERPLAY: PICKAXE HIS PILLARS. One adjacent swing takes a whole pillar down - "
+                    + "that's a point off his armour and two fewer lanes in the collapse. But a "
+                    + "pickaxe only reaches one tile, so you have to stand in the lanes it loads "
+                    + "to do it. Bring Torches, Lanterns or Campfires to hold light zones.")));
         enemies.add(mob("The Warden", "minecraft:echo_shard",
             st("Boss", "60", "8", "4", "3", "1", null, "Ranged", "Blunt, Slashing, Physical", null),
             new Page("The Warden",

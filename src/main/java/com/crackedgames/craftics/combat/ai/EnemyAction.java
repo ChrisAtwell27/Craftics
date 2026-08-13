@@ -108,6 +108,22 @@ public sealed interface EnemyAction {
     record CreateTerrain(List<GridPos> tiles, TileType terrainType, int duration) implements EnemyAction {}
 
     /**
+     * Raise support pillars: obstacles that stand three blocks tall instead of one.
+     *
+     * <p>Its own verb rather than a {@code CreateTerrain} with a special block, because a pillar
+     * is not just an obstacle that looks different. Ordinary obstacle terrain is written, expired
+     * and cleaned up at exactly one Y level throughout the codebase, so a taller one needs its
+     * own placement AND its own removal on every path that can destroy it - the boss spending it,
+     * a pickaxe taking it out, the fight ending. A stray block left at head height is not a
+     * cosmetic bug either: arenas are rescanned on revisit and a block up there is read back as a
+     * PERMANENT unmineable obstacle, baking a wall into that arena for good.
+     *
+     * <p>The tiles are also the boss's armour and the shape of its next attack, which is why
+     * they are tracked rather than merely painted.
+     */
+    record RaisePillars(List<GridPos> tiles) implements EnemyAction {}
+
+    /**
      * Strike a light on the listed tiles and hand them to the arena's own burn cycle, rather
      * than painting flame terrain that sits for a fixed duration.
      * <p>

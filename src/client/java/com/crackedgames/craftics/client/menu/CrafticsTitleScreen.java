@@ -8,7 +8,10 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
 import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
+import net.minecraft.client.network.ServerAddress;
+import net.minecraft.client.network.ServerInfo;
 import net.minecraft.client.gui.screen.option.OptionsScreen;
 import net.minecraft.client.gui.screen.world.SelectWorldScreen;
 import net.minecraft.client.sound.PositionedSoundInstance;
@@ -102,13 +105,24 @@ public class CrafticsTitleScreen extends Screen {
         final boolean hero;
         final boolean enabled;
         final Runnable action;
+        /** Square art shown against the card's right edge, or null for a plain row. */
+        final Identifier icon;
+        /** Laid out against the right margin instead of in the left column. */
+        final boolean rightSide;
         int x, y, w, h;
 
         Entry(String label, boolean hero, boolean enabled, Runnable action) {
+            this(label, hero, enabled, action, null, false);
+        }
+
+        Entry(String label, boolean hero, boolean enabled, Runnable action,
+              Identifier icon, boolean rightSide) {
             this.label = label;
             this.hero = hero;
             this.enabled = enabled;
             this.action = action;
+            this.icon = icon;
+            this.rightSide = rightSide;
         }
     }
 
@@ -161,6 +175,14 @@ public class CrafticsTitleScreen extends Screen {
             () -> this.client.setScreen(new OptionsScreen(this, this.client.options))));
         entries.add(new Entry("QUIT", false, true, () -> this.client.scheduleStop()));
 
+        // The official server, given its own card on the opposite side of the screen. It is a
+        // destination rather than a menu option - the left column is all "what do I do with
+        // this client", and this is "go somewhere" - so it does not belong at the bottom of
+        // that list where it would read as another settings row.
+        Entry joinServer = new Entry("PLAY ONLINE", false, this.client.isMultiplayerEnabled(),
+            this::joinOfficialServer, SERVER_LOGO, true);
+        entries.add(joinServer);
+
         if (hoverT.length != entries.size()) {
             hoverT = new float[entries.size()];
         }
@@ -175,13 +197,53 @@ public class CrafticsTitleScreen extends Screen {
         int gap = compact ? 5 : 7;
 
         for (Entry e : entries) {
+            if (e.rightSide) continue;
             e.x = marginX;
             e.y = y;
             e.w = menuW;
             e.h = e.hero ? heroH : btnH;
             y += e.h + gap;
         }
+
+        // Right card: same width language as the menu column so the two sides balance, and
+        // sized like the hero card because it is meant to be the other thing worth clicking.
+        // Vertically it sits level with the top of the menu column, which keeps it clear of the
+        // version stamp and now-playing lines above it and the campaign strip below.
+        int serverW = Math.max(Math.min((int) (this.width * 0.28f), 300), compact ? 170 : 210);
+        joinServer.w = serverW;
+        joinServer.h = heroH;
+        joinServer.x = this.width - marginX - serverW;
+        joinServer.y = logoTop() + logoH + (compact ? 10 : 22);
+        // A narrow window would have the two columns overlap; drop the card rather than
+        // stack it on the menu.
+        if (joinServer.x < marginX + menuW + 16) {
+            entries.remove(joinServer);
+            if (hoverT.length != entries.size()) hoverT = new float[entries.size()];
+        }
+
         if (keyboardSel >= entries.size()) keyboardSel = -1;
+    }
+
+    /** The Craftics server. */
+    private static final String SERVER_ADDRESS = "play.crackedgames.co";
+
+    /** Square, white-backed mark shown on the join card. */
+    private static final Identifier SERVER_LOGO =
+        Identifier.of("craftics", "textures/gui/title/server_logo.png");
+
+    /**
+     * Connect straight to the official server.
+     *
+     * <p>Goes through the same {@code ConnectScreen} path the multiplayer list uses, with a
+     * transient {@link ServerInfo} rather than an entry added to the player's server list -
+     * writing into their servers.dat on a button press would be editing their data to save
+     * them one click.
+     */
+    private void joinOfficialServer() {
+        MusicManager.request("");
+        ServerInfo info = new ServerInfo("Craftics", SERVER_ADDRESS, ServerInfo.ServerType.OTHER);
+        ConnectScreen.connect(this, this.client, ServerAddress.parse(SERVER_ADDRESS), info,
+            false, null);
     }
 
     private int logoTop() {
@@ -480,6 +542,8 @@ public class CrafticsTitleScreen extends Screen {
 
             if (e.hero) {
                 renderHeroContent(context, e, x, ease, accent);
+            } else if (e.icon != null) {
+                renderIconCard(context, e, x, ease, accent);
             } else {
                 int labelColor = e.enabled ? (ease > 0.01f ? 0xFFFFFFFF : 0xFFC8CFDD) : 0xFF5A6272;
                 context.drawTextWithShadow(this.textRenderer, e.label,
@@ -492,6 +556,46 @@ public class CrafticsTitleScreen extends Screen {
                 context.drawTextWithShadow(this.textRenderer, "▶",
                     x + e.w - 14, e.y + (e.h - 8) / 2 + 1, (aa << 24) | 0x00FFFFFF);
             }
+        }
+    }
+
+    /**
+     * A big card with square art against its right edge.
+     *
+     * <p>Deliberately not {@link #renderHeroContent}, which is welded to the world snapshot -
+     * name, biome, campaign progress. This card has no world behind it, so it gets the same
+     * weight and the same bevel/accent treatment with its own content: the mark, and the title
+     * centred against it.
+     */
+    private void renderIconCard(DrawContext context, Entry e, int x, float ease, int accent) {
+        boolean compact = e.h < 52;
+        float scale = compact ? 1.15f : 1.35f;
+        int textX = x + 14;
+
+        // Square art on the right, inset like the hero card's biome thumbnail so the two cards
+        // share an edge treatment. The source is already square and already white-backed, so it
+        // needs no letterboxing here.
+        int art = e.h - 10;
+        int ax = x + e.w - art - 6;
+        int ay = e.y + 5;
+        drawTex(context, e.icon, ax, ay, art, art);
+        int borderA = (int) ((0.5f + 0.5f * ease) * 255f);
+        drawBorder(context, ax - 1, ay - 1, art + 2, art + 2,
+            (borderA << 24) | (accent & 0x00FFFFFF));
+
+        // Title vertically centred in the space left of the art, since there is no second line
+        // under it any more.
+        int titleY = e.y + (e.h - (int) (8 * scale)) / 2;
+        context.getMatrices().push();
+        context.getMatrices().scale(scale, scale, 1f);
+        int titleColor = e.enabled ? 0xFFFFFFFF : 0xFF7A8292;
+        context.drawTextWithShadow(this.textRenderer, "§l" + e.label,
+            (int) (textX / scale), (int) (titleY / scale), titleColor);
+        context.getMatrices().pop();
+
+        if (!e.enabled) {
+            context.drawTextWithShadow(this.textRenderer, "Multiplayer is disabled",
+                textX, e.y + e.h - 12, 0xFF6B4048);
         }
     }
 

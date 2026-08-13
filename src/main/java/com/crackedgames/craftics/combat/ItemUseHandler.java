@@ -1072,6 +1072,30 @@ public class ItemUseHandler {
         return null;
     }
 
+    /**
+     * Could a thrown item aimed at this tile possibly land? Asked BEFORE anything is spent.
+     *
+     * <p>Exists because the throw now has to happen before its effect does. Item use is
+     * otherwise all-in-one - it validates, consumes and resolves in a single call - and the
+     * caller only learns a throw was illegal from the message that comes back, by which point
+     * it has either happened or not. To show the item crossing the arena FIRST, the caller has
+     * to know the throw is legal before it commits, and this is the cheapest honest answer:
+     * exactly the reach and line-of-sight rule the throw itself will apply, with no side
+     * effects of any kind.
+     *
+     * <p>It deliberately does not try to predict every refusal. An item can still come back
+     * "§cNo enemy at target!" after the visual has flown, which costs nothing and spends
+     * nothing - it just looks like a miss, which is what it was.
+     */
+    public static boolean canThrowAt(ServerPlayerEntity player, GridArena arena, GridPos targetTile) {
+        if (arena == null || targetTile == null) return false;
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy != null && enemy.isAlive()) {
+            return validateThrowReach(arena, enemy) == null;
+        }
+        return validateThrowReach(arena, targetTile) == null;
+    }
+
     private static String useSnowball(ServerPlayerEntity player, GridArena arena,
                                        GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";

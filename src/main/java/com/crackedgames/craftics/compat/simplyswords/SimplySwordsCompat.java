@@ -379,10 +379,23 @@ public final class SimplySwordsCompat {
                     int luckPoints) {
                 List<com.crackedgames.craftics.api.AbilityPlan.Hop> hops = new ArrayList<>();
                 hops.add(new com.crackedgames.craftics.api.AbilityPlan.Hop(target, baseDamage));
-                CombatEntity bounce = findBounceTarget(arena, target);
-                if (bounce != null) {
-                    hops.add(new com.crackedgames.craftics.api.AbilityPlan.Hop(bounce,
-                        Math.max(1, (int) Math.round(baseDamage * CHAKRAM_BOUNCE_MULT))));
+
+                // The disc keeps going. Each bounce looks for its next target from where it
+                // just LANDED, not from where it was originally thrown - measuring every
+                // ricochet from the first enemy meant the reachable set never moved, so a
+                // chain across a spread-out group was impossible no matter how the enemies
+                // were lined up. A thrown disc travels; its range should travel with it.
+                List<CombatEntity> struck = new ArrayList<>();
+                struck.add(target);
+                CombatEntity from = target;
+                int damage = baseDamage;
+                for (int i = 0; i < CHAKRAM_MAX_BOUNCES; i++) {
+                    CombatEntity bounce = findBounceTarget(arena, from, struck);
+                    if (bounce == null) break;
+                    damage = Math.max(1, (int) Math.round(damage * CHAKRAM_BOUNCE_MULT));
+                    hops.add(new com.crackedgames.craftics.api.AbilityPlan.Hop(bounce, damage));
+                    struck.add(bounce);
+                    from = bounce;
                 }
                 return new com.crackedgames.craftics.api.AbilityPlan(hops, true, List.of());
             }
@@ -401,16 +414,29 @@ public final class SimplySwordsCompat {
         };
     }
 
-    /** The nearest other living enemy within two tiles of {@code target}, or null. THE bounce
-     *  rule, shared by the legacy apply path and the plan above so the two cannot disagree. */
+    /** How far a chakram will reach for its next target, measured from the enemy it just hit. */
+    private static final int CHAKRAM_BOUNCE_RANGE = 3;
+    /** Bounces after the first hit. The disc has to come home eventually. */
+    private static final int CHAKRAM_MAX_BOUNCES = 3;
+
+    /**
+     * The nearest living enemy within {@link #CHAKRAM_BOUNCE_RANGE} of {@code from} that the
+     * disc has not already hit, or null.
+     *
+     * <p>THE bounce rule, so the plan and the visual cannot disagree about where the disc goes.
+     * {@code from} is whoever was hit LAST rather than the original target, which is what makes
+     * a chain follow the fight across the arena instead of being pinned to the first enemy's
+     * neighbourhood. {@code alreadyHit} is what stops it ping-ponging between the same two.
+     */
     private static CombatEntity findBounceTarget(
-            com.crackedgames.craftics.core.GridArena arena, CombatEntity target) {
+            com.crackedgames.craftics.core.GridArena arena, CombatEntity from,
+            List<CombatEntity> alreadyHit) {
         CombatEntity best = null;
         int bestDist = Integer.MAX_VALUE;
         for (CombatEntity e : arena.getOccupants().values()) {
-            if (e == target || !e.isAlive() || e.isAlly()) continue;
-            int d = e.getGridPos().manhattanDistance(target.getGridPos());
-            if (d <= 2 && d < bestDist) { bestDist = d; best = e; }
+            if (!e.isAlive() || e.isAlly() || alreadyHit.contains(e)) continue;
+            int d = e.getGridPos().manhattanDistance(from.getGridPos());
+            if (d <= CHAKRAM_BOUNCE_RANGE && d < bestDist) { bestDist = d; best = e; }
         }
         return best;
     }

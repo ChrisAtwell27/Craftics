@@ -2422,6 +2422,17 @@ public class CombatManager {
     private Runnable pendingAttackAction = null;
     private int pendingAttackDelay = 0;
 
+    /**
+     * The other half of a thrown item: its effect, waiting for the item to arrive.
+     *
+     * <p>Separate from {@code pendingAttackAction} rather than sharing it. They can never be
+     * armed at the same time in practice - a flight locks input - but they have different
+     * owners and different failure modes, and one queue holding two unrelated deferred actions
+     * is a bug waiting for the day that assumption stops holding.
+     */
+    private Runnable pendingItemAction = null;
+    private int pendingItemDelay = 0;
+
     private int spellAnimCooldown = 0;
 
     private record PendingBossWarning(CombatEntity boss, EnemyAction.BossAbility ability) {}
@@ -5213,6 +5224,15 @@ public class CombatManager {
         // An attack deducts AP immediately but applies its damage after a short animation
         // delay (pendingAttackAction). Moving during that window used to strand the hit while
         // the AP stayed spent, so resolve any pending attack first before the move.
+        // A thrown item still in the air settles for the same reason, and before the move: its
+        // effect was decided from where the player was STANDING when they threw it, so letting
+        // the move land first would resolve a splash around a tile they have left.
+        if (pendingItemAction != null) {
+            Runnable landing = pendingItemAction;
+            pendingItemAction = null;
+            pendingItemDelay = 0;
+            landing.run();
+        }
         if (pendingAttackAction != null) {
             pendingAttackAction.run();
             pendingAttackAction = null;
@@ -6800,13 +6820,27 @@ public class CombatManager {
             0, player.getId(), cameraTarget.x(), cameraTarget.z()
         ));
 
+        // A ranged weapon's plan is read BEFORE the shot so the projectile can be aimed at the
+        // far end of what it is going to hit rather than at the first thing in the way. The
+        // hops past the primary are resolved with the hit, when the arrow arrives.
+        final com.crackedgames.craftics.api.AbilityPlan rangedPlan =
+            (suppressDirectHit || !(isRangedWeapon || isTridentThrow)) ? null
+                : WeaponAbility.planAbility(player, weapon, target, arena, baseDamage,
+                    attackerStats, luckPoints);
+
         // Spawn projectile immediately for ranged (it needs flight time)
         if (isRangedWeapon || isTridentThrow) {
             player.getWorld().playSound(null, player.getBlockPos(),
                 weapon == Items.CROSSBOW ? net.minecraft.sound.SoundEvents.ITEM_CROSSBOW_SHOOT : net.minecraft.sound.SoundEvents.ENTITY_ARROW_SHOOT,
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
             BlockPos playerBlock = arena.gridToBlockPos(pPos);
-            BlockPos targetBlockForProj = arena.gridToBlockPos(tPos);
+            // A bolt that pierces flies THROUGH the line, not into the front of it. Stopping
+            // the visual at the first enemy is what made a pierce shot look like an ordinary
+            // one that happened to hurt the mob behind as well.
+            GridPos flightEnd = rangedPlan != null && !rangedPlan.hops().isEmpty()
+                ? rangedPlan.hops().get(rangedPlan.hops().size() - 1).target().getGridPos()
+                : tPos;
+            BlockPos targetBlockForProj = arena.gridToBlockPos(flightEnd);
             // A REAL arrow, flying. The particle trail this replaced was drawn in a single
             // tick with the damage already applied, so nothing was ever seen travelling.
             rangedFlightTicks = launchPlayerProjectile(playerBlock, targetBlockForProj,
@@ -7228,6 +7262,22 @@ public class CombatManager {
             }
             for (String msg : abilityMessages) {
                 sendMessage(msg);
+            }
+
+            // Everything the shot went through on its way to the far end. Hop 0 is the primary
+            // target, already dealt with by the damage chain above; the rest are resolved here,
+            // through the same on-hit pass a normal strike takes, so a Flame crossbow sets every
+            // body in the line alight rather than only the first.
+            if (rangedPlan != null) {
+                for (int i = 1; i < rangedPlan.hops().size(); i++) {
+                    if (!active) break;
+                    if (resolveAbilityHop(rangedPlan.hops().get(i), fWeapon, fAttackerStats,
+                            fLuckPoints, "PIERCE!")) {
+                        // A pierce does not stop at a corpse the way a ricochet does - the bolt
+                        // is still travelling - so keep going through the rest of the line.
+                        continue;
+                    }
+                }
             }
 
             // Conductive: a held sword copies every debuff on the WIELDER onto the struck enemy at
@@ -10816,15 +10866,61 @@ public class CombatManager {
         // below can show the right item.
         ItemStack thrownStack = player.getMainHandStack().copyWithCount(1);
 
+        // A thrown item leaves the hand BEFORE it does anything.
+        //
+        // This is the last of the four bugs that all came from effects resolving at use time
+        // rather than at land time. The snowball's damage, the fire charge's burst and the
+        // splash potion's cloud all used to happen the instant the item was used, and the item
+        // was then shown crossing the arena afterwards - chasing a result the player had
+        // already watched. So the throw goes first and the whole of the resolution waits for it
+        // to arrive.
+        //
+        // canThrowAt is what makes that safe: item use validates and resolves in one call, so
+        // without asking first there would be no way to know the throw was legal until after
+        // committing to the visual. It applies exactly the reach and line-of-sight rule the
+        // throw itself will, and touches nothing.
+        if (targetTile != null && isThrownItem(thrownStack.getItem())
+                && ItemUseHandler.canThrowAt(player, arena, targetTile)) {
+            int flightTicks = flyThrownItem(thrownStack, targetTile);
+            if (flightTicks > 0) {
+                final int fApCost = apCost;
+                final TileType fPriorType = terraformPriorType;
+                final ItemStack fHeld = heldStack;
+                final Item fItem = heldItem;
+                pendingItemDelay = flightTicks;
+                // Guarded the same way pendingAttackAction's body is: the fight can end while
+                // the item is in the air (another party member finishing it, a disconnect), and
+                // resolving into a torn-down arena is an NPE. Dropping it costs the player
+                // nothing - useItem has not run, so the item is still in their hand and the AP
+                // is still unspent.
+                pendingItemAction = () -> {
+                    if (!active || player == null || arena == null) return;
+                    resolveItemUse(targetTile, fHeld, fItem, fApCost, fPriorType);
+                };
+                sendSync();
+                return;
+            }
+        }
+
+        resolveItemUse(targetTile, heldStack, heldItem, apCost, terraformPriorType);
+    }
+
+    /**
+     * Everything a used item does, once it is where it is going.
+     *
+     * <p>Split out of {@link #handleUseItem} so a thrown item can have its flight happen first.
+     * For everything else - eating, a bucket, a pickaxe, a horn - this still runs immediately
+     * and nothing about it changed.
+     *
+     * <p>The parameters are the state the decision was made with, captured at use time rather
+     * than re-read here. That matters for the deferred path: {@code apCost} was already
+     * discounted by robe armour, and {@code terraformPriorType} is the target's terrain from
+     * BEFORE the cast, which cannot be recovered afterwards by definition.
+     */
+    private void resolveItemUse(GridPos targetTile, ItemStack heldStack, Item heldItem,
+                                int apCost, TileType terraformPriorType) {
         String result = ItemUseHandler.useItem(player, arena, targetTile);
 
-        // Anything genuinely thrown gets seen crossing the arena. The damage was applied by
-        // the handler above - item use is synchronous, same as a weapon ability - so this is
-        // the visual half only, but it still holds the turn until the throw lands.
-        if (targetTile != null && result != null && !result.startsWith("§c")
-                && isThrownItem(thrownStack.getItem())) {
-            flyThrownItem(thrownStack, targetTile);
-        }
         if (result == null) {
             sendMessage("§cCan't use that item!");
             return;
@@ -11125,28 +11221,38 @@ public class CombatManager {
             } else if ("break".equals(effectType)) {
                 // Pickaxe: convert obstacle to walkable NORMAL tile
                 GridPos breakPos = new GridPos(tx, tz);
-                GridTile breakTile = arena.getTile(breakPos);
-                if (breakTile != null) {
-                    breakTile.setType(TileType.NORMAL);
-                    breakTile.setBlockType(getBiomeFloorBlock());
+                // A support pillar comes out whole. It is three blocks tall and the ordinary
+                // break below clears exactly one of them, which would leave a floating stump at
+                // head height - and a block up there is read back as a permanent obstacle the
+                // next time this arena is scanned. Taking one out also strips the boss of the
+                // armour it was giving him, which is the entire reason to spend a turn on it.
+                if (isBossPillar(breakPos)) {
+                    clearBossPillar(breakPos);
+                    sendMessage("§6⛏ You knock out a support pillar! §7The Hollow King's guard drops.");
+                } else {
+                    GridTile breakTile = arena.getTile(breakPos);
+                    if (breakTile != null) {
+                        breakTile.setType(TileType.NORMAL);
+                        breakTile.setBlockType(getBiomeFloorBlock());
+                    }
+                    // gridToBlockPos returns oy+1 (where the obstacle block sits)
+                    BlockPos aboveBp = arena.gridToBlockPos(breakPos);
+                    // Floor is one Y below
+                    BlockPos floorBp = aboveBp.down();
+                    ServerWorld sw = (ServerWorld) player.getEntityWorld();
+                    // Clear the obstacle block at oy+1
+                    sw.setBlockState(aboveBp, net.minecraft.block.Blocks.AIR.getDefaultState());
+                    // Restore floor block at oy
+                    sw.setBlockState(floorBp, breakTile != null ? breakTile.getBlockType().getDefaultState()
+                        : getBiomeFloorBlock().getDefaultState());
+                    // Break particles
+                    sw.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                        aboveBp.getX() + 0.5, aboveBp.getY() + 0.5, aboveBp.getZ() + 0.5,
+                        8, 0.3, 0.3, 0.3, 0.05);
+                    player.getWorld().playSound(null, aboveBp,
+                        net.minecraft.sound.SoundEvents.BLOCK_STONE_BREAK,
+                        net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
                 }
-                // gridToBlockPos returns oy+1 (where the obstacle block sits)
-                BlockPos aboveBp = arena.gridToBlockPos(breakPos);
-                // Floor is one Y below
-                BlockPos floorBp = aboveBp.down();
-                ServerWorld sw = (ServerWorld) player.getEntityWorld();
-                // Clear the obstacle block at oy+1
-                sw.setBlockState(aboveBp, net.minecraft.block.Blocks.AIR.getDefaultState());
-                // Restore floor block at oy
-                sw.setBlockState(floorBp, breakTile != null ? breakTile.getBlockType().getDefaultState()
-                    : getBiomeFloorBlock().getDefaultState());
-                // Break particles
-                sw.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
-                    aboveBp.getX() + 0.5, aboveBp.getY() + 0.5, aboveBp.getZ() + 0.5,
-                    8, 0.3, 0.3, 0.3, 0.05);
-                player.getWorld().playSound(null, aboveBp,
-                    net.minecraft.sound.SoundEvents.BLOCK_STONE_BREAK,
-                    net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
             } else if ("pit".equals(effectType)) {
                 // Pickaxe on a normal floor tile: dig a 1-deep sunken pit
                 // (LOW_GROUND). Wall the hole with cobblestone so the player
@@ -12875,6 +12981,16 @@ public class CombatManager {
             }
         }
 
+        // The thrown item has arrived; now it does what it came to do.
+        if (pendingItemDelay > 0) {
+            pendingItemDelay--;
+            if (pendingItemDelay == 0 && pendingItemAction != null) {
+                Runnable landed = pendingItemAction;
+                pendingItemAction = null;   // cleared FIRST: the effect can end the fight
+                landed.run();
+            }
+        }
+
         if (spellAnimCooldown > 0) spellAnimCooldown--;
 
         if (!PotterySherdSpells.PENDING_EFFECTS.isEmpty()) {
@@ -14113,6 +14229,7 @@ public class CombatManager {
             // this tick keeps its full burn duration instead of losing a turn.
             tickFire();
             tickFissureDebris();
+            tickCollapseRubble();
             tickWardenMarkHunt();
             tickTidecallerWave();
             detonatePendingTnts();
@@ -15055,6 +15172,12 @@ public class CombatManager {
                 sendMessage("§c" + currentEnemy.getDisplayName() + " unleashes "
                     + abilityName.replace('_', ' ') + "!");
                 resolveTileAreaAttack(ta);
+                sendSync();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+            }
+            case EnemyAction.RaisePillars rp -> {
+                resolveRaisePillars(rp);
                 sendSync();
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
@@ -16319,6 +16442,7 @@ public class CombatManager {
             case EnemyAction.AreaAttack aa -> resolveAreaAttack(aa);
             case EnemyAction.TileAreaAttack ta -> resolveTileAreaAttack(ta);
             case EnemyAction.CreateTerrain ct -> resolveCreateTerrain(ct);
+            case EnemyAction.RaisePillars rp -> resolveRaisePillars(rp);
             case EnemyAction.IgniteTiles ignite -> resolveIgniteTiles(ignite);
             case EnemyAction.PlaceWeb pw -> resolvePlaceWeb(pw);
             case EnemyAction.LineAttack la -> resolveLineAttack(la);
@@ -17467,6 +17591,13 @@ public class CombatManager {
         if ("fissure".equals(ta.effectName())) {
             carveFissure(impact);
         }
+
+        // The Hollow King's collapse is SEEN coming down, on every single tile it covers.
+        // A ceiling failing is the one attack in the game where the tile list IS the spectacle,
+        // and painting it red and dealing damage was never going to carry that.
+        if ("hollow_collapse".equals(ta.effectName())) {
+            rainCollapseDebris(world, impact);
+        }
     }
 
     /**
@@ -17604,6 +17735,216 @@ public class CombatManager {
 
     /** What a solid drop does to whoever is standing where it lands. */
     private static final int CRUSH_DAMAGE = 6;
+
+    // ── Support pillars ──────────────────────────────────────────────────────
+
+    /** Tiles carrying a standing support pillar. The Hollow King's armour, and the shape of
+     *  the collapse he is loading. */
+    private final java.util.Set<GridPos> bossPillars = new java.util.LinkedHashSet<>();
+
+    /** Blocks above the floor. Tall enough to read as a pit prop from across the arena rather
+     *  than as a kerb, which is what a one-block obstacle looks like from the fight camera. */
+    private static final int PILLAR_HEIGHT = 3;
+
+    /** A mine timber. Wood in a stone room reads instantly as something someone PUT there,
+     *  which is the whole point: these are the boss's work, not the arena's. */
+    private static final net.minecraft.block.Block PILLAR_BLOCK = Blocks.STRIPPED_OAK_LOG;
+
+    /**
+     * Cosmetic falling blocks must never touch down, and these two numbers are what guarantee
+     * it.
+     *
+     * <p>A {@code FallingBlockEntity} that lands turns into a REAL block, and this arena is
+     * read back from its blocks when the level is revisited - so one that gets through does not
+     * just look wrong, it is welded in. The tracker discards them mid-air on a tick boundary,
+     * which means the drop has to be short enough that the discard always wins the race. At
+     * -0.4 initial velocity plus vanilla gravity, five ticks covers roughly 2.6 blocks, so
+     * starting seven up leaves better than four blocks of clearance over anything in the arena
+     * - pillars included.
+     */
+    private static final double DEBRIS_DROP_HEIGHT = 5.0;
+    /** Long enough to reach the floor from that height; the tracker adopts what lands. */
+    private static final int DEBRIS_LIFETIME = 40;
+
+    /** Turns a landed lump of collapse rubble stays on the floor before it is cleared. */
+    private static final int RUBBLE_TURNS = 3;
+
+    /** Tiles rained on by a collapse, and how many turns their rubble has left. */
+    private final java.util.Map<GridPos, Integer> collapseRubble = new java.util.LinkedHashMap<>();
+
+    /**
+     * Age out landed collapse rubble.
+     *
+     * <p>The blocks are real - they are meant to be, a collapse that leaves nothing behind reads
+     * as a light show - but real and permanent are different things. Left alone they would
+     * silt the arena up over a long fight and, worse, still be sitting there when the level is
+     * scanned back on a revisit. Clearing goes through the arena's own VFX-obstacle removal, so
+     * the tile type it was covering comes back with it.
+     */
+    private void tickCollapseRubble() {
+        if (arena == null || player == null || collapseRubble.isEmpty()) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        var it = collapseRubble.entrySet().iterator();
+        while (it.hasNext()) {
+            var entry = it.next();
+            int left = entry.getValue() - 1;
+            if (left > 0) {
+                entry.setValue(left);
+                continue;
+            }
+            arena.clearVfxObstacle(world, entry.getKey());
+            it.remove();
+        }
+    }
+
+    /**
+     * Drop real, tumbling blocks onto every tile of a collapse.
+     *
+     * <p>Through {@link com.crackedgames.craftics.vfx.VfxBlockTracker}, which is the machinery
+     * that already knows how to have a falling block be PURELY cosmetic. That distinction is the
+     * whole reason not to hand-roll this: a vanilla {@code FallingBlockEntity} turns into a real
+     * block wherever it lands, so raining sixty of them over an arena floor would repave it in
+     * stone and, because arenas are rescanned from their blocks on revisit, bake that in. The
+     * tracker discards each one mid-air with a burst before it can touch down, and purges
+     * anything outstanding at {@code endCombat}.
+     *
+     * <p>Launched from a low ceiling with a stagger, so they arrive across a few ticks rather
+     * than as one synchronised sheet - a roof gives way, it does not deploy.
+     */
+    private void rainCollapseDebris(ServerWorld world, java.util.Collection<GridPos> tiles) {
+        var tracker = com.crackedgames.craftics.vfx.VfxBlockTracker.of(world);
+        var state = getBiomeFloorBlock().getDefaultState();
+        for (GridPos pos : tiles) {
+            if (!arena.isInBounds(pos)) continue;
+            // Rubble only falls where there is floor to land ON. A rock dropped over a pillar
+            // or a wall touches down three or four blocks up, and the tracker only ever adopts
+            // a block that settles at the arena's own surface height - so anything landing
+            // higher becomes a real block nobody owns, perched on top of the beams and left
+            // there when the fight ends. Dropping only over open ground removes the case.
+            if (bossPillars.contains(pos)) continue;
+            GridTile floorTile = arena.getTile(pos);
+            if (floorTile == null || !floorTile.isWalkable()) continue;
+
+            BlockPos floor = tileFloorPos(pos);
+            double jitterX = (combatRng.nextDouble() - 0.5) * 0.4;
+            double jitterZ = (combatRng.nextDouble() - 0.5) * 0.4;
+            double height = DEBRIS_DROP_HEIGHT + combatRng.nextDouble() * 1.5;
+            // The arena is passed so the tracker ADOPTS whatever lands: it marks the tile as a
+            // VFX obstacle, which is the arena's existing "a block is sitting here" bookkeeping
+            // and is torn down with everything else at the end of the fight.
+            tracker.launchInto(world,
+                new net.minecraft.util.math.Vec3d(
+                    floor.getX() + 0.5 + jitterX, floor.getY() + height, floor.getZ() + 0.5 + jitterZ),
+                new net.minecraft.util.math.Vec3d(0, -0.4, 0),
+                state, DEBRIS_LIFETIME, arena);
+            collapseRubble.put(pos, RUBBLE_TURNS);
+        }
+        if (!tiles.isEmpty()) {
+            world.playSound(null, arena.gridToBlockPos(tiles.iterator().next()),
+                net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+                net.minecraft.sound.SoundCategory.BLOCKS, 1.4f, 0.5f);
+        }
+    }
+
+    /** Is there a boss pillar on this tile? Public so the pickaxe path can ask. */
+    public boolean isBossPillar(GridPos pos) {
+        return bossPillars.contains(pos);
+    }
+
+    /**
+     * Stand pillars up on the given tiles.
+     *
+     * <p>Every block goes through {@link #setArenaBlock}, which snapshots what it replaced into
+     * {@code placedBlockRestores}. That is the only restore path in this class that does not
+     * assume a single Y level, and it is what guarantees a three-tall pillar cannot outlive the
+     * fight - see {@link EnemyAction.RaisePillars} for why a survivor would be so much worse
+     * than an eyesore.
+     */
+    private void resolveRaisePillars(EnemyAction.RaisePillars rp) {
+        if (arena == null || player == null || rp.tiles() == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        int raised = 0;
+        for (GridPos pos : rp.tiles()) {
+            if (!arena.isInBounds(pos) || bossPillars.contains(pos)) continue;
+            GridTile tile = arena.getTile(pos);
+            if (tile == null) continue;
+            // Same rule as every other solid placement: never inside anybody. See
+            // isTileOccupiedByCombatant.
+            if (isTileOccupiedByCombatant(pos)) continue;
+
+            tile.setType(TileType.OBSTACLE);
+            tile.setBlockType(PILLAR_BLOCK);   // AFTER setType, which resets the block
+            BlockPos floor = tileFloorPos(pos);
+            for (int dy = 1; dy <= PILLAR_HEIGHT; dy++) {
+                setArenaBlock(world, floor.up(dy), PILLAR_BLOCK, false);
+            }
+            // Driven in, shown with particles up the length of the timber rather than with
+            // falling blocks. A falling block dropped down a column that ALREADY has a pillar
+            // in it has three blocks less room to fall, lands, and becomes a real log standing
+            // proud of the beam - a stump that outlives the pillar it was decorating, because
+            // nothing clears blocks above the pillar's own height. The pillar appears in one
+            // piece; the dust is what sells the impact.
+            for (int dy = 1; dy <= PILLAR_HEIGHT; dy++) {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    floor.getX() + 0.5, floor.getY() + dy + 0.5, floor.getZ() + 0.5,
+                    6, 0.45, 0.15, 0.45, 0.02);
+            }
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                floor.getX() + 0.5, floor.getY() + 0.6, floor.getZ() + 0.5, 10, 0.5, 0.1, 0.5, 0.03);
+            bossPillars.add(pos);
+            raised++;
+        }
+        if (raised > 0) {
+            world.playSound(null, arena.gridToBlockPos(rp.tiles().get(0)),
+                net.minecraft.sound.SoundEvents.BLOCK_WOOD_PLACE,
+                net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 0.7f);
+            sendSync();
+            refreshHighlights();
+        }
+    }
+
+    /**
+     * Take a pillar down, all of it.
+     *
+     * <p>The single funnel for every way one can go: the boss spending it, a player mining it,
+     * the collapse consuming it. One method because three near-identical removals that each
+     * clear a different number of Y levels is precisely how a block gets orphaned at head
+     * height.
+     */
+    private void clearBossPillar(GridPos pos) {
+        if (!bossPillars.remove(pos) || arena == null || player == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos floor = tileFloorPos(pos);
+        for (int dy = 1; dy <= PILLAR_HEIGHT; dy++) {
+            setArenaBlock(world, floor.up(dy), Blocks.AIR, false);
+        }
+        GridTile tile = arena.getTile(pos);
+        if (tile != null) {
+            tile.setType(TileType.NORMAL);
+            tile.setBlockType(getBiomeFloorBlock());
+            world.setBlockState(floor, tile.getBlockType().getDefaultState());
+        }
+        // It topples rather than vanishing: the timbers are thrown outward in a scatter, one
+        // per block of the pillar that just gave way.
+        var tracker = com.crackedgames.craftics.vfx.VfxBlockTracker.of(world);
+        for (int dy = 1; dy <= PILLAR_HEIGHT; dy++) {
+            tracker.launchInto(world,
+                new net.minecraft.util.math.Vec3d(
+                    floor.getX() + 0.5, floor.getY() + dy, floor.getZ() + 0.5),
+                new net.minecraft.util.math.Vec3d(
+                    (combatRng.nextDouble() - 0.5) * 0.35, 0.25 + dy * 0.05,
+                    (combatRng.nextDouble() - 0.5) * 0.35),
+                // Thrown UPWARD and binned near the top of the arc, before gravity brings it
+                // back down onto whatever it was flung over. Unlike the collapse rubble this
+                // one has no fixed landing tile to adopt - it could come down on a wall, on
+                // another pillar, anywhere - so it is never allowed to land at all.
+                PILLAR_BLOCK.getDefaultState(), 8);
+        }
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+            floor.getX() + 0.5, floor.getY() + 1.5, floor.getZ() + 0.5, 14, 0.3, 1.0, 0.3, 0.06);
+        world.playSound(null, floor, net.minecraft.sound.SoundEvents.BLOCK_WOOD_BREAK,
+            net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 0.6f);
+    }
 
     /**
      * Is a live combatant standing here?
@@ -17941,7 +18282,7 @@ public class CombatManager {
         return flyHeldItemChain(waypoints, plan.returnsToThrower(), h -> {
             int i = landed[0]++;
             if (i == 0 || i >= hops.size()) return false;   // primary belongs to the damage chain
-            return resolveAbilityHop(hops.get(i), weapon, stats, luckPoints);
+            return resolveAbilityHop(hops.get(i), weapon, stats, luckPoints, "Ricochet!");
         });
     }
 
@@ -17962,42 +18303,86 @@ public class CombatManager {
      */
     private boolean resolveAbilityHop(com.crackedgames.craftics.api.AbilityPlan.Hop hop,
                                       Item weapon, PlayerProgression.PlayerStats stats,
-                                      int luckPoints) {
+                                      int luckPoints, String label) {
         CombatEntity t = hop.target();
         if (t == null || !t.isAlive() || player == null || arena == null) return false;
         int dealt = t.takeDamage(hop.damage());
-        sendMessage("§b✦ Ricochet! " + t.getDisplayName() + " takes " + dealt + "!");
+        sendMessage("§b✦ " + label + " " + t.getDisplayName() + " takes " + dealt + "!");
         sendToAllParty(new CombatEventPayload(
             CombatEventPayload.EVENT_DAMAGED, t.getEntityId(), dealt, t.getCurrentHp(),
             t.getGridPos().x(), t.getGridPos().z()));
         if (hop.appliesOnHitEffects() && t.isAlive() && !resolvingAbilityHop) {
             resolvingAbilityHop = true;
             try {
-                // Sharpness, Smite, Bane, Knockback, Serrated - the same pass the primary
-                // target gets. Sweeping Edge is suppressed: a ricochet is already the weapon's
-                // extra target, and letting it open a second AoE per bounce is not the ability.
-                var uni = com.crackedgames.craftics.api.VanillaWeapons.universalEnchantEffects(
-                    player, t, arena, hop.damage(), stats, luckPoints, true);
-                for (String msg : uni.messages()) {
-                    if (msg.startsWith("[WB_SELF:")) {
-                        applyWindBurstRecoil(Integer.parseInt(msg.substring(9, msg.length() - 1)));
-                        continue;
-                    }
-                    sendMessage(msg);
-                }
-                int fireAspect = PlayerCombatStats.getFireAspect(player);
-                if (fireAspect > 0 && t.isAlive()) {
-                    t.stackBurning(fireAspect * 2, Math.max(0, fireAspect - 1));
-                    if (t.getMobEntity() != null) t.getMobEntity().setFireTicks(fireAspect * 160);
-                }
-                // The weapon's own ability, on the enemy it bounced to. This is what carries a
-                // unique's signature onto every target in the throw. Re-entry is blocked by the
-                // flag above, so an ability that itself plans a chain cannot fork here.
-                if (t.isAlive() && WeaponAbility.hasAbility(weapon)) {
+                // ORDER MATTERS, and it is the same order the main attack path uses: the
+                // weapon's own ability first, then the universal enchant pass told whether that
+                // ability already hit extra targets. Sweeping Edge and the weapon abilities that
+                // bake in their own AoE (claymore, glaive, scythe, coral fan, Soulrender) share
+                // one geometry, so the flag is what stops the same neighbours being hit twice
+                // for one landing. Running the pass first with the flag hardcoded - which is
+                // what this did - suppressed Sweeping Edge on every hop unconditionally, so a
+                // sweeping weapon's ricochet quietly hit one enemy where the swing hits three.
+                boolean abilityHitExtras = false;
+                if (WeaponAbility.hasAbility(weapon)) {
                     var extra = WeaponAbility.applyAbility(player, weapon, t, arena, hop.damage(),
                         stats, luckPoints);
+                    abilityHitExtras = !extra.extraTargets().isEmpty();
                     for (String msg : extra.messages()) {
-                        if (!msg.startsWith("[WB_SELF:")) sendMessage(msg);
+                        if (msg.startsWith("[WB_SELF:")) {
+                            applyWindBurstRecoil(Integer.parseInt(msg.substring(9, msg.length() - 1)));
+                            continue;
+                        }
+                        sendMessage(msg);
+                    }
+                    for (CombatEntity swept : extra.extraTargets()) {
+                        checkAndHandleDeath(swept);
+                    }
+                }
+
+                // A bow and a sword do not carry the same enchantments, so they do not get the
+                // same pass. universalEnchantEffects is the six MELEE enchants and a bow can
+                // never legally hold any of them; the bow's equivalents are Flame and Punch,
+                // which the main attack path applies to the primary target only. Applied here
+                // per hop, they reach every body in the line - which is the point.
+                boolean ranged = PlayerCombatStats.isBowItem(weapon) || weapon == Items.CROSSBOW;
+                if (!t.isAlive()) {
+                    // Killed by its own ability. Nothing below can land on a corpse.
+                } else if (ranged) {
+                    int flame = PlayerCombatStats.getBowFlame(player);
+                    if (flame > 0) {
+                        int amp = flame == 1 ? 0 : 1;
+                        int turns = flame == 1 ? 2 : 4;
+                        t.stackBurning(turns, amp);
+                        if (t.getMobEntity() != null) t.getMobEntity().setFireTicks(turns * 80);
+                        sendMessage("§6  Flame! " + t.getDisplayName() + " catches light.");
+                    }
+                    int punch = PlayerCombatStats.getBowPunch(player);
+                    if (punch > 0 && t.isAlive()) {
+                        GridPos from = arena.getPlayerGridPos();
+                        int kdx = Integer.signum(t.getGridPos().x() - from.x());
+                        int kdz = Integer.signum(t.getGridPos().z() - from.z());
+                        if (kdx != 0 || kdz != 0) knockEnemyBack(t, kdx, kdz, punch);
+                    }
+                } else {
+                    // Sharpness, Smite, Bane, Knockback, Serrated and - when the ability did not
+                    // already claim the swing - Sweeping Edge, so a hop lands the same whirlwind
+                    // a direct strike does.
+                    var uni = com.crackedgames.craftics.api.VanillaWeapons.universalEnchantEffects(
+                        player, t, arena, hop.damage(), stats, luckPoints, abilityHitExtras);
+                    for (String msg : uni.messages()) {
+                        if (msg.startsWith("[WB_SELF:")) {
+                            applyWindBurstRecoil(Integer.parseInt(msg.substring(9, msg.length() - 1)));
+                            continue;
+                        }
+                        sendMessage(msg);
+                    }
+                    for (CombatEntity swept : uni.extraTargets()) {
+                        checkAndHandleDeath(swept);
+                    }
+                    int fireAspect = PlayerCombatStats.getFireAspect(player);
+                    if (fireAspect > 0 && t.isAlive()) {
+                        t.stackBurning(fireAspect * 2, Math.max(0, fireAspect - 1));
+                        if (t.getMobEntity() != null) t.getMobEntity().setFireTicks(fireAspect * 160);
                     }
                 }
             } finally {
@@ -18134,11 +18519,19 @@ public class CombatManager {
     }
 
     /**
-     * Show {@code stack} flying to {@code target}. Single hop, no return, no damage of its
-     * own - the item's own handler has already resolved everything by the time this runs.
+     * Show {@code stack} flying to {@code target}, and say how long it will take.
+     *
+     * <p>The caller now waits on that number: the item's effect is resolved when the throw
+     * ARRIVES rather than at the moment it left the hand. That is also why the flight is no
+     * longer pinned to a fixed four ticks. It used to be short on purpose - every tick the item
+     * spent in the air was a tick its explosion had already happened without it, so the throw
+     * had to sprint to catch up with its own consequences. With the consequences waiting for it,
+     * it can travel at a speed that looks like a throw.
+     *
+     * @return ticks until it lands, or 0 if nothing was launched
      */
-    private void flyThrownItem(ItemStack stack, GridPos target) {
-        if (!active || player == null || arena == null || stack.isEmpty()) return;
+    private int flyThrownItem(ItemStack stack, GridPos target) {
+        if (!active || player == null || arena == null || stack.isEmpty()) return 0;
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         BlockPos fromBp = arena.gridToBlockPos(arena.getPlayerGridPos());
         BlockPos toBp = arena.gridToBlockPos(target);
@@ -18147,6 +18540,12 @@ public class CombatManager {
 
         var thrown = spawnFlightBody(world, stack, sx, sy, sz);
         var thrownInv = (com.crackedgames.craftics.mixin.DisplayEntityInvoker) thrown;
+
+        int tiles = Math.max(1, Math.max(
+            Math.abs(target.x() - arena.getPlayerGridPos().x()),
+            Math.abs(target.z() - arena.getPlayerGridPos().z())));
+        final int throwTicks = Math.max(THROWN_ITEM_TICKS,
+            Math.round(tiles * THROWN_ITEM_TICKS_PER_TILE));
 
         ProjectileFlight flight = new ProjectileFlight(
             thrown, java.util.List.of(new ProjectileFlight.Hop(target, -1, 0)),
@@ -18158,8 +18557,9 @@ public class CombatManager {
                     return ballisticPointingMover(e, thrownInv, sx, sy, sz, ex, ey, ez);
                 }
             },
-            null, THROWN_ITEM_TICKS, activeWalkers::add, this::onFlightFinished);
+            null, throwTicks, activeWalkers::add, this::onFlightFinished);
         launchFlight(flight);
+        return throwTicks;
     }
 
     /** Flight length of the shot just launched, folded into pendingAttackDelay. */
@@ -18169,14 +18569,18 @@ public class CombatManager {
      *  not stall the turn. */
     private static final int FLIGHT_TICKS_PER_TILE = 2;
     /**
-     * Flight time for a thrown item, whatever the distance.
+     * Floor on a thrown item's flight, so a throw at the tile next door is still seen leaving
+     * the hand.
      *
-     * <p>Short on purpose. An item's damage and its burst are applied synchronously the
-     * moment it is used, so every tick the item spends in the air is a tick the explosion has
-     * already happened without it. Until item use can defer its effects, the throw has to
-     * keep up with them rather than the other way round.
+     * <p>This used to be the WHOLE flight time, fixed regardless of distance, and short on
+     * purpose: the item's damage and burst were applied the moment it was used, so every tick
+     * it spent in the air was a tick its explosion had already happened without it. The throw
+     * had to keep up with its own consequences. Item use now waits for the landing, so the
+     * flight is free to take the time the distance deserves - see {@link #flyThrownItem}.
      */
     private static final int THROWN_ITEM_TICKS = 4;
+    /** Ticks per tile for a lobbed item. Heavier and slower than an arrow or a disc. */
+    private static final float THROWN_ITEM_TICKS_PER_TILE = 2.0f;
     /**
      * Ticks between arming a flight and it actually arriving, beyond its own travel time.
      *
@@ -18277,7 +18681,7 @@ public class CombatManager {
         // landed. pendingAttackDelay is what actually applies the hit, and it can still have
         // a tick or two left; releasing here would let the player act before their own shot
         // had connected.
-        spellAnimCooldown = Math.max(0, pendingAttackDelay);
+        spellAnimCooldown = Math.max(0, Math.max(pendingAttackDelay, pendingItemDelay));
         flightCeiling = 0;
         sendSync();
         refreshHighlights();
@@ -18546,6 +18950,20 @@ public class CombatManager {
                     sendMessage("§8  Darkness tries to encroach... §eYour light holds it back!");
                 }
             }
+            // === The Hollow King ===
+            case "hollow_shore_up" -> sendMessage(
+                "§8§l⛏ §7The Hollow King drives in fresh props. §fThe stone holds him now.");
+            case "hollow_collapse" -> {
+                // The dust is the point: a collapse that only did damage read as another
+                // orange square. This blinds briefly, which is what being under a ceiling
+                // that just came down should feel like.
+                addEffectHooked(CombatEffects.EffectType.BLINDNESS, 1, 0);
+                sendMessage("§8§l☠ TOTAL COLLAPSE! §r§7The props gave way and the roof came in.");
+            }
+            case "hollow_shrapnel" -> sendMessage(
+                "§6§l✦ Shrapnel! §r§7A shattered prop tears down the lane.");
+            case "hollow_mine" -> sendMessage(
+                "§7⛏ The Hollow King cuts straight through the rock to reach you.");
             case "web_spray" -> {
                 addEffectHooked(CombatEffects.EffectType.SLOWNESS, 1, 0);
                 // Stun: use MINING_FATIGUE with high amplifier to zero out AP next turn
@@ -18576,6 +18994,26 @@ public class CombatManager {
             return;
         }
         switch (effectName) {
+            // === The Hollow King ===
+            case "hollow_collapse" -> {
+                // Falling stone, then the dust rolling out along the floor after it.
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                    cx, cy + 2.0, cz, 18, spread, 1.2, spread, 0.04);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH,
+                    cx, cy + 1.0, cz, 30, spread, 1.0, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                    cx, cy + 0.3, cz, 10, spread, 0.2, spread, 0.05);
+            }
+            case "hollow_shrapnel" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                    cx, cy + 0.8, cz, 14, spread, 0.4, spread, 0.12);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
+                    cx, cy + 0.6, cz, 8, spread, 0.3, spread, 0.02);
+            }
+            case "hollow_shore_up" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    cx, cy + 0.5, cz, 10, spread, 0.6, spread, 0.01);
+            }
             // === Molten King ===
             case "magma_eruption" -> {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.LAVA, cx, cy, cz, 15, spread, 0.8, spread, 0.0);
@@ -18892,7 +19330,8 @@ public class CombatManager {
      *                  born one weaker, and a fire at 0 has run out of reach and only burns
      *                  where it stands. {@link #INFINITE_INTENSITY} never decays.
      */
-    private record BurnState(BurnStage stage, int turnsLeft, boolean restores, int intensity) {}
+    private record BurnState(BurnStage stage, int turnsLeft, boolean restores, int intensity,
+                             net.minecraft.block.Block fuel) {}
 
     /**
      * Spread budget by source.
@@ -19032,7 +19471,7 @@ public class CombatManager {
             if (intensity > existing.intensity()) {
                 boolean toSoul = kind == Ignition.SOUL_SPREAD;
                 burningTiles.put(pos, new BurnState(existing.stage(), existing.turnsLeft(),
-                    existing.restores(), intensity));
+                    existing.restores(), intensity, existing.fuel()));
                 GridTile merging = arena.getTile(pos);
                 if (toSoul && merging != null && merging.getType() == TileType.FIRE) {
                     merging.setTemporaryType(TileType.SOUL_FIRE, BURN_HOLD_TURNS);
@@ -19070,6 +19509,10 @@ public class CombatManager {
         // rebuilds itself rather than being scorched to dirt: soul fire eating a stone
         // arena should leave stone behind, not a field of soil.
         boolean restores = !fuel || FlammableTiles.restoresAfterBurning(tile.getBlockType());
+        // What was actually burning, kept for the burnt-out block to be chosen from. By the
+        // time the fire goes out the tile's own block is the fire or the magma it collapsed
+        // into, so the fuel cannot be recovered then - it has to be remembered now.
+        net.minecraft.block.Block fuelBlock = tile.getBlockType();
         boolean soul = kind == Ignition.SOUL_SPREAD
             || FlammableTiles.burnsSoulFire(tile.getBlockType());
         // Burn away the fuel standing on the tile (grass halves, a log, a fence) before
@@ -19085,7 +19528,7 @@ public class CombatManager {
         // and a blue fire never runs out of reach.
         burningTiles.put(pos, new BurnState(BurnStage.FLAMES,
             soul ? FlammableTiles.SOUL_FIRE_BURN_TURNS : FlammableTiles.FIRE_BURN_TURNS,
-            restores, soul ? INFINITE_INTENSITY : Math.max(0, intensity)));
+            restores, soul ? INFINITE_INTENSITY : Math.max(0, intensity), fuelBlock));
 
         world.spawnParticles(soul ? net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME
                 : net.minecraft.particle.ParticleTypes.FLAME,
@@ -19196,7 +19639,7 @@ public class CombatManager {
             int left = state.turnsLeft() - 1;
             if (left > 0) {
                 burningTiles.put(pos, new BurnState(state.stage(), left, state.restores(),
-                    state.intensity()));
+                    state.intensity(), state.fuel()));
                 continue;
             }
             if (state.stage() == BurnStage.FLAMES) {
@@ -19204,14 +19647,14 @@ public class CombatManager {
                 tile.setTemporaryType(TileType.EMBER, BURN_HOLD_TURNS);
                 paintTileBlock(world, pos, tile);
                 burningTiles.put(pos, new BurnState(BurnStage.MAGMA,
-                    FlammableTiles.MAGMA_TURNS, state.restores(), state.intensity()));
+                    FlammableTiles.MAGMA_TURNS, state.restores(), state.intensity(), state.fuel()));
                 BlockPos floor = tileFloorPos(pos);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
                     floor.getX() + 0.5, floor.getY() + 1.1, floor.getZ() + 0.5,
                     6, 0.3, 0.2, 0.3, 0.01);
             } else {
                 burningTiles.remove(pos);
-                finishBurn(world, pos, tile, state.restores());
+                finishBurn(world, pos, tile, state.restores(), state.fuel());
                 burnedOut++;
             }
         }
@@ -19279,7 +19722,8 @@ public class CombatManager {
      * @param restores the burn's own record of whether this ground rebuilds itself, captured
      *                 at ignition while the original floor block was still readable
      */
-    private void finishBurn(ServerWorld world, GridPos pos, GridTile tile, boolean restores) {
+    private void finishBurn(ServerWorld world, GridPos pos, GridTile tile, boolean restores,
+                            net.minecraft.block.Block fuel) {
         if (restores) {
             // Nether ground comes back as itself, then shrugs off fire for a turn so
             // neighbouring flames can't relight the same tile forever.
@@ -19287,10 +19731,13 @@ public class CombatManager {
             tile.tickTurn();
             fireproofTiles.put(pos, FlammableTiles.NETHERRACK_COOLDOWN_TURNS + 1);
         } else {
-            // Burned out: scorched dirt for the rest of the fight. Still held as temporary
-            // terrain so endCombat hands the arena back unscarred.
+            // Burned out for the rest of the fight, held as temporary terrain so endCombat
+            // hands the arena back unscarred. WHAT it burns down to depends on what was
+            // burning: soil under grass, charcoal where there was timber. Everything used to
+            // become dirt, which turned a burnt plank floor into a field of soil suspended
+            // where the boards had been.
             tile.setTemporaryType(TileType.NORMAL, BURN_HOLD_TURNS);
-            tile.setBlockType(Blocks.DIRT);
+            tile.setBlockType(FlammableTiles.residueFor(fuel));
             // Retired for the rest of the fight. Bare dirt isn't fuel, so ordinary fire
             // would leave it alone anyway - this is what stops SOUL fire, which needs no
             // fuel, from re-consuming ground it has already burnt to ash.
@@ -19319,7 +19766,7 @@ public class CombatManager {
         BlockPos floor = tileFloorPos(pos);
         BurnState state = burningTiles.remove(pos);
         if (state != null) {
-            finishBurn(world, pos, tile, state.restores());
+            finishBurn(world, pos, tile, state.restores(), state.fuel());
         } else {
             tile.setTurnsRemaining(1);
             tile.tickTurn();
@@ -19490,6 +19937,15 @@ public class CombatManager {
             if (blocking && isTileOccupiedByCombatant(pos)) {
                 if (crushOccupantsOn(pos, CRUSH_DAMAGE, "Falling stone")) return;
                 crushed++;
+                continue;
+            }
+
+            // Clearing a tile that carries a pillar goes through the pillar's own removal, or
+            // only the bottom block of it would come out and the rest would be left hanging.
+            // This is how the boss spends its own supports.
+            if (bossPillars.contains(pos)) {
+                clearBossPillar(pos);
+                changed++;
                 continue;
             }
 
@@ -31449,6 +31905,10 @@ public class CombatManager {
             com.crackedgames.craftics.vfx.PhaseScheduler.of(w).clearAll();
             com.crackedgames.craftics.vfx.VfxBlockTracker.of(w).clearAll(w);
             if (this.arena != null) this.arena.clearAllVfxObstacles(w);
+            // The pillar BLOCKS are restored by placedBlockRestores, which is the one restore
+            // path that does not assume a single Y level. Only the bookkeeping is dropped here.
+            bossPillars.clear();
+            collapseRubble.clear();
         } catch (Throwable ignored) { /* defensive -combat cleanup must not fail */ }
         if (!active) return;
         LootRecorder.clear();

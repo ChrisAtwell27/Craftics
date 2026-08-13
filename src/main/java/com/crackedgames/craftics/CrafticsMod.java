@@ -562,6 +562,22 @@ public class CrafticsMod implements ModInitializer {
         {
             addonBonusCache.remove(playerUuid);
 
+            // A trade dies with either trader. Nothing is held in escrow, so there is nothing
+            // to hand back - but the session has to go, or the leaver comes back to a server
+            // that still thinks they are mid-trade and refuses to open another one. The
+            // partner is told rather than left staring at a window that will never resolve.
+            var tradeLeft = com.crackedgames.craftics.trade.TradeSession.of(playerUuid);
+            if (tradeLeft != null) {
+                var partner = server.getPlayerManager().getPlayer(tradeLeft.other(playerUuid));
+                tradeLeft.end();
+                if (partner != null) {
+                    partner.closeHandledScreen();
+                    partner.sendMessage(net.minecraft.text.Text.literal(
+                        "§c" + playerName + " left. The trade is off; nothing was traded."), false);
+                }
+            }
+            com.crackedgames.craftics.trade.TradeSession.clearInvite(playerUuid);
+
             // DAILY RAID BOSS: dropping while in a raid always forfeits the reward,
             // whether the leaver is the raid's leader or a plain member. This runs here
             // rather than in the raw DISCONNECT callback above (which can fire off the
@@ -1000,6 +1016,7 @@ public class CrafticsMod implements ModInitializer {
     private void registerCommands() {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             com.crackedgames.craftics.auction.AuctionCommands.register(dispatcher);
+            com.crackedgames.craftics.trade.TradeCommands.register(dispatcher);
 
             var root = CommandManager.literal("craftics");
 

@@ -86,6 +86,43 @@ public final class FlammableTiles {
         Blocks.NETHERRACK, Blocks.SOUL_SAND, Blocks.SOUL_SOIL);
 
     /**
+     * What a burnt-out tile is left as, given what was burning on it.
+     *
+     * <p>Everything used to become dirt, on the reasoning that a burnt tile is ash. That reads
+     * correctly under grass and leaves and utterly wrong under anything built: setting fire to
+     * a plank floor or a fence line left a field of soil hanging where the boards had been, as
+     * though the fire had grown a garden. Worked wood burns down to charcoal instead, which is
+     * both what happens and what looks like it happened.
+     *
+     * <p>Ground keeps the old answer. Soil under burnt grass IS what is left.
+     */
+    public static Block residueFor(Block fuel) {
+        if (fuel == null) return Blocks.DIRT;
+        return isWoodenBlock(fuel) ? Blocks.COAL_BLOCK : Blocks.DIRT;
+    }
+
+    /**
+     * Worked wood: anything a builder placed rather than anything that grew.
+     *
+     * <p>Leaves and saplings are deliberately NOT here - they are foliage, and foliage burning
+     * to soil is right. This is planks, logs, fences, doors and the rest of the carpentry, which
+     * is what the vanilla tags below already collect.
+     */
+    public static boolean isWoodenBlock(Block block) {
+        if (block == null) return false;
+        var state = block.getDefaultState();
+        return state.isIn(net.minecraft.registry.tag.BlockTags.PLANKS)
+            || state.isIn(net.minecraft.registry.tag.BlockTags.LOGS)
+            || state.isIn(net.minecraft.registry.tag.BlockTags.WOODEN_FENCES)
+            || state.isIn(net.minecraft.registry.tag.BlockTags.FENCE_GATES)
+            || state.isIn(net.minecraft.registry.tag.BlockTags.WOODEN_SLABS)
+            || state.isIn(net.minecraft.registry.tag.BlockTags.WOODEN_STAIRS)
+            || state.isIn(net.minecraft.registry.tag.BlockTags.WOODEN_DOORS)
+            || state.isIn(net.minecraft.registry.tag.BlockTags.WOODEN_TRAPDOORS)
+            || state.isIn(net.minecraft.registry.tag.BlockTags.WOODEN_PRESSURE_PLATES);
+    }
+
+    /**
      * True if a fire lit on this floor burns as SOUL fire. Mirrors vanilla: flames on soul
      * sand or soul soil come up blue. An ordinary fire reaching a soul sand tile turns blue
      * on its own; soul fire, unlike ordinary fire, then carries itself onto whatever it
