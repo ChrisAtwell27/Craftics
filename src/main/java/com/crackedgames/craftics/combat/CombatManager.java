@@ -17831,26 +17831,86 @@ public class CombatManager {
     }
 
     /**
-     * A mover that lays a display's item flat and points it along the direction of travel.
+     * An item sprite runs corner to corner, not edge to edge.
      *
-     * <p>An item display renders its sprite standing up and facing one way; left alone, an
-     * arrow flies broadside like a thrown card. Laying it flat (90 degrees about X) puts it in
-     * the horizontal plane the fight is fought on, and yawing it by the heading points the
-     * shaft at what it was shot at. Composed flat-then-turn so the turn happens in the disc's
-     * own plane rather than tumbling it.
+     * <p>Every long item in the game - arrow, trident, sword - is drawn on its texture as a
+     * diagonal from the bottom-left to the top-right. So a sprite yawed to the raw heading has
+     * its shaft 45 degrees off the direction it is travelling: aim due north and the arrow
+     * points north-east. Correcting by this is what makes the tip actually lead.
      */
-    private EntityWalker.Mover flatPointingMover(
+    private static final float SPRITE_DIAGONAL = (float) (-Math.PI / 4);
+
+    /** Arc height as a fraction of the shot's length, and the bounds either side of it. */
+    private static final double FLIGHT_ARC_PER_TILE = 0.14;
+    private static final double FLIGHT_ARC_MIN = 0.15;
+    private static final double FLIGHT_ARC_MAX = 1.1;
+
+    /**
+     * A mover that flies a display's item on a real ballistic path, nose first the whole way.
+     *
+     * <p>Replaces a mover that did neither. That one took the straight line
+     * {@link EntityWalker} hands it - constant speed, dead flat, no rise and no fall - and
+     * pinned the sprite to a single pose computed once at launch, so the shot read as a decal
+     * sliding across the floor rather than something thrown. Three things were wrong and all
+     * three are fixed here:
+     *
+     * <ul>
+     *   <li><b>It never arced.</b> The walker lerps Y along with X and Z, so a shot between two
+     *       tiles at the same height stayed at exactly that height for the whole flight. Y is
+     *       now driven by a parabola over the top of the straight line, scaled to the range, so
+     *       a long shot lofts and a point-blank one barely lifts.</li>
+     *   <li><b>It never turned.</b> The pose was fixed at launch, so even once a rise and fall
+     *       existed the arrow would have flown through it at a constant angle. The pose is now
+     *       rebuilt every tick from the path's own tangent, which is what makes it climb out
+     *       nose-up and come down nose-down into the target.</li>
+     *   <li><b>It pointed 45 degrees wrong.</b> See {@link #SPRITE_DIAGONAL}.</li>
+     * </ul>
+     *
+     * <p><b>The aiming is not done here.</b> A display in {@code BillboardMode.FIXED} renders in
+     * its own entity rotation, and {@code holdingMover} already sets that rotation from the
+     * direction of travel every tick via {@code ProjectileFlight.faceAlong}. The old mover
+     * applied the heading a SECOND time in the transformation on top of it, so the sprite came
+     * out at twice the intended yaw - pointing at the target only when the target happened to
+     * lie due north, and further off the more the shot deviated from it. That is the bug behind
+     * "it's not pointing towards the enemy". The transformation below now carries only what is
+     * true of the sprite itself regardless of where it is going: lay it into the horizontal
+     * plane, and undo its diagonal. Direction is left entirely to the entity rotation, which
+     * gets it right including pitch.
+     *
+     * <p>Flat rather than upright is deliberate: the horizontal plane is the one the fight is
+     * read on from the isometric camera, and an upright sprite would vanish edge-on every time
+     * it flew toward or away from the viewer.
+     */
+    private EntityWalker.Mover ballisticPointingMover(
             net.minecraft.entity.Entity e,
             com.crackedgames.craftics.mixin.DisplayEntityInvoker inv,
-            double dirX, double dirZ) {
+            double sx, double sy, double sz, double ex, double ey, double ez) {
         EntityWalker.Mover base = ProjectileFlight.holdingMover(e);
-        float heading = (float) Math.atan2(-dirX, dirZ);
-        var flat = new org.joml.Quaternionf(
+
+        final double dx = ex - sx, dy = ey - sy, dz = ez - sz;
+        final double flat = Math.sqrt(dx * dx + dz * dz);
+        final double arc = Math.max(FLIGHT_ARC_MIN,
+            Math.min(FLIGHT_ARC_MAX, flat * FLIGHT_ARC_PER_TILE));
+
+        // Constant for the whole flight: nothing here depends on where the shot is going.
+        var lay = new org.joml.Quaternionf(
             new org.joml.AxisAngle4f((float) Math.toRadians(90f), 1f, 0f, 0f));
-        var turn = new org.joml.Quaternionf(new org.joml.AxisAngle4f(heading, 0f, 0f, 1f));
-        var pose = new org.joml.Quaternionf(flat).mul(turn);
+        var undoDiagonal = new org.joml.Quaternionf(
+            new org.joml.AxisAngle4f(SPRITE_DIAGONAL, 0f, 0f, 1f));
+        final var pose = lay.mul(undoDiagonal);
+
         return (x, y, z, yaw) -> {
-            base.apply(x, y, z, yaw);
+            // Recover progress from the walker's straight-line step rather than counting ticks
+            // here, so this stays in step with the walker even if its timing changes.
+            double travelled = Math.sqrt((x - sx) * (x - sx) + (z - sz) * (z - sz));
+            double t = flat < 1.0e-4 ? 1.0 : Math.min(1.0, travelled / flat);
+
+            // Y comes off the parabola instead of the walker's flat lerp. base.apply then aims
+            // the entity along the step it actually took, so the arc is what makes it nose up
+            // out of the bow and drop onto the target rather than sliding across at one angle.
+            double arcedY = sy + dy * t + Math.sin(t * Math.PI) * arc;
+            base.apply(x, arcedY, z, yaw);
+
             inv.craftics$setTransformation(new net.minecraft.util.math.AffineTransformation(
                 new org.joml.Vector3f(0f, 0f, 0f),
                 pose,
@@ -17889,7 +17949,7 @@ public class CombatManager {
                 @Override public double[] originOf(ProjectileFlight.Hop h) { return new double[]{sx, sy, sz}; }
                 @Override public double[] arrivalOf(ProjectileFlight.Hop h) { return new double[]{ex, ey, ez}; }
                 @Override public EntityWalker.Mover moverFor(net.minecraft.entity.Entity e) {
-                    return flatPointingMover(e, thrownInv, ex - sx, ez - sz);
+                    return ballisticPointingMover(e, thrownInv, sx, sy, sz, ex, ey, ez);
                 }
             },
             null, THROWN_ITEM_TICKS, activeWalkers::add, this::onFlightFinished);
@@ -17949,7 +18009,7 @@ public class CombatManager {
                 @Override public double[] originOf(ProjectileFlight.Hop h) { return new double[]{sx, sy, sz}; }
                 @Override public double[] arrivalOf(ProjectileFlight.Hop h) { return new double[]{ex, ey, ez}; }
                 @Override public EntityWalker.Mover moverFor(net.minecraft.entity.Entity e) {
-                    return flatPointingMover(e, shotInv, ex - sx, ez - sz);
+                    return ballisticPointingMover(e, shotInv, sx, sy, sz, ex, ey, ez);
                 }
             },
             null, ticks, activeWalkers::add, this::onFlightFinished);

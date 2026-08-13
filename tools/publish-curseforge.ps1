@@ -26,9 +26,30 @@
 
     Skip a platform with -SkipCurseForge / -SkipModrinth.
 
+    Server deploy: after publishing, the shard matching -DeployGameVersion is pushed to the
+    live Craftics backend over ssh and the container is restarted. Configure the target once:
+
+        $env:CRAFTICS_SSH_TARGET = "chris@107.173.171.127"
+
+    Leave it unset (or pass -SkipDeploy) and the deploy step is skipped with a notice.
+    Use -DeployOnly to push a locally built jar without touching CurseForge or Modrinth.
+
 .NOTES
     Release notes are read from CHANGELOG.md - the section for -ModVersion, up to the next
     version heading. Keep that heading exactly equal to the version you are publishing.
+
+    IMPORTANT - why the deploy target is /mods and not /data/mods:
+    The craftics container runs MODPACK_PLATFORM=AUTO_CURSEFORGE with CF_FORCE_SYNCHRONIZE=true.
+    That makes the itzg installer authoritative over /data/mods: on every start it reconciles
+    that directory against the pack manifest and deletes anything not in it. A jar copied
+    straight into data/craftics/mods/ therefore survives only until the next restart.
+    itzg's /mods directory is copied INTO /data/mods after the pack sync on every boot, so a
+    jar staged there is reapplied instead of pruned. The compose service needs the mount:
+
+        volumes:
+          - ./data/craftics:/data
+          - ./downloads:/downloads
+          - ./extra-mods/craftics:/mods        # <- required for -Deploy to stick
 #>
 [CmdletBinding()]
 param(
@@ -59,9 +80,39 @@ param(
     [switch] $SkipCurseForge,
     [switch] $SkipModrinth,
 
+    # --- Live server deploy ---------------------------------------------------------------
+    # ssh destination for the VPS running the Craftics backend, e.g. "chris@107.173.171.127".
+    # Defaults to the CRAFTICS_SSH_TARGET environment variable (or .env). Unset = deploy skipped.
+    [string] $SshTarget = $env:CRAFTICS_SSH_TARGET,
+
+    # Which shard actually runs on the server. Only this one gets deployed.
+    [string] $DeployGameVersion = "1.21.1",
+
+    # Compose project directory on the VPS.
+    [string] $RemoteRoot = "/opt/mcnet",
+
+    # Staging dir mounted into the container at /mods. See the .NOTES block above for why
+    # this is NOT data/craftics/mods.
+    [string] $RemoteModsDir = "/opt/mcnet/extra-mods/craftics",
+
+    # Compose service name to restart once the jar is in place.
+    [string] $RemoteService = "craftics",
+
+    # Skip the deploy step even when SshTarget is configured.
+    [switch] $SkipDeploy,
+
+    # Deploy only: push the built jar to the server, no CurseForge, no Modrinth.
+    [switch] $DeployOnly,
+
     # Build the request and report what WOULD be sent, without uploading.
     [switch] $DryRun
 )
+
+# -DeployOnly is shorthand for "skip both publish platforms".
+if ($DeployOnly) {
+    $SkipCurseForge = $true
+    $SkipModrinth   = $true
+}
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -86,6 +137,7 @@ if (Test-Path $envFile) {
     if (-not $Token)           { $Token = $env:CURSEFORGE_TOKEN }
     if (-not $ModrinthProject) { $ModrinthProject = $env:MODRINTH_PROJECT }
     if (-not $ModrinthToken)   { $ModrinthToken = $env:MODRINTH_TOKEN }
+    if (-not $SshTarget)       { $SshTarget = $env:CRAFTICS_SSH_TARGET }
 }
 
 if (-not $SkipCurseForge -and -not $Token -and -not $DryRun) {
@@ -396,6 +448,97 @@ function Send-MultipartUpload {
     return ($json | ConvertFrom-Json)
 }
 
+# --- Deploy one shard to the live server ------------------------------------------------------
+<#
+    Push the built jar to the Craftics backend and restart the container.
+
+    Ordering matters and is not arbitrary:
+
+      1. prune old craftics-*.jar on the REMOTE first. Doing it after the copy would delete
+         the jar we just uploaded, since the new one matches the same glob.
+      2. scp the new jar in.
+      3. restart ONLY the craftics service. `docker compose restart craftics` leaves velocity,
+         hub, mariadb and redis untouched, so nobody outside craftics is disconnected.
+
+    Uses scp/ssh from OpenSSH, which ships with Windows 10 1809+ and Windows 11. Key auth is
+    assumed - the server has password auth disabled, so an agent or ~/.ssh/id_* must be present.
+#>
+function Publish-ToServer {
+    param([string] $GameVersion)
+
+    $jar = Join-Path $RepoRoot "versions/$GameVersion/build/libs/craftics-$ModVersion+$GameVersion.jar"
+    if (-not (Test-Path $jar)) {
+        throw "Missing jar: $jar`nBuild it first:  ./gradlew :$GameVersion`:build"
+    }
+
+    $jarName = Split-Path -Leaf $jar
+    $sizeMb  = [math]::Round((Get-Item $jar).Length / 1MB, 1)
+
+    Write-Host ""
+    Write-Host "  Craftics v$ModVersion-$GameVersion -> $SshTarget" -ForegroundColor Cyan
+    Write-Host "    jar    : $jarName (${sizeMb} MB)"
+    Write-Host "    dest   : ${RemoteModsDir}/"
+    Write-Host "    restart: docker compose restart $RemoteService"
+
+    if ($DryRun) {
+        Write-Host "    DRY RUN - not deployed" -ForegroundColor Yellow
+        return
+    }
+
+    # --- 1. prepare the remote staging dir and clear the previous build -----------------------
+    # `set -e` so a failure here aborts before we upload on top of a broken state.
+    $prep = "set -e; mkdir -p '$RemoteModsDir'; rm -f '$RemoteModsDir'/craftics-*.jar; echo prepared"
+    Write-Host "    preparing remote..." -NoNewline
+    $out = & ssh $SshTarget $prep 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Remote prepare failed (exit $LASTEXITCODE):`n$out"
+    }
+    Write-Host "`r    remote prepared            " -ForegroundColor DarkGray
+
+    # --- 2. upload ----------------------------------------------------------------------------
+    Write-Host "    uploading..." -NoNewline
+    & scp -q "$jar" "${SshTarget}:${RemoteModsDir}/"
+    if ($LASTEXITCODE -ne 0) {
+        throw "scp failed (exit $LASTEXITCODE). Is the ssh key loaded and $RemoteModsDir writable?"
+    }
+    Write-Host "`r    uploaded                   " -ForegroundColor DarkGray
+
+    # --- 3. verify the bytes actually landed --------------------------------------------------
+    # A truncated scp is silent. Compare SHA-256 rather than trusting the exit code.
+    $localHash = (Get-FileHash -Algorithm SHA256 -Path $jar).Hash.ToLower()
+    $remoteHash = (& ssh $SshTarget "sha256sum '$RemoteModsDir/$jarName' | cut -d' ' -f1" 2>&1).Trim()
+    if ($remoteHash -ne $localHash) {
+        throw "Hash mismatch after upload.`n  local : $localHash`n  remote: $remoteHash"
+    }
+    Write-Host "    verified sha256 $($localHash.Substring(0,16))..." -ForegroundColor DarkGray
+
+    # --- 4. restart just this backend ---------------------------------------------------------
+    Write-Host "    restarting $RemoteService..." -NoNewline
+    $restart = "cd '$RemoteRoot' && docker compose restart $RemoteService"
+    $out = & ssh $SshTarget $restart 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Remote restart failed (exit $LASTEXITCODE):`n$out"
+    }
+    Write-Host "`r    restarted                  " -ForegroundColor Green
+
+    # --- 5. confirm the jar survived the pack sync --------------------------------------------
+    # This is the whole reason for the /mods mount. If AUTO_CURSEFORGE pruned it, it shows here
+    # rather than as a mystery "my changes aren't live" an hour from now.
+    Write-Host "    waiting 60s for the pack sync to finish..."
+    Start-Sleep -Seconds 60
+    $check = "ls -1 '$RemoteRoot/data/$RemoteService/mods/' 2>/dev/null | grep -c '^craftics-' || true"
+    $count = (& ssh $SshTarget $check 2>&1).Trim()
+    if ($count -eq "0") {
+        Write-Host "    WARNING: no craftics-*.jar in data/$RemoteService/mods after restart." -ForegroundColor Red
+        Write-Host "             The AUTO_CURSEFORGE sync most likely pruned it. Check that the" -ForegroundColor Red
+        Write-Host "             compose service mounts ./extra-mods/craftics:/mods." -ForegroundColor Red
+    } else {
+        Write-Host "    confirmed live in data/$RemoteService/mods ($count jar)" -ForegroundColor Green
+    }
+
+    $script:ServerDeploys++
+}
+
 # --- Run --------------------------------------------------------------------------------------
 Write-Host "Craftics publish  |  version $ModVersion  |  $ReleaseType  |  $($GameVersions.Count) shard(s)" -ForegroundColor White
 
@@ -406,8 +549,10 @@ Write-Host "Craftics publish  |  version $ModVersion  |  $ReleaseType  |  $($Gam
 # happened.
 $script:CurseForgeUploads = 0
 $script:ModrinthUploads = 0
+$script:ServerDeploys = 0
 $script:CurseForgeState = "skipped (-SkipCurseForge)"
 $script:ModrinthState = "skipped (-SkipModrinth)"
+$script:DeployState = "skipped (-SkipDeploy)"
 
 if (-not $SkipCurseForge) {
     Write-Host ""
@@ -443,13 +588,45 @@ if (-not $SkipModrinth) {
     }
 }
 
+# --- Deploy to the live server ------------------------------------------------------------
+# Runs last on purpose: if a publish step throws, the running server is left alone rather than
+# being restarted onto a build that never made it to the download page.
+if (-not $SkipDeploy) {
+    if (-not $SshTarget) {
+        $script:DeployState = "skipped (CRAFTICS_SSH_TARGET not set)"
+        Write-Host ""
+        Write-Host "Server deploy skipped: set `$env:CRAFTICS_SSH_TARGET (or -SshTarget) to e.g. chris@107.173.171.127." -ForegroundColor Yellow
+    } elseif ($GameVersions -notcontains $DeployGameVersion -and -not $DeployOnly) {
+        # Deploying a shard that was never built or published this run would push a stale jar.
+        $script:DeployState = "skipped ($DeployGameVersion not in -GameVersions)"
+        Write-Host ""
+        Write-Host "Server deploy skipped: $DeployGameVersion is not in the published set ($($GameVersions -join ', '))." -ForegroundColor Yellow
+    } else {
+        Write-Host ""
+        Write-Host "Server deploy  |  $SshTarget  |  shard $DeployGameVersion" -ForegroundColor White
+        Publish-ToServer -GameVersion $DeployGameVersion
+        $script:DeployState = if ($DryRun) { "dry run" } else { "deployed $script:ServerDeploys jar(s)" }
+    }
+}
+
 Write-Host ""
 Write-Host "  CurseForge : $script:CurseForgeState"
 Write-Host "  Modrinth   : $script:ModrinthState"
+Write-Host "  Server     : $script:DeployState"
 Write-Host ""
 
 if ($DryRun) {
-    Write-Host "Dry run complete. Nothing was uploaded." -ForegroundColor Yellow
+    Write-Host "Dry run complete. Nothing was uploaded or deployed." -ForegroundColor Yellow
+    return
+}
+
+# -DeployOnly deliberately publishes nothing, so judge it on the deploy alone.
+if ($DeployOnly) {
+    if ($script:ServerDeploys -eq 0) {
+        Write-Host "NOTHING WAS DEPLOYED - the jar never reached the server." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "Deploy complete. $script:ServerDeploys jar(s) live on $SshTarget." -ForegroundColor Green
     return
 }
 
@@ -463,4 +640,5 @@ if ($uploaded -eq 0) {
     exit 1
 }
 
-Write-Host "Publish complete. $uploaded file(s) uploaded." -ForegroundColor Green
+$deployNote = if ($script:ServerDeploys -gt 0) { " Server updated." } else { "" }
+Write-Host "Publish complete. $uploaded file(s) uploaded.$deployNote" -ForegroundColor Green
