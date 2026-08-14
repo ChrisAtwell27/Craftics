@@ -240,6 +240,7 @@ public class AchievementManager {
         if (tracker.getMaxPierceTargets() >= 3) grant(player, Achievement.FEAT_SKEWER);
         if (tracker.getMaxSweepTargets() >= 4) grant(player, Achievement.FEAT_WHIRLWIND);
         if (tracker.hasExecutionKill()) grant(player, Achievement.FEAT_EXECUTION);
+        if (tracker.hasSuddenDeathWin()) grant(player, Achievement.FEAT_SUDDEN_DEATH);
         if (tracker.getMaxShockwaveTargets() >= 5) grant(player, Achievement.FEAT_SHOCKWAVE);
         if (tracker.getMaxCoralFanTargets() >= 4) grant(player, Achievement.FEAT_CORAL_REEF);
         if (tracker.hasConfusionKill()) grant(player, Achievement.FEAT_MIND_GAMES);

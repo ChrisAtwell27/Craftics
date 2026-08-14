@@ -3,6 +3,8 @@ package com.crackedgames.craftics.combat;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.GridTile;
+import net.minecraft.block.Block;
+import net.minecraft.block.Blocks;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.item.Item;
@@ -2090,9 +2092,11 @@ public class ItemUseHandler {
 
         // Enchanted books need a random stored enchantment applied, otherwise fishing
         // one up hands the player a blank "Enchanted Book" with no enchantment on it.
-        // Reuse the same version-correct helper the event-room rewards use.
+        // Reuse the same version-correct helper the event-room rewards use, but with an
+        // UNSEEDED stream: fishing is repeatable at one run position, so a chapter-seeded
+        // roll here would hand out the same book on every cast.
         ItemStack caught = loot == Items.ENCHANTED_BOOK
-            ? RandomEvents.createRandomEnchantedBook(player)
+            ? RandomEvents.createRandomEnchantedBook(player, new java.util.Random())
             : new ItemStack(loot, count);
         LootDelivery.deliver(player, caught);
         String lootName = caught.getName().getString();
@@ -2830,25 +2834,72 @@ public class ItemUseHandler {
         return ALLY_BUFF_PREFIX + "echo|§5Echo shard activates! You'll return to your start position at end of turn.";
     }
 
-    // --- Brush: excavate random item from sand/gravel tile (1 AP) ---
+    /**
+     * Loose ground the brush can excavate. Everything else refuses, which is what makes
+     * the brush situational rather than a free action on any adjacent tile.
+     */
+    private static final Set<Block> BRUSHABLE_GROUND = Set.of(
+        Blocks.SAND, Blocks.RED_SAND, Blocks.SUSPICIOUS_SAND,
+        Blocks.GRAVEL, Blocks.SUSPICIOUS_GRAVEL
+    );
+
+    /**
+     * The ordinary brush finds. Diamond and the pottery sherds are priced separately in
+     * {@link #useBrush} so their rates hold steady no matter what gets added here.
+     */
+    private static final Item[] BRUSH_COMMON_FINDS = {
+        Items.GOLD_NUGGET, Items.IRON_NUGGET, Items.CLAY_BALL,
+        Items.EMERALD, Items.AMETHYST_SHARD,
+        Items.ARROW, Items.BONE, Items.STRING,
+        Items.FLINT, Items.COAL, Items.BRICK
+    };
+
+    // Weights rather than percentages, so adding a common find renormalises the table on
+    // its own instead of silently stealing from diamond or the sherds. With the eleven
+    // commons above these sum to 1100: diamond 3.00%, sherds 3.00%, each common 8.545%.
+    /** Chance of ANY pottery sherd, split evenly across all of them once the branch is taken. */
+    private static final int BRUSH_SHERD_WEIGHT = 33;
+    private static final int BRUSH_DIAMOND_WEIGHT = 33;
+    private static final int BRUSH_COMMON_WEIGHT = 94;
+
+    // --- Brush: excavate a random find from an adjacent sand/gravel tile (1 AP) ---
     private static String useBrush(ServerPlayerEntity player, GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         GridPos playerPos = arena.getPlayerGridPos();
         int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
         if (dist > 1) return "§cToo far! Stand next to the tile.";
+        // The ground check the old code only claimed to do. gridToBlockPos returns the
+        // standing surface, so the block being brushed is the one below it. Checked before
+        // any durability is spent, matching the reach failure above - a refused brush costs
+        // the player nothing.
+        if (!(player.getEntityWorld() instanceof ServerWorld world)) {
+            return "§cNothing to brush there!";
+        }
+        Block ground = world.getBlockState(arena.gridToBlockPos(targetTile).down()).getBlock();
+        if (!BRUSHABLE_GROUND.contains(ground)) {
+            return "§cNothing to brush there - the brush only works on sand or gravel.";
+        }
         if (stack.getDamage() + 1 >= stack.getMaxDamage()) {
             stack.decrement(1);
         } else {
             stack.setDamage(stack.getDamage() + 1);
         }
         java.util.Random rng = new java.util.Random();
-        Item[] loot = {
-            Items.GOLD_NUGGET, Items.IRON_NUGGET, Items.CLAY_BALL,
-            Items.EMERALD, Items.DIAMOND, Items.AMETHYST_SHARD,
-            Items.ARROW, Items.BONE, Items.STRING,
-            Items.FLINT, Items.COAL, Items.BRICK
-        };
-        Item found = loot[rng.nextInt(loot.length)];
+        int totalWeight = BRUSH_SHERD_WEIGHT + BRUSH_DIAMOND_WEIGHT
+            + BRUSH_COMMON_WEIGHT * BRUSH_COMMON_FINDS.length;
+        int roll = rng.nextInt(totalWeight);
+        Item found;
+        if (roll < BRUSH_SHERD_WEIGHT) {
+            // One shared slice for every sherd, so the table doesn't tilt towards spell
+            // scrolls just because vanilla keeps adding more of them.
+            List<Item> sherds = new java.util.ArrayList<>(PotterySherdSpells.POTTERY_SHERDS);
+            found = sherds.get(rng.nextInt(sherds.size()));
+        } else if (roll < BRUSH_SHERD_WEIGHT + BRUSH_DIAMOND_WEIGHT) {
+            found = Items.DIAMOND;
+        } else {
+            int commonRoll = roll - BRUSH_SHERD_WEIGHT - BRUSH_DIAMOND_WEIGHT;
+            found = BRUSH_COMMON_FINDS[commonRoll / BRUSH_COMMON_WEIGHT];
+        }
         LootDelivery.deliver(player, new ItemStack(found, 1));
         String name = new ItemStack(found).getName().getString();
         return "§eBrushed up: " + name + "!";

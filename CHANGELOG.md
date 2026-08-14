@@ -1,4 +1,66 @@
 ﻿Changelog
+
+0.3.8.3
+
+Sudden Death
+
+- A non-boss fight that runs past round 20 enters SUDDEN DEATH: full-screen title, a horn and a wither shriek, and every enemy gains +3 speed and +2 attack. It is aimed at the fight that should have ended ten rounds ago - somebody parked in a nearly-cleared arena farming it, or whittling a room down from maximum range with nothing able to reach them
+- Reinforcements arriving after it triggers are angry too. A summon that turned up calmer than the mob beside it would make stalling for reinforcements a strategy, which is the exact behaviour this exists to discourage
+- Boss fights and raids are exempt. A boss is SUPPOSED to be long - several have phase transitions that only arrive after a while, and the Hollow King's whole loop is built on spending turns mining his pillars rather than hitting him. A clock on that would punish playing the fight the way it was designed
+- New achievement, **Overtime**, for winning a fight after Sudden Death has set in
+
+Seasons (groundwork, invisible)
+
+- Every weapon, piece of armour and battle-usable item is now quietly stamped with when it came into a player's hands. Nothing displays it and nothing reads it yet
+- It exists now because it is the one piece that cannot be added later: an item that already exists has no record of when it arrived, so stamping has to start before the first season boundary or everything already in circulation is unattributable
+- Stamped by a periodic inventory sweep rather than at the point items are granted. Items arrive from loot, crafting, trading, the auction house, dropped stacks, admin commands and other mods, and a stamp applied at only some of those would be worse than none - the gaps would be indistinguishable from legitimately unstamped items
+
+Teleport Logging
+
+- Every dimension change is logged now, both halves of it. `[teleport] X attempting <from> -> <to>` goes in before the move, and `[teleport] X arrived <from> -> <to>` comes from the game's own world-change hook after it
+- The pairing is the diagnostic. A cross-dimension teleport that never completes IS a ghost lobby, and it leaves an "attempting" line with no "arrived" to match it. That failure has now been three separate bugs wearing the same symptoms, and each one took a report and a guess to find; this makes it something you can see in a log instead
+- The attempting line names the system that asked for the move - a victory, a raid ending, a disconnect cleanup - rather than the shared helper they all funnel through, which the log would already know
+- The arrival line comes from the game rather than from this mod, so it also catches moves Craftics never asked for: a vanilla portal, an operator, another mod, a respawn
+- Islands log when they unload and when they are deleted, with a warning if a delete is refused because somebody is still inside. An island unloading in the same breath as somebody leaving it is the shape of half these reports, and the two lines sitting next to each other is what makes that visible rather than theoretical
+- `/debug` prints the tail of this log in game, so a player can read it back without finding the file
+
+Dying to Something That Isn't the Fight
+
+- Fixed the void arena. Being killed by anything outside the fight - `/kill`, an operator, a plugin, another mod - left the run still running with nobody in it. Craftics never lets its own damage kill you outright (its death path clamps your health and runs the game-over sequence itself), so a real vanilla death mid-fight always means something external did it, and nothing was telling the fight about it
+- What that looked like: a long "loading terrain", then an arena of pure void tiles with the PREVIOUS fight's enemies still listed in the sidebar - you had respawned into an arena whose dimension had already been torn down. `/home` walked you straight back into it, because the mod correctly refuses to send you home mid-fight and the fight still believed it was running
+- An outside death now ends the run the same way a disconnect does and puts you in the lobby. It also recovers anyone already stuck: dying or relogging in a dead arena gets you out instead of back in
+
+Ghost Lobby (attempt #443634564)
+
+- Fixed the ghost lobby for players who leave mid-fight. That detail was the whole clue: leaving mid-fight means logging out INSIDE your island dimension, so rejoining is a cross-dimension move - and the join handler was performing that teleport while the login handshake was still settling. It is the same race as tearing an island down under a teleport in flight: the server puts you at the destination and starts sending you sound and player events, while the dimension change that would have sent you chunks and entity tracking never completes. A void you can hear people walking around in, invisible to everyone, and no command fixes it. Anyone who logged out in the lobby took the same-dimension path and was always fine, which is why it looked random
+- The teleport now waits for login to finish, and re-checks the player first, since they can drop again inside that window
+- The earlier spectator and island-unload fixes were both real and both stay. This was a third cause wearing the same symptoms
+
+Debug Command
+
+- `/debug` is now a diagnostic dump rather than a second door to the report form: the last 20 lines of the log, colour-coded so errors and warnings stand out, then the dimension you are in and your position. Purely local, nothing uploaded, nothing shown to anyone else
+- Position and dimension print LAST on purpose, because chat scrolls and the last thing printed is the thing still on screen. "Which dimension am I actually in" is the single most useful line for the kind of bug this mod produces - runtime dimensions that look identical to the lobby from the inside
+- Filing a report is `/bugreport` (or `/bug`), which still opens the form. The two are kept apart so neither has a second, surprising behaviour hiding behind an argument
+
+Brushes
+
+- The brush only digs sand and gravel now. It always claimed to - the note above it read "excavate random item from sand/gravel tile" - but nothing ever checked the block, so any tile you stood next to would do, including the one under your own feet. That is most of why it felt like free money: a 1 AP action with no situation attached to it, usable every turn of every fight regardless of where you were standing
+- Sand, red sand, gravel and both suspicious variants all count. A refused brush costs you nothing, because the ground check runs before any durability is spent, the same way the reach check above it already did
+- Diamond drops from 8.33% to 3%. The old table was a flat twelve-way split, which made the rarest thing in it exactly as likely as brick
+- Pottery sherds join the pool at 3% for all of them put together, not 3% each. There are 23 of them and they are spell scrolls, so a flat 3% apiece would have been 69% of every brush and would have turned the thing into a scroll dispenser instead of nerfing it. One shared slice also means the table stops tilting further every time vanilla ships another sherd
+- The eleven ordinary finds split the remaining 94%, at 8.545% apiece. The table is written as weights rather than percentages now, so adding a find renormalises the whole thing instead of quietly taking the difference out of diamond and the sherds
+
+Infinite Mode Chapters
+
+- Infinite mode now runs on a server-wide **chapter seed**. Every player on the server meets the same biomes, arenas, enemy rosters, loot, bosses, events and trader stock at the same run depth, so a score on the board reflects how you played rather than what you happened to roll
+- Combat rolls stay random per player on purpose. Crits and procs are consumed in an order set by what each player does, so two people sharing a seed desync on their first differing move regardless - seeding them would cost the whole combat codebase and buy nothing
+- Chapters rotate on a recurring schedule: `/craftics chapter schedule daily 04:00`, `weekly MONDAY 04:00`, or `monthly 1 04:00`, with `/craftics chapter timezone <zone>` to anchor them. `/craftics chapter rotate` forces one immediately, and `/craftics chapter info` shows the seed, the schedule and the countdown
+- The next rotation is stored as an absolute timestamp, so one that falls while the server is down fires on the next boot instead of being silently skipped
+- Rotation clears the infinite leaderboard and banks its final top ten onto a new permanent **Top Players** board, using championship points (25/18/15/12/10/8/6/4/2/1). Placing well across many chapters is what builds a career standing, rather than one lucky run
+- The infinite board now shows which chapter is running and how long is left in it
+- Campaign levels are untouched and still reroll their layout and mobs on every visit
+
+
 0.3.8.2
 Mobs Acting Out of Turn
 

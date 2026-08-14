@@ -2357,6 +2357,94 @@ public class CombatManager {
         return ce;
     }
 
+    // ── Sudden death ─────────────────────────────────────────────────────────
+
+    /** Rounds an ordinary fight gets before the arena stops being patient. */
+    private static final int SUDDEN_DEATH_ROUND = 20;
+    private static final int SUDDEN_DEATH_SPEED = 3;
+    private static final int SUDDEN_DEATH_ATTACK = 2;
+
+    /** True once this fight has tipped over. Reset with the turn counter each level. */
+    private boolean suddenDeath = false;
+    /** Enemies already given the buff, so reinforcements get it exactly once each. */
+    private final java.util.Set<Integer> suddenDeathBoosted = new java.util.HashSet<>();
+
+    /**
+     * Is this a fight sudden death should leave alone?
+     *
+     * <p>Boss fights are exempt on purpose. A boss is SUPPOSED to be a long fight - several of
+     * them have phase transitions that only arrive after a good while, and the Hollow King's
+     * whole loop is built on spending turns mining his pillars rather than hitting him. Putting
+     * a clock on that would punish playing the fight the way it was designed. Raids are exempt
+     * for the same reason.
+     *
+     * <p>What this is FOR is the ordinary room that should have been over ten rounds ago: a
+     * player parked in a cleared-but-not-quite arena farming it, or one whittling a room down
+     * from maximum range with nothing able to reach them.
+     */
+    private boolean isSuddenDeathExempt() {
+        if (raidActive) return true;
+        if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld
+                && gld.getBiomeTemplate() != null
+                && gld.getBiomeTemplate().isBossLevel(gld.getLevelNumber())) {
+            return true;
+        }
+        for (CombatEntity e : enemies) {
+            if (e.isAlive() && e.isBoss()) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Tip the fight into sudden death once it has run too long, and keep it applied.
+     *
+     * <p>Called every round rather than only on the round it triggers, because enemies arriving
+     * afterwards - a summon, a wave, a Swarm Call - have to arrive already angry. A reinforcement
+     * that turned up calmer than the mob next to it would make waiting for reinforcements a
+     * strategy, which is the exact behaviour this exists to discourage.
+     */
+    private void tickSuddenDeath() {
+        if (!active || isSuddenDeathExempt()) return;
+        if (turnNumber < SUDDEN_DEATH_ROUND) return;
+
+        if (!suddenDeath) {
+            suddenDeath = true;
+            announceSuddenDeath();
+        }
+        int newlyAngry = 0;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            if (!suddenDeathBoosted.add(e.getEntityId())) continue;
+            e.setSpeedBonus(e.getSpeedBonus() + SUDDEN_DEATH_SPEED);
+            e.setAttackBoost(e.getAttackBoost() + SUDDEN_DEATH_ATTACK);
+            newlyAngry++;
+        }
+        if (newlyAngry > 0 && !suddenDeathBoosted.isEmpty()) {
+            sendSync();
+        }
+    }
+
+    /** The moment it lands: title, subtitle, and a sound nobody mistakes for ambience. */
+    private void announceSuddenDeath() {
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            p.networkHandler.sendPacket(
+                new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(10, 50, 20));
+            p.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(
+                Text.literal("§4§lSUDDEN DEATH")));
+            p.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.SubtitleS2CPacket(
+                Text.literal("§cThe arena has run out of patience")));
+            p.getWorld().playSound(null, p.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_WITHER_SPAWN,
+                net.minecraft.sound.SoundCategory.PLAYERS, 0.9f, 0.8f);
+            p.getWorld().playSound(null, p.getBlockPos(),
+                net.minecraft.sound.SoundEvents.EVENT_RAID_HORN.value(),
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.6f);
+        }
+        sendMessage("§4§l☠ SUDDEN DEATH! §r§cRound " + SUDDEN_DEATH_ROUND
+            + " - every enemy gains §f+" + SUDDEN_DEATH_SPEED + " speed§c and §f+"
+            + SUDDEN_DEATH_ATTACK + " attack§c. Finish this.");
+    }
+
     /** Flash "Wave N" across every participant's screen for a moment. */
     private void sendWaveTitle(int wave) {
         for (ServerPlayerEntity p : getAllParticipants()) {
@@ -3433,6 +3521,9 @@ public class CombatManager {
                 p.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), "minecraft:respiration"));
         }
         this.turnNumber = 1;
+        // Sudden death is per fight, and rides the turn counter it is measured against.
+        this.suddenDeath = false;
+        this.suddenDeathBoosted.clear();
         // Don't arm the fall-death check until the arena has had time to finish building.
         this.fallDeathGraceTicks = FALL_DEATH_GRACE_TICKS;
         this.active = true;
@@ -14208,6 +14299,7 @@ public class CombatManager {
 
             turnNumber++;
             achievementTracker.recordTurnCompleted();
+            tickSuddenDeath();
 
             for (CombatEntity e : enemies) {
                 if (e.isAlive() && e.isBackgroundBoss()) {
@@ -26328,6 +26420,10 @@ public class CombatManager {
         // brand new token. The duplicate has to be rejected at the entry point, and phase is
         // the state that says the level is already won.
         if (phase == CombatPhase.LEVEL_COMPLETE) return;
+        // Recorded at the entry point, before anything downstream can reset the fight state:
+        // by the time the feat check runs, suddenDeath has to still be true, and the re-entry
+        // gate above guarantees this line runs exactly once per win.
+        if (suddenDeath) achievementTracker.recordSuddenDeathWin();
 
         // DAILY RAID BOSS: rewards and teardown are entirely our own. The biome victory
         // path below unlocks biomes, advances the run and offers a next level, none of
@@ -27491,11 +27587,53 @@ public class CombatManager {
                 // the cleared-biome count and a boss level rolls the randomized boss.
                 com.crackedgames.craftics.level.InfiniteSpec contInfSpec =
                     InfiniteRunManager.specFor(data, progressionOwner, biome, globalLevel);
+                if (contInfSpec != null) {
+                    // A chapter must present the same roster to everyone at the same run
+                    // depth. This flag is per-island campaign history: it flips enemy
+                    // count from the ramp to the biome's peak, and enemy count also sets
+                    // the loot quantity range, so leaving it in would vary both the
+                    // roster size and the payout between players. RunInviteManager
+                    // already hardcodes false when it starts an infinite biome.
+                    ownerBeatBiomeBoss = false;
+                }
+                // The other two per-island values below are still forwarded, and both are
+                // inert on the infinite path TODAY. Verify that again before relying on it:
+                // the biome roll used to forward branchChoice the same way and it was NOT
+                // inert, which silently put half the server on a differently ordered ladder.
+                //   branchChoice   read once in LevelGenerator, inside the else of
+                //                  `if (infiniteSpec != null)`. Level-to-template mapping
+                //                  (BiomeRegistry.getForLevel) takes no branch argument.
+                //   islandHpScale  feeds only hpBonus, which infinite never reads: enemy HP
+                //                  comes from InfiniteScaling.enemyHp, boss HP from
+                //                  InfiniteScaling.bossHp, passives from mob.baseHp().
+                // If either ever starts affecting infinite content, it has to be neutralized
+                // here the way ownerBeatBiomeBoss is, or determinism breaks without a
+                // compile error to warn anyone.
                 com.crackedgames.craftics.level.LevelDefinition nextLevelDef =
                     com.crackedgames.craftics.level.LevelRegistry.get(globalLevel, branchChoice,
                         islandHpScale, ownerBeatBiomeBoss, contInfSpec);
                 if (nextLevelDef != null) {
+                    // INFINITE MODE: WHICH event fires is content presented before the
+                    // player acts, so everyone at the same run depth must get the same
+                    // one - an ambush is a whole extra fight and a vault is free loot,
+                    // both of which feed score. Only the host carries the run cursor,
+                    // so resolve it through infiniteRunHost the way the trader stock
+                    // does. Outside an infinite run this stays unseeded, as before.
                     java.util.Random eventRng = new java.util.Random();
+                    if (contInfSpec != null) {
+                        String eventHostRef = data.getPlayerData(savedPlayer.getUuid()).infiniteRunHost;
+                        if (eventHostRef != null && !eventHostRef.isEmpty()) {
+                            try {
+                                var eventHost = data.getPlayerData(java.util.UUID.fromString(eventHostRef));
+                                if (eventHost.infiniteActive && !eventHost.infiniteSuspended) {
+                                    eventRng = com.crackedgames.craftics.combat.infinite.ChapterRng.random(
+                                        com.crackedgames.craftics.combat.infinite.ChapterManager.seedOf(data),
+                                        com.crackedgames.craftics.combat.infinite.ChapterRng.SALT_EVENT_PICK,
+                                        eventHost.infiniteBiomesCleared, eventHost.activeBiomeLevelIndex);
+                                }
+                            } catch (IllegalArgumentException ignored) {}
+                        }
+                    }
                     float eventRoll = eventRng.nextFloat();
 
                     // Calculate biome position for difficulty scaling (use active-campaign ordinal, not registry index)
@@ -27589,15 +27727,18 @@ public class CombatManager {
                     // RAID gets first claim on the event slot. A fresh island (raid never
                     // defeated) is under active pillager threat: 75% of rolls are the raid
                     // until the players win one, then it drops to an ordinary event rate.
-                    // Rolled independently of eventRoll so the cumulative windows below are
-                    // untouched either way.
+                    // Rolled as its own draw so the cumulative windows below are untouched
+                    // either way. It comes off the same stream as eventRoll, which in an
+                    // infinite run is the seeded one, so the raid decision is reproducible
+                    // too (the number of draws ahead of it is fixed by conditions that are
+                    // themselves identical for everyone at this depth).
                     boolean raidAlreadyDefeated = data.getPlayerData(
                         data.getEffectiveWorldOwner(savedPlayer.getUuid())).raidDefeated;
                     // Infinite mode should not get the fresh-island raid boost. Keep raid odds
                     // there equal to the normal post-raid baseline so it competes fairly with
                     // the rest of the event pool.
                     float raidChance = (contInfSpec != null || raidAlreadyDefeated) ? 0.06f : 0.75f;
-                    float raidRoll = (float) Math.random();
+                    float raidRoll = eventRng.nextFloat();
 
                     if (skipEvents) {
                         // No event -go straight to next level. Boss levels get a
@@ -28457,7 +28598,22 @@ public class CombatManager {
         // handing you the same Weaponsmith every event. Met traders stay possible, just rarer.
         var metData = com.crackedgames.craftics.world.CrafticsSavedData.get(world);
         var metOwner = metData.getEffectiveWorldOwner(savedPlayer.getUuid());
-        activeTraderOffer = TraderSystem.generateOffer(biomeTier, new java.util.Random(),
+        // Same stock for everyone at the same run depth. Outside an infinite run the
+        // trader stays unseeded, exactly as before.
+        java.util.Random traderRng = new java.util.Random();
+        String traderHostRef = metData.getPlayerData(savedPlayer.getUuid()).infiniteRunHost;
+        if (traderHostRef != null && !traderHostRef.isEmpty()) {
+            try {
+                var traderHost = metData.getPlayerData(java.util.UUID.fromString(traderHostRef));
+                if (traderHost.infiniteActive && !traderHost.infiniteSuspended) {
+                    traderRng = com.crackedgames.craftics.combat.infinite.ChapterRng.random(
+                        com.crackedgames.craftics.combat.infinite.ChapterManager.seedOf(metData),
+                        com.crackedgames.craftics.combat.infinite.ChapterRng.SALT_TRADER,
+                        traderHost.infiniteBiomesCleared, traderHost.activeBiomeLevelIndex);
+                }
+            } catch (IllegalArgumentException ignored) {}
+        }
+        activeTraderOffer = TraderSystem.generateOffer(biomeTier, traderRng,
             metData.getPlayerData(metOwner).metTraders, world);
         activeTraderStock = new int[activeTraderOffer.trades().size()];
         java.util.Arrays.fill(activeTraderStock, 99);

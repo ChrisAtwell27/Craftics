@@ -56,6 +56,7 @@ public enum Achievement {
     FEAT_SHOCKWAVE("Shockwave", "Hit 5+ enemies with a single Mace shockwave", Category.COMBAT),
     FEAT_CORAL_REEF("Coral Reef", "Hit 4+ enemies with a single Coral Fan splash", Category.COMBAT),
     FEAT_MIND_GAMES("Mind Games", "Confuse an enemy into killing another enemy", Category.COMBAT),
+    FEAT_SUDDEN_DEATH("Overtime", "Win a fight after Sudden Death sets in", Category.COMBAT),
     FEAT_CHAIN_STUN("Chain Stun", "Stun the same enemy 3 turns in a row", Category.COMBAT),
     FEAT_GLASS_CANNON("Glass Cannon", "Deal 20+ damage in a single hit", Category.COMBAT),
     FEAT_ARMOR_CRUSH("Armor Crush", "Ignore 5+ defense with a single Cleaving hit", Category.COMBAT),

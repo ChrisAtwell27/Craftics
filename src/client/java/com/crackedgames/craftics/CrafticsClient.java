@@ -113,7 +113,16 @@ public class CrafticsClient implements ClientModInitializer {
         //                      for when you already know what went wrong and do not want a form
         net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback.EVENT.register(
             (dispatcher, registryAccess) -> {
-                for (String name : new String[]{"bugreport", "bug", "debug"}) {
+                // /debug does one thing: read the end of the log and say where you are. It is
+                // the command for the moment someone is describing a problem out loud and
+                // needs to read something back, which is exactly when a report form is no
+                // help. Filing a report is /bugreport (or /bug); the two are kept apart so
+                // neither has a second, surprising behaviour hiding behind an argument.
+                dispatcher.register(
+                    net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal("debug")
+                        .executes(ctx -> { printDebugDump(); return 1; }));
+
+                for (String name : new String[]{"bugreport", "bug"}) {
                     dispatcher.register(
                         net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal(name)
                             .executes(ctx -> {
@@ -1120,6 +1129,85 @@ public class CrafticsClient implements ClientModInitializer {
      * inherits the same safety net, where a failed upload is written to
      * {@code craftics-bugreports/} rather than losing what the player typed.
      */
+    /** Log lines shown by {@code /debug}. Enough to catch a stack trace's head, few enough to
+     *  still be scrollable in chat. */
+    private static final int DEBUG_LOG_LINES = 20;
+    /** Only the tail of latest.log is read. A long session's log runs to megabytes and none of
+     *  it above this matters for "what just happened". */
+    private static final long DEBUG_LOG_TAIL_BYTES = 96 * 1024;
+
+    /**
+     * Dump the end of the log, then where you are, into the player's own chat.
+     *
+     * <p>Purely local - nothing is uploaded and nothing is shown to anyone else. This is the
+     * command for the moment someone is describing a problem out loud and needs to read
+     * something back, which is exactly when opening a report form is useless.
+     *
+     * <p>Position and dimension come LAST on purpose. Chat scrolls, so the thing printed last
+     * is the thing still on screen, and "which dimension am I actually in" is the single most
+     * useful line for the class of bug this mod produces - runtime dimensions that look
+     * identical to the lobby from the inside.
+     */
+    private static void printDebugDump() {
+        var client = net.minecraft.client.MinecraftClient.getInstance();
+        if (client.player == null) return;
+        var chat = client.player;
+
+        chat.sendMessage(net.minecraft.text.Text.literal(
+            "§8§m                    §r §6Craftics debug §8§m                    "), false);
+
+        java.util.List<String> tail = readLogTail();
+        if (tail.isEmpty()) {
+            chat.sendMessage(net.minecraft.text.Text.literal(
+                "§7No log lines available §8(logs/latest.log unreadable)"), false);
+        } else {
+            for (String line : tail) {
+                // Trimmed hard: a single wrapped log line can otherwise fill the whole chat
+                // window and push the position readout - the part actually being asked for -
+                // straight off the top.
+                String shown = line.length() > 160 ? line.substring(0, 157) + "..." : line;
+                String colour = shown.contains("/ERROR") || shown.contains("Exception") ? "§c"
+                    : shown.contains("/WARN") ? "§e" : "§7";
+                chat.sendMessage(net.minecraft.text.Text.literal(colour + shown), false);
+            }
+        }
+
+        String dimension = client.world != null
+            ? client.world.getRegistryKey().getValue().toString() : "unknown";
+        chat.sendMessage(net.minecraft.text.Text.literal(
+            "§6Dimension: §f" + dimension), false);
+        chat.sendMessage(net.minecraft.text.Text.literal(String.format(
+            "§6Position: §f%.1f, %.1f, %.1f", chat.getX(), chat.getY(), chat.getZ())), false);
+        chat.sendMessage(net.minecraft.text.Text.literal(
+            "§8(local only - nothing was sent. Use §7/bug§8 to file a report.)"), false);
+    }
+
+    /** The last {@link #DEBUG_LOG_LINES} lines of latest.log, or empty when it cannot be read. */
+    private static java.util.List<String> readLogTail() {
+        java.nio.file.Path log = net.fabricmc.loader.api.FabricLoader.getInstance()
+            .getGameDir().resolve("logs").resolve("latest.log");
+        if (!java.nio.file.Files.isReadable(log)) return java.util.List.of();
+        try (var channel = java.nio.channels.FileChannel.open(
+                log, java.nio.file.StandardOpenOption.READ)) {
+            long size = channel.size();
+            long from = Math.max(0, size - DEBUG_LOG_TAIL_BYTES);
+            java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocate((int) (size - from));
+            channel.position(from);
+            while (buffer.hasRemaining() && channel.read(buffer) > 0) { /* fill */ }
+            String text = new String(buffer.array(), java.nio.charset.StandardCharsets.UTF_8);
+            String[] lines = text.split("\\R");
+            java.util.List<String> out = new java.util.ArrayList<>();
+            // A partial first line is normal when starting mid-file; skip it.
+            int start = Math.max(from > 0 ? 1 : 0, lines.length - DEBUG_LOG_LINES);
+            for (int i = start; i < lines.length; i++) {
+                if (!lines[i].isBlank()) out.add(lines[i]);
+            }
+            return out;
+        } catch (Exception e) {
+            return java.util.List.of();
+        }
+    }
+
     private static void sendInlineBugReport(int screenshotCount, String description) {
         var client = net.minecraft.client.MinecraftClient.getInstance();
         java.util.function.Consumer<String> say = msg -> {

@@ -243,7 +243,21 @@ public final class HubTeleports {
      *  started, which their CURRENT (in-arena) yaw/pitch would not capture. */
     public static void teleportTo(ServerPlayerEntity p, ServerWorld world,
                                   double x, double y, double z, float yaw, float pitch) {
-        if (p.getServerWorld() != world) {
+        boolean crossDim = p.getServerWorld() != world;
+        // Logged BEFORE the move, and the pairing with the AFTER_PLAYER_CHANGE_WORLD line in
+        // CrafticsMod is the whole point: a cross-dimension teleport that never completes is
+        // exactly what a ghost lobby is, and it leaves this line in the log with no arrival to
+        // match it. An "attempting" with no "arrived" names the bug on sight.
+        if (crossDim) {
+            CrafticsMod.LOGGER.info("[teleport] {} attempting {} -> {} at {}, {}, {} (called from {})",
+                p.getName().getString(), dimensionNameOf(p.getServerWorld()), dimensionNameOf(world),
+                (int) x, (int) y, (int) z, callerOf());
+        } else {
+            CrafticsMod.LOGGER.debug("[teleport] {} within {} to {}, {}, {} (called from {})",
+                p.getName().getString(), dimensionNameOf(world), (int) x, (int) y, (int) z, callerOf());
+        }
+
+        if (crossDim) {
             //? if <=1.21.1 {
             p.teleport(world, x, y, z,
                 java.util.Collections.emptySet(), yaw, pitch);
@@ -256,6 +270,31 @@ public final class HubTeleports {
             p.setYaw(yaw);
             p.setPitch(pitch);
         }
+    }
+
+    /** Short dimension label for logs: {@code craftics:island/<uuid>} rather than the full
+     *  registry-key toString, which buries the useful part in wrapper text. */
+    public static String dimensionNameOf(net.minecraft.world.World world) {
+        return world == null ? "null" : world.getRegistryKey().getValue().toString();
+    }
+
+    /**
+     * The Craftics method that asked for this teleport.
+     *
+     * <p>Walks past this class's own frames to the first caller outside it, because every
+     * teleport funnels through here and "HubTeleports.teleportTo" in every line would be the
+     * one piece of information the log already has. Which system moved the player - a victory,
+     * a raid ending, a disconnect cleanup - is the part worth knowing.
+     */
+    private static String callerOf() {
+        for (StackTraceElement frame : Thread.currentThread().getStackTrace()) {
+            String cls = frame.getClassName();
+            if (!cls.startsWith("com.crackedgames.craftics")) continue;
+            if (cls.equals(HubTeleports.class.getName())) continue;
+            int dot = cls.lastIndexOf('.');
+            return cls.substring(dot + 1) + "." + frame.getMethodName() + ":" + frame.getLineNumber();
+        }
+        return "unknown";
     }
 
     /** While a passenger of a combat mount/boat, requestTeleport silently keeps

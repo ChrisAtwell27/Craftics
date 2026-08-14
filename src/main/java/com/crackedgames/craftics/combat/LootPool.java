@@ -39,10 +39,19 @@ public class LootPool {
      * @param maxTotal maximum total items across all types (e.g. 6)
      */
     public List<ItemStack> roll(int minTypes, int maxTypes, int minTotal, int maxTotal) {
+        return roll(minTypes, maxTypes, minTotal, maxTotal, RAND);
+    }
+
+    /**
+     * As above, but rolling from a caller-supplied source. Infinite mode passes a
+     * chapter-derived Random so every player earns the same loot at the same run depth;
+     * everything else keeps using the shared unseeded one.
+     */
+    public List<ItemStack> roll(int minTypes, int maxTypes, int minTotal, int maxTotal, Random rng) {
         if (entries.isEmpty()) return List.of();
 
         // Pick how many distinct types
-        int numTypes = minTypes + RAND.nextInt(maxTypes - minTypes + 1);
+        int numTypes = minTypes + rng.nextInt(maxTypes - minTypes + 1);
         numTypes = Math.min(numTypes, entries.size());
 
         // Pick which types (weighted random, no duplicates)
@@ -51,7 +60,7 @@ public class LootPool {
         int poolWeight = totalWeight;
 
         for (int i = 0; i < numTypes && !pool.isEmpty(); i++) {
-            int r = RAND.nextInt(poolWeight);
+            int r = rng.nextInt(poolWeight);
             int cumulative = 0;
             for (int j = 0; j < pool.size(); j++) {
                 cumulative += pool.get(j).weight;
@@ -67,7 +76,7 @@ public class LootPool {
         if (chosen.isEmpty()) return List.of();
 
         // Pick total item count
-        int totalItems = minTotal + RAND.nextInt(maxTotal - minTotal + 1);
+        int totalItems = minTotal + rng.nextInt(maxTotal - minTotal + 1);
 
         // Distribute items among chosen types
         List<ItemStack> result = new ArrayList<>();
@@ -78,7 +87,7 @@ public class LootPool {
             if (i == chosen.size() - 1) {
                 share = remaining; // last type gets whatever's left
             } else {
-                share = 1 + RAND.nextInt(Math.max(1, remaining - (chosen.size() - i - 1)));
+                share = 1 + rng.nextInt(Math.max(1, remaining - (chosen.size() - i - 1)));
                 share = Math.min(share, remaining);
             }
             // Cap to item's max stack size. Without this, an unstackable item

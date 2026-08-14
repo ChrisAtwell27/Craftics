@@ -112,8 +112,16 @@ public class LevelGenerator {
         }
         int biomeIndex = biome.getBiomeLevelIndex(levelNumber); // 0-based within biome
         boolean isBoss = biome.isBossLevel(levelNumber);
-        // Seed with nanoTime so each visit gets different mobs/positions
-        Random rand = new Random(System.nanoTime() ^ (levelNumber * 31L + biome.biomeId.hashCode()));
+        // Campaign levels reroll on every visit, by design. Infinite levels derive from
+        // the chapter seed instead, so every player on the server meets the same roster
+        // in the same positions at the same run depth - which is what makes the chapter
+        // leaderboard a comparison of skill rather than of luck.
+        Random rand = infiniteSpec != null
+            ? com.crackedgames.craftics.combat.infinite.ChapterRng.random(
+                infiniteSpec.chapterSeed(),
+                com.crackedgames.craftics.combat.infinite.ChapterRng.SALT_LEVEL,
+                infiniteSpec.virtualOrdinal(), biomeIndex)
+            : new Random(System.nanoTime() ^ (levelNumber * 31L + biome.biomeId.hashCode()));
 
         // +4 extra for ArenaBuilder's edge carving
         int width = biome.baseWidth + biomeIndex * biome.widthGrowth + 4;
@@ -146,9 +154,16 @@ public class LevelGenerator {
         int lootMaxTypes = 2 + biomeIndex / 2;
         int lootMinTotal = (int) Math.round((2 + biomeIndex) * enemyRewardMult);
         int lootMaxTotal = (int) Math.round((4 + biomeIndex * 2) * enemyRewardMult);
+        Random lootRng = infiniteSpec != null
+            ? com.crackedgames.craftics.combat.infinite.ChapterRng.random(
+                infiniteSpec.chapterSeed(),
+                com.crackedgames.craftics.combat.infinite.ChapterRng.SALT_LOOT,
+                infiniteSpec.virtualOrdinal(), biomeIndex)
+            : new Random();
         List<ItemStack> loot = biome.buildLootPool().roll(
             Math.min(lootMinTypes, 3), Math.min(lootMaxTypes, 3),
-            (int)(Math.min(lootMinTotal, 8) * lootMult), (int)(Math.min(lootMaxTotal, 10) * lootMult)
+            (int)(Math.min(lootMinTotal, 8) * lootMult), (int)(Math.min(lootMaxTotal, 10) * lootMult),
+            lootRng
         );
 
         GeneratedLevelDefinition levelDef = new GeneratedLevelDefinition(

@@ -407,7 +407,20 @@ public class ArenaBuilder {
         sweepDroppedItems(world, origin, w, h);
 
         int ox = origin.getX(), oy = origin.getY(), oz = origin.getZ();
-        Random rng = new Random(System.nanoTime() ^ (level * 31L + ox + oz * 17L));
+
+        // Infinite arenas derive from the chapter seed. Note what is NOT in the mix:
+        // ox/oz (the arena slot origin) used to be, and had to go - slot origins differ
+        // per island, so keeping them would hand two players on the same chapter and the
+        // same run depth visibly different arenas, which is the whole thing this is
+        // meant to prevent. Campaign arenas keep the old origin-and-nanoTime seed.
+        com.crackedgames.craftics.level.InfiniteSpec arenaSpec =
+            (levelDef instanceof GeneratedLevelDefinition seedSrc) ? seedSrc.getInfiniteSpec() : null;
+        Random rng = arenaSpec != null
+            ? com.crackedgames.craftics.combat.infinite.ChapterRng.random(
+                arenaSpec.chapterSeed(),
+                com.crackedgames.craftics.combat.infinite.ChapterRng.SALT_ARENA,
+                arenaSpec.virtualOrdinal(), level)
+            : new Random(System.nanoTime() ^ (level * 31L + ox + oz * 17L));
 
         // Resolve biome for schematic lookup + environment theming
         String biomeId = "plains";

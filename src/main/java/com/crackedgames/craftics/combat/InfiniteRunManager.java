@@ -4,6 +4,7 @@ import com.crackedgames.craftics.CrafticsMod;
 import com.crackedgames.craftics.combat.ai.AIRegistry;
 import com.crackedgames.craftics.combat.ai.boss.InfiniteAbilityPool;
 import com.crackedgames.craftics.combat.ai.boss.InfiniteBossAI;
+import com.crackedgames.craftics.combat.infinite.ChapterPlacement;
 import com.crackedgames.craftics.level.BiomeTemplate;
 import com.crackedgames.craftics.level.InfiniteSpec;
 import com.crackedgames.craftics.network.PlayerStatsSyncPayload;
@@ -95,8 +96,6 @@ public final class InfiniteRunManager {
     /** Extra move + extra action-per-turn every this many cleared biomes. */
     private static final int ESCALATION_INTERVAL = 10;
     private static final int BASE_MOVES = 4;
-
-    private static final Random RNG = new Random();
 
     /**
      * Participants who have been OFFERED the run-start class selection and haven't answered
@@ -199,6 +198,9 @@ public final class InfiniteRunManager {
         for (ServerPlayerEntity member : participants) {
             CrafticsSavedData.PlayerData pd = data.getPlayerData(member.getUuid());
             if (total > pd.highestInfiniteScore) pd.highestInfiniteScore = total;
+            // highestInfiniteScore is chapter-scoped and zeroes on rotation, so the
+            // lifetime peak needs its own home or it is lost at the boundary.
+            if (total > pd.allTimeInfiniteScore) pd.allTimeInfiniteScore = total;
         }
         data.markDirty();
         return total;
@@ -228,15 +230,21 @@ public final class InfiniteRunManager {
         // NORMAL biome run must not have infinite scaling bleed into it.
         if (!host.infiniteActive || host.infiniteSuspended) return null;
         int ordinal = Math.max(0, host.infiniteBiomesCleared);
+        long chapterSeed = com.crackedgames.craftics.combat.infinite.ChapterManager.seedOf(data);
         if (biome == null || !biome.isBossLevel(globalLevel)) {
-            return InfiniteSpec.forLevel(ordinal);
+            return InfiniteSpec.forLevel(chapterSeed, ordinal);
         }
         int moves = BASE_MOVES + host.infiniteBiomesCleared / ESCALATION_INTERVAL;
         int actionsPerTurn = 1 + host.infiniteBiomesCleared / ESCALATION_INTERVAL;
-        String bossType = BOSS_MOB_POOL[RNG.nextInt(BOSS_MOB_POOL.length)];
-        String bossName = generateBossName(RNG);
-        List<String> abilities = InfiniteAbilityPool.rollIds(RNG, moves);
-        return new InfiniteSpec(ordinal, bossType, bossName, abilities, actionsPerTurn);
+        // Everyone meets the same boss, with the same name and the same movepool, at the
+        // same run depth. Derived from the ordinal alone (not the biome id) because the
+        // biome at this depth is itself already seed-determined.
+        Random bossRng = com.crackedgames.craftics.combat.infinite.ChapterRng.random(
+            chapterSeed, com.crackedgames.craftics.combat.infinite.ChapterRng.SALT_BOSS, ordinal);
+        String bossType = BOSS_MOB_POOL[bossRng.nextInt(BOSS_MOB_POOL.length)];
+        String bossName = generateBossName(bossRng);
+        List<String> abilities = InfiniteAbilityPool.rollIds(bossRng, moves);
+        return new InfiniteSpec(chapterSeed, ordinal, bossType, bossName, abilities, actionsPerTurn);
     }
 
     // ─── Run start ─────────────────────────────────────────────────────────────
@@ -439,7 +447,9 @@ public final class InfiniteRunManager {
         }
 
         // Completely random next realm (just never the one that was cleared).
-        String next = rollNextBiome(host.activeBiomeId, Math.max(0, host.branchChoice));
+        String next = rollNextBiome(
+            com.crackedgames.craftics.combat.infinite.ChapterManager.seedOf(data),
+            cleared, host.activeBiomeId);
         host.startBiomeRun(next);
 
         // Every ESCALATION_INTERVAL clears the bosses grow crueler - call it out.
@@ -921,7 +931,16 @@ public final class InfiniteRunManager {
         }
         rows.sort((a, b) -> Integer.compare((int) b[1], (int) a[1]));
 
-        viewer.sendMessage(Text.literal("§5§l∞ ═══ INFINITE MODE - HALL OF LEGENDS ═══ ∞"), false);
+        CrafticsSavedData.PlayerData self = data.getPlayerData(viewer.getUuid());
+        long untilRotation = com.crackedgames.craftics.combat.infinite.ChapterManager
+            .millisUntilRotation(data);
+        viewer.sendMessage(Text.literal("§5§l∞ ═══ INFINITE MODE - CHAPTER "
+            + data.chapterNumber + " ═══ ∞"), false);
+        if (untilRotation != Long.MAX_VALUE) {
+            viewer.sendMessage(Text.literal("§7Resets in §f"
+                + com.crackedgames.craftics.combat.infinite.ChapterSchedule
+                    .formatCountdown(untilRotation)), false);
+        }
         if (rows.isEmpty()) {
             viewer.sendMessage(Text.literal("§7No runs recorded yet. Be the first!"), false);
             return;
@@ -936,8 +955,14 @@ public final class InfiniteRunManager {
             viewer.sendMessage(Text.literal(" " + medal + " §f" + rows.get(i)[0]
                 + " §7- §5" + rows.get(i)[1] + " pts"), false);
         }
-        int own = data.getPlayerData(viewer.getUuid()).highestInfiniteScore;
-        viewer.sendMessage(Text.literal("§7Your best: §5" + own + " pts"), false);
+        viewer.sendMessage(Text.literal("§7This chapter: §5" + self.highestInfiniteScore
+            + " pts §8| §7all time: §6" + self.allTimeInfiniteScore), false);
+        if (self.chaptersPlaced > 0) {
+            viewer.sendMessage(Text.literal("§7Career: §6" + self.chapterPlacementPoints
+                + " pts §7from §f" + self.chaptersPlaced + "§7 chapter"
+                + (self.chaptersPlaced == 1 ? "" : "s")
+                + " §8(best: " + ChapterPlacement.ordinal(self.bestChapterPlacement) + ")"), false);
+        }
     }
 
     // ─── Boss names ────────────────────────────────────────────────────────────
@@ -977,14 +1002,27 @@ public final class InfiniteRunManager {
 
     // ─── Helpers ───────────────────────────────────────────────────────────────
 
-    /** A random campaign biome different from the one just cleared. */
-    private static String rollNextBiome(String currentBiomeId, int branchChoice) {
+    /** The next realm: a random campaign biome, never the one just cleared. Derived from
+     *  the chapter seed and the run depth, so every party walks the same realm order. */
+    private static String rollNextBiome(long chapterSeed, int biomesCleared,
+                                        String currentBiomeId) {
+        // Branch 0, always, on purpose. Do NOT put the host's branchChoice back here.
+        // branchChoice is a per-player value picked at random when their island is
+        // created, and orderedBiomeIds returns the SAME SET of biomes for branch 0 and
+        // branch 1 - only the ORDER differs. Since the pick below is an index into that
+        // list, feeding the host's branch made the same seed at the same depth select a
+        // different biome for roughly half the server, which is exactly what a chapter
+        // exists to prevent. Fixing the order costs nothing because no biome is gained
+        // or lost by it.
         List<String> ids = new ArrayList<>(
-            com.crackedgames.craftics.level.campaign.CampaignManager.orderedBiomeIds(branchChoice));
+            com.crackedgames.craftics.level.campaign.CampaignManager.orderedBiomeIds(0));
         ids.remove(currentBiomeId);
         if (ids.isEmpty()) return currentBiomeId == null || currentBiomeId.isEmpty()
             ? STARTING_BIOME : currentBiomeId;
-        return ids.get(RNG.nextInt(ids.size()));
+        Random rng = com.crackedgames.craftics.combat.infinite.ChapterRng.random(
+            chapterSeed, com.crackedgames.craftics.combat.infinite.ChapterRng.SALT_BIOME,
+            biomesCleared);
+        return ids.get(rng.nextInt(ids.size()));
     }
 
     /** Push the run-scoped level/stats to the client HUD. */

@@ -78,6 +78,10 @@ public final class IslandDimensions {
         if (handle == null) return false;
         ServerWorld w = handle.asWorld();
         if (w != null && !w.getPlayers().isEmpty()) return false;
+        // Logged next to the teleport lines on purpose: an island unloading in the same breath
+        // as somebody leaving it is the shape of half the ghost-lobby reports, and the two log
+        // lines sitting adjacent is what makes that visible instead of theoretical.
+        com.crackedgames.craftics.CrafticsMod.LOGGER.info("[dimension] unloading island {} (empty)", dimensionIdOf(owner));
         handle.unload();
         HANDLES.remove(owner);
         return true;
@@ -97,7 +101,12 @@ public final class IslandDimensions {
         }
         if (handle == null) return;
         ServerWorld w = handle.asWorld();
-        if (w != null && !w.getPlayers().isEmpty()) return;
+        if (w != null && !w.getPlayers().isEmpty()) {
+            com.crackedgames.craftics.CrafticsMod.LOGGER.warn("[dimension] refusing to delete island {} - {} player(s) "
+                + "still inside", dimensionIdOf(owner), w.getPlayers().size());
+            return;
+        }
+        com.crackedgames.craftics.CrafticsMod.LOGGER.info("[dimension] DELETING island {} from disk", dimensionIdOf(owner));
         handle.delete();
         HANDLES.remove(owner);
     }

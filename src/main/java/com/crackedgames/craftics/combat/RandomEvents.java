@@ -15,7 +15,7 @@ public class RandomEvents {
     // ── Shrine of Fortune ──
     // Player spends emeralds to gamble for rewards
     public static String handleShrine(ServerPlayerEntity player, com.crackedgames.craftics.world.CrafticsSavedData.PlayerData pd) {
-        Random rng = new Random();
+        Random rng = rngFor(player, 1);
         int cost = 3 + rng.nextInt(3); // 3-5 emeralds
 
         if (pd.emeralds < cost) {
@@ -98,7 +98,7 @@ public class RandomEvents {
         player.getInventory().getStack(foodSlot).decrement(1);
 
         // Give reward
-        Random rng = new Random();
+        Random rng = rngFor(player, 2);
         ItemStack reward;
         int roll = rng.nextInt(100);
 
@@ -118,7 +118,7 @@ public class RandomEvents {
         } else if (roll < 90) {
             reward = switch (rng.nextInt(3)) {
                 case 0 -> new ItemStack(Items.SADDLE, 1);
-                case 1 -> createRandomEnchantedBook(player);
+                case 1 -> createRandomEnchantedBook(player, rngFor(player, 4));
                 default -> new ItemStack(Items.NAME_TAG, 1);
             };
         } else {
@@ -136,7 +136,7 @@ public class RandomEvents {
     // ── Suspicious Block ──
     // Player brushes suspicious sand/gravel for a 75% chance at a random pottery sherd
     public static String handleSuspiciousBlock(ServerPlayerEntity player) {
-        Random rng = new Random();
+        Random rng = rngFor(player, 3);
         boolean isSand = rng.nextBoolean();
         String blockName = isSand ? "Suspicious Sand" : "Suspicious Gravel";
 
@@ -215,10 +215,53 @@ public class RandomEvents {
         return handleSuspiciousBlock(player);
     }
 
+    /**
+     * The RNG for one event roll.
+     *
+     * <p>In an infinite run this derives from the chapter seed and the party's position
+     * in the run, so every player meets the same event with the same outcome at the same
+     * depth. Outside a run (campaign play) it stays unseeded, which is the existing
+     * behaviour and the right one there.
+     *
+     * <p>The depth is read from the RUN HOST's record, not the caller's. A party
+     * member's own PlayerData does not carry the run cursor - only the host's does - so
+     * keying off the caller would desync every non-host in the party.
+     *
+     * @param salt distinguishes the events from each other, so two different events at
+     *             the same run position do not roll identical numbers
+     */
+    private static Random rngFor(ServerPlayerEntity player, int salt) {
+        if (!(player.getEntityWorld() instanceof net.minecraft.server.world.ServerWorld world)) {
+            return new Random();
+        }
+        var data = com.crackedgames.craftics.world.CrafticsSavedData.get(world);
+        var self = data.getPlayerData(player.getUuid());
+        String hostRef = self.infiniteRunHost;
+        if (hostRef == null || hostRef.isEmpty()) return new Random();
+        com.crackedgames.craftics.world.CrafticsSavedData.PlayerData host;
+        try {
+            host = data.getPlayerData(java.util.UUID.fromString(hostRef));
+        } catch (IllegalArgumentException e) {
+            return new Random();
+        }
+        if (!host.infiniteActive || host.infiniteSuspended) return new Random();
+        return com.crackedgames.craftics.combat.infinite.ChapterRng.random(
+            com.crackedgames.craftics.combat.infinite.ChapterManager.seedOf(data),
+            com.crackedgames.craftics.combat.infinite.ChapterRng.SALT_EVENT,
+            host.infiniteBiomesCleared, host.activeBiomeLevelIndex, salt);
+    }
+
     /** Create an enchanted book with a random enchantment from the full registry.
      *  Package-private so the fishing-rod loot path ({@link ItemUseHandler}) reuses
-     *  the same version-correct stored-enchantment logic instead of duplicating it. */
-    static ItemStack createRandomEnchantedBook(ServerPlayerEntity player) {
+     *  the same version-correct stored-enchantment logic instead of duplicating it.
+     *
+     *  <p>The caller supplies the stream on purpose. A between-level event reward is
+     *  content presented once at a fixed run position, so it passes the seeded
+     *  {@code rngFor} stream and everyone at that depth gets the same book. Fishing is a
+     *  repeatable action at the SAME run position, so it passes a plain {@link Random}
+     *  and keeps rerolling. Seeding it centrally made every book fished on a level
+     *  byte-identical, which turned fishing into a deterministic farm. */
+    static ItemStack createRandomEnchantedBook(ServerPlayerEntity player, Random rng) {
         net.minecraft.server.world.ServerWorld world = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
         //? if <=1.21.1 {
         var registry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
@@ -227,7 +270,6 @@ public class RandomEvents {
         *///?}
         var entries = registry.streamEntries().toList();
         if (entries.isEmpty()) return new ItemStack(Items.ENCHANTED_BOOK, 1);
-        Random rng = new Random();
         var entry = entries.get(rng.nextInt(entries.size()));
         int level = 1 + rng.nextInt(entry.value().getMaxLevel());
         ItemStack book = new ItemStack(Items.ENCHANTED_BOOK, 1);

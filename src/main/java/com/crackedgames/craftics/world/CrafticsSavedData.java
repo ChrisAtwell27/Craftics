@@ -26,6 +26,34 @@ public class CrafticsSavedData extends PersistentState {
     /** Daily raid-boss schedule + rotation state; see RaidBossState for the format. */
     public String raidBossState = "";
 
+    // === Infinite mode chapters ===
+    // A chapter is the window during which the whole server plays the SAME infinite
+    // mode. The seed fixes every content roll (see ChapterRng); rotation swaps it,
+    // resets the chapter board and banks placements onto the permanent one.
+    //
+    // NOTE: "chapter" here is unrelated to "season" (SeasonStamp / island resets).
+    // The two rotate independently and must not be conflated.
+
+    /** Current chapter's content seed. 0 until the first rotation rolls one. */
+    public long chapterSeed = 0L;
+    /** Increments on every rotation. Displayed on the board as "CHAPTER n". */
+    public int chapterNumber = 1;
+    /** Epoch millis the current chapter began. */
+    public long chapterStartedAt = 0L;
+    /**
+     * Epoch millis of the next scheduled rotation, or 0 when rotation is manual only.
+     *
+     * <p>Stored ABSOLUTE rather than recomputed from the rule on demand. A rotation
+     * whose moment passes while the server is offline then fires on the next boot
+     * instead of being silently skipped, which is what a recomputed-on-demand next
+     * boundary would do.
+     */
+    public long nextRotationAt = 0L;
+    /** Serialized {@link com.crackedgames.craftics.combat.infinite.ChapterSchedule} rule. */
+    public String rotationRule = "";
+    /** Zone the rule's wall-clock times are read in. Empty = the server's default zone. */
+    public String rotationZone = "";
+
     private int nextWorldSlot = 0;
 
     /** Custom lobby spawn (root-level, shared across all players). Y=Integer.MIN_VALUE sentinel = unset,
@@ -178,6 +206,21 @@ public class CrafticsSavedData extends PersistentState {
         public String infiniteHostRef = "";
         /** Personal best infinite POINT score (see {@link #infiniteScore}), across all runs. */
         public int highestInfiniteScore = 0;
+        /**
+         * Career championship points from chapter finishes. Drives the Top Players
+         * board and is NEVER reset - not by rotation, not by island deletion.
+         */
+        public int chapterPlacementPoints = 0;
+        /** How many chapters this player finished inside the banked top ten. */
+        public int chaptersPlaced = 0;
+        /** Best chapter finish ever, 1-indexed. 0 = never placed. */
+        public int bestChapterPlacement = 0;
+        /**
+         * Highest infinite score ever, across all chapters. A personal stat only, not a
+         * board. Exists so a chapter reset cannot make a player's lifetime peak
+         * unrecoverable, since highestInfiniteScore is now chapter-scoped and zeroes.
+         */
+        public int allTimeInfiniteScore = 0;
         /** On each PARTICIPANT's record: UUID of the run host they joined ("" = none). */
         public String infiniteRunHost = "";
         /** True while this participant's pre-run inventory + progression are stashed. */
@@ -517,6 +560,10 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putString("infiniteParticipants", infiniteParticipants);
             nbt.putString("infiniteHostRef", infiniteHostRef);
             nbt.putInt("highestInfiniteScore", highestInfiniteScore);
+            nbt.putInt("chapterPlacementPoints", chapterPlacementPoints);
+            nbt.putInt("chaptersPlaced", chaptersPlaced);
+            nbt.putInt("bestChapterPlacement", bestChapterPlacement);
+            nbt.putInt("allTimeInfiniteScore", allTimeInfiniteScore);
             nbt.putString("infiniteRunHost", infiniteRunHost);
             nbt.putBoolean("infiniteStashActive", infiniteStashActive);
             nbt.put("infiniteStashInventory", infiniteStashInventory.copy());
@@ -626,6 +673,10 @@ public class CrafticsSavedData extends PersistentState {
             pd.infiniteParticipants = nbt.contains("infiniteParticipants") ? nbt.getString("infiniteParticipants") : "";
             pd.infiniteHostRef = nbt.contains("infiniteHostRef") ? nbt.getString("infiniteHostRef") : "";
             pd.highestInfiniteScore = nbt.contains("highestInfiniteScore") ? nbt.getInt("highestInfiniteScore") : 0;
+            pd.chapterPlacementPoints = nbt.contains("chapterPlacementPoints") ? nbt.getInt("chapterPlacementPoints") : 0;
+            pd.chaptersPlaced = nbt.contains("chaptersPlaced") ? nbt.getInt("chaptersPlaced") : 0;
+            pd.bestChapterPlacement = nbt.contains("bestChapterPlacement") ? nbt.getInt("bestChapterPlacement") : 0;
+            pd.allTimeInfiniteScore = nbt.contains("allTimeInfiniteScore") ? nbt.getInt("allTimeInfiniteScore") : 0;
             pd.infiniteRunHost = nbt.contains("infiniteRunHost") ? nbt.getString("infiniteRunHost") : "";
             pd.infiniteStashActive = nbt.contains("infiniteStashActive") && nbt.getBoolean("infiniteStashActive");
             if (nbt.contains("infiniteStashInventory")) {
@@ -725,15 +776,21 @@ public class CrafticsSavedData extends PersistentState {
             pd.infiniteParticipants = nbt.getString("infiniteParticipants", "");
             pd.infiniteHostRef = nbt.getString("infiniteHostRef", "");
             pd.highestInfiniteScore = nbt.getInt("highestInfiniteScore", 0);
+            pd.chapterPlacementPoints = nbt.getInt("chapterPlacementPoints", 0);
+            pd.chaptersPlaced = nbt.getInt("chaptersPlaced", 0);
+            pd.bestChapterPlacement = nbt.getInt("bestChapterPlacement", 0);
+            pd.allTimeInfiniteScore = nbt.getInt("allTimeInfiniteScore", 0);
             pd.infiniteRunHost = nbt.getString("infiniteRunHost", "");
             pd.infiniteStashActive = nbt.getBoolean("infiniteStashActive", false);
             pd.infiniteStashInventory = nbt.getListOrEmpty("infiniteStashInventory");
             pd.infiniteStashSelectedSlot = nbt.getInt("infiniteStashSelectedSlot", 0);
             pd.infiniteStashStats = nbt.getString("infiniteStashStats", "");
+            pd.infiniteStashEmeralds = nbt.getInt("infiniteStashEmeralds", 0);
             pd.infiniteSuspended = nbt.getBoolean("infiniteSuspended", false);
             pd.infiniteParkedInventory = nbt.getListOrEmpty("infiniteParkedInventory");
             pd.infiniteParkedSelectedSlot = nbt.getInt("infiniteParkedSelectedSlot", 0);
             pd.infiniteParkedStats = nbt.getString("infiniteParkedStats", "");
+            pd.infiniteParkedEmeralds = nbt.getInt("infiniteParkedEmeralds", 0);
             pd.infiniteParkedBiomeId = nbt.getString("infiniteParkedBiomeId", "");
             pd.infiniteParkedLevelIndex = nbt.getInt("infiniteParkedLevelIndex", 0);
             pd.lastKnownName = nbt.getString("lastKnownName", "");
@@ -781,6 +838,10 @@ public class CrafticsSavedData extends PersistentState {
         if (old != null) {
             fresh.lastKnownName = old.lastKnownName;
             fresh.highestInfiniteScore = old.highestInfiniteScore;
+            fresh.chapterPlacementPoints = old.chapterPlacementPoints;
+            fresh.chaptersPlaced = old.chaptersPlaced;
+            fresh.bestChapterPlacement = old.bestChapterPlacement;
+            fresh.allTimeInfiniteScore = old.allTimeInfiniteScore;
         }
         fresh.starterGuideGranted = true;
         players.put(playerId, fresh);
@@ -798,6 +859,12 @@ public class CrafticsSavedData extends PersistentState {
         data.lobbySpawnZ = nbt.contains("lobbySpawnZ") ? nbt.getInt("lobbySpawnZ") : 0;
         data.lobbySpawnYaw = nbt.contains("lobbySpawnYaw") ? nbt.getFloat("lobbySpawnYaw") : 0f;
         data.raidBossState = nbt.contains("raidBossState") ? nbt.getString("raidBossState") : "";
+        data.chapterSeed = nbt.contains("chapterSeed") ? nbt.getLong("chapterSeed") : 0L;
+        data.chapterNumber = nbt.contains("chapterNumber") ? nbt.getInt("chapterNumber") : 1;
+        data.chapterStartedAt = nbt.contains("chapterStartedAt") ? nbt.getLong("chapterStartedAt") : 0L;
+        data.nextRotationAt = nbt.contains("nextRotationAt") ? nbt.getLong("nextRotationAt") : 0L;
+        data.rotationRule = nbt.contains("rotationRule") ? nbt.getString("rotationRule") : "";
+        data.rotationZone = nbt.contains("rotationZone") ? nbt.getString("rotationZone") : "";
 
         // Static, like the store itself: loading a save replaces the board wholesale instead
         // of merging into whatever the previous world left in memory.
@@ -867,6 +934,12 @@ public class CrafticsSavedData extends PersistentState {
         nbt.putInt("lobbySpawnZ", lobbySpawnZ);
         nbt.putFloat("lobbySpawnYaw", lobbySpawnYaw);
         nbt.putString("raidBossState", raidBossState);
+        nbt.putLong("chapterSeed", chapterSeed);
+        nbt.putInt("chapterNumber", chapterNumber);
+        nbt.putLong("chapterStartedAt", chapterStartedAt);
+        nbt.putLong("nextRotationAt", nextRotationAt);
+        nbt.putString("rotationRule", rotationRule);
+        nbt.putString("rotationZone", rotationZone);
 
         NbtCompound playersNbt = new NbtCompound();
         for (var entry : players.entrySet()) {
@@ -911,6 +984,12 @@ public class CrafticsSavedData extends PersistentState {
         data.lobbySpawnZ = nbt.getInt("lobbySpawnZ", 0);
         data.lobbySpawnYaw = nbt.getFloat("lobbySpawnYaw", 0f);
         data.raidBossState = nbt.getString("raidBossState", "");
+        data.chapterSeed = nbt.getLong("chapterSeed", 0L);
+        data.chapterNumber = nbt.getInt("chapterNumber", 1);
+        data.chapterStartedAt = nbt.getLong("chapterStartedAt", 0L);
+        data.nextRotationAt = nbt.getLong("nextRotationAt", 0L);
+        data.rotationRule = nbt.getString("rotationRule", "");
+        data.rotationZone = nbt.getString("rotationZone", "");
 
         // See the note in the other branch: the board is replaced wholesale on load.
         com.crackedgames.craftics.auction.AuctionStore.readNbt(
@@ -973,6 +1052,12 @@ public class CrafticsSavedData extends PersistentState {
         nbt.putInt("lobbySpawnZ", lobbySpawnZ);
         nbt.putFloat("lobbySpawnYaw", lobbySpawnYaw);
         nbt.putString("raidBossState", raidBossState);
+        nbt.putLong("chapterSeed", chapterSeed);
+        nbt.putInt("chapterNumber", chapterNumber);
+        nbt.putLong("chapterStartedAt", chapterStartedAt);
+        nbt.putLong("nextRotationAt", nextRotationAt);
+        nbt.putString("rotationRule", rotationRule);
+        nbt.putString("rotationZone", rotationZone);
 
         NbtCompound playersNbt = new NbtCompound();
         for (var entry : players.entrySet()) {
@@ -1379,10 +1464,23 @@ public class CrafticsSavedData extends PersistentState {
      * <p>Deletes bookkeeping only. The dimension itself is
      * {@link com.crackedgames.craftics.world.IslandDimensions#delete}'s job, and the caller
      * must have evacuated it first.
+     *
+     * <p>Career standing survives. {@link PlayerData#chapterPlacementPoints} and friends are
+     * a permanent record of chapters finished, not island state, so they are carried onto the
+     * fresh entry. Same carry-over as {@link #resetPlayerData}.
      */
     public void forgetIsland(UUID playerId) {
         if (playerId == null) return;
-        players.remove(playerId);
+        PlayerData old = players.remove(playerId);
+        if (old != null) {
+            PlayerData fresh = new PlayerData();
+            fresh.lastKnownName = old.lastKnownName;
+            fresh.chapterPlacementPoints = old.chapterPlacementPoints;
+            fresh.chaptersPlaced = old.chaptersPlaced;
+            fresh.bestChapterPlacement = old.bestChapterPlacement;
+            fresh.allTimeInfiniteScore = old.allTimeInfiniteScore;
+            players.put(playerId, fresh);
+        }
         markDirty();
     }
 

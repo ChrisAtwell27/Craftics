@@ -42,6 +42,7 @@ public class CombatAchievementTracker {
     private int maxSpearPierceTargets = 0;
 
     // Execution tracking
+    private boolean suddenDeathWin;
     private boolean executionKill = false;
 
     // Armor crush tracking (max defense ignored in single hit)
@@ -292,6 +293,9 @@ public class CombatAchievementTracker {
     public int getMaxCoralFanTargets() { return maxCoralFanTargets; }
     public int getMaxSpearPierceTargets() { return maxSpearPierceTargets; }
     public boolean hasExecutionKill() { return executionKill; }
+    /** Won a fight that had already tipped into sudden death. */
+    public boolean hasSuddenDeathWin() { return suddenDeathWin; }
+    public void recordSuddenDeathWin() { this.suddenDeathWin = true; }
     public int getMaxArmorCrushDefense() { return maxArmorCrushDefense; }
     public boolean hasCounterKill() { return counterKill; }
     public boolean hasConfusionKill() { return confusionKill; }

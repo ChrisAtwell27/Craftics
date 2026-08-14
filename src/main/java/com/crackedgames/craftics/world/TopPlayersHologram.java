@@ -16,22 +16,23 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Floating, live-updating "INFINITE MODE - HALL OF LEGENDS" board: a vanilla text display
- * entity tagged {@link #TAG}, refreshed from every player's banked best score.
+ * The permanent career board: championship points banked from chapter finishes.
  *
- * <p>Spawned and removed by admin command; the entity itself persists in the world save
- * like any display entity, so the board survives restarts with no bookkeeping of our own -
- * the refresh pass simply finds every tagged display in loaded worlds and rewrites its
- * text. Refresh runs every {@link #REFRESH_TICKS} server ticks off the aggregate tick,
- * and skips all work when no board exists in any loaded world.
+ * <p>Sibling to {@link InfiniteScoreboardHologram}, which shows the CURRENT chapter and
+ * zeroes every rotation. This one is never reset. Rotation is the only thing that writes
+ * to it - see {@code ChapterManager.rotate} - so between rotations it is static, and the
+ * refresh pass exists only so a board spawned mid-chapter fills itself in.
+ *
+ * <p>Same command-tag scheme as its sibling, so it survives restarts as a plain display
+ * entity with no bookkeeping of our own.
  */
-public final class InfiniteScoreboardHologram {
-    private InfiniteScoreboardHologram() {}
+public final class TopPlayersHologram {
 
-    /** Command tag identifying our boards among the world's display entities. */
-    public static final String TAG = "craftics_infinite_board";
+    private TopPlayersHologram() {}
 
-    /** Refresh cadence: every 5 seconds is instant enough for a leaderboard. */
+    /** Command tag identifying our career boards among the world's display entities. */
+    public static final String TAG = "craftics_top_players_board";
+
     private static final int REFRESH_TICKS = 100;
 
     private static int clock = 0;
@@ -60,7 +61,7 @@ public final class InfiniteScoreboardHologram {
         return removed;
     }
 
-    /** Aggregate-tick hook: refresh every board in every loaded world on the cadence. */
+    /** Aggregate-tick hook: refresh every career board in every loaded world. */
     public static void tick(MinecraftServer server) {
         if (++clock < REFRESH_TICKS) return;
         clock = 0;
@@ -84,36 +85,25 @@ public final class InfiniteScoreboardHologram {
         return out;
     }
 
-    /** The board text: header plus the top ten banked infinite scores, medal-colored. */
+    /** The board text: the top ten career point totals. */
     private static Text buildBoard(ServerWorld anyWorld) {
         CrafticsSavedData data = CrafticsSavedData.get(anyWorld);
-        List<Object[]> rows = new ArrayList<>(); // [name, score]
+        List<Object[]> rows = new ArrayList<>(); // [name, points, chapters]
         for (Map.Entry<UUID, CrafticsSavedData.PlayerData> entry : data.getAllPlayerData().entrySet()) {
-            int best = entry.getValue().highestInfiniteScore;
-            if (best <= 0) continue;
+            int points = entry.getValue().chapterPlacementPoints;
+            if (points <= 0) continue;
             String name = entry.getValue().lastKnownName;
             if (name == null || name.isEmpty()) {
                 name = entry.getKey().toString().substring(0, 8);
             }
-            rows.add(new Object[]{name, best});
+            rows.add(new Object[]{name, points, entry.getValue().chaptersPlaced});
         }
         rows.sort((a, b) -> Integer.compare((int) b[1], (int) a[1]));
 
         StringBuilder sb = new StringBuilder();
-        long untilRotation = com.crackedgames.craftics.combat.infinite.ChapterManager
-            .millisUntilRotation(data);
-        sb.append("§5§lINFINITE MODE§r\n§dCHAPTER ").append(data.chapterNumber).append("\n");
-        if (untilRotation == Long.MAX_VALUE) {
-            sb.append("§8no reset scheduled\n");
-        } else {
-            sb.append("§7Resets in §f")
-              .append(com.crackedgames.craftics.combat.infinite.ChapterSchedule
-                  .formatCountdown(untilRotation))
-              .append("\n");
-        }
-        sb.append("§8------------------\n");
+        sb.append("§6§lTOP PLAYERS§r\n§eALL TIME\n§8------------------\n");
         if (rows.isEmpty()) {
-            sb.append("§7No runs recorded yet.\n§7Be the first!");
+            sb.append("§7No chapter has ended yet.\n§7Standings appear at the first reset.");
         }
         for (int i = 0; i < Math.min(10, rows.size()); i++) {
             String rankColor = switch (i) {
@@ -122,8 +112,11 @@ public final class InfiniteScoreboardHologram {
                 case 2 -> "§c";
                 default -> "§8";
             };
+            int chapters = (int) rows.get(i)[2];
             sb.append(rankColor).append(i + 1).append(". §f")
-              .append(rows.get(i)[0]).append(" §7- §5").append(rows.get(i)[1]).append("\n");
+              .append(rows.get(i)[0]).append(" §7- §6").append(rows.get(i)[1])
+              .append(" pts §8(").append(chapters)
+              .append(chapters == 1 ? " chapter)" : " chapters)").append("\n");
         }
         return Text.literal(sb.toString().stripTrailing());
     }

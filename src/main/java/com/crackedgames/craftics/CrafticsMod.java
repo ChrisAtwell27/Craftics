@@ -14,6 +14,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.registry.Registries;
@@ -411,18 +412,40 @@ public class CrafticsMod implements ModInitializer {
                 // same-dim only (it would land them at island-(0,65,0) instead of the lobby);
                 // use the version-split cross-dim teleport when they aren't already here.
                 if (player.getServerWorld() != overworld) {
-                    //? if <=1.21.1 {
-                    player.teleport(overworld, joinX, joinY, joinZ,
-                        java.util.Collections.emptySet(), joinYaw, 0f);
-                    //?} else {
-                    /*player.teleport(overworld, joinX, joinY, joinZ,
-                        java.util.Collections.emptySet(), joinYaw, 0f, true);
-                    *///?}
+                    // THE GHOST LOBBY, and the reason it only ever happened to people who left
+                    // mid-fight: they log out inside their island dim, so rejoining makes this
+                    // a CROSS-DIMENSION move - and this handler runs while the login handshake
+                    // is still settling. Moving a player between dimensions in that window is
+                    // the same race as tearing an island down under a teleport in flight: the
+                    // server puts them at the destination and starts sending them sound and
+                    // player events, while the dimension change that would have sent them
+                    // chunks and entity tracking never completes. What they get is a void they
+                    // can hear other people walking around in, invisible to everyone, with no
+                    // command able to fix it. Somebody who logged out in the lobby took the
+                    // same-dimension branch below and was always fine.
+                    //
+                    // Deferring past the handler lets login finish first, and the player is
+                    // re-checked because they can disconnect again inside that window.
+                    final double fJoinX = joinX, fJoinZ = joinZ;
+                    final float fJoinYaw = joinYaw;
+                    final int fJoinY = joinY;
+                    server.execute(() -> {
+                        if (player.isRemoved() || player.isDisconnected()) return;
+                        if (player.getServerWorld() == overworld) return;   // already moved
+                        //? if <=1.21.1 {
+                        player.teleport(overworld, fJoinX, fJoinY, fJoinZ,
+                            java.util.Collections.emptySet(), fJoinYaw, 0f);
+                        //?} else {
+                        /*player.teleport(overworld, fJoinX, fJoinY, fJoinZ,
+                            java.util.Collections.emptySet(), fJoinYaw, 0f, true);
+                        *///?}
+                        player.changeGameMode(GameMode.SURVIVAL);
+                    });
                 } else {
                     player.refreshPositionAndAngles(joinX, joinY, joinZ, joinYaw, 0f);
                     player.requestTeleport(joinX, joinY, joinZ);
+                    player.changeGameMode(GameMode.SURVIVAL);
                 }
-                player.changeGameMode(GameMode.SURVIVAL);
 
                 // Give the starter guide once per saved player profile.
                 com.crackedgames.craftics.world.CrafticsSavedData joinData =
@@ -552,6 +575,23 @@ public class CrafticsMod implements ModInitializer {
             net.minecraft.world.World leftWorld = handler.getPlayer().getEntityWorld();
             server.execute(() -> runDisconnectCleanup(server, playerUuid, playerName, leftWorld));
         });
+
+        /*
+         * Every player dimension change, however it happened.
+         *
+         * The counterpart to the "attempting" line in HubTeleports: this one fires from
+         * Fabric's own hook, so it catches moves this mod never asked for - a vanilla portal,
+         * an operator, another mod, a respawn - and, more importantly, it is the line that does
+         * NOT appear when a cross-dimension teleport fails to complete. An "attempting" with no
+         * matching "arrived" is a ghost lobby, spelled out in the log.
+         */
+        net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents
+            .AFTER_PLAYER_CHANGE_WORLD.register((player, origin, destination) ->
+                LOGGER.info("[teleport] {} arrived {} -> {} at {}, {}, {}",
+                    player.getName().getString(),
+                    com.crackedgames.craftics.world.HubTeleports.dimensionNameOf(origin),
+                    com.crackedgames.craftics.world.HubTeleports.dimensionNameOf(destination),
+                    (int) player.getX(), (int) player.getY(), (int) player.getZ()));
 
         registerRespawnHooks();
     }
@@ -703,7 +743,45 @@ public class CrafticsMod implements ModInitializer {
 
     private void registerRespawnHooks() {
 
+        /*
+         * A player who died by something OTHER than the fight.
+         *
+         * Craftics never lets its own damage kill a player outright - the death path clamps
+         * health and runs the game-over sequence itself - so a real vanilla death while a fight
+         * is running always means something outside the mod did it: /kill, an operator, a
+         * plugin, another mod. Nothing told the CombatManager, so the fight survived its own
+         * player: they respawned back into an arena whose dimension had been torn down, which
+         * is a room of pure void tiles with the previous fight's enemies still listed in the
+         * sidebar, and /home walked them straight back into it because the mod correctly
+         * refuses to send you home mid-fight.
+         *
+         * The fight is ended the same way a disconnect ends it, then they are put in the lobby.
+         * Deferred a tick for the reason every teleport in this file is deferred: respawn is
+         * itself a dimension change, and moving somebody across dimensions while one is still
+         * in flight is what a ghost lobby IS.
+         */
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
+            java.util.UUID respawnedId = newPlayer.getUuid();
+            if (CombatManager.isEngaged(respawnedId)) {
+                LOGGER.warn("Craftics: {} died to something outside the fight while in combat; "
+                    + "ending the run so they don't respawn into a dead arena.",
+                    newPlayer.getName().getString());
+                var respawnServer = newPlayer.getServer();
+                if (respawnServer != null) {
+                    respawnServer.execute(() -> {
+                        if (newPlayer.isRemoved() || newPlayer.isDisconnected()) return;
+                        try {
+                            CombatManager.remove(respawnedId);
+                        } catch (Throwable t) {
+                            LOGGER.error("Craftics: failed to end the run after an outside death", t);
+                        }
+                        com.crackedgames.craftics.world.HubTeleports.toLobby(newPlayer);
+                        newPlayer.sendMessage(Text.literal(
+                            "§eYou died outside the fight, so the run has ended."), false);
+                    });
+                }
+            }
+
             var deathProtection = CrafticsComponents.DEATH_PROTECTION.get(newPlayer);
             if (!deathProtection.hasPendingRestore()) return;
 
@@ -818,9 +896,21 @@ public class CrafticsMod implements ModInitializer {
             }
 
             try {
+                com.crackedgames.craftics.combat.infinite.ChapterManager.tick(server);
+            } catch (Throwable t) {
+                LOGGER.error("ChapterManager.tick() crashed; continuing server tick", t);
+            }
+
+            try {
                 com.crackedgames.craftics.world.InfiniteScoreboardHologram.tick(server);
             } catch (Throwable t) {
                 LOGGER.error("InfiniteScoreboardHologram.tick() crashed; continuing server tick", t);
+            }
+
+            try {
+                com.crackedgames.craftics.world.TopPlayersHologram.tick(server);
+            } catch (Throwable t) {
+                LOGGER.error("TopPlayersHologram.tick() crashed; continuing server tick", t);
             }
 
             try {
@@ -843,6 +933,21 @@ public class CrafticsMod implements ModInitializer {
                 enforceNonPeaceful(server);
             } catch (Throwable t) {
                 LOGGER.error("Peaceful-difficulty guard crashed; continuing server tick", t);
+            }
+
+            // Season groundwork: stamp combat gear with when it was acquired. Invisible to the
+            // player and read by nothing yet - but it cannot be backfilled later, because an
+            // item that already exists has no record of when it arrived.
+            try {
+                if (++seasonStampTicks >= com.crackedgames.craftics.item.SeasonStamp.SWEEP_INTERVAL_TICKS) {
+                    seasonStampTicks = 0;
+                    long now = System.currentTimeMillis();
+                    for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
+                        com.crackedgames.craftics.item.SeasonStamp.sweep(p, now);
+                    }
+                }
+            } catch (Throwable t) {
+                LOGGER.error("Season stamp sweep crashed; continuing server tick", t);
             }
 
             // Keep the Move item locked to its hotbar slot for every player. Cheap
@@ -1143,6 +1248,9 @@ public class CrafticsMod implements ModInitializer {
         return fArenas;
     }
 
+    /** Countdown to the next season-stamp inventory sweep. */
+    private static int seasonStampTicks = 0;
+
     /** Ticks between peaceful-difficulty checks. Two seconds; the check itself is a field read. */
     private static final int PEACEFUL_CHECK_INTERVAL = 40;
     private static int peacefulCheckTicks = 0;
@@ -1225,6 +1333,47 @@ public class CrafticsMod implements ModInitializer {
             "§6Craftics difficulty set to §f§l" + level.label()
                 + "§r§6. §7Enemies x" + level.hpMultiplier + " HP, +" + level.damageBonus
                 + " damage on every enemy attack."), false);
+        return 1;
+    }
+
+    /** Apply a chapter rotation rule and echo the resulting boundary. */
+    private static int applySchedule(ServerCommandSource source, String rule) {
+        com.crackedgames.craftics.combat.infinite.ChapterManager.setSchedule(
+            source.getServer(), rule);
+        CrafticsSavedData data = CrafticsSavedData.get(source.getServer().getOverworld());
+        // Report the failure BEFORE any success line. Printing "Chapter rotates ..." and
+        // then contradicting it reads as though the schedule took and something else went
+        // wrong afterwards.
+        if (data.nextRotationAt <= 0L) {
+            source.sendError(Text.literal(
+                "§cThat rule did not parse - rotation is still manual only."));
+            return 0;
+        }
+        source.sendFeedback(() -> Text.literal("§aChapter rotates §f"
+            + com.crackedgames.craftics.combat.infinite.ChapterSchedule.describe(
+                data.rotationRule, data.rotationZone)), true);
+        source.sendFeedback(() -> Text.literal("§7Next reset in §f"
+            + com.crackedgames.craftics.combat.infinite.ChapterSchedule.formatCountdown(
+                com.crackedgames.craftics.combat.infinite.ChapterManager
+                    .millisUntilRotation(data))), false);
+        return 1;
+    }
+
+    /** /craftics chapter info - readable by everyone; the seed is not a secret. */
+    private static int chapterInfo(ServerCommandSource source) {
+        CrafticsSavedData data = CrafticsSavedData.get(source.getServer().getOverworld());
+        long seed = com.crackedgames.craftics.combat.infinite.ChapterManager.seedOf(data);
+        long until = com.crackedgames.craftics.combat.infinite.ChapterManager
+            .millisUntilRotation(data);
+        source.sendFeedback(() -> Text.literal("§5§l∞ CHAPTER " + data.chapterNumber), false);
+        source.sendFeedback(() -> Text.literal("§7Seed: §f" + seed), false);
+        source.sendFeedback(() -> Text.literal("§7Schedule: §f"
+            + com.crackedgames.craftics.combat.infinite.ChapterSchedule.describe(
+                data.rotationRule, data.rotationZone)), false);
+        source.sendFeedback(() -> Text.literal("§7Next reset: §f"
+            + (until == Long.MAX_VALUE ? "not scheduled"
+               : com.crackedgames.craftics.combat.infinite.ChapterSchedule
+                   .formatCountdown(until))), false);
         return 1;
     }
 
@@ -2068,6 +2217,105 @@ public class CrafticsMod implements ModInitializer {
                             return 1;
                         }))));
 
+            // /craftics chapter - the infinite-mode seed window. Rotating swaps the seed
+            // for the whole server, clears the chapter board and banks career points.
+            // Unrelated to "seasons" (island resets); do not conflate the two.
+            root.then(CommandManager.literal("chapter")
+                .executes(ctx -> chapterInfo(ctx.getSource()))
+                .then(CommandManager.literal("info").executes(ctx -> chapterInfo(ctx.getSource())))
+                .then(CommandManager.literal("rotate")
+                    .requires(src -> src.hasPermissionLevel(2))
+                    .executes(ctx -> {
+                        com.crackedgames.craftics.combat.infinite.ChapterManager
+                            .rotate(ctx.getSource().getServer(), "manual");
+                        ctx.getSource().sendFeedback(() -> Text.literal(
+                            "§aChapter rotated. New seed is live."), true);
+                        return 1;
+                    }))
+                .then(CommandManager.literal("schedule")
+                    .requires(src -> src.hasPermissionLevel(2))
+                    .then(CommandManager.literal("off").executes(ctx -> {
+                        com.crackedgames.craftics.combat.infinite.ChapterManager.setSchedule(
+                            ctx.getSource().getServer(),
+                            com.crackedgames.craftics.combat.infinite.ChapterSchedule.MANUAL);
+                        ctx.getSource().sendFeedback(() -> Text.literal(
+                            "§aChapter rotation is now manual only."), true);
+                        return 1;
+                    }))
+                    .then(CommandManager.literal("daily")
+                        .then(CommandManager.argument("hour", IntegerArgumentType.integer(0, 23))
+                        .then(CommandManager.argument("minute", IntegerArgumentType.integer(0, 59))
+                        .executes(ctx -> applySchedule(ctx.getSource(),
+                            com.crackedgames.craftics.combat.infinite.ChapterSchedule.daily(
+                                IntegerArgumentType.getInteger(ctx, "hour"),
+                                IntegerArgumentType.getInteger(ctx, "minute")))))))
+                    .then(CommandManager.literal("weekly")
+                        .then(CommandManager.argument("day", StringArgumentType.word())
+                            .suggests((ctx, builder) -> {
+                                for (java.time.DayOfWeek d : java.time.DayOfWeek.values()) {
+                                    builder.suggest(d.name());
+                                }
+                                return builder.buildFuture();
+                            })
+                        .then(CommandManager.argument("hour", IntegerArgumentType.integer(0, 23))
+                        .then(CommandManager.argument("minute", IntegerArgumentType.integer(0, 59))
+                        .executes(ctx -> {
+                            java.time.DayOfWeek day;
+                            try {
+                                day = java.time.DayOfWeek.valueOf(
+                                    StringArgumentType.getString(ctx, "day")
+                                        .toUpperCase(java.util.Locale.ROOT));
+                            } catch (IllegalArgumentException e) {
+                                ctx.getSource().sendError(Text.literal(
+                                    "§cUnknown day. Use MONDAY through SUNDAY."));
+                                return 0;
+                            }
+                            return applySchedule(ctx.getSource(),
+                                com.crackedgames.craftics.combat.infinite.ChapterSchedule.weekly(
+                                    day,
+                                    IntegerArgumentType.getInteger(ctx, "hour"),
+                                    IntegerArgumentType.getInteger(ctx, "minute")));
+                        })))))
+                    .then(CommandManager.literal("monthly")
+                        .then(CommandManager.argument("day", IntegerArgumentType.integer(1, 31))
+                        .then(CommandManager.argument("hour", IntegerArgumentType.integer(0, 23))
+                        .then(CommandManager.argument("minute", IntegerArgumentType.integer(0, 59))
+                        .executes(ctx -> applySchedule(ctx.getSource(),
+                            com.crackedgames.craftics.combat.infinite.ChapterSchedule.monthly(
+                                IntegerArgumentType.getInteger(ctx, "day"),
+                                IntegerArgumentType.getInteger(ctx, "hour"),
+                                IntegerArgumentType.getInteger(ctx, "minute")))))))))
+                .then(CommandManager.literal("timezone")
+                    .requires(src -> src.hasPermissionLevel(2))
+                    // Greedy, not string(): Brigadier's unquoted string reader stops at
+                    // '/', so "America/New_York" and every other region/city zone failed
+                    // to parse. This is the last argument of the node, so greedy is safe.
+                    .then(CommandManager.argument("zone", StringArgumentType.greedyString())
+                        .suggests((ctx, builder) -> {
+                            // The full zone list is ~600 entries; suggest the common ones
+                            // and let anything valid still be typed.
+                            for (String z : new String[]{"UTC", "America/New_York",
+                                    "America/Chicago", "America/Los_Angeles", "Europe/London",
+                                    "Europe/Berlin", "Australia/Sydney"}) {
+                                builder.suggest(z);
+                            }
+                            return builder.buildFuture();
+                        })
+                        .executes(ctx -> {
+                            String requested = StringArgumentType.getString(ctx, "zone");
+                            com.crackedgames.craftics.combat.infinite.ChapterManager
+                                .setZone(ctx.getSource().getServer(), requested);
+                            CrafticsSavedData zoneData = CrafticsSavedData.get(
+                                ctx.getSource().getServer().getOverworld());
+                            if (!zoneData.rotationZone.equalsIgnoreCase(requested)) {
+                                ctx.getSource().sendError(Text.literal("§eUnknown zone '"
+                                    + requested + "'; fell back to §f" + zoneData.rotationZone));
+                            }
+                            ctx.getSource().sendFeedback(() -> Text.literal(
+                                "§aChapter timezone: §f" + zoneData.rotationZone), true);
+                            return 1;
+                        }))));
+
             // /craftics scoreboard spawn|remove (op): a floating, live-updating top-10
             // board for infinite mode, placed where the admin stands. remove clears any
             // board within 8 blocks.
@@ -2093,6 +2341,34 @@ public class CrafticsMod implements ModInitializer {
                     ctx.getSource().sendFeedback(() -> Text.literal(
                         removed > 0 ? "§aRemoved " + removed + " scoreboard(s)."
                                     : "§7No scoreboard within 8 blocks."), true);
+                    return removed > 0 ? 1 : 0;
+                })));
+
+            // /craftics topscoreboard spawn|remove (op): a floating, live-updating career
+            // board of banked championship points, placed where the admin stands. remove
+            // clears any board within 8 blocks.
+            root.then(CommandManager.literal("topscoreboard").requires(src -> src.hasPermissionLevel(2))
+                .then(CommandManager.literal("spawn").executes(ctx -> {
+                    ServerPlayerEntity admin = ctx.getSource().getPlayerOrThrow();
+                    var world = (ServerWorld) admin.getEntityWorld();
+                    var board = com.crackedgames.craftics.world.TopPlayersHologram.spawn(
+                        world, admin.getPos().add(0, 1.2, 0));
+                    if (board == null) {
+                        ctx.getSource().sendError(Text.literal("§cFailed to spawn the career board."));
+                        return 0;
+                    }
+                    ctx.getSource().sendFeedback(() -> Text.literal(
+                        "§aCareer board placed. It refreshes every few seconds; "
+                        + "§e/craftics topscoreboard remove§a clears boards near you."), true);
+                    return 1;
+                }))
+                .then(CommandManager.literal("remove").executes(ctx -> {
+                    ServerPlayerEntity admin = ctx.getSource().getPlayerOrThrow();
+                    int removed = com.crackedgames.craftics.world.TopPlayersHologram.removeNear(
+                        (ServerWorld) admin.getEntityWorld(), admin.getPos(), 8.0);
+                    ctx.getSource().sendFeedback(() -> Text.literal(
+                        removed > 0 ? "§aRemoved " + removed + " career board(s)."
+                                    : "§7No career board within 8 blocks."), true);
                     return removed > 0 ? 1 : 0;
                 })));
 
