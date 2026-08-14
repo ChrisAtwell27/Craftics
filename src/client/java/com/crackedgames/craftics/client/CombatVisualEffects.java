@@ -193,6 +193,14 @@ public class CombatVisualEffects {
         attackFlashTicks = 0;
         bannerDuration = 0;
         bannerTick = 0;
+        // The hit-pause has to go with them. Its countdown advances in exactly one place -
+        // tick(), below - so a freeze still standing when the fight ends only expires if
+        // the client keeps ticking normally afterwards. It usually does; when it does not
+        // (a disconnect, a world transition that stalls), the freeze is permanent, and
+        // because CombatAnimations.tick() gates on it the player's character silently
+        // stops animating for the rest of the session. A freeze belongs to the blow that
+        // caused it and to the fight it happened in - neither outlives combat.
+        com.crackedgames.craftics.client.vfx.HitPauseState.reset();
     }
 
     // intensity: 0.3 = light, 0.6 = medium, 1.0 = heavy

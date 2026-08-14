@@ -208,6 +208,16 @@ public class CrafticsSavedData extends PersistentState {
          *  cursor here so normal biome runs can use the shared fields in the meantime. */
         public String infiniteParkedBiomeId = "";
         public int infiniteParkedLevelIndex = 0;
+        /**
+         * The NORMAL biome run's cursor, parked while an infinite run borrows the shared
+         * fields. The mirror image of {@link #infiniteParkedBiomeId}: infinite parks its
+         * cursor so a normal run can use {@link #activeBiomeId}, and this parks a normal
+         * run's cursor so infinite can. Without it, starting Infinite Mode would overwrite
+         * a half-finished biome run's position - which is why that used to be refused
+         * outright, leaving anyone with a paused run unable to touch Infinite Mode at all.
+         */
+        public String parkedNormalBiomeId = "";
+        public int parkedNormalLevelIndex = 0;
         /** Last known player name, for offline leaderboard rows. Refreshed on join. */
         public String lastKnownName = "";
 
@@ -530,6 +540,8 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putInt("infiniteParkedEmeralds", infiniteParkedEmeralds);
             nbt.putString("infiniteParkedBiomeId", infiniteParkedBiomeId);
             nbt.putInt("infiniteParkedLevelIndex", infiniteParkedLevelIndex);
+            nbt.putString("parkedNormalBiomeId", parkedNormalBiomeId);
+            nbt.putInt("parkedNormalLevelIndex", parkedNormalLevelIndex);
             nbt.putString("lastKnownName", lastKnownName);
             return nbt;
         }
@@ -645,6 +657,8 @@ public class CrafticsSavedData extends PersistentState {
             pd.infiniteParkedEmeralds = nbt.contains("infiniteParkedEmeralds") ? nbt.getInt("infiniteParkedEmeralds") : 0;
             pd.infiniteParkedBiomeId = nbt.contains("infiniteParkedBiomeId") ? nbt.getString("infiniteParkedBiomeId") : "";
             pd.infiniteParkedLevelIndex = nbt.contains("infiniteParkedLevelIndex") ? nbt.getInt("infiniteParkedLevelIndex") : 0;
+            pd.parkedNormalBiomeId = nbt.contains("parkedNormalBiomeId") ? nbt.getString("parkedNormalBiomeId") : "";
+            pd.parkedNormalLevelIndex = nbt.contains("parkedNormalLevelIndex") ? nbt.getInt("parkedNormalLevelIndex") : 0;
             pd.lastKnownName = nbt.contains("lastKnownName") ? nbt.getString("lastKnownName") : "";
             return pd;
         }
@@ -736,6 +750,8 @@ public class CrafticsSavedData extends PersistentState {
             pd.infiniteParkedStats = nbt.getString("infiniteParkedStats", "");
             pd.infiniteParkedBiomeId = nbt.getString("infiniteParkedBiomeId", "");
             pd.infiniteParkedLevelIndex = nbt.getInt("infiniteParkedLevelIndex", 0);
+            pd.parkedNormalBiomeId = nbt.getString("parkedNormalBiomeId", "");
+            pd.parkedNormalLevelIndex = nbt.getInt("parkedNormalLevelIndex", 0);
             pd.lastKnownName = nbt.getString("lastKnownName", "");
             return pd;
         }

@@ -28,8 +28,11 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
+import net.minecraft.text.MutableText;
+import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 
@@ -263,11 +266,56 @@ public final class LootboxManager {
     private static final int CONFIRM_ODDS_SLOT = 13;
     private static final int CONFIRM_CANCEL_SLOT = 15;
 
+    /**
+     * Turn a legacy §-coded string into a properly styled {@link Text}.
+     *
+     * <p>{@code Text.literal("§6§lLEGENDARY")} does NOT produce gold bold text. It produces a
+     * component whose literal CONTENT is the characters {@code §6§lLEGENDARY} and whose style
+     * is empty. Vanilla's tooltip renderer happens to still interpret legacy codes as it
+     * draws, which is why this looked fine - but that is a courtesy of one renderer, not a
+     * property of the component. Anything that draws the tooltip from the component itself
+     * reads the string as-is, and the codes come out as literal text: "6lLEGENDARY". A tooltip
+     * mod doing its own rendering is the usual way this surfaces, and it is right to - the
+     * component never said it was gold.
+     *
+     * <p>So parse the codes into real {@link Style} here and let the styling be structural.
+     * Every renderer then agrees, with or without another mod in the way.
+     *
+     * <p>Italics are explicitly disabled at the root: a custom item name is rendered italic by
+     * default, which is not what any of these menu labels want.
+     */
+    private static Text legacyText(String raw) {
+        MutableText out = Text.empty().setStyle(Style.EMPTY.withItalic(false));
+        Style style = Style.EMPTY.withItalic(false);
+        StringBuilder buf = new StringBuilder();
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (c == '§' && i + 1 < raw.length()) {
+                if (buf.length() > 0) {
+                    out.append(Text.literal(buf.toString()).setStyle(style));
+                    buf.setLength(0);
+                }
+                Formatting fmt = Formatting.byCode(raw.charAt(++i));
+                if (fmt == null) continue;
+                // A colour code clears the formatting flags, exactly as it does in the legacy
+                // scheme - so §6§l is gold+bold but §l§6 is plain gold.
+                if (fmt == Formatting.RESET) style = Style.EMPTY.withItalic(false);
+                else if (fmt.isColor()) style = Style.EMPTY.withItalic(false).withColor(fmt);
+                else style = style.withFormatting(fmt);
+                continue;
+            }
+            buf.append(c);
+        }
+        if (buf.length() > 0) out.append(Text.literal(buf.toString()).setStyle(style));
+        return out;
+    }
+
     /** Sets a display item's name and lore. The one place both menus build an icon, so the
      *  component-setting idiom (stable across every shard this mod targets) lives once. */
     private static void setDisplay(ItemStack stack, String name, List<String> lore) {
-        stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal(name));
-        stack.set(DataComponentTypes.LORE, new LoreComponent(lore.stream().<Text>map(Text::literal).toList()));
+        stack.set(DataComponentTypes.CUSTOM_NAME, legacyText(name));
+        stack.set(DataComponentTypes.LORE,
+            new LoreComponent(lore.stream().<Text>map(LootboxManager::legacyText).toList()));
     }
 
     /** Places a single-count display icon (name + lore) into a menu inventory slot. */

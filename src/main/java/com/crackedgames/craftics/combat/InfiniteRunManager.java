@@ -258,6 +258,7 @@ public final class InfiniteRunManager {
         host.infiniteBiomesCleared = 0;
         host.infiniteScore = 0;
         host.infiniteParticipants = joinUuids(participants);
+        parkNormalRun(host);
         host.startBiomeRun(STARTING_BIOME);
 
         UUID islandOwner = data.getEffectiveWorldOwner(hostUuid);
@@ -540,6 +541,44 @@ public final class InfiniteRunManager {
      * and safe to call for an offline host - the parking half then happens on their next
      * join, via {@link #onPlayerJoin}.
      */
+    /**
+     * Stow a normal biome run's cursor before an infinite run takes the shared fields.
+     *
+     * <p>The two run kinds share {@code activeBiomeId}/{@code activeBiomeLevelIndex}, and only
+     * one of them can hold it at a time. Infinite already parks ITS cursor when it suspends,
+     * so a normal run can use the fields; this is the missing other half. Without it, starting
+     * Infinite Mode simply overwrote a half-finished biome run's position - which is why it was
+     * refused outright whenever {@code isInBiomeRun()} was set, and why a player sitting safely
+     * in the hub between levels was told to "finish your current biome run" with no way to
+     * comply short of actually replaying it.
+     *
+     * <p>No-op when there is nothing to park, and it never overwrites an existing parked run -
+     * a second call before the first is restored would otherwise destroy it.
+     */
+    private static void parkNormalRun(CrafticsSavedData.PlayerData host) {
+        if (!host.isInBiomeRun()) return;
+        if (host.parkedNormalBiomeId != null && !host.parkedNormalBiomeId.isEmpty()) return;
+        host.parkedNormalBiomeId = host.activeBiomeId;
+        host.parkedNormalLevelIndex = host.activeBiomeLevelIndex;
+    }
+
+    /**
+     * Hand the shared cursor back to the normal run that was holding it, if any.
+     *
+     * <p>Called once the infinite run has let go of the fields - on suspend and on end. Refuses
+     * to clobber a live cursor: if something else already claimed the shared fields, the parked
+     * run is dropped rather than overwriting whatever is playing now.
+     */
+    private static void restoreNormalRun(CrafticsSavedData.PlayerData host) {
+        if (host.parkedNormalBiomeId == null || host.parkedNormalBiomeId.isEmpty()) return;
+        if (!host.isInBiomeRun()) {
+            host.startBiomeRun(host.parkedNormalBiomeId);
+            host.activeBiomeLevelIndex = Math.max(0, host.parkedNormalLevelIndex);
+        }
+        host.parkedNormalBiomeId = "";
+        host.parkedNormalLevelIndex = 0;
+    }
+
     public static void suspendRun(MinecraftServer server, UUID hostUuid, String reason) {
         ServerWorld overworld = server.getOverworld();
         CrafticsSavedData data = CrafticsSavedData.get(overworld);
@@ -554,6 +593,9 @@ public final class InfiniteRunManager {
                 host.activeBiomeId == null ? STARTING_BIOME : host.activeBiomeId;
             host.infiniteParkedLevelIndex = host.activeBiomeLevelIndex;
             host.endBiomeRun();
+            // The shared cursor is free again, so hand it back to whatever normal run was
+            // holding it when this one started.
+            restoreNormalRun(host);
         }
         host.infiniteSuspended = true;
 
@@ -632,16 +674,15 @@ public final class InfiniteRunManager {
         UUID hostUuid = starter.getUuid();
         CrafticsSavedData.PlayerData host = data.getPlayerData(hostUuid);
         if (!host.infiniteActive || !host.infiniteSuspended) return null;
-        // The shared cursor may be carrying a normal biome run right now; resuming would
-        // overwrite it. The caller gates on this too - this is the belt to its suspenders.
-        if (host.isInBiomeRun()) {
-            starter.sendMessage(Text.literal(
-                "§cFinish your current biome run (or Go Home from it) before resuming the infinite run."), false);
-            return null;
-        }
+        // The shared cursor may be carrying a normal biome run right now. That used to refuse
+        // the resume outright, which stranded anyone with a paused biome run; the run is now
+        // parked below and handed back when this one ends.
 
         host.infiniteSuspended = false;
         host.infiniteParticipants = joinUuids(participants);
+        // A normal run may have used the shared cursor while this one was parked - stow it
+        // before taking the cursor back, exactly as a fresh start does.
+        parkNormalRun(host);
         // Move the parked cursor back onto the shared fields the live run plays on.
         host.startBiomeRun(host.infiniteParkedBiomeId == null || host.infiniteParkedBiomeId.isEmpty()
             ? STARTING_BIOME : host.infiniteParkedBiomeId);
@@ -739,7 +780,10 @@ public final class InfiniteRunManager {
         host.infiniteParticipants = "";
         // A LIVE run owns the shared cursor; a suspended one parked it, and the shared
         // fields may already be carrying a normal biome run that must survive this.
-        if (!host.infiniteSuspended) host.endBiomeRun();
+        if (!host.infiniteSuspended) {
+            host.endBiomeRun();
+            restoreNormalRun(host);
+        }
         // Any parked save point dies with the run - its items were run loot.
         host.infiniteSuspended = false;
         host.infiniteParkedInventory = new NbtList();

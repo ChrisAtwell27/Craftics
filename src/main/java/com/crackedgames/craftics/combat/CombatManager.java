@@ -25985,8 +25985,13 @@ public class CombatManager {
             p.clearStatusEffects();
         }
 
-        // Reset biome run
+        // Reset biome run. Same two-record split as the Go Home path: the run was started on
+        // whoever pressed Start but is ended here on the leader, so a wipe could leave the
+        // starter permanently "in a run" - see clearMirroredBiomeRun.
+        String endedBiomeId = ld.activeBiomeId;
         ld.endBiomeRun();
+        clearMirroredBiomeRun(data, endedBiomeId, player, getAllParticipants(),
+            leaderUuid != null ? leaderUuid : player.getUuid());
         ld.inCombat = false;
         data.markDirty();
 
@@ -27256,6 +27261,45 @@ public class CombatManager {
     }
 
     /**
+     * Clear the ended biome run off any OTHER participant still carrying it.
+     *
+     * <p>A biome run is written and erased on two different records. It is started on whoever
+     * pressed Start ({@code RunInviteManager.beginRun} writes {@code startBiomeRun} to
+     * {@code getPlayerData(starter.getUuid())}), but it is ended on the progression owner -
+     * the combat leader, or the infinite host. Those are the same player in the common case
+     * and different the moment they are not, and nothing ever reconciled them.
+     *
+     * <p>The visible symptom is Infinite Mode refusing to start. Its gate reads the
+     * STARTER's {@code isInBiomeRun()}, so a starter whose record was never cleared is told
+     * "finish your current biome run (or Go Home from it)" forever - and Go Home cannot help,
+     * because Go Home is the thing that writes to the other record. There is no in-game way
+     * out of it.
+     *
+     * <p>Deliberately narrow. It only clears a record that is pointing at THIS run - same
+     * biome id, same island - so a party member's own paused run back on their own island is
+     * left alone rather than being wiped by helping with someone else's. A member hosting a
+     * live infinite run is skipped too: their cursor is the run's save point.
+     */
+    private static void clearMirroredBiomeRun(CrafticsSavedData data, String endedBiomeId,
+                                              ServerPlayerEntity leader,
+                                              List<ServerPlayerEntity> members,
+                                              java.util.UUID alreadyCleared) {
+        if (data == null || endedBiomeId == null || endedBiomeId.isEmpty() || leader == null) return;
+        java.util.UUID island = data.getEffectiveWorldOwner(leader.getUuid());
+        if (island == null) return;
+        for (ServerPlayerEntity member : members) {
+            if (member == null) continue;
+            java.util.UUID uuid = member.getUuid();
+            if (uuid.equals(alreadyCleared)) continue;
+            CrafticsSavedData.PlayerData md = data.getPlayerData(uuid);
+            if (!endedBiomeId.equals(md.activeBiomeId)) continue;      // not this run
+            if (!island.equals(data.getEffectiveWorldOwner(uuid))) continue;  // not this island
+            if (md.infiniteActive && !md.infiniteSuspended) continue;  // live run's save point
+            md.endBiomeRun();
+        }
+    }
+
+    /**
      * Handle the player's choice after winning a non-boss level.
      * goHome = true: teleport home, reset biome run
      * goHome = false: continue to next level (with possible trader encounter)
@@ -27440,6 +27484,7 @@ public class CombatManager {
             // An infinite run keeps its biome/level cursor - that IS the save point.
             if (!wasInfinite) {
                 ld.endBiomeRun();
+                clearMirroredBiomeRun(data, biomeId, savedPlayer, savedMembers, progressionOwner);
             }
             // Going home ends the interlude either way - stale pending event state must
             // not leak into the next run (see clearEventInterludeState).
