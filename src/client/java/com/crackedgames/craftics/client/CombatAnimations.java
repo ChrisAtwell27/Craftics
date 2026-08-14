@@ -72,11 +72,26 @@ public class CombatAnimations {
                 return layer;
             }
         }
+        // Returning null here silently disables EVERY animation - every caller bails on it -
+        // and that is exactly what "my character stopped animating and only a restart fixes
+        // it" looks like from the outside. There is no other symptom: nothing throws, nothing
+        // logs, the game plays on. Say so once so the cause is identifiable from a log rather
+        // than inferred. Once per client session; this must never become per-tick spam.
+        if (!loggedMissingLayer) {
+            loggedMissingLayer = true;
+            com.crackedgames.craftics.CrafticsMod.LOGGER.warn(
+                "PlayerAnimator layer unavailable for {} (isIPlayer={}); combat animations are "
+                + "disabled until this resolves. Either the REGISTER_ANIMATION_EVENT never fired "
+                + "for this player entity, or player-animator is missing/mismatched.",
+                player.getName().getString(), player instanceof IPlayer);
+        }
         return null;
     }
 
+    /** One-shot guard for the warning above - the null path can recur every tick. */
+    private static boolean loggedMissingLayer = false;
+
     public static void tick() {
-        if (com.crackedgames.craftics.client.vfx.HitPauseState.isFrozen()) return;
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null) {
             lastTickPlayer = null;
@@ -89,6 +104,11 @@ public class CombatAnimations {
         // dead entity make startWalking/stopWalking no-op against the new
         // entity, breaking the host's combat walk + attack animations
         // entirely from their own POV until a full client restart.
+        //
+        // This MUST run before the hit-pause gate below, not after it. A freeze that is
+        // still counting down while the player entity is swapped out would otherwise skip
+        // the swap entirely - and a freeze that never finishes counting down (see below)
+        // would skip it forever, which is the state this reset exists to escape.
         if (client.player != lastTickPlayer) {
             wasAnimating = false;
             wasCinematicWalking = false;
@@ -97,7 +117,15 @@ public class CombatAnimations {
             lastCinX = Double.NaN;
             lastCinZ = Double.NaN;
             lastTickPlayer = client.player;
+            // A freeze belongs to the fight the old entity died in. Carrying it across a
+            // respawn suppresses every animation for the new one, and nothing else would
+            // clear it: the countdown only advances inside CombatVisualEffects.tick(), so
+            // a freeze stranded across a disconnect or a broken world transition never
+            // expires and the character stops animating until the game is restarted.
+            com.crackedgames.craftics.client.vfx.HitPauseState.reset();
         }
+
+        if (com.crackedgames.craftics.client.vfx.HitPauseState.isFrozen()) return;
 
         // Count down every avatar's attack animation and fade THAT avatar's
         // layer out on expiry. Runs before the combat guard so a swing that

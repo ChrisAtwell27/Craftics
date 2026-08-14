@@ -211,9 +211,30 @@ function Invoke-Ssh {
 # how two stale jars accumulated in data/craftics/mods unnoticed. Fail here, loudly, instead.
 Write-Host ""
 Write-Host "    checking /mods mount..." -NoNewline
+# `docker compose config` NORMALISES short-form volumes, so the compose file's
+#     - ./extra-mods/craftics:/mods
+# comes back as
+#     - type: bind
+#       source: /opt/mcnet/extra-mods/craftics
+#       target: /mods
+# Grepping for ':/mods' therefore never matched and this check failed on a mount that was
+# demonstrably working. Ask the running container instead - what is actually mounted right
+# now beats what the file appears to say - and fall back to parsing config for the case
+# where the service is currently stopped.
 $mountCheck = Invoke-Ssh -Target $SshTarget -What "Mount check" -Command @"
 cd '$RemoteRoot'
-docker compose config | grep -q ':/mods' && echo MOUNT_OK || echo MOUNT_MISSING
+CID=`$(docker compose ps -aq '$RemoteService' 2>/dev/null | head -1)
+if [ -n "`$CID" ]; then
+    if docker inspect -f '{{range .Mounts}}{{.Destination}}{{"\n"}}{{end}}' "`$CID" 2>/dev/null | grep -qx '/mods'; then
+        echo MOUNT_OK
+        exit 0
+    fi
+fi
+if docker compose config 2>/dev/null | grep -qE '^[[:space:]]*target:[[:space:]]*/mods[[:space:]]*$|:/mods(:|`$)'; then
+    echo MOUNT_OK
+else
+    echo MOUNT_MISSING
+fi
 "@
 if ($mountCheck -notmatch 'MOUNT_OK') {
     throw @"

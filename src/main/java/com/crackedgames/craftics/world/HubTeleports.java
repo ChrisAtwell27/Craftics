@@ -83,7 +83,64 @@ public final class HubTeleports {
             p.sendMessage(net.minecraft.text.Text.literal(
                 "§eThere was nothing to stand on, so a block was placed at your spawn point."), false);
         }
+        // Tell vanilla this island is home, so a death here respawns them ON it.
+        // Only for the player's OWN island: in a party, `owner` is the leader's island, and
+        // stamping a member's respawn onto someone else's world would strand them there the
+        // moment the party breaks up.
+        if (owner.equals(p.getUuid())) {
+            stampIslandRespawn(p, island, hub);
+        }
         crossDimMove(server, p, previousWorld, island, hub);
+    }
+
+    /**
+     * Set the player's vanilla respawn point to their island hub.
+     *
+     * <p>Nothing used to do this. Vanilla's respawn only ever consults the PLAYER's spawn
+     * point - a bed or anchor, stored as a position plus a dimension - and falls back to the
+     * OVERWORLD's world spawn when there is none, whatever dimension the player died in. It
+     * never looks at the spawn point of the world they were standing in, so the
+     * {@code world.setSpawnPos} calls in {@code HubRoomBuilder} (which this mod's own landing
+     * code reads) had no effect on respawning at all.
+     *
+     * <p>The result was that dying on your own island sent you to the lobby, in a different
+     * dimension - and that unwanted dimension change is what the post-respawn void rescue in
+     * {@code CrafticsMod} then had to undo with a SECOND one. Setting this makes vanilla land
+     * the player on their island in a single move, so the common case never needs rescuing.
+     *
+     * <p>{@code forced = true} deliberately: a forced spawn point skips vanilla's "is there
+     * still a bed here" validation, which would fail on an island hub (there is no bed) and
+     * silently drop the player back to the overworld - the exact behaviour being fixed.
+     */
+    private static void stampIslandRespawn(ServerPlayerEntity p, ServerWorld island, BlockPos hub) {
+        //? if <=1.21.4 {
+        p.setSpawnPoint(island.getRegistryKey(), hub, p.getYaw(), true, false);
+        //?} else {
+        /*p.setSpawnPoint(new ServerPlayerEntity.Respawn(
+            island.getRegistryKey(), hub, p.getYaw(), true), false);
+        *///?}
+    }
+
+    /**
+     * Make sure a player's island is loaded before they respawn into it.
+     *
+     * <p>Island dims are runtime Fantasy worlds that are unloaded whenever empty, and a spawn
+     * point naming an unloaded dimension is one vanilla cannot resolve - it discards it and
+     * uses the overworld instead, which is the whole problem again. Dying is the one moment
+     * the island is guaranteed to be about to matter and is also quite likely to be empty
+     * (the player who just died was the only one on it), so re-open it here.
+     *
+     * @return true if an island was resolved and loaded for this player
+     */
+    public static boolean ensureRespawnIslandLoaded(ServerPlayerEntity p) {
+        MinecraftServer server = p.getServer();
+        if (server == null) return false;
+        ServerWorld overworld = server.getOverworld();
+        CrafticsSavedData data = CrafticsSavedData.get(overworld);
+        java.util.UUID self = p.getUuid();
+        if (!data.hasPersonalWorld(self)) return false;
+        IslandDimensions.getOrCreate(server, self);
+        return true;
     }
 
     /** Send a visitor into the OWNER's island hub - unlike {@link #toHub}, the target

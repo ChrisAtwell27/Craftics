@@ -128,17 +128,16 @@ public final class RunInviteManager {
         // Infinite mode rides the same lobby flow under a sentinel "biome id" -
         // there's no biome to validate and no unlock gate (everyone starts at plains).
         boolean infinite = InfiniteRunManager.START_ID.equals(biomeId);
-        if (infinite) {
-            // The live infinite run plays on the SHARED biome/level cursor. Starting or
-            // resuming one mid normal-run would overwrite that run's position; a parked
-            // infinite run, by contrast, keeps its own cursor and coexists fine.
-            if (pd.isInBiomeRun()) {
-                starter.sendMessage(Text.literal(
-                    "§cFinish your current biome run (or Go Home from it) before starting Infinite Mode."), false);
-                ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
-                return;
-            }
-        }
+        // Infinite Mode used to be refused outright whenever isInBiomeRun() was set, because
+        // both run kinds play on the same biome/level cursor and starting one would overwrite
+        // the other's position. But isInBiomeRun() is true for a run merely PAUSED in the hub
+        // between levels, not just one being played - so a player standing safely in their hub
+        // was told to "finish your current biome run (or Go Home from it)" when they had
+        // already done exactly that, and no action available to them could clear it.
+        //
+        // Being mid-fight is what should block a second run, and that is already enforced by
+        // the isEngaged check above. A paused run is now stowed instead of refused - see
+        // InfiniteRunManager.parkNormalRun - and handed back when the infinite run ends.
         if (!infinite) {
             BiomeTemplate biome = findBiome(biomeId);
             if (biome == null) {

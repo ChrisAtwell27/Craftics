@@ -741,7 +741,70 @@ public class CrafticsMod implements ModInitializer {
         }
     }
 
+    /**
+     * Put a player who respawned over nothing back onto solid ground.
+     *
+     * <p>Runs a tick AFTER the respawn, never during it. Moving a player while a dimension
+     * change is still in flight - and a bedless death on an island IS one, since vanilla sends
+     * them to the overworld lobby - leaves the client believing it arrived while the chunks it
+     * needs are never sent: "Loading Terrain" forever, then a world with no blocks in it.
+     * Every other cross-dim path here defers for the same reason; see
+     * {@code HubTeleports.unloadLeftIslandNextTick}.
+     *
+     * <p>Because a tick has passed, nothing from the previous one is trusted: the player may
+     * have logged out, died again, or already been moved, so the world and the void check are
+     * both re-read here.
+     */
+    private static void relocateVoidRespawn(ServerPlayerEntity player) {
+        if (player.isRemoved() || !player.isAlive()) return;
+        if (!(player.getEntityWorld() instanceof ServerWorld world)) return;
+        if (hasGroundBelow(world, player.getX(), player.getY(), player.getZ())) return;
+
+        // Ground anywhere near where they expected to be beats a teleport across worlds,
+        // so search outward from the respawn coordinate rather than straight down it.
+        // Down-the-column only works while the island keeps its generated shape; a player
+        // who rebuilt their base has an empty column there and would be bounced home from
+        // a spot they were standing on ten seconds ago.
+        net.minecraft.util.math.BlockPos landing = findLandingSpot(world,
+            (int) Math.floor(player.getX()), (int) Math.floor(player.getZ()),
+            (int) Math.floor(player.getY()));
+        if (landing != null) {
+            com.crackedgames.craftics.world.HubTeleports.teleportTo(player, world,
+                landing.getX() + 0.5, landing.getY(), landing.getZ() + 0.5);
+            LOGGER.warn("Respawn for {} landed over void in {}; moved to solid ground at {},{},{}.",
+                player.getName().getString(), world.getRegistryKey().getValue(),
+                landing.getX(), landing.getY(), landing.getZ());
+            return;
+        }
+
+        // Nothing solid anywhere around them. The player's own hub is the guaranteed
+        // floor; toHub falls back to the lobby itself when there is no personal world yet.
+        LOGGER.warn("Respawn for {} landed in open void in {} with no ground within {} blocks; "
+            + "routing to their hub.", player.getName().getString(),
+            world.getRegistryKey().getValue(), LANDING_SEARCH_RADIUS);
+        com.crackedgames.craftics.world.HubTeleports.toHub(player);
+        player.sendMessage(Text.literal(
+            "§eYour respawn point was gone, so you were returned home."), false);
+    }
+
     private void registerRespawnHooks() {
+
+        // A player's spawn point names a dimension, and their island is a runtime Fantasy
+        // world that is unloaded whenever it is empty - which it very often is at the exact
+        // moment they die on it, since they were the only one there. Vanilla cannot resolve a
+        // spawn point in a dimension that is not loaded: it discards it and uses the overworld
+        // instead, which is the behaviour the spawn point was set to avoid. Re-open the island
+        // now, while the respawn has not happened yet, so it is there to be resolved.
+        net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.AFTER_DEATH.register(
+            (entity, damageSource) -> {
+                if (!(entity instanceof ServerPlayerEntity dead)) return;
+                try {
+                    com.crackedgames.craftics.world.HubTeleports.ensureRespawnIslandLoaded(dead);
+                } catch (Throwable t) {
+                    LOGGER.warn("Could not pre-load {}'s island for respawn: {}",
+                        dead.getName().getString(), t.toString());
+                }
+            });
 
         /*
          * A player who died by something OTHER than the fight.
@@ -823,32 +886,16 @@ public class CrafticsMod implements ModInitializer {
             if (alive) return;
             if (!(newPlayer.getEntityWorld() instanceof ServerWorld respawnWorld)) return;
             if (hasGroundBelow(respawnWorld, newPlayer.getX(), newPlayer.getY(), newPlayer.getZ())) return;
-
-            // Ground anywhere near where they expected to be beats a teleport across worlds,
-            // so search outward from the respawn coordinate rather than straight down it.
-            // Down-the-column only works while the island keeps its generated shape; a player
-            // who rebuilt their base has an empty column there and would be bounced home from
-            // a spot they were standing on ten seconds ago.
-            net.minecraft.util.math.BlockPos landing = findLandingSpot(respawnWorld,
-                (int) Math.floor(newPlayer.getX()), (int) Math.floor(newPlayer.getZ()),
-                (int) Math.floor(newPlayer.getY()));
-            if (landing != null) {
-                com.crackedgames.craftics.world.HubTeleports.teleportTo(newPlayer, respawnWorld,
-                    landing.getX() + 0.5, landing.getY(), landing.getZ() + 0.5);
-                LOGGER.warn("Respawn for {} landed over void in {}; moved to solid ground at {},{},{}.",
-                    newPlayer.getName().getString(), respawnWorld.getRegistryKey().getValue(),
-                    landing.getX(), landing.getY(), landing.getZ());
-                return;
-            }
-
-            // Nothing solid anywhere around them. The player's own hub is the guaranteed
-            // floor; toHub falls back to the lobby itself when there is no personal world yet.
-            LOGGER.warn("Respawn for {} landed in open void in {} with no ground within {} blocks; "
-                + "routing to their hub.", newPlayer.getName().getString(),
-                respawnWorld.getRegistryKey().getValue(), LANDING_SEARCH_RADIUS);
-            com.crackedgames.craftics.world.HubTeleports.toHub(newPlayer);
-            newPlayer.sendMessage(Text.literal(
-                "\u00a7eYour respawn point was gone, so you were returned home."), false);
+            // NEVER move the player during the respawn itself. A respawn is frequently a
+            // dimension change already (dying on an island with no bed sends them to the
+            // overworld lobby), and moving them again while that transition is in flight is
+            // the documented way to strand a client in a chunkless void - see
+            // HubTeleports.unloadLeftIslandNextTick, which defers for exactly this reason.
+            // The symptom is "Loading Terrain" forever, then a lobby with no blocks in it.
+            // One tick is all it takes for the respawn to finish and the move to be safe.
+            net.minecraft.server.MinecraftServer respawnServer = newPlayer.getServer();
+            if (respawnServer == null) return;
+            respawnServer.execute(() -> relocateVoidRespawn(newPlayer));
         });
 
         // Tick ALL active combat instances each server tick
