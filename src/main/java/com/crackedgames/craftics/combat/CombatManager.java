@@ -27305,6 +27305,12 @@ public class CombatManager {
             }
             String biomeName = biomeTemplate != null ? biomeTemplate.displayName : "Unknown";
             int displayIndex = ld.activeBiomeLevelIndex;
+            // Go Home means opposite things in the two modes, so the button has to know
+            // which one it is in: a campaign run resets its biome progress, an infinite run
+            // parks at a save point and resumes exactly where it left off. Resolved here
+            // (not on the client) because biomeName is the plain biome display name and
+            // carries no infinite marker.
+            boolean inInfiniteRun = InfiniteRunManager.isHostOfActiveRun(data, infiniteHostOwner);
             // Check if the next level in this biome is a boss fight
             int nextGlobalLevel = levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld2
                 ? gld2.getLevelNumber() + 1 : -1;
@@ -27325,7 +27331,7 @@ public class CombatManager {
             }
             ServerPlayNetworking.send(decisionPlayer, new VictoryChoicePayload(
                 emeraldsEarned, ld.emeralds, false, biomeName, displayIndex, nextIsBoss,
-                true, LootRecorder.drain(decisionPlayer.getUuid())
+                true, inInfiniteRun, LootRecorder.drain(decisionPlayer.getUuid())
             ));
             // Non-leaders get a persistent "waiting" loading screen. It fades out
             // automatically when their next EnterCombatPayload arrives from the
@@ -27338,7 +27344,7 @@ public class CombatManager {
                     // the screen show a "waiting for the leader" note instead of buttons.
                     ServerPlayNetworking.send(member, new VictoryChoicePayload(
                         emeraldsEarned, ld.emeralds, false, biomeName, displayIndex, nextIsBoss,
-                        false, LootRecorder.drain(member.getUuid())
+                        false, inInfiniteRun, LootRecorder.drain(member.getUuid())
                     ));
                 }
             }
@@ -27954,8 +27960,12 @@ public class CombatManager {
                                     final int addonLeaderEmeralds = ld.emeralds;
                                     final String addonLabel = addonEvent.displayName();
                                     Runnable addonPrompt = leaderPromptOrAutoDecline(addonLeader,
+                                        // levelIndex -1 marks this an event prompt, which renders
+                                        // Accept/Decline rather than the Go Home button, so the
+                                        // infinite flag is never read on this path.
                                         new VictoryChoicePayload(0, addonLeaderEmeralds, false,
-                                            addonLabel, -1, false, true, new java.util.ArrayList<>()));
+                                            addonLabel, -1, false, true, false,
+                                            new java.util.ArrayList<>()));
                                     if (addonEvent.introLines() != null && !addonEvent.introLines().isEmpty()) {
                                         // Opt-in narrator intro -gate the leader's Accept/Decline
                                         // screen behind an all-dismiss dialogue.

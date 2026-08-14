@@ -123,8 +123,11 @@ public class EventManager {
                 com.crackedgames.craftics.world.CrafticsSavedData data =
                     com.crackedgames.craftics.world.CrafticsSavedData.get(world);
                 com.crackedgames.craftics.world.CrafticsSavedData.PlayerData pd = data.getPlayerData(uuid);
+                // levelIndex -1 marks this an event prompt, which renders Accept/Decline
+                // rather than the Go Home button, so the infinite flag is never read here.
                 ServerPlayNetworking.send(p, new VictoryChoicePayload(
-                    emeraldsEarned, pd.emeralds, false, label, -1, false, true, new java.util.ArrayList<>()
+                    emeraldsEarned, pd.emeralds, false, label, -1, false, true, false,
+                    new java.util.ArrayList<>()
                 ));
             }
         }

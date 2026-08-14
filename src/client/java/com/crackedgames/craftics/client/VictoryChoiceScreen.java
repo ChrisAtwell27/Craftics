@@ -26,6 +26,9 @@ public class VictoryChoiceScreen extends Screen {
     private final int levelIndex;
     private final boolean nextIsBoss;
     private final boolean isLeader;
+    /** True when this victory happened inside an INFINITE MODE run. Only the Go Home
+     *  button's wording depends on it: the two modes give that button opposite meanings. */
+    private final boolean isInfinite;
     private final java.util.List<net.minecraft.item.ItemStack> rewards;
 
     /** True when this screen is prompting for a trial/event, not a regular level victory. */
@@ -85,7 +88,8 @@ public class VictoryChoiceScreen extends Screen {
 
     public VictoryChoiceScreen(int emeraldsEarned, int totalEmeralds,
                                 String biomeName, int levelIndex, boolean nextIsBoss,
-                                boolean isLeader, java.util.List<net.minecraft.item.ItemStack> rewards) {
+                                boolean isLeader, boolean isInfinite,
+                                java.util.List<net.minecraft.item.ItemStack> rewards) {
         super(Text.literal("Victory!"));
         this.emeraldsEarned = emeraldsEarned;
         this.totalEmeralds = totalEmeralds;
@@ -94,6 +98,7 @@ public class VictoryChoiceScreen extends Screen {
         this.nextIsBoss = nextIsBoss;
         this.isEventPrompt = (levelIndex == -1);
         this.isLeader = isLeader;
+        this.isInfinite = isInfinite;
         this.rewards = rewards != null ? rewards : new java.util.ArrayList<>();
         this.revealPopPlayed = new boolean[this.rewards.size()];
     }
@@ -159,9 +164,18 @@ public class VictoryChoiceScreen extends Screen {
 
         } else if (isLeader) {
             // --- Normal victory choice (leader only) ---
+            // Going home does something different in each mode, and the old label described
+            // only the campaign one. A campaign run gives up its biome progress; an infinite
+            // run is PARKED at a save point - score, cleared count and biome/level cursor all
+            // survive, and opening Infinite Mode again resumes exactly here. Telling an
+            // infinite player they are about to "reset biome progress" reads as "lose the
+            // run", which is the one thing that does not happen.
+            String goHomeLabel = isInfinite
+                ? "§a⌂ Pause Infinite Mode Run and Go Home"
+                : "§a⌂ Go Home (Keep loot, reset biome progress)";
             this.addDrawableChild(GuideButton.of(
                 centerX - btnW / 2, btnY, btnW, btnH,
-                Text.literal("§a⌂ Go Home (Keep loot, reset biome progress)"),
+                Text.literal(goHomeLabel),
                 btn -> {
                     clearReopen();
                     this.close();

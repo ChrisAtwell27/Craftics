@@ -18,11 +18,18 @@ import java.util.List;
  * biomeName: display name of the current biome
  * levelIndex: current level index within biome (0-4)
  * nextIsBoss: true if the next level in the biome is a boss fight
+ * isInfinite: true when this victory happened inside an INFINITE MODE run. The two modes
+ *             give the Go Home button opposite meanings - a campaign run resets its biome
+ *             progress, an infinite run PARKS at a save point and resumes exactly where it
+ *             left off - so the button has to say which one it is doing. The client cannot
+ *             work this out for itself: biomeName carries the biome's plain display name
+ *             with no infinite marker on it.
  */
 public record VictoryChoicePayload(int emeraldsEarned, int totalEmeralds,
                                     boolean isBossLevel, String biomeName,
                                     int levelIndex, boolean nextIsBoss,
-                                    boolean isLeader, List<ItemStack> rewards) implements CustomPayload {
+                                    boolean isLeader, boolean isInfinite,
+                                    List<ItemStack> rewards) implements CustomPayload {
 
     public static final CustomPayload.Id<VictoryChoicePayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "victory_choice"));
@@ -38,6 +45,7 @@ public record VictoryChoicePayload(int emeraldsEarned, int totalEmeralds,
                 PacketCodecs.INTEGER.encode(buf, payload.levelIndex);
                 PacketCodecs.BOOL.encode(buf, payload.nextIsBoss);
                 PacketCodecs.BOOL.encode(buf, payload.isLeader);
+                PacketCodecs.BOOL.encode(buf, payload.isInfinite);
                 buf.writeVarInt(payload.rewards.size());
                 for (ItemStack s : payload.rewards) ItemStack.PACKET_CODEC.encode(buf, s);
             },
@@ -49,11 +57,12 @@ public record VictoryChoicePayload(int emeraldsEarned, int totalEmeralds,
                 int levelIndex = PacketCodecs.INTEGER.decode(buf);
                 boolean nextIsBoss = PacketCodecs.BOOL.decode(buf);
                 boolean isLeader = PacketCodecs.BOOL.decode(buf);
+                boolean isInfinite = PacketCodecs.BOOL.decode(buf);
                 int n = buf.readVarInt();
                 List<ItemStack> rewards = new ArrayList<>(n);
                 for (int i = 0; i < n; i++) rewards.add(ItemStack.PACKET_CODEC.decode(buf));
                 return new VictoryChoicePayload(emeraldsEarned, totalEmeralds, isBossLevel,
-                    biomeName, levelIndex, nextIsBoss, isLeader, rewards);
+                    biomeName, levelIndex, nextIsBoss, isLeader, isInfinite, rewards);
             }
         );
     //?} else {
@@ -67,6 +76,7 @@ public record VictoryChoicePayload(int emeraldsEarned, int totalEmeralds,
                 PacketCodecs.INTEGER.encode(buf, payload.levelIndex);
                 PacketCodecs.BOOLEAN.encode(buf, payload.nextIsBoss);
                 PacketCodecs.BOOLEAN.encode(buf, payload.isLeader);
+                PacketCodecs.BOOLEAN.encode(buf, payload.isInfinite);
                 buf.writeVarInt(payload.rewards.size());
                 for (ItemStack s : payload.rewards) ItemStack.PACKET_CODEC.encode(buf, s);
             },
@@ -78,11 +88,12 @@ public record VictoryChoicePayload(int emeraldsEarned, int totalEmeralds,
                 int levelIndex = PacketCodecs.INTEGER.decode(buf);
                 boolean nextIsBoss = PacketCodecs.BOOLEAN.decode(buf);
                 boolean isLeader = PacketCodecs.BOOLEAN.decode(buf);
+                boolean isInfinite = PacketCodecs.BOOLEAN.decode(buf);
                 int n = buf.readVarInt();
                 List<ItemStack> rewards = new ArrayList<>(n);
                 for (int i = 0; i < n; i++) rewards.add(ItemStack.PACKET_CODEC.decode(buf));
                 return new VictoryChoicePayload(emeraldsEarned, totalEmeralds, isBossLevel,
-                    biomeName, levelIndex, nextIsBoss, isLeader, rewards);
+                    biomeName, levelIndex, nextIsBoss, isLeader, isInfinite, rewards);
             }
         );
     *///?}

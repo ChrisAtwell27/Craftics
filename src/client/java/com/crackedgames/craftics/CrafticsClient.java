@@ -415,7 +415,7 @@ public class CrafticsClient implements ClientModInitializer {
                     var victory = new com.crackedgames.craftics.client.VictoryChoiceScreen(
                         payload.emeraldsEarned(), payload.totalEmeralds(),
                         payload.biomeName(), payload.levelIndex(), payload.nextIsBoss(),
-                        payload.isLeader(), payload.rewards()
+                        payload.isLeader(), payload.isInfinite(), payload.rewards()
                     );
                     // Until this screen's button is pressed the server holds the party in
                     // LEVEL_COMPLETE with all input closed, so losing the screen strands the
