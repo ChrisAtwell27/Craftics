@@ -30,8 +30,8 @@ public final class ChatNudges {
 
     public static final String DISCORD_URL = "https://discord.gg/kY9F5Sjf4d";
 
-    private static final String DISCORD_MESSAGE =
-        "§d§lCraftics §7- join the Discord for updates and help: §b" + DISCORD_URL;
+    private static final String DISCORD_PREFIX =
+        "§d§lCraftics §7- join the Discord for updates and help: ";
 
     /** Written and ready; not sent yet. See the note in {@link #tick}. */
     private static final String BUG_REPORT_MESSAGE =
@@ -57,17 +57,13 @@ public final class ChatNudges {
         var players = server.getPlayerManager().getPlayerList();
         if (players.isEmpty()) return;
 
-        // The URL goes out as plain text on purpose: the vanilla client links URLs it finds in
-        // chat by itself, and building a ClickEvent by hand would need a version split (the
-        // class changed shape in 1.21.5) for no gain.
-        //
         // Only the Discord line is live. The bug-report nudge is held back until the report
         // intake is pointed at its final endpoint - telling players to file bugs before the
         // thing that receives them is settled just loses their reports.
         //
-        // To restore it: pick between DISCORD_MESSAGE and BUG_REPORT_MESSAGE on
+        // To restore it: pick between discordMessage() and BUG_REPORT_MESSAGE on
         // showDiscordNext below, then flip showDiscordNext each time one fires.
-        Text message = Text.literal(DISCORD_MESSAGE);
+        Text message = discordMessage();
 
         for (ServerPlayerEntity player : players) {
             // Mid-fight is the wrong moment for either of these.
@@ -75,4 +71,35 @@ public final class ChatNudges {
             player.sendMessage(message, false);
         }
     }
+
+    /**
+     * The link half carries a real OPEN_URL click event. A bare URL in a server-sent message is
+     * inert text - the client only linkifies what it renders from its own chat parsing - so the
+     * event has to be attached by hand, version split and all.
+     */
+    private static Text discordMessage() {
+        return Text.literal(DISCORD_PREFIX)
+            .append(Text.literal("§b§n" + DISCORD_URL)
+                .styled(s -> s.withClickEvent(openUrl(DISCORD_URL))
+                    .withHoverEvent(openUrlHover())));
+    }
+
+    //? if <=1.21.4 {
+    private static net.minecraft.text.ClickEvent openUrl(String url) {
+        return new net.minecraft.text.ClickEvent(net.minecraft.text.ClickEvent.Action.OPEN_URL, url);
+    }
+
+    private static net.minecraft.text.HoverEvent openUrlHover() {
+        return new net.minecraft.text.HoverEvent(
+            net.minecraft.text.HoverEvent.Action.SHOW_TEXT, Text.literal("Click to open the Discord invite"));
+    }
+    //?} else {
+    /*private static net.minecraft.text.ClickEvent openUrl(String url) {
+        return new net.minecraft.text.ClickEvent.OpenUrl(java.net.URI.create(url));
+    }
+
+    private static net.minecraft.text.HoverEvent openUrlHover() {
+        return new net.minecraft.text.HoverEvent.ShowText(Text.literal("Click to open the Discord invite"));
+    }
+    *///?}
 }

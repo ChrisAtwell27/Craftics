@@ -20,6 +20,13 @@ public class ScrollZoomMixin {
     private void craftics$handleCombatZoom(long window, double horizontal, double vertical, CallbackInfo ci) {
         if (!CombatState.isInCombat()) return;
 
+        // Battle intro owns the camera - swallow scroll entirely (both the zoom and
+        // the hotbar switch, which would visibly swap the posed weapon mid-flourish).
+        if (CombatState.isIntroActive()) {
+            ci.cancel();
+            return;
+        }
+
         long handle = MinecraftClient.getInstance().getWindow().getHandle();
         boolean shiftHeld = GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS
             || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;

@@ -703,6 +703,18 @@ public class CombatEntity {
     public boolean isBonusLootRoll() { return bonusLootRoll; }
     public void setBonusLootRoll(boolean v) { this.bonusLootRoll = v; }
 
+    /**
+     * This mob's index in its level's spawn list, or -1 for anything spawned mid-fight.
+     *
+     * <p>Exists so a roll made LATER - a drop, rolled when the mob dies - can still be derived
+     * from where the mob sits in the run rather than from wall-clock noise. The entity id would
+     * be the obvious handle and is exactly the wrong one: it is assigned by the server at spawn
+     * and differs between two players playing the same seeded chapter.
+     */
+    private int spawnIndex = -1;
+    public int getSpawnIndex() { return spawnIndex; }
+    public void setSpawnIndex(int index) { this.spawnIndex = index; }
+
     public int getDefensePenalty() { return defensePenalty; }
     public void setDefensePenalty(int p) { this.defensePenalty = p; }
     public int getDefensePenaltyTurns() { return defensePenaltyTurns; }
@@ -1097,6 +1109,29 @@ public class CombatEntity {
         return Math.max(0, defense - defensePenalty - permanentDefReduction + permanentBonusDefense);
     }
 
+    /**
+     * Flat damage shaved off every incoming hit BEFORE the percentage defense math - a tower
+     * shield, not tougher skin. Distinct from defense on purpose: defense is a percentage and
+     * gets proportionally better against big hits, while flat reduction is what makes chip
+     * damage bounce off entirely - a 2-damage arrow does nothing to a DR-3 shield wall, and
+     * that reads completely differently from "it did 1". Set at spawn by compat modules
+     * (the It Takes a Pillage legioner); 0 for everything else.
+     */
+    private int flatDamageReduction = 0;
+    public int getFlatDamageReduction() { return flatDamageReduction; }
+    public void setFlatDamageReduction(int dr) { this.flatDamageReduction = Math.max(0, dr); }
+
+    /**
+     * Chance [0..1] that a RANGED hit glances off this entity entirely. Applied by the
+     * damage resolve in CombatManager (which knows the damage type), not here - takeDamage
+     * has no idea what kind of blow it is mitigating.
+     */
+    private double rangedBlockChance = 0.0;
+    public double getRangedBlockChance() { return rangedBlockChance; }
+    public void setRangedBlockChance(double chance) {
+        this.rangedBlockChance = Math.max(0.0, Math.min(1.0, chance));
+    }
+
     public int takeDamage(int rawDamage) {
         return takeDamage(rawDamage, 0);
     }
@@ -1153,6 +1188,12 @@ public class CombatEntity {
             int soak = Math.min(getAbsorption(), rawDamage);
             consumeAbsorption(soak);
             rawDamage -= soak;
+        }
+        // Flat reduction (legioner shield wall): shaves its amount off before the
+        // percentage defense, and CAN zero a hit outright - unlike defense, whose formula
+        // floors at 1. A hit that fails to beat the shield does nothing at all.
+        if (flatDamageReduction > 0) {
+            rawDamage = Math.max(0, rawDamage - flatDamageReduction);
         }
         if (rawDamage <= 0) return 0;
         // Each DEF point = 5% reduction, capped at 60%

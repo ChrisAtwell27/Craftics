@@ -115,7 +115,8 @@ public class TrialChamberEvent {
         return def;
     }
 
-    private static GridPos findSpawnPos(int width, int height, List<GridPos> used, Random rng) {
+    // Package-private: PillageEvents places its rosters with the same spread rules.
+    static GridPos findSpawnPos(int width, int height, List<GridPos> used, Random rng) {
         for (int attempts = 0; attempts < 30; attempts++) {
             int x = 2 + rng.nextInt(width - 4);
             int z = 2 + rng.nextInt(height - 4);
@@ -327,6 +328,12 @@ public class TrialChamberEvent {
             return new ItemStack(Items.CAKE, 1);
         }
         return new ItemStack(Items.HONEY_BOTTLE, 2);
+    }
+
+    /** One heavily-enchanted gear piece, weapon or armor 50/50 - the ominous trial's
+     *  headline roll, shared with the Bastille's final-wave payout. */
+    static ItemStack rollHeavyGear(ServerWorld world, Random rng) {
+        return rng.nextBoolean() ? rollHeavyWeapon(world, rng) : rollHeavyArmor(world, rng);
     }
 
     /** Per-player ominous trial reward: one heavily-enchanted gear piece (weapon

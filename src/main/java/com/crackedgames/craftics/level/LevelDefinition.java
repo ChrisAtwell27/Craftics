@@ -28,6 +28,19 @@ public abstract class LevelDefinition {
         return tiles;
     }
 
+    /**
+     * The base floor pattern evaluated at ANY grid coordinate, including ones
+     * beyond {@link #getWidth()}/{@link #getHeight()}. Structure arenas are
+     * frequently larger than the definition (odd-shaped/polygon arenas
+     * especially), and the builder used to fill the excess with a single plain
+     * floor block - visibly breaking the checkerboard that makes the grid
+     * readable. Overrides must be pure coordinate functions so the pattern
+     * extends seamlessly; hazards and specials stay in {@link #buildTiles()}.
+     */
+    public GridTile patternTileAt(int x, int z) {
+        return new GridTile(com.crackedgames.craftics.core.TileType.NORMAL, getFloorBlock());
+    }
+
     public abstract EnemySpawn[] getEnemySpawns();
 
     public java.util.List<net.minecraft.item.ItemStack> rollCompletionLoot() {

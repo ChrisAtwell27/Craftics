@@ -1165,8 +1165,8 @@ public class CombatTooltips implements ItemTooltipCallback {
             + " AP \u00a77- Combat horn. A setup tool: it costs more than a base turn's AP\n\u00a77Each variant gives a different buff or debuff\n\u00a77(see horn name for specific effect)\n\u00a77Never consumed";
         if (item == Items.ECHO_SHARD) return "\u00a751 AP \u00a77- Echo teleport\n\u00a77Return to start-of-turn position\n\u00a77Consumed on use";
         if (item == Items.BRUSH) return "\u00a7e1 AP \u00a77- Excavate adjacent tile\n\u00a77Dig up random loot (gold, gems, etc.)\n\u00a77Uses durability";
-        if (item == Items.LANTERN) return "\u00a7e1 AP \u00a77- Place light source\n\u00a77Reveals hidden/invisible enemies in 3 tiles";
-        if (item == Items.TORCH) return "\u00a7e1 AP \u00a77- Place light source\n\u00a77Lights a radius-2 zone and negates darkness (weaker than a lantern)";
+        if (item == Items.LANTERN) return "\u00a7e1 AP \u00a77- Place light source\n\u00a77Reveals hidden/invisible enemies in 3 tiles\n\u00a7bOr carry in your offhand: \u00a77a walking radius-3 light";
+        if (item == Items.TORCH) return "\u00a7e1 AP \u00a77- Place light source\n\u00a77Lights a radius-2 zone and negates darkness (weaker than a lantern)\n\u00a7bOr carry in your offhand: \u00a77a walking radius-2 light";
         if (item == Items.LIGHTNING_ROD) return "\u00a7e1 AP \u00a77- Place on tile\n\u00a77Strikes next turn: 4 DMG to all within 1 tile\n\u00a77Consumed after striking";
         if (item == Items.CACTUS) return "\u00a721 AP \u00a77- Place wall trap\n\u00a77Pricks adjacent enemies for 1 DMG/turn";
         if (item == Items.CAMPFIRE) return "\u00a761 AP \u00a77- Place healing zone\n\u00a77Heals 2 HP/turn within 2 tiles of it\n\u00a761 AP \u00a77- Click a placed campfire with raw food to cook up to "
@@ -1261,7 +1261,7 @@ public class CombatTooltips implements ItemTooltipCallback {
 
         // ── Banners ──
         if (item.toString().contains("banner"))
-            return "\u00a751 AP \u00a77- Plant defense zone\n\u00a77+2 Armor Class for you/allies within 2 tiles";
+            return "\u00a751 AP \u00a77- Plant defense zone\n\u00a77+2 Armor Class for you/allies within 2 tiles\n\u00a7bOr carry in your offhand: \u00a77the aura walks with you (base bonus, no shield hand)";
 
         // ── Move item ──
         if (item == com.crackedgames.craftics.item.ModItems.MOVE_ITEM)

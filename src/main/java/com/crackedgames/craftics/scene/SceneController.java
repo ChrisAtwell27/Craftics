@@ -172,9 +172,24 @@ public final class SceneController {
                 player.getName().getString());
             return;
         }
+        // Scenes get the same walk-on as an arena entry. A hall is entered alone, so the cast
+        // is just this player - which is exactly the single-walker case the sequence handles.
+        //
+        // The build below is synchronous, so the "done" arrives almost immediately. That is
+        // fine and deliberate: the walk-on holds the screen on its own terms (the centre hold
+        // is a minimum, and the exit is only ever a request), so a load with no measurable
+        // duration still plays the full sequence rather than flashing black.
+        String sceneCast = com.crackedgames.craftics.combat.LoadingCast.encode(List.of(player));
+        ServerPlayNetworking.send(player,
+            new com.crackedgames.craftics.network.LoadingScreenPayload(true, "", "", sceneCast));
+
         SceneController c = new SceneController(owner, world, origin, sceneName);
         INSTANCES.put(owner, c);
         c.build(player);
+
+        // Hand the screen back now the booth exists and the player has been placed in it.
+        ServerPlayNetworking.send(player,
+            new com.crackedgames.craftics.network.LoadingScreenPayload(false, "", ""));
     }
 
     public static void handleClick(ServerPlayerEntity player, int tx, int tz) {

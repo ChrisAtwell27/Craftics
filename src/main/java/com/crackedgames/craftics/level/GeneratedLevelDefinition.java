@@ -51,6 +51,19 @@ public class GeneratedLevelDefinition extends LevelDefinition {
     @Override public GridPos getPlayerStart() { return playerStart; }
     @Override public Block getFloorBlock() { return floorBlock; }
     @Override public GridTile[][] buildTiles() { return tiles; }
+
+    @Override
+    public GridTile patternTileAt(int x, int z) {
+        // Same formula LevelGenerator.generateTiles uses for the in-bounds
+        // pattern, so the extension is phase-aligned with the baked tiles.
+        if (biomeTemplate != null && biomeTemplate.floorBlocks != null
+                && biomeTemplate.floorBlocks.length > 0) {
+            Block floor = biomeTemplate.floorBlocks[
+                Math.floorMod(x + z, biomeTemplate.floorBlocks.length)];
+            return new GridTile(com.crackedgames.craftics.core.TileType.NORMAL, floor);
+        }
+        return super.patternTileAt(x, z);
+    }
     @Override public EnemySpawn[] getEnemySpawns() { return enemySpawns; }
     @Override public boolean isNightLevel() { return nightLevel; }
     @Override public String getArenaBiomeId() { return arenaBiomeOverride; }

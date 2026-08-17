@@ -228,6 +228,7 @@ public final class AuctionMenus {
         ItemStack stack = new ItemStack(item);
         stack.setCount(1);
         setDisplay(stack, name, lore);
+        com.crackedgames.craftics.screen.MenuIcons.mark(stack);
         inv.setStack(slot, stack);
     }
 

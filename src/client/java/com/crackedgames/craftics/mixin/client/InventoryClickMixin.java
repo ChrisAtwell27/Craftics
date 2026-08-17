@@ -29,6 +29,9 @@ public class InventoryClickMixin {
                                      CallbackInfoReturnable<Boolean> cir) {
         if (!((Object) this instanceof InventoryScreen screen)) return;
         if (!CombatState.isStatsOverlayVisible()) return;
+        // Panels are hidden while the recipe book is open, so their buttons must not keep
+        // eating clicks from behind it - the hit rects sit under the book's own controls.
+        if (com.crackedgames.craftics.client.RecipeBookState.isOpen(screen)) return;
         if (button != 0) return; // left-click only
         int sw = screen.width, sh = screen.height;
 

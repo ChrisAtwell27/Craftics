@@ -110,6 +110,7 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.artifacts.ArtifactsCompat.init();
         com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.init();
         com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.init();
+        com.crackedgames.craftics.compat.takesapillage.TakesAPillageCompat.init();
         com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.init();
         com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.init();
         com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.init();
@@ -239,6 +240,11 @@ public class CrafticsMod implements ModInitializer {
             } else if (item == net.minecraft.item.Items.OMINOUS_TRIAL_KEY) {
                 forced = "ominous_trial";
                 label = "Ominous Trial Chamber";
+            } else if (com.crackedgames.craftics.combat.PillageEvents.isBastilleMap(stack)) {
+                // The Pillager Camp's prize: queues the Bastille the same way a trial
+                // key queues a trial. Marked vanilla map, so no new item registration.
+                forced = com.crackedgames.craftics.combat.PillageEvents.BASTILLE_KEY;
+                label = "The Bastille";
             } else {
                 return net.minecraft.util.TypedActionResult.pass(stack);
             }
@@ -287,6 +293,11 @@ public class CrafticsMod implements ModInitializer {
             } else if (item == net.minecraft.item.Items.OMINOUS_TRIAL_KEY) {
                 forced = "ominous_trial";
                 label = "Ominous Trial Chamber";
+            } else if (com.crackedgames.craftics.combat.PillageEvents.isBastilleMap(stack)) {
+                // The Pillager Camp's prize: queues the Bastille the same way a trial
+                // key queues a trial. Marked vanilla map, so no new item registration.
+                forced = com.crackedgames.craftics.combat.PillageEvents.BASTILLE_KEY;
+                label = "The Bastille";
             } else {
                 return net.minecraft.util.ActionResult.PASS;
             }
@@ -991,6 +1002,14 @@ public class CrafticsMod implements ModInitializer {
                     long now = System.currentTimeMillis();
                     for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
                         com.crackedgames.craftics.item.SeasonStamp.sweep(p, now);
+                        // Backstop for read-only menu icons pulled out by any path the
+                        // screen handler can't intercept (see MenuIcons): whatever
+                        // extracted one, it evaporates within a sweep interval.
+                        int purged = com.crackedgames.craftics.screen.MenuIcons.purge(p);
+                        if (purged > 0) {
+                            LOGGER.warn("Destroyed {} menu icon stack(s) found in {}'s inventory",
+                                purged, p.getName().getString());
+                        }
                     }
                 }
             } catch (Throwable t) {
@@ -2146,8 +2165,17 @@ public class CrafticsMod implements ModInitializer {
             // CombatManager.rollEvent compares against. Must match the
             // {@code forced.equals("...")} arms over there exactly.
             java.util.List<String> eventNames = new java.util.ArrayList<>(java.util.List.of(
-                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "trader", "piglin_barter", "none"
+                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "trader", "piglin_barter", "none",
+                // Also a roll-chain branch, and was missing here since it shipped - the
+                // raid was forceable in the chain but unreachable from the command.
+                "raid"
             ));
+            // The It Takes a Pillage events exist only when the mod does - offering the
+            // literals without it would force a fight whose entities can't spawn.
+            if (com.crackedgames.craftics.compat.takesapillage.TakesAPillageCompat.isLoaded()) {
+                eventNames.add(com.crackedgames.craftics.combat.PillageEvents.CAMP_KEY);
+                eventNames.add(com.crackedgames.craftics.combat.PillageEvents.BASTILLE_KEY);
+            }
             // Add addon-registered events from EventRegistry
             for (var entry : com.crackedgames.craftics.api.registry.EventRegistry.getAll()) {
                 String id = entry.id();
@@ -2341,6 +2369,12 @@ public class CrafticsMod implements ModInitializer {
                         .suggests((ctx, builder) -> {
                             // The full zone list is ~600 entries; suggest the common ones
                             // and let anything valid still be typed.
+                            // Abbreviations first: they are what an admin actually types, and
+                            // they are the ones that used to be silently rejected.
+                            for (String z : com.crackedgames.craftics.combat.infinite
+                                    .ChapterSchedule.zoneAliases()) {
+                                builder.suggest(z);
+                            }
                             for (String z : new String[]{"UTC", "America/New_York",
                                     "America/Chicago", "America/Los_Angeles", "Europe/London",
                                     "Europe/Berlin", "Australia/Sydney"}) {
@@ -2350,11 +2384,15 @@ public class CrafticsMod implements ModInitializer {
                         })
                         .executes(ctx -> {
                             String requested = StringArgumentType.getString(ctx, "zone");
-                            com.crackedgames.craftics.combat.infinite.ChapterManager
+                            boolean known = com.crackedgames.craftics.combat.infinite.ChapterManager
                                 .setZone(ctx.getSource().getServer(), requested);
                             CrafticsSavedData zoneData = CrafticsSavedData.get(
                                 ctx.getSource().getServer().getOverworld());
-                            if (!zoneData.rotationZone.equalsIgnoreCase(requested)) {
+                            // Ask setZone whether it understood the input rather than comparing
+                            // the stored id back to what was typed: an accepted abbreviation
+                            // deliberately stores a different (region) id, so the old string
+                            // comparison would report every successful "EST" as unknown.
+                            if (!known) {
                                 ctx.getSource().sendError(Text.literal("§eUnknown zone '"
                                     + requested + "'; fell back to §f" + zoneData.rotationZone));
                             }

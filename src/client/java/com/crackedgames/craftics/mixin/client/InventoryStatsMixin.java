@@ -17,6 +17,10 @@ public class InventoryStatsMixin {
     private void craftics$renderStats(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
         if (!com.crackedgames.craftics.client.CombatState.isStatsOverlayVisible()) return;
         InventoryScreen screen = (InventoryScreen)(Object)this;
+        // The recipe book unfolds into the same space these panels occupy, and the inventory
+        // slides over to make room for it. Whichever one the player opened last would be
+        // drawing on top of the other, so the book wins while it is up.
+        if (com.crackedgames.craftics.client.RecipeBookState.isOpen(screen)) return;
         int sw = screen.width, sh = screen.height;
         com.crackedgames.craftics.client.StatsPanel.render(context, sw, sh, mouseX, mouseY);
         com.crackedgames.craftics.client.DamageTypePanel.render(context, sw, sh, mouseX, mouseY);

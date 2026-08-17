@@ -313,6 +313,30 @@ public final class RunInviteManager {
         if (biome == null) { ServerPlayNetworking.send(starter, new ExitCombatPayload(false)); return; }
         pd.initBranchIfNeeded();
 
+        // The FIRST arena of a run is entered from right here - beginRun builds it and sends
+        // EnterCombatPayload itself, without going through transitionPartyToArena - so this
+        // needs its own cast. Only later levels funnel through that method.
+        //
+        // Sending one here no longer double-swipes: startTransitionWithCast adopts a cast into
+        // a transition that is already running (the "Gathering the party" screen, or the level
+        // select's own) rather than restarting it.
+        //
+        // Covers Infinite Mode too, which resolves its sentinel biome id above and then enters
+        // through this same path.
+        List<ServerPlayerEntity> castMembers = new java.util.ArrayList<>();
+        castMembers.add(starter);
+        for (UUID memberUuid : participants) {
+            if (memberUuid.equals(starter.getUuid())) continue;
+            ServerPlayerEntity member = world.getServer().getPlayerManager().getPlayer(memberUuid);
+            if (member != null) castMembers.add(member);
+        }
+        String cast = LoadingCast.encode(castMembers);
+        String castTitle = "§6" + prettyBiome(biomeId);
+        for (ServerPlayerEntity member : castMembers) {
+            ServerPlayNetworking.send(member, new LoadingScreenPayload(
+                true, castTitle, "§7Preparing the arena...", cast));
+        }
+
         int levelIndex;
         if (pd.isInBiomeRun() && biomeId.equals(pd.activeBiomeId)) {
             levelIndex = pd.activeBiomeLevelIndex; // resume

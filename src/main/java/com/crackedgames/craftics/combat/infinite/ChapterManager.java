@@ -173,15 +173,28 @@ public final class ChapterManager {
             data.rotationRule, data.nextRotationAt);
     }
 
-    /** Set the zone the rule's wall-clock times are read in, and re-anchor the boundary. */
-    public static void setZone(MinecraftServer server, String zoneId) {
+    /**
+     * Set the zone the rule's wall-clock times are read in, and re-anchor the boundary.
+     *
+     * @return false if {@code zoneId} was not recognised, in which case the server's own zone
+     *         was used instead. Reported rather than swallowed: an unrecognised zone still
+     *         "works", just on the wrong clock, so the only sign of a typo was rotations
+     *         happening at an hour nobody asked for.
+     */
+    public static boolean setZone(MinecraftServer server, String zoneId) {
         CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
+        boolean known = ChapterSchedule.isKnownZone(zoneId);
         data.rotationZone = ChapterSchedule.resolveZone(zoneId).getId();
+        if (!known) {
+            CrafticsMod.LOGGER.warn("[chapter] unknown zone '{}'; falling back to the server zone '{}'",
+                zoneId, data.rotationZone);
+        }
         data.nextRotationAt = ChapterSchedule.nextAfter(
             data.rotationRule, data.rotationZone, System.currentTimeMillis());
         data.markDirty();
         CrafticsMod.LOGGER.info("[chapter] zone set to '{}' next={}",
             data.rotationZone, data.nextRotationAt);
+        return known;
     }
 
     /** A fresh seed. Wall-clock entropy is fine HERE and only here: this is the one

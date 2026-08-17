@@ -56,6 +56,9 @@ public class ArenaBuilder {
     /** Polygon-mask shape for non-rectangular arenas, or null when the
      *  scanned structure used the legacy DIAMOND/EMERALD rectangle pair. */
     private static boolean[][] structureInsideMask = null;
+    /** The definition whose arena is currently being built; pattern source for
+     *  tiles beyond the definition's own w x h (see {@code patternTileAt}). */
+    private static LevelDefinition buildingLevelDef = null;
     /** Outer polygon (playable mask + its border ring), or null. Used to keep
      *  bbox-wide passes (the clear-above sweep) off the terrain outside the
      *  drawn outline. */
@@ -485,6 +488,11 @@ public class ArenaBuilder {
         structureHeight = -1;
         structureInsideMask = null;
         structureOuterMask = null;
+        // The structure builders only receive the baked tile array, but a structure
+        // grid larger than the definition (polygon arenas especially) needs the
+        // definition's PATTERN, not a flat fill, for its extra tiles. Same static
+        // per-build convention as structureInsideMask.
+        buildingLevelDef = levelDef;
 
         CrafticsMod.LOGGER.info("ArenaBuilder: resolved biomeId='{}' isBoss={} env={} levelDef={} (instanceof GLD: {})",
             biomeId, isBoss, env.id(), levelDef.getClass().getSimpleName(),
@@ -512,7 +520,7 @@ public class ArenaBuilder {
                     if (x < w && z < h) {
                         finalTiles[x][z] = tiles[x][z];
                     } else {
-                        finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.NORMAL, tiles[0][0].getBlockType());
+                        finalTiles[x][z] = levelDef.patternTileAt(x, z);
                     }
                 }
             }
@@ -911,7 +919,10 @@ public class ArenaBuilder {
         }
         if (!diskSchemCandidates.isEmpty()) {
             java.nio.file.Path chosenSchem = diskSchemCandidates.get(biomeLevelIndex % diskSchemCandidates.size());
-            boolean preserveGround = isBoss || biomeId.startsWith("trial_chamber");
+            boolean preserveGround = isBoss || biomeId.startsWith("trial_chamber")
+                // Hand-built event arenas: the schematic IS the design - no procedural
+                // obstacle/floor overlay painting over it (same rule as trial chambers).
+                || "pillager_camp".equals(biomeId) || "bastille".equals(biomeId);
             return loadAndPlaceSchem(world, chosenSchem, ox, oy, oz, w, h, tiles, biomeId, preserveGround);
         }
 
@@ -928,7 +939,10 @@ public class ArenaBuilder {
         if (biomeId.contains("/")) {
             Identifier subId = Identifier.of("craftics", "arenas/" + biomeId + ".schem");
             if (resourceManager.getResource(subId).isPresent()) {
-                boolean preserveGround = isBoss || biomeId.startsWith("trial_chamber");
+                boolean preserveGround = isBoss || biomeId.startsWith("trial_chamber")
+                // Hand-built event arenas: the schematic IS the design - no procedural
+                // obstacle/floor overlay painting over it (same rule as trial chambers).
+                || "pillager_camp".equals(biomeId) || "bastille".equals(biomeId);
                 CrafticsMod.LOGGER.info("Loading bundled sub-biome arena: {} (preserveGround={})",
                     subId, preserveGround);
                 return loadAndPlaceBundledSchem(world, resourceManager, subId, ox, oy, oz, w, h, tiles, biomeId, preserveGround);
@@ -957,7 +971,10 @@ public class ArenaBuilder {
             // Trial chambers preserve schematic ground (same as bosses) so the
             // dev-designed layout isn't overwritten by the procedural tile overlay.
             Identifier chosen = bundledCandidates.get(biomeLevelIndex % bundledCandidates.size());
-            boolean preserveGround = isBoss || biomeId.startsWith("trial_chamber");
+            boolean preserveGround = isBoss || biomeId.startsWith("trial_chamber")
+                // Hand-built event arenas: the schematic IS the design - no procedural
+                // obstacle/floor overlay painting over it (same rule as trial chambers).
+                || "pillager_camp".equals(biomeId) || "bastille".equals(biomeId);
             CrafticsMod.LOGGER.info("Loading bundled arena: {} ({} candidates, biomeLevelIndex={}, preserveGround={})",
                 chosen, bundledCandidates.size(), biomeLevelIndex, preserveGround);
             return loadAndPlaceBundledSchem(world, resourceManager, chosen, ox, oy, oz, w, h, tiles, biomeId, preserveGround);
@@ -1212,7 +1229,9 @@ public class ArenaBuilder {
 
                     GridTile tile = (x < tiles.length && z < tiles[0].length)
                         ? tiles[x][z]
-                        : new GridTile(com.crackedgames.craftics.core.TileType.NORMAL, floorBlock);
+                        : (buildingLevelDef != null
+                            ? buildingLevelDef.patternTileAt(x, z)
+                            : new GridTile(com.crackedgames.craftics.core.TileType.NORMAL, floorBlock));
 
                     if (!world.getBlockState(floorPos).getFluidState().isEmpty()) {
                         continue;
@@ -1520,7 +1539,9 @@ public class ArenaBuilder {
 
                     GridTile tile = (x < tiles.length && z < tiles[0].length)
                         ? tiles[x][z]
-                        : new GridTile(com.crackedgames.craftics.core.TileType.NORMAL, floorBlock);
+                        : (buildingLevelDef != null
+                            ? buildingLevelDef.patternTileAt(x, z)
+                            : new GridTile(com.crackedgames.craftics.core.TileType.NORMAL, floorBlock));
 
                     if (!world.getBlockState(floorPos).getFluidState().isEmpty()) continue;
                     if (world.getBlockState(floorPos).isAir()) {
@@ -1912,6 +1933,13 @@ public class ArenaBuilder {
                         java.nio.file.Path numberedFlat = searchDir.resolve(alias + "_" + i + ".schem");
                         if (java.nio.file.Files.exists(numberedFlat) && !results.contains(numberedFlat)) {
                             results.add(numberedFlat);
+                        }
+                        // Underscoreless variant (bastille1.schem) - WorldEdit users name
+                        // files both ways, and a miss here silently drops the arena to
+                        // the procedural fallback with nothing in the log to say why.
+                        java.nio.file.Path numberedBare = searchDir.resolve(alias + i + ".schem");
+                        if (java.nio.file.Files.exists(numberedBare) && !results.contains(numberedBare)) {
+                            results.add(numberedBare);
                         }
                     }
                 }

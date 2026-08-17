@@ -73,6 +73,28 @@ public final class SeasonStamp {
     }
 
     /**
+     * Strip the stamp back off an item, restoring it to something that stacks again.
+     *
+     * <p>The component is REMOVED outright when nothing else is left in it, not merely emptied.
+     * Two stacks merge only when their component maps are equal, and an item carrying an empty
+     * {@code CUSTOM_DATA} is not equal to one carrying none - leaving the empty compound behind
+     * would look like a fix while the items still refused to stack.
+     */
+    public static void unstamp(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return;
+        NbtComponent data = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (data == null) return;
+        NbtCompound nbt = data.copyNbt();
+        if (!nbt.contains(ACQUIRED_KEY)) return;
+        nbt.remove(ACQUIRED_KEY);
+        if (nbt.isEmpty()) {
+            stack.remove(DataComponentTypes.CUSTOM_DATA);
+        } else {
+            stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt));
+        }
+    }
+
+    /**
      * Does this item do anything in a Craftics fight?
      *
      * <p>Only these are stamped. Stamping every cobblestone would double the size of a save's
@@ -86,6 +108,20 @@ public final class SeasonStamp {
      */
     public static boolean isCombatRelevant(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
+        // Stackable items are never stamped, and this is the reason the whole feature has to
+        // be selective rather than thorough.
+        //
+        // A stamp is a distinct value per item, and two stacks merge only when their component
+        // maps are EQUAL - so stamping arrows, potions, golden apples or ender pearls (all
+        // combat-relevant, all stackable) split a player's inventory into piles that could
+        // never recombine, one per sweep they happened to be picked up on.
+        //
+        // It also would not mean anything if it worked. A stack of 64 arrives in pieces from
+        // different places at different times; "when was this stack acquired" has no answer,
+        // so the stamp would be recording the first moment some subset of it was seen and
+        // claiming it for the rest. The thing a season boundary actually cares about - the
+        // sword, the armour, the trident somebody brings to a fight - is one-per-slot anyway.
+        if (stack.getMaxCount() > 1) return false;
         net.minecraft.item.Item item = stack.getItem();
         // ArmorItem stopped existing in 1.21.5 - armour is the EQUIPPABLE component now, and
         // asking the component is the more honest question anyway: "can this be worn" rather
@@ -118,7 +154,17 @@ public final class SeasonStamp {
         int stamped = 0;
         for (int i = 0; i < inventory.size(); i++) {
             ItemStack stack = inventory.getStack(i);
-            if (stack.isEmpty() || isStamped(stack) || !isCombatRelevant(stack)) continue;
+            if (stack.isEmpty()) continue;
+            // Repair pass. Earlier builds stamped stackables, and every one of those items is
+            // still sitting in somebody's inventory refusing to merge with its own kind. The
+            // guard above stops it happening again but cannot undo what is already out there,
+            // so the sweep that used to cause the problem now also clears it: a stackable
+            // carrying a stamp gets it taken back off, and the piles recombine on their own.
+            if (stack.getMaxCount() > 1) {
+                if (isStamped(stack)) unstamp(stack);
+                continue;
+            }
+            if (isStamped(stack) || !isCombatRelevant(stack)) continue;
             stamp(stack, nowMillis);
             stamped++;
         }

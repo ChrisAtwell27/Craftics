@@ -384,6 +384,8 @@ public class CrafticsClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(ExitCombatPayload.ID, (payload, context) -> {
             context.client().execute(() -> {
                 CombatState.setInCombat(false);
+                // A battle intro mid-flight dies with the fight - never leave its input lock.
+                com.crackedgames.craftics.client.CombatIntroSequence.abort();
                 // Combat is over on the server's terms; nothing is waiting on a choice.
                 com.crackedgames.craftics.client.VictoryChoiceScreen.clearReopen();
                 CombatVisualEffects.resetOverlays();
@@ -640,10 +642,19 @@ public class CrafticsClient implements ClientModInitializer {
         );
 
         ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.CombatIntroPayload.ID, (payload, context) -> {
+                context.client().execute(() ->
+                    com.crackedgames.craftics.client.CombatIntroSequence.start(
+                        payload.cast(), payload.stepTicks()));
+            }
+        );
+
+        ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.LoadingScreenPayload.ID, (payload, context) -> {
                 context.client().execute(() -> {
                     if (payload.show()) {
-                        TransitionOverlay.startTransition(payload.title(), payload.subtitle(), () -> {});
+                        TransitionOverlay.startTransitionWithCast(
+                            payload.title(), payload.subtitle(), payload.castList(), () -> {});
                     } else {
                         TransitionOverlay.startFadeOut();
                     }
@@ -1041,6 +1052,7 @@ public class CrafticsClient implements ClientModInitializer {
             com.crackedgames.craftics.client.TurnFramingFx.tick();
             com.crackedgames.craftics.client.ArenaAmbientFx.tick(client);
             CombatState.tickCameraFocus();
+            com.crackedgames.craftics.client.CombatIntroSequence.tick();
             CombatAnimations.tick();
             CombatInputHandler.tick(client);
 

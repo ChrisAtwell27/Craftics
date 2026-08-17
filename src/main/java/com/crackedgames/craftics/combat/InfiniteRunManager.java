@@ -351,9 +351,21 @@ public final class InfiniteRunManager {
      */
     private static void grantPetClassWolfAlly(ServerPlayerEntity player, ServerWorld world) {
         CombatManager combat = CombatManager.getActiveCombat(player.getUuid());
-        if (combat != null && combat.summonWeaponProcAlly("minecraft:wolf", player, -1) != null) {
-            player.sendMessage(Text.literal("§aA wolf ally joins your side."), false);
-            return;
+        if (combat != null) {
+            CombatEntity summoned = combat.summonWeaponProcAlly("minecraft:wolf", player, -1);
+            if (summoned != null) {
+                // A proc summon is a per-fight ally and nothing else - it is not in the
+                // player's battle party, and the battle party is the ONLY thing carried from
+                // one level to the next (HubPetCollector collects from it; savePets restores
+                // it). So the class wolf used to vanish the moment the opening level ended,
+                // which is the whole reward for picking Pet.
+                //
+                // Enrolling its live mob makes it a real party member, on the same footing as
+                // a wolf tamed in the hub and added by hand.
+                enrolAsPartyMob(player, world, summoned.getMobEntity());
+                player.sendMessage(Text.literal("§aA wolf ally joins your side."), false);
+                return;
+            }
         }
 
         WolfEntity wolf = net.minecraft.entity.EntityType.WOLF.create(
@@ -369,7 +381,32 @@ public final class InfiniteRunManager {
         wolf.setTamed(true, false);
         wolf.setSitting(false);
         world.spawnEntity(wolf);
+        // Out of combat the wolf is a real tamed animal, but taming alone does not put it in
+        // the battle party either - a hub pet only joins a fight once it has been added to
+        // that list. Without this the class reward would follow the player around the hub and
+        // then be left behind the moment a fight started.
+        enrolAsPartyMob(player, world, wolf);
         player.sendMessage(Text.literal("§aA tamed wolf now follows you."), false);
+    }
+
+    /**
+     * Put a granted ally into the player's persistent battle party.
+     *
+     * <p>Membership of that list is what makes an ally survive a level boundary, so anything
+     * handed out as a lasting reward has to be enrolled explicitly. Deliberately bypasses the
+     * usual party cap: this is a granted class opener rather than a mob the player chose to
+     * add, and a cap that silently swallowed the one reward Pet exists for would be worse than
+     * a party briefly one over its limit.
+     */
+    private static void enrolAsPartyMob(ServerPlayerEntity player, ServerWorld world,
+                                        net.minecraft.entity.mob.MobEntity mob) {
+        if (mob == null) return;
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
+        if (!pd.getPartyMobs().contains(mob.getUuid())) {
+            pd.getPartyMobs().add(mob.getUuid());
+            data.markDirty();
+        }
     }
 
     /**

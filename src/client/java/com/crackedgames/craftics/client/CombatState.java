@@ -259,6 +259,47 @@ public class CombatState {
         focusTimer = 40; // auto-release after 2 seconds
     }
 
+    // --- Battle intro (fighting-game camera pass, driven by CombatIntroSequence) ---
+    private static boolean introActive = false;
+
+    /** True while the intro camera choreography owns the view; all combat input
+     *  (clicks, pan, scroll zoom, keys) is suppressed for its duration. */
+    public static boolean isIntroActive() { return introActive; }
+
+    public static void setIntroActive(boolean active) {
+        introActive = active;
+        if (!active) {
+            // Hand the camera back: lerp out to the standard combat framing.
+            hasFocus = false;
+            returningFromFocus = true;
+            focusZoomTarget = combatCameraDistance;
+        }
+    }
+
+    /**
+     * Begin the intro's closing pull-back while input stays locked: release the
+     * focus and lerp out to the standard combat distance. {@link #setIntroActive}
+     * with {@code false} does the same reset, so calling both is idempotent.
+     */
+    public static void introZoomOut() {
+        hasFocus = false;
+        returningFromFocus = true;
+        focusZoomTarget = combatCameraDistance;
+    }
+
+    /**
+     * Intro-owned focus: like {@link #focusOn} but with a caller-chosen zoom and
+     * dwell, and none of {@link #focusOnTile}'s enemy-turn gating - the intro runs
+     * before any turn exists.
+     */
+    public static void introFocusOn(double worldX, double worldZ, float zoomDistance, int ticks) {
+        focusTargetX = worldX;
+        focusTargetZ = worldZ;
+        focusZoomTarget = zoomDistance;
+        hasFocus = true;
+        focusTimer = ticks;
+    }
+
     /** Focus on a grid tile position. */
     public static void focusOnTile(int gridX, int gridZ) {
         // Auto-focus only while allies/enemies take their turn. During the player's

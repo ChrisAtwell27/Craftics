@@ -46,6 +46,12 @@ public class Level2Definition extends LevelDefinition {
     }
 
     @Override
+    public GridTile patternTileAt(int x, int z) {
+        Block block = Math.floorMod(x + z, 2) == 0 ? Blocks.STONE : Blocks.DEEPSLATE;
+        return new GridTile(TileType.NORMAL, block);
+    }
+
+    @Override
     public EnemySpawn[] getEnemySpawns() {
         return new EnemySpawn[] {
             // 3 Zombies - melee, 6 HP, 2 atk

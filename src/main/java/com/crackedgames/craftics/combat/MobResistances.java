@@ -165,6 +165,14 @@ public class MobResistances {
         vuln("minecraft:wither",            DamageType.WATER);
         resist("minecraft:wither",          DamageType.BLUNT, DamageType.SLASHING, DamageType.RANGED, DamageType.PHYSICAL);
 
+        // ── It Takes a Pillage: the new illagers. Exact addon ids, because none of their
+        //    paths contain a vanilla mob name for the variant fallback to resolve. Archer and
+        //    skirmisher read as their vanilla cousins (pillager/vindicator carry no table
+        //    entry, so neither do they); the legioner is the one with a defensive identity:
+        //    a shield-wall soldier crushed through the shield (blunt), not cut or shot. ──
+        vuln("takesapillage:legioner",   DamageType.BLUNT);
+        resist("takesapillage:legioner", DamageType.SLASHING, DamageType.RANGED);
+
         // ── Per-boss overrides, keyed by boss id ("boss:<biome>") not mob type, so a specific
         //    boss can resist a type its base mob doesn't. Looked up via the boss-key overloads. ──
         resist("boss:mountain",        DamageType.BLUNT); // The Rockbreaker

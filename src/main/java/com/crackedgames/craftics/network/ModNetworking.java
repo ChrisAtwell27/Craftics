@@ -58,6 +58,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(GuideBookSyncPayload.ID, GuideBookSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(AddonBonusSyncPayload.ID, AddonBonusSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(LoadingScreenPayload.ID, LoadingScreenPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(CombatIntroPayload.ID, CombatIntroPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(InfiniteClassOfferPayload.ID, InfiniteClassOfferPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(ScoreboardSyncPayload.ID, ScoreboardSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(VfxClientPayload.ID, VfxClientPayload.CODEC);

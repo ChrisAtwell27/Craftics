@@ -1,5 +1,50 @@
 ﻿Changelog
 
+0.3.8.5
+
+Battle Intros
+
+- Showcase fights - the first level of a biome, biome bosses, and raid bosses - now open with a fighting-game style intro: the camera zooms in tight on each fighter in turn, they strike a flourish chosen by their strongest affinity (a sword-dance for Slashing, a heavy overhead chop for Cleaving, a ground-pound for Blunt, a slow bow-draw sweep for Ranged, water-bending arm work for Water, an arcane weave for Special, a kneel-and-whistle for Pet, shadow-boxing for Physical), themed particles burst around them, and after the last fighter the camera pulls back out and the fight begins
+- Fighters are handed their matching weapon for the pose: a Blunt main walks in holding their mace, a Ranged main their bow - whichever qualifying weapon is already in their inventory. Physical and Pet mains pose bare-handed on purpose
+- About 2.2 seconds per fighter, camera controls and combat input locked for the duration, and it only plays on fights worth making an entrance for - mid-biome levels start immediately as before
+- Every failsafe the rest of the mod has learned the hard way is wired in: the sequence aborts cleanly if the fight ends mid-intro, waits for the loading swipe to clear before starting, and can never strand the camera or the input lock
+
+Odd-Shaped Arena Floors
+
+- Fixed non-square arenas losing their floor pattern across part of the grid. A level definition bakes its checkerboard at its own fixed size, and any arena whose real shape extends past that - polygon arenas especially - had the excess filled with a single plain block, erasing the pattern that makes the grid readable
+- The pattern is now a formula the builder can evaluate at any coordinate, phase-aligned with the baked tiles, so it extends seamlessly to whatever shape the arena actually is. Covers generated biome levels, raid boss arenas and the fixed early levels
+
+Menu Icon Duping
+
+- Fixed inventory-sort mods (and plain double-clicking) being able to pull the icon items out of read-only menus - the lootbox odds preview, the lootbox confirm screen, auction browsing and trade menus - into your inventory. The menus blocked clicks landing ON their own slots, but a double-click collect started on one of YOUR inventory slots sweeps matching items out of every slot in the open screen, and that path was never told the icon region is off limits
+- Sort mods' "loot all" button no longer works on those menus either. The server was already refusing to move anything, but the client had predicted the transfer and was never corrected, so the icons appeared in your inventory as convincing ghost items (they were never really there - a relog clears any you picked up before this fix). Rejected clicks now force an immediate resync
+- Shift-clicking and number-key-swapping a menu icon no longer counts as pressing it - only a plain click does. "Loot all" fires a shift-click at every slot in one batch, and on the lootbox confirm screen that batch would have walked straight onto the "Open it" button and spent your emeralds
+- Menu icons are now also poisoned outright: every icon carries an invisible marker, and the server destroys marked items found in any player's inventory - the instant the menu closes, and on a regular sweep as backstop. Inventory mods with their own server-side transfer path (ClientSort's server acceleration) write straight into player inventories without ever consulting the menu, so rather than trying to enumerate every exit, anything that escapes simply evaporates. No server-side mod configuration required
+
+0.3.8.4
+
+Victory Rewards
+
+- Fixed the victory screen sometimes showing an empty reward grid even though chat had just announced the loot. The reward tally was shared globally across every fight on the server, and any OTHER party starting or finishing a fight wiped it - so whether your grid survived to the victory screen depended on what everyone else on the server happened to be doing. Each fight now keeps its own tally
+- Victory loot chat lines now consolidate: killing three skeletons reads "+ 3x Bone" on one line instead of "+ 1x Bone" three times. Items only merge when they are genuinely identical - a cooked and a raw drop still get their own lines
+
+Battle Animations Dying Until Restart
+
+- Fixed the bug where your character (and party members) would abruptly stop playing all battle animations - no walk, no attacks, no idle - until the client was fully restarted. It was triggered by chaining teleports between worlds (losing an infinite run, going to the lobby, then home, then into a run), and struck seemingly at random because a garbage-collection pass at the right moment could silently repair it
+- Under the hood: the animation layer lookup was keyed on the player entity, but Minecraft swaps in a brand-new player entity on every world change while giving it the same entity ID as the old one. The lookup would then hand back the animation layer of a previous, no-longer-rendered body, and every animation played into it went nowhere - no error, no log, nothing visibly wrong except a statue where your character should be
+- The layer now lives on the player entity itself (via PlayerAnimator's per-player storage), so a fresh body can never inherit a dead one's animation layer
+
+Discord Link
+
+- The periodic Discord reminder in chat is clickable again. The link was being sent as plain text on the assumption the client would find and linkify it - it doesn't for messages the server hands it, so the address sat there as dead text you had to retype by hand
+- It now carries a real open-link action, underlined so it reads as a link, with the destination on hover. Clicking still goes through the game's own "open this link?" confirmation, the same as any link in vanilla chat
+
+Items Not Stacking
+
+- Fixed identical items refusing to stack. The season stamp added in 0.3.8.3 writes the moment an item was acquired onto the item itself, and two stacks only merge when everything about them matches - so arrows, potions, golden apples and ender pearls picked up at different moments each became their own pile that could never recombine
+- Stackable items are no longer stamped at all. The stamp could not have meant anything on them anyway: a stack of 64 arrives in pieces from different places at different times, so there is no single moment it was acquired, and recording the first one would just be claiming it for the other 63. What a season boundary actually cares about - the sword, the armour, the trident somebody brings to a fight - occupies a slot of its own regardless
+- Stacks already broken by this repair themselves. The same sweep that caused it now takes the stamp back off any stackable carrying one, so existing piles recombine within a couple of seconds of being held. Items sitting in chests are not swept, so those recover once they pass back through an inventory
+
 0.3.8.3
 
 Sudden Death
@@ -472,6 +517,27 @@ Item Fixes
 - That double message was not unique to echo shards. Every item whose result carried an internal payload, including lava and water buckets, campfires, banners, fishing rods, anvils and goat horns, dumped its raw payload into chat and then printed the real message underneath it
 - Flint and steel actually sets things on fire. It only ever applied the vanilla fire visual, which combat strips every tick, so the target visibly caught alight and then took no burn damage whatsoever. It now applies Burning for three turns, and striking an already burning target fans the fire for one more turn each time
 - Nothing applies a damage-over-time effect for a single turn any more. A one turn burn or poison is a status icon that flickers and vanishes, so burns, poison, wither and bleed now last at least two turns from every source. Stuns are untouched, since skipping a turn happens whether or not the timer outlives it
+
+It Takes a Pillage Compatibility
+
+- The It Takes a Pillage illagers now fight in combat when the mod is installed. Nothing here touches your game without it
+- Archers fire and kite exactly like pillagers: crossbow lanes, repositioning, backing off when you close in
+- Skirmishers keep the vindicator's rook charge - open a straight lane to them and they come down it, hitting harder the further they travel - but unlike a vindicator they also just walk, fast, when no lane exists. Denying the lane no longer parks them; it turns them into a runner
+- Legioners are a shield wall: 15 HP, slow, and carrying a flat damage reduction that grows with biome depth and CAN zero a hit outright - chip damage bounces off entirely rather than trickling through. One ranged shot in four glances off the tower shield without landing at all. Crush them with blunt weapons; blades and arrows are what the shield is for
+- The clay golem serves both sides: it can turn up as an enemy, and you can build one of your own as an ally, healed with clay balls
+- A new event, the Pillager Camp, can appear between levels: a mixed illager patrol - crossbows, an axe, the mod's three new soldiers, and a clay golem standing watch. Routing it pays emeralds and a Bastille Map
+- The Bastille Map works like a trial key: use it during any later fight and the next stop is the Bastille - the illagers' stronghold, three garrisons back to back in one arena, each marching out the moment the last falls. The keep's garrison brings the shield wall and an evoker, with a ravager on deep runs
+- The Bastille never appears on its own; the map is the only way in. Breaking it pays each of you an ominous-tier haul: a heavily enchanted weapon or armor piece, an artifact, a bundle of materials with the illagers' ravager horn among them, and a serious emerald purse
+
+Offhand Auras
+
+- Banners, torches and lanterns now work from your offhand as a walking version of their placed effect. A torch in the offhand is a moving radius-2 light, a lantern radius-3 - both negate darkness around you as you move. An offhand banner carries its defense aura with you: +2 Armor Class for you and any ally within 2 tiles of wherever you stand
+- The cost is built in: that hand isn't holding a shield. The carried banner grants the flat base bonus - the Special-scaled bonus stays exclusive to a planted one - and multiple carriers don't stack, though a carried banner does stack with a planted one, the same way the Beacon helmet's aura does
+
+Infinite Mode Bosses
+
+- Infinite bosses no longer roll attacks their donor boss does not have. Six abilities in the pool had no counterpart on any boss, left behind by renames and reworks, and have been removed
+- A rolled movepool now sets up its own combos. If a boss draws an attack that only pays off against a player in a particular state, the roll guarantees it also draws something that can put them in that state, so a lightning chain that wants you Soaked always arrives with a way to soak you. It will not drop the payoff to do this; it trades out a move nothing else depends on
 
 Modded Tools
 

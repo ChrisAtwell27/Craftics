@@ -47,7 +47,23 @@ public final class InfiniteAbilityPool {
         EnemyAction cast(MovepoolBossAI ctx, CombatEntity self, GridArena arena, GridPos playerPos);
     }
 
-    public record InfiniteAbility(String id, AbilityCast castFn) {
+    /**
+     * A status an ability can either set up or cash in. Some casts only pay off against a
+     * player who is already in a particular state - a lightning chain doubles on a SOAKED
+     * target, a shatter hits a FROZEN one - and a boss rolled with the payoff but not the
+     * setup is a boss whose signature move quietly never does its job.
+     *
+     * <p>Declared per ability as {@code needs} / {@code grants}, and reconciled at roll time
+     * by {@link #satisfyPrerequisites}: a movepool never ships a payoff it cannot set up.
+     */
+    public enum Status { SOAKED, BURNING, DARKNESS }
+
+    /**
+     * @param needs  statuses this cast wants on the player to do its real damage
+     * @param grants statuses this cast can inflict, so it can serve as another's setup
+     */
+    public record InfiniteAbility(String id, java.util.Set<Status> needs,
+                                  java.util.Set<Status> grants, AbilityCast castFn) {
         public EnemyAction cast(MovepoolBossAI ctx, CombatEntity self, GridArena arena, GridPos playerPos) {
             try {
                 return castFn.cast(ctx, self, arena, playerPos);
@@ -74,12 +90,8 @@ public final class InfiniteAbilityPool {
 
     /** Roll {@code count} distinct abilities (whole pool if count exceeds it). */
     public static List<InfiniteAbility> roll(Random rng, int count) {
-        List<String> ids = allIds();
-        Collections.shuffle(ids, rng);
         List<InfiniteAbility> out = new ArrayList<>();
-        for (String id : ids.subList(0, Math.min(count, ids.size()))) {
-            out.add(POOL.get(id));
-        }
+        for (String id : rollIds(rng, count)) out.add(POOL.get(id));
         return out;
     }
 
@@ -87,11 +99,101 @@ public final class InfiniteAbilityPool {
     public static List<String> rollIds(Random rng, int count) {
         List<String> ids = allIds();
         Collections.shuffle(ids, rng);
-        return new ArrayList<>(ids.subList(0, Math.min(count, ids.size())));
+        List<String> picked = new ArrayList<>(ids.subList(0, Math.min(count, ids.size())));
+        satisfyPrerequisites(picked, ids);
+        return picked;
+    }
+
+    /**
+     * Make the movepool self-sufficient: for every status one of its abilities NEEDS, make
+     * sure some ability in the same pool GRANTS it.
+     *
+     * <p>Without this the roll can hand a boss a payoff with no setup - a lightning chain
+     * that wants the player Soaked on a boss with no way to soak anybody - and that move
+     * spends its whole cooldown doing a fraction of its damage for reasons the player cannot
+     * see. Rather than drop the payoff, the pool trades out one of the picks that nothing
+     * depends on for a provider, so the kit keeps its size and gains a combo.
+     *
+     * <p>The arena can also be the provider - standing water soaks, fire burns - but the roll
+     * happens when the run is generated, long before an arena exists, so a movepool is not
+     * allowed to rely on terrain it might not get.
+     *
+     * @param picked   the rolled ids, edited in place
+     * @param shuffled every id in pool order already shuffled by the caller's seeded rng, so
+     *                 the substitute is picked deterministically from the same roll
+     */
+    private static void satisfyPrerequisites(List<String> picked, List<String> shuffled) {
+        java.util.EnumSet<Status> needed = java.util.EnumSet.noneOf(Status.class);
+        java.util.EnumSet<Status> covered = java.util.EnumSet.noneOf(Status.class);
+        for (String id : picked) {
+            InfiniteAbility a = POOL.get(id);
+            if (a == null) continue;
+            needed.addAll(a.needs());
+            covered.addAll(a.grants());
+        }
+        needed.removeAll(covered);
+        if (needed.isEmpty()) return;
+
+        for (Status status : needed) {
+            String provider = null;
+            for (String id : shuffled) {
+                InfiniteAbility a = POOL.get(id);
+                if (a != null && a.grants().contains(status) && !picked.contains(id)) {
+                    provider = id;
+                    break;
+                }
+            }
+            if (provider == null) continue;   // nothing in the pool sets this up; leave the kit alone
+            // Evict from the back, and never evict something another pick depends on or the
+            // dependent move we are here to rescue.
+            int evict = -1;
+            for (int i = picked.size() - 1; i >= 0; i--) {
+                InfiniteAbility a = POOL.get(picked.get(i));
+                if (a == null) { evict = i; break; }
+                if (a.needs().isEmpty() && java.util.Collections.disjoint(a.grants(), needed)) {
+                    evict = i;
+                    break;
+                }
+            }
+            if (evict < 0) continue;          // every pick is load-bearing; better a weak combo than a broken kit
+            picked.set(evict, provider);
+            covered.addAll(POOL.get(provider).grants());
+        }
     }
 
     private static void register(String id, AbilityCast cast) {
-        POOL.put(id, new InfiniteAbility(id, cast));
+        POOL.put(id, new InfiniteAbility(id, java.util.Set.of(), java.util.Set.of(), cast));
+    }
+
+    /**
+     * Declare that these abilities can inflict {@code status}, so the roll may use any of
+     * them as the setup for a move that needs it.
+     *
+     * <p>Kept as a table applied after registration rather than an argument on each cast: the
+     * synergy map is a property OF THE POOL, not of any one ability, and reading it in one
+     * block is the only way to see at a glance that (say) exactly one ability soaks.
+     */
+    private static void grants(Status status, String... ids) {
+        for (String id : ids) {
+            InfiniteAbility a = POOL.get(id);
+            if (a == null) continue;
+            var g = java.util.EnumSet.noneOf(Status.class);
+            g.addAll(a.grants());
+            g.add(status);
+            POOL.put(id, new InfiniteAbility(id, a.needs(), g, a.castFn()));
+        }
+    }
+
+    /** Declare that these abilities only pay off against a player already under {@code status}. */
+    private static void needs(Status status, String... ids) {
+        for (String id : ids) {
+            InfiniteAbility a = POOL.get(id);
+            if (a == null) continue;
+            var n = java.util.EnumSet.noneOf(Status.class);
+            n.addAll(a.needs());
+            n.add(status);
+            POOL.put(id, new InfiniteAbility(id, n, a.grants(), a.castFn()));
+        }
     }
 
     // ─── Shared pattern helpers ────────────────────────────────────────────────
@@ -294,14 +396,6 @@ public final class InfiniteAbilityPool {
             return new EnemyAction.BossAbility("gravefire_grid",
                 new EnemyAction.CreateTerrain(tiles, TileType.FIRE, 1), tiles);
         });
-        register("shield_bash", (ctx, self, arena, p) -> {
-            if (self.minDistanceTo(p) > 1 || ctx.isOnCooldown("shield_bash")) return null;
-            ctx.setCooldown("shield_bash", 2);
-            // A real hit that launches the player 3 tiles - into whatever hazard
-            // the rest of the kit has been painting on the floor.
-            return new EnemyAction.AttackWithKnockback(self.getAttackPower(), 3);
-        });
-
         // ═══ The Hexweaver (forest) ═══
         register("fang_line", (ctx, self, arena, p) -> {
             if (ctx.isOnCooldown("fang_line")) return null;
@@ -340,14 +434,6 @@ public final class InfiniteAbilityPool {
                 new EnemyAction.SummonMinions("minecraft:vex", positions.size(), positions, 4, 3, 0),
                 positions);
         });
-        register("hex_bolt", (ctx, self, arena, p) -> {
-            int dist = self.minDistanceTo(p);
-            if (dist < 2 || dist > 5 || ctx.isOnCooldown("hex_bolt")) return null;
-            // Cooldown so the cycle can't re-fire this boss-atk snipe every single rotation.
-            ctx.setCooldown("hex_bolt", 2);
-            return new EnemyAction.RangedAttack(self.getAttackPower(), "hex_bolt");
-        });
-
         // ═══ The Frostbound Huntsman (snowy) ═══
         register("blizzard", (ctx, self, arena, p) -> {
             if (ctx.isOnCooldown("blizzard") || tooFar(self, p)) return null;
@@ -380,13 +466,6 @@ public final class InfiniteAbilityPool {
             if (wall.size() < 2) return null;
             ctx.setCooldown("ice_wall", 4);
             return new EnemyAction.CreateTerrain(wall, TileType.OBSTACLE, 3);
-        });
-        register("frost_arrow", (ctx, self, arena, p) -> {
-            int dist = self.minDistanceTo(p);
-            if (dist < 2 || dist > 6 || ctx.isOnCooldown("frost_arrow")) return null;
-            // Cooldown so the cycle can't re-fire this boss-atk snipe every single rotation.
-            ctx.setCooldown("frost_arrow", 2);
-            return new EnemyAction.RangedAttack(self.getAttackPower(), "frost_arrow");
         });
         register("harpoon_pull", (ctx, self, arena, p) -> {
             if (ctx.isOnCooldown("harpoon_pull")) return null;
@@ -456,16 +535,6 @@ public final class InfiniteAbilityPool {
             return new EnemyAction.BossAbility("avalanche",
                 new EnemyAction.CompositeAction(parts), warn, warn, 0, 1);
         });
-        register("ground_pound", (ctx, self, arena, p) -> {
-            if (self.minDistanceTo(p) > 1 || ctx.isOnCooldown("ground_pound")) return null;
-            ctx.setCooldown("ground_pound", 2);
-            int[] push = dirToward(self.getGridPos(), p);
-            if (push[0] == 0 && push[1] == 0) push = new int[]{1, 0};
-            return new EnemyAction.CompositeAction(List.of(
-                new EnemyAction.AreaAttack(self.getGridPos(), 1, self.getAttackPower(), "ground_pound"),
-                new EnemyAction.ForcedMovement(-1, push[0], push[1], 2)));
-        });
-
         // ═══ The Tidecaller (river) ═══
         register("tidal_wave", (ctx, self, arena, p) -> {
             if (ctx.isOnCooldown("tidal_wave")) return null;
@@ -867,13 +936,6 @@ public final class InfiniteAbilityPool {
                     6, self.getAttackPower(), 0, "wither_skull"),
                 positions);
         });
-        register("decay_aura", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("decay_aura")) return null;
-            ctx.setCooldown("decay_aura", 3);
-            return new EnemyAction.AreaAttack(self.getGridPos(), 2,
-                Math.max(1, self.getAttackPower() - 2), "wither_decay");
-        });
-
         // ═══ The Void Herald (outer end islands) ═══
         register("void_gale", (ctx, self, arena, p) -> {
             if (ctx.isOnCooldown("void_gale") || tooFar(self, p)) return null;
@@ -955,14 +1017,6 @@ public final class InfiniteAbilityPool {
                 new EnemyAction.AreaAttack(p, 1, 2, "entangle")));
             return new EnemyAction.BossAbility("entangle", resolve, tiles);
         });
-        register("blink_step", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("blink_step") || self.minDistanceTo(p) <= 2) return null;
-            GridPos target = openTileAdjacent(arena, p);
-            if (target == null) return null;
-            ctx.setCooldown("blink_step", 2);
-            return new EnemyAction.Teleport(target);
-        });
-
         // ═══ The Ender Dragon (dragons nest) ═══
         register("breath_wave", (ctx, self, arena, p) -> {
             if (ctx.isOnCooldown("breath_wave")) return null;
@@ -1046,5 +1100,18 @@ public final class InfiniteAbilityPool {
                 new EnemyAction.SummonMinions("minecraft:blaze", positions.size(), positions, 7, 3, 0),
                 positions);
         });
+
+        // ═══ Synergy table ═══
+        // Which abilities SET UP a status, and which ones only pay off once it is on the
+        // player. satisfyPrerequisites reconciles the two at roll time, so a movepool never
+        // ships a payoff it has no way to set up.
+        //
+        // Every entry here is the ability's real, verified effect - fire terrain burns
+        // whoever stands in it, a water wall soaks, the Warden's pulse and boom both apply
+        // Darkness - not a guess from the ability's name.
+        grants(Status.BURNING, "magma_eruption", "lava_cage", "gravefire_grid", "death_charge",
+            "ground_slam", "breath_wave", "fire_pillar", "ash_brand");
+        grants(Status.SOAKED, "tidal_wave");
+        grants(Status.DARKNESS, "darkness_pulse", "sonic_boom");
     }
 }

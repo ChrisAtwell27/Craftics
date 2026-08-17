@@ -104,6 +104,16 @@ public class CombatInputHandler {
 
         long window = client.getWindow().getHandle();
 
+        // Battle intro owns the camera: no clicks, no pan/orbit, no hover while it
+        // plays. The edge trackers still consume the current button state so a click
+        // held through the intro can't fire on the first frame after it releases.
+        if (CombatState.isIntroActive()) {
+            lastLeftClick = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+            middleMouseDown = false;
+            rightMouseDown = false;
+            return;
+        }
+
         handleCameraDrag(window);
 
         // Detect left click (rising edge) - only when NOT panning

@@ -57,17 +57,59 @@ public class ReadOnlyMenuScreenHandler extends GenericContainerScreenHandler {
         return ItemStack.EMPTY;
     }
 
+    /**
+     * Menu closing is the moment anything extracted by a path the overrides below can't
+     * see (a sort mod's server component writing straight into the player's slots) would
+     * otherwise become permanent. Icons are marked at build time, so destroy any the
+     * player is holding - the periodic server sweep is the backstop for everything else.
+     */
+    @Override
+    public void onClosed(PlayerEntity player) {
+        super.onClosed(player);
+        if (player instanceof net.minecraft.server.network.ServerPlayerEntity sp) {
+            MenuIcons.purge(sp);
+        }
+    }
+
+    /**
+     * Closes the PICKUP_ALL hole: a double-click collect STARTED on a player-inventory slot
+     * never lands in {@link #onSlotClick}'s menu-region guard (the clicked slot is the
+     * player's), yet vanilla's collect loop then sweeps matching stacks out of EVERY slot of
+     * the handler - menu icons included. Inventory-sort mods fire exactly that action during
+     * their merge pass, letting players pull the odds-preview icons into their inventory.
+     * Vanilla consults this method per victim slot, so refusing the menu region stops both
+     * collecting from it and dragging into it.
+     */
+    @Override
+    public boolean canInsertIntoSlot(ItemStack stack, net.minecraft.screen.slot.Slot slot) {
+        if (slot.id < menuSlotCount) return false;
+        return super.canInsertIntoSlot(stack, slot);
+    }
+
+    @Override
+    public boolean canInsertIntoSlot(net.minecraft.screen.slot.Slot slot) {
+        if (slot.id < menuSlotCount) return false;
+        return super.canInsertIntoSlot(slot);
+    }
+
     @Override
     public void onSlotClick(int slotIndex, int button, SlotActionType actionType, PlayerEntity player) {
         if (slotIndex >= 0 && slotIndex < menuSlotCount) {
-            boolean isClick = actionType == SlotActionType.PICKUP
-                || actionType == SlotActionType.QUICK_MOVE
-                || actionType == SlotActionType.SWAP;
-            if (isClick && onClick != null) {
+            // ONLY a plain left/right click counts as pressing the button. QUICK_MOVE and
+            // SWAP used to count too, but inventory-sort mods' "loot all" fires QUICK_MOVE
+            // at every container slot in one batch - on a confirm menu that batch walks the
+            // slots and presses whatever it reaches, including "spend emeralds" buttons. A
+            // menu button being shift-clicked deliberately is rarer than a sort mod being
+            // installed, so the callback keeps only the unambiguous action.
+            if (actionType == SlotActionType.PICKUP && onClick != null) {
                 onClick.accept(slotIndex);
             }
-            // Anything else touching a menu slot (drag, throw, quick-craft) is cancelled with
-            // no callback - never let vanilla move, drop, or place anything in an icon slot.
+            // Everything touching a menu slot is cancelled server-side, but the CLIENT has
+            // already predicted the vanilla outcome (icon moved into the inventory) and a
+            // swallowed click leaves player-inventory slots' predictions uncorrected - the
+            // icons then sit in the inventory as convincing ghost items. Resync the whole
+            // handler so the rollback is immediate.
+            this.updateToClient();
             return;
         }
         super.onSlotClick(slotIndex, button, actionType, player);

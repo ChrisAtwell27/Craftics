@@ -517,6 +517,25 @@ public class CombatManager {
      *  AFK turn watchdog (CrafticsConfig.turnTimerEnabled). Reset on every action and turn change. */
     private int turnIdleTicks = 0;
 
+    // --- Battle intro (fighting-game style camera pass over the party) ---
+    /** Ticks until the armed intro fires. startCombat runs BEFORE party members are
+     *  attached (addPartyMember comes after it returns), so the cast list cannot be
+     *  built there - arming a short fuse and assembling the cast when it fires sees
+     *  the full roster on every entry path without touching each caller. 0 = unarmed. */
+    private int introPendingTicks = 0;
+    /** Ticks combat input stays locked while clients play the intro. 0 = no intro. */
+    private int introLockTicks = 0;
+    /** Cast in camera order, with each member's leading affinity, for step particles. */
+    private final java.util.List<java.util.UUID> introCastIds = new java.util.ArrayList<>();
+    private final java.util.List<PlayerProgression.Affinity> introCastAffinities = new java.util.ArrayList<>();
+    private int introElapsedTicks = 0;
+    /** Camera dwell per fighter, in ticks (2.25s), mirrored to the client payload. */
+    private static final int INTRO_STEP_TICKS = 45;
+    /** Server-side lead time covering the client's loading transition before step one. */
+    private static final int INTRO_LEAD_TICKS = 60;
+    /** Tail for the zoom-out back to the standard combat framing. */
+    private static final int INTRO_TAIL_TICKS = 20;
+
     /**
      * Ticks of grace after combat starts before the fall-death check is armed.
      *
@@ -1478,6 +1497,19 @@ public class CombatManager {
             return;
         }
 
+        // The party walks the loading screen on EVERY arena change, not just the first one of
+        // a run - between levels, back from an event, into a trial. This is the one place all
+        // of those funnel through, so the cast is sent from here rather than from each caller.
+        // Same list and same order for everyone, so the whole party watches an identical row.
+        String levelCast = LoadingCast.encode(members);
+        if (!levelCast.isEmpty()) {
+            String levelTitle = newLevelDef != null ? "§6" + newLevelDef.getName() : "";
+            for (ServerPlayerEntity m : members) {
+                ServerPlayNetworking.send(m, new com.crackedgames.craftics.network.LoadingScreenPayload(
+                    true, levelTitle, "§7Preparing the arena...", levelCast));
+            }
+        }
+
         // A failed arena build (buildArena returned null) must not NPE here on the
         // server thread. Surface it: tell the party, send them home, and clean up.
         if (newArena == null) {
@@ -1992,6 +2024,16 @@ public class CombatManager {
      *  level with weather doesn't double-advance either cadence. */
     private int biomeEffectRound = 0;
 
+    // ── Bastille event state ─────────────────────────────────────────────────
+    /** True while the current fight is the Bastille (It Takes a Pillage): three garrisons
+     *  in one arena, each summoned the moment the previous falls. */
+    private boolean bastilleActive = false;
+    /** Garrison currently on the field, 1-based. Victory needs {@code == BASTILLE_WAVES}. */
+    private int bastilleWave = 1;
+    /** Stat scaling captured from the BastilleLevelDef so later garrisons match wave 1. */
+    private int bastilleHpBonus = 0, bastilleAtkBonus = 0;
+    private float bastilleNgMult = 1.0f;
+
     /** Reset per fight from {@code startCombat}; armed when the level def is the raid's. */
     private void initRaidState(LevelDefinition def) {
         raidActive = def instanceof TrialChamberEvent.RaidLevelDef;
@@ -2007,6 +2049,71 @@ public class CombatManager {
             raidAtkBonus = rld.atkBonus;
             raidNgMult = rld.ngMult;
         }
+        // Bastille rides the same reset: one init point per fight, so a bastille can never
+        // inherit a previous fight's wave counter (the sudden-death lesson).
+        bastilleActive = def instanceof PillageEvents.BastilleLevelDef;
+        bastilleWave = 1;
+        if (bastilleActive) {
+            PillageEvents.BastilleLevelDef bld = (PillageEvents.BastilleLevelDef) def;
+            bastilleHpBonus = bld.hpBonus;
+            bastilleAtkBonus = bld.atkBonus;
+            bastilleNgMult = bld.ngMult;
+        }
+    }
+
+    /**
+     * Bastille victory gate + wave advance. Called from {@code handleVictory} before the
+     * win resolves: clearing the field is not winning while garrisons remain - the next
+     * one marches in immediately, exactly like the raid's early-clear rule.
+     *
+     * @return true if a new garrison was summoned (the caller must NOT proceed to victory)
+     */
+    private boolean tryAdvanceBastilleWave() {
+        if (!bastilleActive || arena == null || bastilleWave >= PillageEvents.BASTILLE_WAVES) {
+            return false;
+        }
+        bastilleWave++;
+        int placed = 0;
+        java.util.Random rng = new java.util.Random();
+        for (String[] entry : PillageEvents.waveSpawnList(bastilleWave, pendingEventBiomeOrdinal)) {
+            // Spread the garrison out the way the level generator does, then let
+            // spawnRaidReinforcement handle footprint fitting and the world spawn.
+            GridPos tile = null;
+            for (int attempts = 0; attempts < 60 && tile == null; attempts++) {
+                GridPos p = new GridPos(rng.nextInt(arena.getWidth()), rng.nextInt(arena.getHeight()));
+                if (arena.isOccupied(p)) continue;
+                GridTile t = arena.getTile(p);
+                if (t == null || !t.isWalkable()) continue;
+                if (p.manhattanDistance(arena.getPlayerGridPos()) <= 1) continue;
+                tile = p;
+            }
+            if (tile == null) continue;
+            int[] stats = PillageEvents.statsOf(entry);
+            int hp = PillageEvents.isUnscaledHp(entry[0])
+                ? stats[0] : (int) ((stats[0] + bastilleHpBonus) * bastilleNgMult);
+            int atk = (int) ((stats[1] + bastilleAtkBonus) * bastilleNgMult);
+            CombatEntity spawned = spawnRaidReinforcement(entry[0], tile, hp, atk, stats[2], stats[3]);
+            if (spawned != null) {
+                // The legioner's shield wall traits ride every spawn path, not just the
+                // level generator's.
+                com.crackedgames.craftics.compat.takesapillage.TakesAPillageCompat
+                    .applySpawnTraits(spawned, pendingEventBiomeOrdinal);
+                placed++;
+            }
+        }
+        if (placed == 0) {
+            // Nothing could spawn (no free tiles - vanishingly unlikely on a 9x9, but a
+            // deadlock if mishandled: an empty field fires no further victory checks, so
+            // returning true here would strand the fight un-winnable). Roll straight into
+            // the next garrison; past the last one this returns false and the win stands.
+            return tryAdvanceBastilleWave();
+        }
+        sendWaveTitle(bastilleWave);
+        sendMessage("§c§lThe gates open! §7Garrison " + bastilleWave + " of "
+            + PillageEvents.BASTILLE_WAVES + " marches out.");
+        sendSync();
+        refreshHighlights();
+        return true;
     }
 
     /**
@@ -2980,6 +3087,7 @@ public class CombatManager {
             int ac = PlayerCombatStats.getArmorClass(player, combatEffects, activeTrimScan,
                 getProgDefenseBonus(),
                 BannerEffects.defenseBonusAt(gridPosOf(player), tileEffects)
+                    + walkingBannerBonusAt(gridPosOf(player))
                     + phalanxBonusFor(player) + beaconBonusFor(player));
             // A shield swapped in after a shieldless attack this turn grants no AC.
             if (attackedWithoutShieldThisTurn && PlayerCombatStats.hasShield(player)) {
@@ -3257,7 +3365,7 @@ public class CombatManager {
 
     private int getProgMeleeBonus() {
         if (player == null) return 0;
-        return PlayerProgression.get((ServerWorld) (ServerWorld) player.getEntityWorld()).getStats(player).getPoints(PlayerProgression.Stat.MELEE_POWER) * PROG_MELEE_PER_POINT;
+        return powerPoints(false) * PROG_MELEE_PER_POINT;
     }
 
     private int getProgRangedBonus() {
@@ -3265,11 +3373,28 @@ public class CombatManager {
         return PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player).getPoints(PlayerProgression.Stat.RANGED_POWER) * PROG_RANGED_PER_POINT;
     }
 
-    /** Points the manager's current player has put into the relevant power stat. */
+    /**
+     * Points the manager's current player has in the relevant power stat, including the ones
+     * their gear is lending them.
+     *
+     * <p>A diamond trim grants Melee Power, and it now arrives HERE rather than being expanded
+     * into every melee affinity by {@code DamageType.getTrimBonus}. One trimmed piece used to
+     * read as +1 Slashing AND +1 Cleaving AND +1 Blunt AND +1 Physical - four affinities from
+     * one trim - which is both far more damage than intended and the wrong stat entirely.
+     */
     private int powerPoints(boolean ranged) {
         if (player == null) return 0;
-        return PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player)
+        int points = PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player)
             .getPoints(ranged ? PlayerProgression.Stat.RANGED_POWER : PlayerProgression.Stat.MELEE_POWER);
+        points += trimPowerPoints(activeTrimScan, ranged);
+        return points;
+    }
+
+    /** Power-stat points a trim scan contributes: Melee Power for melee, nothing for ranged
+     *  (the ranged trim material already feeds the Ranged affinity and must not count twice). */
+    static int trimPowerPoints(TrimEffects.TrimScan scan, boolean ranged) {
+        if (scan == null || ranged) return 0;
+        return scan.get(TrimEffects.Bonus.MELEE_POWER);
     }
 
     /** Apply the hybrid Power percent bonus to an assembled base damage. The flat part is
@@ -3527,6 +3652,14 @@ public class CombatManager {
         // Don't arm the fall-death check until the arena has had time to finish building.
         this.fallDeathGraceTicks = FALL_DEATH_GRACE_TICKS;
         this.active = true;
+        // Arm the fighting-game intro for showcase fights (first level of a biome, bosses,
+        // raid bosses). The fuse exists because party members attach after this method
+        // returns - see introPendingTicks. Repeat mid-biome levels skip it so a 10-15s
+        // sequence stays an occasion rather than a toll.
+        this.introPendingTicks = shouldPlayIntro(levelDef) ? 40 : 0;
+        this.introLockTicks = 0;
+        this.introCastIds.clear();
+        this.introCastAffinities.clear();
         // Fresh fight -reset the anti-farming idle tracker.
         this.antiFarmIdleRounds = 0;
         this.killedThisRound = false;
@@ -4003,9 +4136,15 @@ public class CombatManager {
                 // fully enchanted netherite miniboss -that path does its own
                 // enchanting, so the normal per-piece enchant/trim pass is skipped.
                 if (!isBoss || isInfiniteBossOverride) {
-                    boolean miniboss = randomizeMobGear(mob, finalBiomeOrdinal, world, isInfiniteBossOverride);
+                    // One RNG per mob, keyed on its spawn index, so an infinite chapter hands
+                    // every player the same enemy loadouts - and so two mobs in the same level
+                    // still differ from each other.
+                    java.util.Random gearRng = contentRng(
+                        com.crackedgames.craftics.combat.infinite.ChapterRng.SALT_LOOT, spawnIndex);
+                    boolean miniboss = randomizeMobGear(mob, finalBiomeOrdinal, world,
+                        isInfiniteBossOverride, gearRng);
                     if (!miniboss) {
-                        enchantMobGear(mob, finalBiomeOrdinal, world);
+                        enchantMobGear(mob, finalBiomeOrdinal, world, gearRng);
                     }
                     // Infinite bosses: the held item must MATCH the basic attack the body
                     // actually uses (bow for arrow bodies, crossbow for pillager, trident
@@ -4173,6 +4312,14 @@ public class CombatManager {
                     scaledHp, scaledAtk, finalDef, spawn.range(),
                     sizeOverride, spawn.speed()
                 );
+                // Remember where this mob sat in the spawn list. Its drop is rolled when it
+                // dies, long after this loop, and needs a handle on its position in the run
+                // that is the same for every player on the seed - which the entity id is not.
+                ce.setSpawnIndex(spawnIndex);
+                // Compat-owned per-mob traits (the legioner's shield wall) - no-ops for
+                // everything the module doesn't recognise.
+                com.crackedgames.craftics.compat.takesapillage.TakesAPillageCompat
+                    .applySpawnTraits(ce, finalBiomeOrdinal);
                 // Non-boss mobs take the oriented rectangular footprint the spawn
                 // search reserved (the ctor default is the unoriented canonical).
                 if (sizeOverride <= 0) {
@@ -4784,6 +4931,10 @@ public class CombatManager {
         if (!active) return;
 
         if (phase != CombatPhase.PLAYER_TURN) return;
+
+        // The battle intro is playing: the camera is mid-choreography on every client and
+        // the fighters are mid-flourish. Every action waits for the reveal to finish.
+        if (introLockTicks > 0) return;
 
         // In party combat, only the active turn player can act
         if (!turnQueue.isEmpty() && player != null && !player.getUuid().equals(senderUuid)) {
@@ -6740,6 +6891,33 @@ public class CombatManager {
             if (streakMult > 1.0) {
                 baseDamage = (int)(baseDamage * streakMult);
             }
+        }
+
+        // Tower-shield deflection (legioner): a flat chance the whole ranged hit glances
+        // off. Rolled before the resistance math because a blocked shot isn't a resisted
+        // hit - nothing landed. On-hit riders (burn procs, enchant effects) never fire
+        // because the early return skips everything downstream, which is the point of a
+        // shield. Same 25%-class mechanic as the player's own offhand shield.
+        if (baseDamage > 0 && damageType == DamageType.RANGED
+                && target.getRangedBlockChance() > 0
+                && Math.random() < target.getRangedBlockChance()) {
+            //? if <=1.21.4 {
+            ((ServerWorld) player.getEntityWorld()).playSound(null, target.getMobEntity() != null
+                    ? target.getMobEntity().getBlockPos() : player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ITEM_SHIELD_BLOCK,
+                net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 0.9f);
+            //?} else {
+            /*((ServerWorld) player.getEntityWorld()).playSound(null, target.getMobEntity() != null
+                    ? target.getMobEntity().getBlockPos() : player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ITEM_SHIELD_BLOCK.value(),
+                net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 0.9f);
+            *///?}
+            sendMessage("§7" + target.getDisplayName() + " turns the shot away with its shield!");
+            // The AP and ammunition were already spent above, which is correct - the shot
+            // was fired, the shield ate it. Sync so the client's AP display reflects that.
+            sendSync();
+            refreshHighlights();
+            return;
         }
 
         // Apply mob-type vulnerability/resistance multiplier
@@ -9109,10 +9287,10 @@ public class CombatManager {
     };
 
     /** Roll a tier index (0..4) from the weighted distribution. */
-    private static int rollGearTier() {
+    private static int rollGearTier(java.util.Random rng) {
         int total = 0;
         for (int w : GEAR_TIER_WEIGHTS) total += w;
-        int r = (int) (Math.random() * total);
+        int r = rng.nextInt(total);
         int acc = 0;
         for (int i = 0; i < GEAR_TIER_WEIGHTS.length; i++) {
             acc += GEAR_TIER_WEIGHTS[i];
@@ -9128,7 +9306,34 @@ public class CombatManager {
      * vanilla-given gear is preserved.
      */
     private static boolean randomizeMobGear(MobEntity mob, int biomeOrdinal, ServerWorld world) {
-        return randomizeMobGear(mob, biomeOrdinal, world, false);
+        return randomizeMobGear(mob, biomeOrdinal, world, false, new java.util.Random());
+    }
+
+    /**
+     * The RNG for one reproducible per-mob roll in an infinite run, or an unseeded one
+     * outside of infinite mode.
+     *
+     * <p>Gear, enchants and drops were on {@code Math.random()} - the global JVM stream, which
+     * no seed can reach. A chapter therefore gave every player the same biomes, arenas and
+     * rosters, and then different equipment on those enemies and different drops off them,
+     * which is most of what a shared seed is for.
+     *
+     * <p>Seeded does not mean fixed. What the seed fixes is the ROLL; the thresholds it is
+     * compared against still come from the player's stats, so two players at the same point in
+     * the same chapter see the same outcome only where their stats agree, and a luckier player
+     * legitimately does better on the identical roll.
+     *
+     * <p>Inputs are the chapter seed plus position in the run ONLY - biomes cleared, the level
+     * number, and the mob's index within the level - per {@code ChapterRng}'s contract. No
+     * wall-clock, no UUID, no coordinates, or two players stop seeing the same run. The spawn
+     * index is what keeps mobs in a level from all rolling identical gear.
+     */
+    private java.util.Random contentRng(int salt, int spawnIndex) {
+        com.crackedgames.craftics.level.InfiniteSpec spec = currentInfiniteSpec();
+        if (spec == null) return new java.util.Random();
+        int levelNumber = levelDef != null ? levelDef.getLevelNumber() : 0;
+        return com.crackedgames.craftics.combat.infinite.ChapterRng.random(
+            spec.chapterSeed(), salt, spec.virtualOrdinal(), levelNumber, spawnIndex);
     }
 
     /**
@@ -9136,53 +9341,52 @@ public class CombatManager {
      * When forced, the top-level spawn gate is skipped so gear is always rolled.
      */
     private static boolean randomizeMobGear(MobEntity mob, int biomeOrdinal, ServerWorld world,
-                                            boolean forceSpawnRoll) {
+                                            boolean forceSpawnRoll, java.util.Random rng) {
         String typeId = Registries.ENTITY_TYPE.getId(mob.getType()).toString();
         if (!isHumanoidMob(typeId)) return false;
 
         // Ultra-rare netherite miniboss: full enchanted netherite set + weapon.
         // Rolled before the normal gate; overwrites any vanilla gear.
-        if (Math.random() < NETHERITE_MINIBOSS_CHANCE) {
-            equipNetheriteMiniboss(mob, world);
+        if (rng.nextDouble() < NETHERITE_MINIBOSS_CHANCE) {
+            equipNetheriteMiniboss(mob, world, rng);
             return true;
         }
 
         // Top-level gate -most mobs get nothing.
-        if (!forceSpawnRoll && Math.random() >= GEAR_SPAWN_CHANCE) return false;
+        if (!forceSpawnRoll && rng.nextDouble() >= GEAR_SPAWN_CHANCE) return false;
 
         // Pick a tier once so the mob's gear is internally consistent
-        int tier = rollGearTier();
+        int tier = rollGearTier(rng);
 
         // Weapon roll
-        if (mob.getMainHandStack().isEmpty() && Math.random() < GEAR_SLOT_CHANCE) {
+        if (mob.getMainHandStack().isEmpty() && rng.nextDouble() < GEAR_SLOT_CHANCE) {
             // 15% of the time an armed mob instead carries a modded instrument (if any).
             java.util.List<net.minecraft.item.Item> instruments =
                 com.crackedgames.craftics.combat.ModdedMobWeapons.instruments();
-            if (!instruments.isEmpty() && Math.random() < 0.15) {
+            if (!instruments.isEmpty() && rng.nextDouble() < 0.15) {
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND,
-                    new ItemStack(instruments.get((int) (Math.random() * instruments.size()))));
+                    new ItemStack(instruments.get(rng.nextInt(instruments.size()))));
             } else {
                 // Combine the vanilla tier pool with the modded (SS + Basic Weapons) pool.
                 java.util.List<net.minecraft.item.Item> pool = new java.util.ArrayList<>();
                 java.util.Collections.addAll(pool, WEAPONS_BY_TIER[tier]);
                 pool.addAll(com.crackedgames.craftics.combat.ModdedMobWeapons.moddedWeaponsForTier(tier));
-                net.minecraft.item.Item picked = pool.get((int) (Math.random() * pool.size()));
+                net.minecraft.item.Item picked = pool.get(rng.nextInt(pool.size()));
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, new ItemStack(picked));
             }
         }
 
         // Each armor slot rolls independently
-        rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.HEAD,  HELMETS_BY_TIER[tier]);
-        rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.CHEST, CHESTS_BY_TIER[tier]);
-        rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.LEGS,  LEGGINGS_BY_TIER[tier]);
-        rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.FEET,  BOOTS_BY_TIER[tier]);
+        rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.HEAD,  HELMETS_BY_TIER[tier], rng);
+        rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.CHEST, CHESTS_BY_TIER[tier], rng);
+        rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.LEGS,  LEGGINGS_BY_TIER[tier], rng);
+        rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.FEET,  BOOTS_BY_TIER[tier], rng);
         return false;
     }
 
     /** Deck a mob out as a fully enchanted netherite miniboss: a netherite weapon
      *  plus the full netherite armor set, each heavily enchanted at max level. */
-    private static void equipNetheriteMiniboss(MobEntity mob, ServerWorld world) {
-        java.util.Random rng = new java.util.Random();
+    private static void equipNetheriteMiniboss(MobEntity mob, ServerWorld world, java.util.Random rng) {
         ItemStack weapon = new ItemStack(Items.NETHERITE_SWORD);
         heavilyEnchant(world, weapon, getValidWeaponEnchants(weapon), rng);
         mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, weapon);
@@ -9203,8 +9407,14 @@ public class CombatManager {
     /** Apply a random-material armor trim to {@code stack} (pattern + material both
      *  random). No-op if the registries don't resolve the chosen ids. */
     static void applyRandomTrim(ItemStack stack, ServerWorld world) {
-        String pattern = TRIM_PATTERNS[(int) (Math.random() * TRIM_PATTERNS.length)];
-        String material = TRIM_MATERIALS[(int) (Math.random() * TRIM_MATERIALS.length)];
+        applyRandomTrim(stack, world, new java.util.Random());
+    }
+
+    /** As {@link #applyRandomTrim(ItemStack, ServerWorld)}, but rolling from a supplied RNG so
+     *  an infinite run's trims are part of its seeded content rather than machine noise. */
+    static void applyRandomTrim(ItemStack stack, ServerWorld world, java.util.Random rng) {
+        String pattern = TRIM_PATTERNS[rng.nextInt(TRIM_PATTERNS.length)];
+        String material = TRIM_MATERIALS[rng.nextInt(TRIM_MATERIALS.length)];
         //? if <=1.21.1 {
         var patternRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
         //?} else {
@@ -9230,10 +9440,11 @@ public class CombatManager {
         stack.set(DataComponentTypes.TRIM, trim);
     }
 
-    private static void rollArmorSlot(MobEntity mob, net.minecraft.entity.EquipmentSlot slot, Item[] pool) {
+    private static void rollArmorSlot(MobEntity mob, net.minecraft.entity.EquipmentSlot slot, Item[] pool,
+                                      java.util.Random rng) {
         if (!mob.getEquippedStack(slot).isEmpty()) return;
-        if (Math.random() >= GEAR_SLOT_CHANCE) return;
-        mob.equipStack(slot, new ItemStack(pool[(int) (Math.random() * pool.length)]));
+        if (rng.nextDouble() >= GEAR_SLOT_CHANCE) return;
+        mob.equipStack(slot, new ItemStack(pool[rng.nextInt(pool.length)]));
     }
 
     /**
@@ -9241,15 +9452,16 @@ public class CombatManager {
      * of biome). Enchant level still scales with biome ordinal so late-game enchanted
      * loot drops are stronger when they do appear.
      */
-    private static void enchantMobGear(MobEntity mob, int biomeOrdinal, ServerWorld world) {
+    private static void enchantMobGear(MobEntity mob, int biomeOrdinal, ServerWorld world,
+                                       java.util.Random rng) {
         int maxLevel = Math.min(4, 1 + biomeOrdinal / 3);
 
         ItemStack weapon = mob.getMainHandStack();
-        if (!weapon.isEmpty() && Math.random() < GEAR_ENCHANT_CHANCE) {
+        if (!weapon.isEmpty() && rng.nextDouble() < GEAR_ENCHANT_CHANCE) {
             String[] weaponEnchants = getValidWeaponEnchants(weapon);
             if (weaponEnchants.length > 0) {
-                String chosen = weaponEnchants[(int) (Math.random() * weaponEnchants.length)];
-                int level = 1 + (int) (Math.random() * maxLevel);
+                String chosen = weaponEnchants[rng.nextInt(weaponEnchants.length)];
+                int level = 1 + rng.nextInt(Math.max(1, maxLevel));
                 applyMobEnchant(weapon, chosen, level, world);
             }
         }
@@ -9262,15 +9474,15 @@ public class CombatManager {
 
             // Rarely, an armored piece also gets a random-material trim (purely
             // cosmetic-flavored here; rolled independently of the enchant chance).
-            if (Math.random() < GEAR_TRIM_CHANCE) {
-                applyRandomTrim(piece, world);
+            if (rng.nextDouble() < GEAR_TRIM_CHANCE) {
+                applyRandomTrim(piece, world, rng);
             }
 
-            if (Math.random() >= GEAR_ENCHANT_CHANCE) continue;
+            if (rng.nextDouble() >= GEAR_ENCHANT_CHANCE) continue;
             String[] armorEnchants = getValidArmorEnchants(slot);
             if (armorEnchants.length == 0) continue;
-            String chosen = armorEnchants[(int) (Math.random() * armorEnchants.length)];
-            int level = 1 + (int) (Math.random() * maxLevel);
+            String chosen = armorEnchants[rng.nextInt(armorEnchants.length)];
+            int level = 1 + rng.nextInt(Math.max(1, maxLevel));
             applyMobEnchant(piece, chosen, level, world);
         }
     }
@@ -9549,6 +9761,12 @@ public class CombatManager {
         if (recipients.isEmpty()) return;
 
         ServerWorld world = (ServerWorld) mob.getEntityWorld();
+        // Keyed on where this mob sat in the level, not on when it happened to die, so the
+        // drop is part of the chapter's seeded content. A mid-fight summon has no spawn index
+        // and falls back to an unseeded roll rather than colliding with slot 0's.
+        java.util.Random dropRng = contentRng(
+            com.crackedgames.craftics.combat.infinite.ChapterRng.SALT_LOOT,
+            enemy.getSpawnIndex() >= 0 ? enemy.getSpawnIndex() : -1);
         for (net.minecraft.entity.EquipmentSlot slot : slots) {
             ItemStack equipped = mob.getEquippedStack(slot);
             if (equipped.isEmpty()) continue;
@@ -9562,9 +9780,15 @@ public class CombatManager {
 
             boolean isArmor = slot != net.minecraft.entity.EquipmentSlot.MAINHAND;
             boolean anyDropped = false;
+            // ONE roll per slot, shared by every recipient, rather than a fresh roll each.
+            // A seeded chapter promises that two players at the same point with the same stats
+            // see the same outcome, and a per-recipient roll breaks that by construction - the
+            // second player to be paid out consumes a different number from the stream. The
+            // threshold is still per-recipient, so anything that varies by player (luck, a
+            // bonus-loot mark) keeps varying the RESULT while the roll itself stays fixed.
+            double slotRoll = dropRng.nextDouble();
             for (ServerPlayerEntity recipient : recipients) {
-                // Each killer rolls independently: same enemy, different per-player outcome.
-                if (Math.random() >= dropChance) continue;
+                if (slotRoll >= dropChance) continue;
                 anyDropped = true;
 
                 ItemStack dropCopy = equipped.copy();
@@ -12692,6 +12916,188 @@ public class CombatManager {
         sendSync();
     }
 
+    /**
+     * Showcase fights only: the first level of a biome, biome bosses, and raid bosses.
+     * A mid-biome level replays the arena the party has been grinding through -
+     * an unskippable camera pass there would wear out its welcome by level three.
+     */
+    private boolean shouldPlayIntro(LevelDefinition levelDef) {
+        if (levelDef instanceof com.crackedgames.craftics.raid.RaidBossLevelDefinition) return true;
+        if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
+            com.crackedgames.craftics.level.BiomeTemplate bt = gld.getBiomeTemplate();
+            if (bt == null) return false;
+            int lvl = gld.getLevelNumber();
+            return bt.getBiomeLevelIndex(lvl) == 0 || bt.isBossLevel(lvl);
+        }
+        return false;
+    }
+
+    /** Drives the intro fuse, the input lock, and the per-fighter particle bursts. */
+    private void tickIntro() {
+        if (introPendingTicks > 0) {
+            introPendingTicks--;
+            if (introPendingTicks == 0) fireIntro();
+            return;
+        }
+        if (introLockTicks <= 0) return;
+        introLockTicks--;
+        introElapsedTicks++;
+        int sinceLead = introElapsedTicks - INTRO_LEAD_TICKS;
+        if (sinceLead >= 0 && sinceLead % INTRO_STEP_TICKS == 0) {
+            int step = sinceLead / INTRO_STEP_TICKS;
+            if (step < introCastIds.size()) spawnIntroParticles(step);
+        }
+        if (introLockTicks == 0) {
+            introCastIds.clear();
+            introCastAffinities.clear();
+            sendSync();
+        }
+    }
+
+    /**
+     * The fuse fired: assemble the cast (the roster is complete by now - see
+     * {@code introPendingTicks}), hand each fighter their affinity weapon, and tell
+     * every client to run the camera pass. The lock length mirrors the client
+     * sequence plus a lead for its loading transition; the client is authoritative
+     * over its own camera, the server only over when play resumes.
+     */
+    private void fireIntro() {
+        if (!active) return;
+        java.util.List<ServerPlayerEntity> cast = getAllParticipants();
+        if (cast.isEmpty()) return;
+        introCastIds.clear();
+        introCastAffinities.clear();
+        StringBuilder wire = new StringBuilder();
+        for (ServerPlayerEntity p : cast) {
+            if (p == null || p.isDisconnected()) continue;
+            PlayerProgression.Affinity aff = LoadingCast.strongestAffinity(p);
+            introCastIds.add(p.getUuid());
+            introCastAffinities.add(aff);
+            if (wire.length() > 0) wire.append(',');
+            wire.append(p.getId()).append(':').append(aff.name());
+            try {
+                introHoldAffinityWeapon(p, aff);
+            } catch (Exception e) {
+                CrafticsMod.LOGGER.warn("Intro weapon hold failed for {}", p.getName().getString(), e);
+            }
+        }
+        if (introCastIds.isEmpty()) return;
+        introElapsedTicks = 0;
+        introLockTicks = INTRO_LEAD_TICKS + INTRO_STEP_TICKS * introCastIds.size() + INTRO_TAIL_TICKS;
+        com.crackedgames.craftics.network.CombatIntroPayload payload =
+            new com.crackedgames.craftics.network.CombatIntroPayload(wire.toString(), INTRO_STEP_TICKS);
+        for (ServerPlayerEntity p : cast) {
+            if (p != null && !p.isDisconnected()) ServerPlayNetworking.send(p, payload);
+        }
+    }
+
+    /**
+     * Put the weapon matching this player's leading affinity in their hand for the
+     * intro pose. PHYSICAL and PET intros pose bare-handed by design. The Move item's
+     * pinned slot is never touched (MoveSlotManager would immediately fight over it).
+     */
+    private void introHoldAffinityWeapon(ServerPlayerEntity p, PlayerProgression.Affinity aff) {
+        DamageType want;
+        try {
+            want = DamageType.valueOf(aff.name());
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        if (want == DamageType.PHYSICAL || want == DamageType.PET) return;
+
+        net.minecraft.entity.player.PlayerInventory inv = p.getInventory();
+        //? if <=1.21.4 {
+        int selected = inv.selectedSlot;
+        //?} else {
+        /*int selected = inv.getSelectedSlot();
+        *///?}
+
+        int moveSlot = 8;
+        if (p.getEntityWorld() instanceof ServerWorld sw) {
+            moveSlot = Math.max(0, Math.min(8,
+                com.crackedgames.craftics.world.CrafticsSavedData.get(sw)
+                    .getPlayerData(p.getUuid()).lockedMoveSlot));
+        }
+
+        // Best source: the held stack itself, then any hotbar slot, then main inventory.
+        int src = -1;
+        for (int i = 0; i < 36; i++) {
+            net.minecraft.item.ItemStack s = inv.getStack(i);
+            if (s.isEmpty() || com.crackedgames.craftics.item.MoveSlotManager.isMoveStack(s)) continue;
+            if (DamageType.fromWeapon(s.getItem()) != want) continue;
+            if (i == selected) { src = i; break; }
+            if (src < 0 || (i < 9 && src >= 9)) src = i;
+        }
+        if (src < 0) return;
+
+        int dest = selected;
+        if (dest == moveSlot) {
+            dest = -1;
+            for (int i = 0; i < 9; i++) {
+                if (i != moveSlot) { dest = i; break; }
+            }
+            if (dest < 0) return;
+        }
+
+        if (src != dest) {
+            net.minecraft.item.ItemStack tmp = inv.getStack(dest);
+            inv.setStack(dest, inv.getStack(src));
+            inv.setStack(src, tmp);
+        }
+        if (dest != selected) {
+            //? if <=1.21.4 {
+            inv.selectedSlot = dest;
+            //?} else {
+            /*inv.setSelectedSlot(dest);
+            *///?}
+            p.networkHandler.sendPacket(
+                new net.minecraft.network.packet.s2c.play.UpdateSelectedSlotS2CPacket(dest));
+        }
+    }
+
+    /** A themed burst on the fighter the camera just reached. */
+    private void spawnIntroParticles(int step) {
+        PlayerProgression.Affinity aff = introCastAffinities.get(step);
+        java.util.UUID id = introCastIds.get(step);
+        ServerPlayerEntity target = null;
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p != null && p.getUuid().equals(id)) { target = p; break; }
+        }
+        if (target == null || !(target.getEntityWorld() instanceof ServerWorld world)) return;
+        double x = target.getX(), y = target.getY() + 1.0, z = target.getZ();
+        switch (aff) {
+            case SLASHING -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SWEEP_ATTACK, x, y, z, 4, 0.5, 0.4, 0.5, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, x, y, z, 20, 0.6, 0.6, 0.6, 0.2);
+            }
+            case CLEAVING -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, x, y, z, 25, 0.7, 0.5, 0.7, 0.3);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, x, y - 0.8, z, 8, 0.5, 0.1, 0.5, 0.05);
+            }
+            case BLUNT -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, x, y - 0.8, z, 14, 0.6, 0.1, 0.6, 0.08);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, x, y, z, 12, 0.5, 0.5, 0.5, 0.25);
+            }
+            case RANGED -> world.spawnParticles(net.minecraft.particle.ParticleTypes.ELECTRIC_SPARK, x, y, z, 22, 0.5, 0.7, 0.5, 0.15);
+            case WATER -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SPLASH, x, y, z, 30, 0.6, 0.5, 0.6, 0.1);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.DOLPHIN, x, y, z, 20, 0.6, 0.6, 0.6, 0.05);
+            }
+            case SPECIAL -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.WITCH, x, y, z, 22, 0.5, 0.7, 0.5, 0.1);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL, x, y, z, 15, 0.5, 0.6, 0.5, 0.3);
+            }
+            case PET -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.HEART, x, y + 0.5, z, 6, 0.5, 0.4, 0.5, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER, x, y, z, 15, 0.6, 0.6, 0.6, 0.0);
+            }
+            case PHYSICAL -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, x, y, z, 10, 0.5, 0.4, 0.5, 0.06);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, x, y, z, 15, 0.5, 0.5, 0.5, 0.2);
+            }
+        }
+    }
+
     public void tick() {
         // Drive the event cinematic walk-up. This must run even when combat isn't
         // active: tickAll() ticks every CombatManager instance unconditionally, and
@@ -12748,6 +13154,8 @@ public class CombatManager {
         }
 
         tickCounter++;
+
+        tickIntro();
 
         // AFK turn watchdog (CrafticsConfig.turnTimerEnabled, off by default): if the current
         // player does nothing for turnTimerSeconds, auto-end their turn so an AFK player can't
@@ -21479,7 +21887,8 @@ public class CombatManager {
 
     /**
      * Check if a given position is within a lit zone (torch/lantern radius).
-     * Returns true if the position is within the radius of any light source.
+     * Returns true if the position is within the radius of any light source -
+     * planted, or carried in someone's offhand ({@link #walkingLightRadiusOf}).
      */
     private boolean isPositionLit(GridPos pos) {
         if (pos == null) return false;
@@ -21491,7 +21900,52 @@ public class CombatManager {
                 return true;
             }
         }
+        // Carried light: a torch or lantern riding in a party member's OFFHAND is a
+        // walking light zone centered on them, at the same radius the placed block
+        // registers. The tradeoff is built in - that hand isn't holding a shield.
+        for (ServerPlayerEntity member : getAllParticipants()) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            int radius = walkingLightRadiusOf(member);
+            if (radius <= 0) continue;
+            GridPos mpos = gridPosOf(member);
+            if (mpos == null) continue;
+            if (Math.max(Math.abs(pos.x() - mpos.x()), Math.abs(pos.z() - mpos.z())) <= radius) {
+                return true;
+            }
+        }
         return false;
+    }
+
+    /** Light radius this player carries in their offhand: torch 2, lantern 3, else 0.
+     *  Matches the radii the placed blocks register in {@code registerLightZone}. */
+    private static int walkingLightRadiusOf(ServerPlayerEntity member) {
+        var off = member.getOffHandStack();
+        if (off.isOf(Items.TORCH)) return 2;
+        if (off.isOf(Items.LANTERN)) return 3;
+        return 0;
+    }
+
+    /**
+     * Walking banner aura: an offhand banner is a carried version of the planted one -
+     * anyone (carrier included) within {@link BannerEffects#AURA_RADIUS} of a carrier
+     * gets {@link BannerEffects#DEFENSE_BONUS}. Flat base bonus, not the Special-scaled
+     * planted value: the scaling is frozen at planting time, and a carried banner never
+     * had a planting. Doesn't stack with itself across multiple carriers, but does stack
+     * with a planted banner, exactly as the Beacon helmet's aura does.
+     */
+    private int walkingBannerBonusAt(GridPos pos) {
+        if (pos == null || arena == null) return 0;
+        for (ServerPlayerEntity member : getAllParticipants()) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            if (!BannerEffects.isBanner(member.getOffHandStack().getItem())) continue;
+            GridPos mpos = gridPosOf(member);
+            if (mpos != null && mpos.manhattanDistance(pos) <= BannerEffects.AURA_RADIUS) {
+                return BannerEffects.DEFENSE_BONUS;
+            }
+        }
+        return 0;
     }
 
     /** Tile of the most recently placed bed, or null. Overworld fights only. */
@@ -23463,6 +23917,7 @@ public class CombatManager {
             if (target != null && target.isAlive()) {
                 int bannerBonus = target.isAlly()
                     ? BannerEffects.defenseBonusAt(target.getGridPos(), tileEffects)
+                        + walkingBannerBonusAt(target.getGridPos())
                     : 0;
                 int dealt = target.takeDamage(maam.damage(), bannerBonus);
                 sendMessage("§6" + currentEnemy.getDisplayName() + " attacks " + target.getDisplayName() + " for " + dealt + "!");
@@ -26447,6 +26902,12 @@ public class CombatManager {
             return;
         }
 
+        // Bastille gate: same shape as the raid gate below - a cleared field with
+        // garrisons left summons the next one instead of winning.
+        if (tryAdvanceBastilleWave()) {
+            return;
+        }
+
         // Raid gate: clearing the field is NOT winning while waves remain. Reward the
         // early clear by bringing the next wave in immediately (no telegraph wait) rather
         // than making the party stand around for the timer.
@@ -26506,6 +26967,40 @@ public class CombatManager {
             deadPartyMembers.clear();
         }
 
+        // Pillager Camp / Bastille payouts (It Takes a Pillage). Per participant, on top
+        // of the ordinary per-mob loot below. The camp's headline is the Bastille Map;
+        // the bastille's is the ominous-tier haul - it cost three consecutive fights.
+        if (levelDef instanceof PillageEvents.CampLevelDef
+                || levelDef instanceof PillageEvents.BastilleLevelDef) {
+            boolean bastille = levelDef instanceof PillageEvents.BastilleLevelDef;
+            ServerWorld rewardWorld = (ServerWorld) player.getEntityWorld();
+            var rewardData = com.crackedgames.craftics.world.CrafticsSavedData.get(rewardWorld);
+            java.util.Random rewardRng = new java.util.Random();
+            int purse = bastille
+                ? PillageEvents.bastilleEmeralds(pendingEventBiomeOrdinal)
+                : PillageEvents.campEmeralds(pendingEventBiomeOrdinal);
+            for (ServerPlayerEntity member : getAllParticipants()) {
+                if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+                rewardData.getPlayerData(member.getUuid()).emeralds += purse;
+                if (bastille) {
+                    PillageEvents.give(member, TrialChamberEvent.rollHeavyGear(rewardWorld, rewardRng));
+                    ItemStack artifact = com.crackedgames.craftics.compat.artifacts.ArtifactRoller.rollOne();
+                    if (!artifact.isEmpty()) PillageEvents.give(member, artifact);
+                    for (ItemStack material : PillageEvents.bastilleMaterials(rewardRng)) {
+                        PillageEvents.give(member, material);
+                    }
+                } else {
+                    PillageEvents.give(member, PillageEvents.createBastilleMap());
+                }
+            }
+            rewardData.markDirty();
+            sendMessage(bastille
+                ? "§6§l⚑ The Bastille falls! §r§6+" + purse
+                    + " emeralds, spoils from its armory, and its vault cracked open."
+                : "§6§l⚑ The camp is routed! §r§6+" + purse
+                    + " emeralds - and a map marking the road to their Bastille.");
+        }
+
         // Per-mob loot now routes to the killer only, not every party member.
         // Arena/level-completion bonuses below still go to everyone -that's
         // the shared "you beat the wave" reward and shouldn't be one-player.
@@ -26515,6 +27010,10 @@ public class CombatManager {
         if (activeMiniboss != null) {
             luckBonusItems += 1; // miniboss bonus: one extra loot roll
         }
+        // One merged chat line per distinct item for the whole victory burst.
+        // Announcing each stack as it rolled printed "+ 1x Bone" once per
+        // skeleton; the burst is delivered in one breath, so it reads as one.
+        List<ItemStack> lootChatSummary = new ArrayList<>();
         for (CombatEntity enemy : enemies) {
             // The enemies list also holds the player's allies. A *surviving*
             // ally is not loot (a bee ally that lives must not award honey).
@@ -26548,7 +27047,7 @@ public class CombatManager {
             if (displayDrops == null) displayDrops = getMobDrops(enemy.getEntityTypeId());
             for (ItemStack drop : displayDrops) {
                 if (drop.isEmpty() || drop.getCount() <= 0) continue;
-                sendMessage("§e+ " + drop.getCount() + "x " + drop.getName().getString());
+                mergeLootChatLine(lootChatSummary, drop);
             }
             // Rare goat horn drop -per-mob, killer-only.
             if ("minecraft:goat".equals(enemy.getEntityTypeId())) {
@@ -26594,8 +27093,11 @@ public class CombatManager {
             List<ItemStack> displayLoot = levelDef.rollCompletionLoot(lootWorld);
             for (ItemStack item : displayLoot) {
                 if (item.isEmpty() || item.getCount() <= 0) continue; // never show "0x Air"
-                sendMessage("§e+ " + item.getCount() + "x " + item.getName().getString());
+                mergeLootChatLine(lootChatSummary, item);
             }
+        }
+        for (ItemStack line : lootChatSummary) {
+            sendMessage("§e+ " + line.getCount() + "x " + line.getName().getString());
         }
 
         // Rare pottery sherd drop (Luck boosts chance)
@@ -27348,7 +27850,11 @@ public class CombatManager {
                     ));
                 }
             }
-            LootRecorder.clear();
+            {
+                java.util.List<java.util.UUID> doneIds = new java.util.ArrayList<>();
+                for (ServerPlayerEntity p : getAllParticipants()) doneIds.add(p.getUuid());
+                LootRecorder.end(doneIds);
+            }
             // Don't endCombat yet -wait for player choice
             // But do clear the arena
             clearHighlights();
@@ -27790,6 +28296,11 @@ public class CombatManager {
                     // the rest of the event pool.
                     float raidChance = (contInfSpec != null || raidAlreadyDefeated) ? 0.06f : 0.75f;
                     float raidRoll = eventRng.nextFloat();
+                    // Pillager Camp draw - its own roll, like the raid's, so it never
+                    // carves a band out of the built-in events' shared cascade. Drawn
+                    // unconditionally to keep the eventRng stream identical whether or
+                    // not the mod is installed (infinite runs replay this stream).
+                    float campRoll = eventRng.nextFloat();
 
                     if (skipEvents) {
                         // No event -go straight to next level. Boss levels get a
@@ -27849,6 +28360,33 @@ public class CombatManager {
                         trialChamberLevelDef = TrialChamberEvent.generate(biomeOrdinal, ngPlusLevel);
                         trialChamberPending = true;
                         offerTrialVote(savedPlayer, partyMsg, false);
+                    } else if (forced != null ? forced.equals(PillageEvents.BASTILLE_KEY)
+                            : false) {
+                        // The Bastille (It Takes a Pillage). Reached ONLY through a
+                        // Bastille Map - it never rolls naturally; the map is the key.
+                        ld.levelsSinceLastEvent = 0;
+                        data.markDirty();
+                        pendingNextLevelDef = nextLevelDef;
+                        pendingBiome = biome;
+                        pendingEventBiomeOrdinal = Math.max(0, biomeOrdinal);
+                        offerAcceptDeclineFight(savedPlayer, savedMembers,
+                            PillageEvents.generateBastille(biomeOrdinal, ngPlusLevel),
+                            "craftics:bastille_intro");
+                    } else if (forced != null ? forced.equals(PillageEvents.CAMP_KEY)
+                            : (com.crackedgames.craftics.compat.takesapillage.TakesAPillageCompat
+                                    .isLoaded()
+                                && campRoll < PillageEvents.CAMP_CHANCE)) {
+                        // Pillager Camp (It Takes a Pillage): its own roll, like the raid's,
+                        // so it exists only when the mod does and never eats a built-in
+                        // event's odds.
+                        ld.levelsSinceLastEvent = 0;
+                        data.markDirty();
+                        pendingNextLevelDef = nextLevelDef;
+                        pendingBiome = biome;
+                        pendingEventBiomeOrdinal = Math.max(0, biomeOrdinal);
+                        offerAcceptDeclineFight(savedPlayer, savedMembers,
+                            PillageEvents.generateCamp(biomeOrdinal, ngPlusLevel),
+                            "craftics:pillager_camp_intro");
                     } else if (forced != null ? forced.equals("ambush") : (eventRoll < cAmbush)) {
                         // Shiny on the ground. The party votes Take vs Leave; majority Yes
                         // resolves 50/50 into a reward for one Yes voter or this ambush
@@ -31012,9 +31550,22 @@ public class CombatManager {
     private void offerRaid(ServerPlayerEntity savedPlayer,
                            java.util.List<ServerPlayerEntity> members,
                            com.crackedgames.craftics.level.LevelDefinition raidDef) {
+        offerAcceptDeclineFight(savedPlayer, members, raidDef, "craftics:raid_intro");
+    }
+
+    /**
+     * Offer an accept/decline bonus fight through the raid's own vote rails: the intro
+     * dialogue's choices carry {@code raid:accept} / {@code raid:decline}, accept-majority
+     * (ties included) drops the party into {@code fightDef}, decline walks on. Shared by
+     * the Raid, the Pillager Camp, and the Bastille - one vote machine, three doorways.
+     */
+    private void offerAcceptDeclineFight(ServerPlayerEntity savedPlayer,
+                                         java.util.List<ServerPlayerEntity> members,
+                                         com.crackedgames.craftics.level.LevelDefinition fightDef,
+                                         String introDialogueId) {
         eventRoomPending = true;
         eventRoomType = "shiny";
-        pendingShinyAmbushDef = raidDef;
+        pendingShinyAmbushDef = fightDef;
         pendingShinyIsRaid = true;
         pendingShinyMembers = new java.util.ArrayList<>();
         shinyVotes.clear();
@@ -31024,9 +31575,9 @@ public class CombatManager {
             pendingShinyMembers.add(p.getUuid());
             eventPendingPlayers.add(p.getUuid());
         }
-        var def = com.crackedgames.craftics.combat.dialogue.DialogueRegistry.get("craftics:raid_intro");
+        var def = com.crackedgames.craftics.combat.dialogue.DialogueRegistry.get(introDialogueId);
         if (def == null) {
-            CrafticsMod.LOGGER.warn("raid_intro dialogue missing; starting raid without intro");
+            CrafticsMod.LOGGER.warn("{} dialogue missing; starting the fight without intro", introDialogueId);
             shinyDismissTriggersCombat = true;
             finalizeShinyEvent(savedPlayer);
             return;
@@ -31116,8 +31667,26 @@ public class CombatManager {
             shinyDismissTriggersCombat = !leaveMajority;
             eventPendingPlayers.clear();
             if (pendingShinyMembers != null) eventPendingPlayers.addAll(pendingShinyMembers);
-            com.crackedgames.craftics.combat.dialogue.DialogueDefinition raidOutcome =
-                shinyDismissTriggersCombat
+            // Outcome flavor keys off WHICH fight was offered - the raid's villager lines
+            // on a pillager-camp accept would have a villager blessing you into an
+            // illager assault.
+            boolean pillage = pendingShinyAmbushDef instanceof PillageEvents.CampLevelDef
+                || pendingShinyAmbushDef instanceof PillageEvents.BastilleLevelDef;
+            com.crackedgames.craftics.combat.dialogue.DialogueDefinition raidOutcome;
+            if (pillage) {
+                raidOutcome = shinyDismissTriggersCombat
+                    ? new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+                        "craftics:pillage_accept", "minecraft:pillager", "pillage_accept",
+                        java.util.List.of("Crossbows rise along the palisade.",
+                            "They've seen you. No quiet way in now."),
+                        java.util.List.of())
+                    : new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+                        "craftics:pillage_decline", "minecraft:pillager", "pillage_decline",
+                        java.util.List.of("You slip past under the treeline.",
+                            "Behind you, a horn sounds - they'll still be there."),
+                        java.util.List.of());
+            } else {
+                raidOutcome = shinyDismissTriggersCombat
                     ? new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
                         "craftics:raid_accept", "minecraft:villager", "raid_accept",
                         java.util.List.of("\"Bless you, travelers!\"",
@@ -31128,6 +31697,7 @@ public class CombatManager {
                         java.util.List.of("The villager's face falls.",
                             "\"Then we will face them alone...\""),
                         java.util.List.of());
+            }
             ServerWorld raidWorld = (ServerWorld) referencePlayer.getEntityWorld();
             for (java.util.UUID u : new java.util.ArrayList<>(eventPendingPlayers)) {
                 ServerPlayerEntity p = raidWorld.getServer().getPlayerManager().getPlayer(u);
@@ -32149,6 +32719,17 @@ public class CombatManager {
         return pool != null ? pool.roll(1, 2, 1, 3) : List.of();
     }
 
+    /** Merge a display stack into the victory chat summary (same item + components = one line). */
+    private static void mergeLootChatLine(List<ItemStack> summary, ItemStack stack) {
+        for (ItemStack existing : summary) {
+            if (ItemStack.areItemsAndComponentsEqual(existing, stack)) {
+                existing.setCount(existing.getCount() + stack.getCount());
+                return;
+            }
+        }
+        summary.add(stack.copy());
+    }
+
     public void endCombat() {
         try {
             net.minecraft.server.world.ServerWorld w = (net.minecraft.server.world.ServerWorld) this.player.getEntityWorld();
@@ -32161,7 +32742,15 @@ public class CombatManager {
             collapseRubble.clear();
         } catch (Throwable ignored) { /* defensive -combat cleanup must not fail */ }
         if (!active) return;
-        LootRecorder.clear();
+        introPendingTicks = 0;
+        introLockTicks = 0;
+        introCastIds.clear();
+        introCastAffinities.clear();
+        {
+            java.util.List<java.util.UUID> doneIds = new java.util.ArrayList<>();
+            for (ServerPlayerEntity p : getAllParticipants()) doneIds.add(p.getUuid());
+            LootRecorder.end(doneIds);
+        }
         despawnAllBoats();
 
         // Clear anything the party dropped on the arena floor. The build path sweeps too, so
@@ -32821,12 +33410,31 @@ public class CombatManager {
             mob.setGlowing(false);
             world.spawnEntity(mob);
 
+            // Pet-affinity HP, recomputed rather than carried. Every other ally-spawn path
+            // folds computeAllyPetHpBonus into the constructor (max HP is constructor-only on
+            // CombatEntity); this one alone rebuilt the pet from a number saved last level,
+            // so the bonus only survived if it happened to be baked into that number - and it
+            // never updated when the owner's Pet affinity changed. In infinite mode, where
+            // affinity points are handed out on boss clears, a pet brought in before the owner
+            // invested in Pet could never gain the HP no matter how far they levelled it.
+            //
+            // Taking the MAXIMUM of the two rather than adding is what keeps this safe to run
+            // on a pet whose saved max already includes the bonus: it tops up a pet that lost
+            // it (or never had it) and leaves an already-correct one alone, instead of
+            // compounding the boost a little more on every level boundary.
+            int petHpBonus = computeAllyPetHpBonus(pet.entityType(), player.getUuid());
+            AllyEntry savedEntry = AllyRegistry.getOrNull(pet.entityType());
+            int baseHp = savedEntry != null ? savedEntry.hp() : pet.maxHp();
+            int maxHp = Math.max(pet.maxHp(), baseHp + petHpBonus);
+
             CombatEntity ce = new CombatEntity(
                 mob.getId(), pet.entityType(), spawnPos,
-                pet.maxHp(), pet.atk(), pet.def(), pet.range());
-            // Restore saved HP (constructor sets to max, so damage down to saved value)
-            if (pet.hp() < pet.maxHp()) {
-                ce.takeDamage(pet.maxHp() - pet.hp());
+                maxHp, pet.atk(), pet.def(), pet.range());
+            // Restore saved HP (constructor sets to max, so damage down to saved value).
+            // Measured against the resolved max, not the saved one - a pet that just gained
+            // max HP keeps the damage it was carrying rather than being healed by the raise.
+            if (pet.hp() < maxHp) {
+                ce.takeDamage(maxHp - pet.hp());
             }
             ce.setAlly(true);
             ce.setOwnerUuid(player.getUuid());
@@ -34749,8 +35357,10 @@ public class CombatManager {
         boolean ranged = PlayerCombatStats.isBowItem(weapon) || weapon == Items.CROSSBOW;
         DamageType damageType = DamageType.fromWeapon(weapon);
         CombatEffects fx = (member == player) ? combatEffects : null;
-        int powerPts = ranged ? ms.getPoints(PlayerProgression.Stat.RANGED_POWER)
-                              : ms.getPoints(PlayerProgression.Stat.MELEE_POWER);
+        // Same trim contribution the damage path applies, so the readout matches the hit.
+        int powerPts = (ranged ? ms.getPoints(PlayerProgression.Stat.RANGED_POWER)
+                               : ms.getPoints(PlayerProgression.Stat.MELEE_POWER))
+            + trimPowerPoints(trimScan, ranged);
         int progBonus = powerPts * (ranged ? PROG_RANGED_PER_POINT : PROG_MELEE_PER_POINT);
         int damageTypeBonus = DamageType.getTotalBonus(member, trimScan, fx, damageType, ms)
             + DamageType.getMobHeadBonus(

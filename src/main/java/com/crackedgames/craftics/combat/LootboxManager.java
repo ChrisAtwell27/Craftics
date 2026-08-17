@@ -324,6 +324,7 @@ public final class LootboxManager {
         ItemStack icon = baseIcon.copy();
         icon.setCount(1);
         setDisplay(icon, name, lore);
+        com.crackedgames.craftics.screen.MenuIcons.mark(icon);
         inv.setStack(slot, icon);
     }
 

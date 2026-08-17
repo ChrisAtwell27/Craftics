@@ -296,6 +296,7 @@ public final class TradeMenus {
                                 String name, List<String> lore) {
         ItemStack stack = new ItemStack(item);
         decorate(stack, name, lore);
+        com.crackedgames.craftics.screen.MenuIcons.mark(stack);
         inv.setStack(slot, stack);
     }
 

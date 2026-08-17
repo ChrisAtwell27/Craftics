@@ -28,11 +28,26 @@ public final class LootRecorder {
     private static final Map<UUID, List<ItemStack>> TALLIES = new ConcurrentHashMap<>();
     private static final Set<UUID> RECORDING = ConcurrentHashMap.newKeySet();
 
-    /** Arm recording for these players, clearing any prior tally. */
+    /**
+     * Arm recording for these players, clearing any prior tally THEY had.
+     * Strictly per-player: multiple fights run concurrently on a server, and
+     * the previous global wipe here meant any fight starting erased every
+     * OTHER fight's in-progress tally - their victory screens then showed an
+     * empty reward grid while chat had already announced the loot.
+     */
     public static void begin(Collection<UUID> players) {
-        TALLIES.clear();
-        RECORDING.clear();
-        RECORDING.addAll(players);
+        for (UUID id : players) {
+            TALLIES.remove(id);
+            RECORDING.add(id);
+        }
+    }
+
+    /** Disarm recording and drop tallies for these players only. */
+    public static void end(Collection<UUID> players) {
+        for (UUID id : players) {
+            TALLIES.remove(id);
+            RECORDING.remove(id);
+        }
     }
 
     /** Record one delivered stack against a player's tally. No-op if not recording. */
@@ -61,9 +76,4 @@ public final class LootRecorder {
         return list != null ? list : new ArrayList<>();
     }
 
-    /** Wipe all tallies and stop recording. */
-    public static void clear() {
-        TALLIES.clear();
-        RECORDING.clear();
-    }
 }

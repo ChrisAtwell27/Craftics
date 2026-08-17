@@ -25,15 +25,26 @@ public class CombatAnimations {
      */
     private static final java.util.WeakHashMap<AbstractClientPlayerEntity, Integer> attackTimers =
         new java.util.WeakHashMap<>();
-    private static ModifierLayer<IAnimation> currentLayer = null;
 
     // Cinematic walk tracking: drive the same WalkAnimation used in combat while the
     // player is being walked (position changing) during a non-combat event cinematic.
     private static boolean wasCinematicWalking = false;
     private static double lastCinX = Double.NaN, lastCinZ = Double.NaN;
 
-    // WeakHashMap: survives respawns, gets GC'd with the player
-    private static java.util.WeakHashMap<AbstractClientPlayerEntity, ModifierLayer<IAnimation>> layerMap = new java.util.WeakHashMap<>();
+    /**
+     * The combat layer is stored in PlayerAnimator's per-entity associated data,
+     * NEVER in a map keyed by the entity. Entity.hashCode()/equals() use the entity
+     * ID, and the client assigns the network ID via setId() AFTER construction (the
+     * REGISTER_ANIMATION_EVENT fires mid-constructor), so any entity-keyed map ends
+     * up with entries hidden under the temporary construction ID plus entries that
+     * alias OLD respawned entities under the live ID. The aliased hit returns a
+     * layer attached to a dead entity's AnimationStack: every animation call lands
+     * on a stack nobody renders, nothing throws, and only a client restart (or an
+     * eventual GC expunging the stale weak key) recovers. Associated data lives in
+     * a field on the entity instance itself, so it can neither alias nor go stale.
+     */
+    private static final net.minecraft.util.Identifier LAYER_ID =
+        net.minecraft.util.Identifier.of("craftics", "combat_layer");
 
     // Identity of the local player entity we last ticked against. When the
     // client respawns (void death, /kill, dimension change) Minecraft swaps
@@ -48,27 +59,23 @@ public class CombatAnimations {
         PlayerAnimationAccess.REGISTER_ANIMATION_EVENT.register((player, stack) -> {
             var layer = new ModifierLayer<IAnimation>();
             stack.addAnimLayer(42, layer);
-            if (player instanceof AbstractClientPlayerEntity acp) {
-                layerMap.put(acp, layer);
-            }
+            PlayerAnimationAccess.getPlayerAssociatedData(player).set(LAYER_ID, layer);
         });
     }
 
     @SuppressWarnings("unchecked")
     private static ModifierLayer<IAnimation> getOrCreateLayer(AbstractClientPlayerEntity player) {
-        ModifierLayer<IAnimation> layer = layerMap.get(player);
-        if (layer != null) {
-            currentLayer = layer;
-            return layer;
+        if (PlayerAnimationAccess.getPlayerAssociatedData(player).get(LAYER_ID)
+                instanceof ModifierLayer<?> stored) {
+            return (ModifierLayer<IAnimation>) stored;
         }
         // Fallback if register callback hasn't fired yet
         if (player instanceof IPlayer iPlayer) {
             AnimationStack stack = iPlayer.getAnimationStack();
             if (stack != null) {
-                layer = new ModifierLayer<IAnimation>();
+                ModifierLayer<IAnimation> layer = new ModifierLayer<IAnimation>();
                 stack.addAnimLayer(42, layer);
-                layerMap.put(player, layer);
-                currentLayer = layer;
+                PlayerAnimationAccess.getPlayerAssociatedData(player).set(LAYER_ID, layer);
                 return layer;
             }
         }
@@ -113,7 +120,6 @@ public class CombatAnimations {
             wasAnimating = false;
             wasCinematicWalking = false;
             attackTimers.clear();
-            currentLayer = null;
             lastCinX = Double.NaN;
             lastCinZ = Double.NaN;
             lastTickPlayer = client.player;
@@ -214,6 +220,32 @@ public class CombatAnimations {
         layer.replaceAnimationWithFade(AbstractFadeModifier.standardFadeIn(3, Ease.LINEAR), null);
     }
 
+    /** Ticks every battle-intro animation runs; matches the intro camera dwell. */
+    public static final int INTRO_ANIM_TICKS = 45;
+
+    /**
+     * Play this fighter's battle-intro flourish, picked by their leading affinity.
+     * Called once per fighter by {@link CombatIntroSequence} as the camera reaches
+     * them. The attack-timer map fades the layer back out when the flourish ends,
+     * exactly as it does for weapon swings.
+     */
+    public static void playIntro(AbstractClientPlayerEntity player, String affinityName) {
+        ModifierLayer<IAnimation> layer = getOrCreateLayer(player);
+        if (layer == null) return;
+        IAnimation anim = switch (affinityName) {
+            case "SLASHING" -> new SlashingIntroAnimation();
+            case "CLEAVING" -> new CleavingIntroAnimation();
+            case "BLUNT" -> new BluntIntroAnimation();
+            case "RANGED" -> new RangedIntroAnimation();
+            case "WATER" -> new WaterIntroAnimation();
+            case "SPECIAL" -> new SpecialIntroAnimation();
+            case "PET" -> new PetIntroAnimation();
+            default -> new PhysicalIntroAnimation();
+        };
+        layer.replaceAnimationWithFade(AbstractFadeModifier.standardFadeIn(5, Ease.INOUTSINE), anim);
+        attackTimers.put(player, INTRO_ANIM_TICKS + 4);
+    }
+
     public static void playAttack(AbstractClientPlayerEntity player) { playWeaponAttack(player); }
 
     public static void playWeaponAttack(AbstractClientPlayerEntity player) {
@@ -285,17 +317,21 @@ public class CombatAnimations {
         layer.replaceAnimationWithFade(AbstractFadeModifier.standardFadeIn(4, Ease.LINEAR), null);
     }
 
-    /** Hard-stop every tracked avatar's layer (combat end), not just the local player's. */
+    /** Hard-stop every visible avatar's layer (combat end), not just the local player's. */
     public static void stopAll() {
-        for (ModifierLayer<IAnimation> l : layerMap.values()) {
-            if (l != null) l.setAnimation(null);
+        var world = MinecraftClient.getInstance().world;
+        if (world != null) {
+            for (AbstractClientPlayerEntity p : world.getPlayers()) {
+                if (PlayerAnimationAccess.getPlayerAssociatedData(p).get(LAYER_ID)
+                        instanceof ModifierLayer<?> l) {
+                    l.setAnimation(null);
+                }
+            }
         }
         attackTimers.clear();
-        if (currentLayer != null) currentLayer.setAnimation(null);
     }
 
     public static void clearCache() {
-        currentLayer = null;
         wasAnimating = false;
         // Also reset the cinematic-walk tracking so a scene/event that left the local
         // player mid-walk can't carry a stale "already walking" state into the next
@@ -759,6 +795,350 @@ public class CombatAnimations {
                         float headY = coiled * 0.1f - stabbed * 0.15f + recovery * 0.05f;
                         return new Vec3f(v.getX(), v.getY() + headY, v.getZ());
                     }
+                }
+            }
+            return v;
+        }
+    }
+
+    // --- Battle intro flourishes (one per affinity, all INTRO_ANIM_TICKS long) ---
+    //
+    // Authored as keyframe channels rather than summed phase ramps: each channel is a
+    // list of {tick, value} keys with smoothstep easing between them, so every segment
+    // eases in and out and there are no velocity pops at phase boundaries. The
+    // animation principles live in the KEYS: a small counter-move before every big one
+    // (anticipation), poses keyed slightly past their target then back (overshoot and
+    // settle), and head/body channels keyed a couple of ticks behind the arms
+    // (follow-through). Arcs come from pairing X and Z rotation channels.
+
+    /** Sample a keyframe channel: smoothstep between consecutive {tick, value} keys. */
+    private static float kf(float t, float[]... keys) {
+        if (t <= keys[0][0]) return keys[0][1];
+        for (int i = 1; i < keys.length; i++) {
+            if (t < keys[i][0]) {
+                float span = keys[i][0] - keys[i - 1][0];
+                float f = span <= 0 ? 1f : (t - keys[i - 1][0]) / span;
+                f = f * f * (3 - 2 * f);
+                return keys[i - 1][1] + (keys[i][1] - keys[i - 1][1]) * f;
+            }
+        }
+        return keys[keys.length - 1][1];
+    }
+
+    private static float[] k(float t, float v) { return new float[] { t, v }; }
+
+    /** Shared shape for the intro flourishes: fixed length, keyframed transforms. */
+    private abstract static class IntroAnimation implements IAnimation {
+        protected float tick = 0;
+        @Override public void tick() { tick += 1; }
+        @Override public boolean isActive() { return tick < INTRO_ANIM_TICKS; }
+        @Override public void setupAnim(float tickDelta) {}
+    }
+
+    // Anticipation draw-back -> slash across -> return cut -> sword raised high
+    private static class SlashingIntroAnimation extends IntroAnimation {
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            if (type != TransformType.ROTATION) return v;
+            float t = tick + tickDelta;
+            switch (modelPart) {
+                case "rightArm" -> {
+                    float armX = kf(t, k(0, 0), k(6, 0.55f), k(12, -2.85f), k(15, -2.5f),
+                        k(20, 0.65f), k(26, -2.25f), k(29, -1.95f), k(35, -2.75f), k(39, -2.4f), k(45, -2.4f));
+                    float armZ = kf(t, k(0, 0), k(6, 0.35f), k(12, -0.9f), k(15, -0.7f),
+                        k(20, 0.5f), k(26, -0.5f), k(29, -0.35f), k(35, 0.45f), k(39, 0.3f), k(45, 0.3f));
+                    return new Vec3f(v.getX() + armX, v.getY(), v.getZ() + armZ);
+                }
+                case "leftArm" -> {
+                    float armX = kf(t, k(0, 0), k(8, -0.25f), k(14, 0.45f), k(17, 0.3f),
+                        k(22, -0.35f), k(28, 0.35f), k(31, 0.25f), k(37, -0.6f), k(41, -0.45f), k(45, -0.45f));
+                    return new Vec3f(v.getX() + armX, v.getY(), v.getZ());
+                }
+                case "body" -> {
+                    float twist = kf(t, k(0, 0), k(7, 0.18f), k(13, -0.5f), k(16, -0.4f),
+                        k(21, 0.32f), k(27, -0.38f), k(30, -0.28f), k(36, 0.2f), k(40, 0.14f), k(45, 0.14f));
+                    return new Vec3f(v.getX(), v.getY() + twist, v.getZ());
+                }
+                case "head" -> {
+                    float headY = kf(t, k(0, 0), k(9, 0.1f), k(15, -0.18f), k(18, -0.1f),
+                        k(23, 0.14f), k(29, -0.12f), k(32, -0.06f), k(38, 0.04f), k(45, 0));
+                    return new Vec3f(v.getX(), v.getY() + headY, v.getZ());
+                }
+            }
+            return v;
+        }
+    }
+
+    // Dip -> heave the axe high overhead -> massive chop with a body drop -> shoulder carry
+    private static class CleavingIntroAnimation extends IntroAnimation {
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            float t = tick + tickDelta;
+            if (type == TransformType.POSITION && "body".equals(modelPart)) {
+                float y = kf(t, k(0, 0), k(6, -0.25f), k(14, 0.35f), k(20, 0.3f),
+                    k(24, -1.05f), k(27, -0.8f), k(29, -0.9f), k(35, -0.2f), k(41, 0), k(45, 0));
+                return new Vec3f(v.getX(), v.getY() + y, v.getZ());
+            }
+            if (type != TransformType.ROTATION) return v;
+            switch (modelPart) {
+                case "rightArm", "leftArm" -> {
+                    float armX = kf(t, k(0, 0), k(6, 0.6f), k(14, -3.15f), k(17, -2.9f),
+                        k(24, 1.55f), k(27, 1.25f), k(33, -0.4f), k(39, -2.55f), k(42, -2.25f), k(45, -2.25f));
+                    float armZ = "rightArm".equals(modelPart)
+                        ? kf(t, k(0, 0), k(30, 0), k(39, 0.62f), k(42, 0.55f), k(45, 0.55f))
+                        : kf(t, k(0, 0), k(30, 0), k(39, -0.22f), k(45, -0.2f));
+                    return new Vec3f(v.getX() + armX, v.getY(), v.getZ() + armZ);
+                }
+                case "body" -> {
+                    float lean = kf(t, k(0, 0), k(7, 0.16f), k(15, 0.35f), k(21, 0.3f),
+                        k(25, -0.58f), k(28, -0.44f), k(35, -0.1f), k(41, 0.1f), k(45, 0.1f));
+                    return new Vec3f(v.getX() + lean, v.getY(), v.getZ());
+                }
+                case "rightLeg" -> {
+                    float leg = kf(t, k(0, 0), k(20, 0), k(24, -0.4f), k(28, -0.3f), k(35, 0), k(45, 0));
+                    return new Vec3f(v.getX() + leg, v.getY(), v.getZ());
+                }
+                case "head" -> {
+                    float headX = kf(t, k(0, 0), k(9, 0.1f), k(16, 0.3f), k(26, -0.32f),
+                        k(30, -0.22f), k(37, -0.05f), k(45, 0));
+                    return new Vec3f(v.getX() + headX, v.getY(), v.getZ());
+                }
+            }
+            return v;
+        }
+    }
+
+    // Fists rise -> crouched double ground-pound with a bounce -> rise -> arms-out flex
+    private static class BluntIntroAnimation extends IntroAnimation {
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            float t = tick + tickDelta;
+            if (type == TransformType.POSITION && "body".equals(modelPart)) {
+                float y = kf(t, k(0, 0), k(6, -0.2f), k(13, 0.28f), k(19, 0.22f),
+                    k(23, -1.75f), k(26, -1.4f), k(28, -1.55f), k(34, -0.35f), k(40, 0.08f), k(43, 0), k(45, 0));
+                return new Vec3f(v.getX(), v.getY() + y, v.getZ());
+            }
+            if (type != TransformType.ROTATION) return v;
+            switch (modelPart) {
+                case "rightArm", "leftArm" -> {
+                    float armX = kf(t, k(0, 0), k(6, 0.5f), k(13, -2.85f), k(19, -2.6f),
+                        k(23, 1.15f), k(26, 0.85f), k(32, 0.2f), k(38, -1.65f), k(41, -1.35f), k(45, -1.35f));
+                    float out = kf(t, k(0, 0), k(32, 0), k(38, 1.0f), k(41, 0.88f), k(45, 0.88f));
+                    float armZ = "rightArm".equals(modelPart) ? out : -out;
+                    return new Vec3f(v.getX() + armX, v.getY(), v.getZ() + armZ);
+                }
+                case "body" -> {
+                    float lean = kf(t, k(0, 0), k(7, 0.14f), k(14, -0.2f), k(24, -0.48f),
+                        k(28, -0.35f), k(35, -0.05f), k(41, 0.08f), k(45, 0.08f));
+                    return new Vec3f(v.getX() + lean, v.getY(), v.getZ());
+                }
+                case "rightLeg", "leftLeg" -> {
+                    float bend = kf(t, k(0, 0), k(19, 0), k(23, -0.85f), k(28, -0.7f), k(34, -0.15f), k(40, 0), k(45, 0));
+                    return new Vec3f(v.getX() + bend, v.getY(), v.getZ());
+                }
+                case "head" -> {
+                    float headX = kf(t, k(0, 0), k(13, -0.12f), k(24, 0.22f), k(29, 0.12f),
+                        k(38, -0.1f), k(45, -0.06f));
+                    return new Vec3f(v.getX() + headX, v.getY(), v.getZ());
+                }
+            }
+            return v;
+        }
+    }
+
+    // Nock -> long tense draw (with a tremble) -> smooth aim arc across the field -> lower
+    private static class RangedIntroAnimation extends IntroAnimation {
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            if (type != TransformType.ROTATION) return v;
+            float t = tick + tickDelta;
+            // Draw tension: a tiny tremble that only exists while fully drawn.
+            float tension = kf(t, k(0, 0), k(20, 0), k(24, 1), k(36, 1), k(40, 0), k(45, 0));
+            float tremble = (float) Math.sin(t * 2.1f) * 0.035f * tension;
+            // One smooth aim arc: out to the left, sweep across to the right, recenter.
+            float aim = kf(t, k(0, 0), k(24, 0), k(29, 0.5f), k(36, -0.42f), k(40, 0.05f), k(42, 0), k(45, 0));
+            switch (modelPart) {
+                case "rightArm" -> {
+                    float armX = kf(t, k(0, 0), k(5, 0.3f), k(9, -1.25f), k(24, -2.35f),
+                        k(38, -2.3f), k(43, -0.75f), k(45, -0.7f)) + tremble;
+                    return new Vec3f(v.getX() + armX, v.getY() + aim, v.getZ() + 0.18f * tension);
+                }
+                case "leftArm" -> {
+                    float armX = kf(t, k(0, 0), k(5, 0.2f), k(9, -1.45f), k(24, -2.1f),
+                        k(38, -2.05f), k(43, -0.65f), k(45, -0.6f)) - tremble;
+                    return new Vec3f(v.getX() + armX, v.getY() + aim, v.getZ() - 0.14f * tension);
+                }
+                case "body" -> {
+                    float twist = kf(t, k(0, 0), k(9, 0.08f), k(24, 0.3f), k(40, 0.25f), k(45, 0.05f))
+                        + aim * 0.55f;
+                    return new Vec3f(v.getX(), v.getY() + twist, v.getZ());
+                }
+                case "head" -> {
+                    float lean = kf(t, k(0, 0), k(10, -0.05f), k(24, -0.14f), k(42, -0.1f), k(45, 0));
+                    return new Vec3f(v.getX() + lean, v.getY() + aim * 0.5f, v.getZ());
+                }
+            }
+            return v;
+        }
+    }
+
+    // Continuous water-bending: arms trace opposing circles, body and head ride the wave a beat behind
+    private static class WaterIntroAnimation extends IntroAnimation {
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            float t = tick + tickDelta;
+            // Bell envelope so the flow grows in and drains out with no hard edges.
+            float amp = kf(t, k(0, 0), k(10, 1), k(34, 1), k(45, 0));
+            float wave = t * 0.34f;
+            if (type == TransformType.POSITION && "body".equals(modelPart)) {
+                return new Vec3f(v.getX(), v.getY() + (float) Math.sin(wave * 0.7) * 0.26f * amp, v.getZ());
+            }
+            if (type != TransformType.ROTATION) return v;
+            switch (modelPart) {
+                case "rightArm" -> {
+                    float armX = ((float) Math.sin(wave) * 1.1f - 1.35f) * amp;
+                    float armZ = (float) Math.cos(wave) * 0.85f * amp;
+                    return new Vec3f(v.getX() + armX, v.getY(), v.getZ() + armZ);
+                }
+                case "leftArm" -> {
+                    float armX = ((float) Math.sin(wave + Math.PI) * 1.1f - 1.35f) * amp;
+                    float armZ = (float) Math.cos(wave + Math.PI) * 0.85f * amp;
+                    return new Vec3f(v.getX() + armX, v.getY(), v.getZ() + armZ);
+                }
+                case "body" -> {
+                    // Follow-through: the torso rides the same wave a beat behind the arms.
+                    float sway = (float) Math.sin(wave * 0.5 - 0.6) * 0.2f * amp;
+                    return new Vec3f(v.getX(), v.getY() + sway, v.getZ() + sway * 0.5f);
+                }
+                case "head" -> {
+                    float nod = (float) Math.sin(wave * 0.5 - 1.0) * 0.12f * amp;
+                    return new Vec3f(v.getX(), v.getY() + nod, v.getZ());
+                }
+            }
+            return v;
+        }
+    }
+
+    // Gathering dip -> levitate -> hands weave opposing arcane circles -> ease back down
+    private static class SpecialIntroAnimation extends IntroAnimation {
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            float t = tick + tickDelta;
+            float amp = kf(t, k(0, 0), k(12, 1), k(34, 1), k(45, 0));
+            float weave = t * 0.5f;
+            if (type == TransformType.POSITION && "body".equals(modelPart)) {
+                // Anticipation: sink a touch before lifting off, hover with a slow bob, settle.
+                float hover = kf(t, k(0, 0), k(5, -0.18f), k(14, 0.62f), k(36, 0.5f), k(43, 0), k(45, 0));
+                float bob = (float) Math.sin(weave * 0.6) * 0.14f * amp;
+                return new Vec3f(v.getX(), v.getY() + hover + bob, v.getZ());
+            }
+            if (type != TransformType.ROTATION) return v;
+            switch (modelPart) {
+                case "rightArm" -> {
+                    float armX = (-1.9f + (float) Math.sin(weave) * 0.5f) * amp;
+                    float armY = (float) Math.cos(weave) * 0.6f * amp;
+                    return new Vec3f(v.getX() + armX, v.getY() + armY, v.getZ() + 0.3f * amp);
+                }
+                case "leftArm" -> {
+                    float armX = (-1.9f + (float) Math.sin(weave + Math.PI) * 0.5f) * amp;
+                    float armY = (float) Math.cos(weave + Math.PI) * 0.6f * amp;
+                    return new Vec3f(v.getX() + armX, v.getY() + armY, v.getZ() - 0.3f * amp);
+                }
+                case "body" -> {
+                    float sway = (float) Math.sin(weave * 0.5 - 0.5) * 0.1f * amp;
+                    return new Vec3f(v.getX() - 0.08f * amp, v.getY() + sway, v.getZ());
+                }
+                case "head" -> {
+                    float tilt = (float) Math.sin(weave * 0.8 - 0.8) * 0.09f * amp;
+                    return new Vec3f(v.getX() - 0.18f * amp, v.getY(), v.getZ() + tilt);
+                }
+            }
+            return v;
+        }
+    }
+
+    // Settle to one knee -> whistle skyward -> spring up -> three warm beckoning waves
+    private static class PetIntroAnimation extends IntroAnimation {
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            float t = tick + tickDelta;
+            // Kneel depth: tiny rise first (anticipation), sink past the pose, settle, spring up.
+            float down = kf(t, k(0, 0), k(4, 0.1f), k(12, -2.4f), k(15, -2.15f),
+                k(26, -2.15f), k(29, -2.35f), k(35, 0.12f), k(38, 0), k(45, 0));
+            if (type == TransformType.POSITION && "body".equals(modelPart)) {
+                return new Vec3f(v.getX(), v.getY() + down, v.getZ());
+            }
+            if (type != TransformType.ROTATION) return v;
+            float kneel = Math.min(1f, -down / 2.15f);
+            // Beckon: three soft in-out waves, eased on and off by their own envelope.
+            float waveAmp = kf(t, k(0, 0), k(35, 0), k(38, 1), k(43, 1), k(45, 0.7f));
+            float beckon = (float) Math.sin((t - 35) * 0.85f) * 0.55f * waveAmp;
+            switch (modelPart) {
+                case "rightArm" -> {
+                    float armX = kf(t, k(0, 0), k(12, -0.25f), k(16, -2.7f), k(19, -2.45f),
+                        k(26, -2.45f), k(33, -0.4f), k(37, -2.35f), k(40, -2.1f), k(45, -2.1f));
+                    return new Vec3f(v.getX() + armX, v.getY(), v.getZ() + beckon);
+                }
+                case "leftArm" -> {
+                    return new Vec3f(v.getX() + kneel * 0.55f, v.getY(), v.getZ() - kneel * 0.15f);
+                }
+                case "rightLeg" -> {
+                    return new Vec3f(v.getX() - kneel * 1.35f, v.getY(), v.getZ());
+                }
+                case "leftLeg" -> {
+                    return new Vec3f(v.getX() + kneel * 0.5f, v.getY(), v.getZ());
+                }
+                case "head" -> {
+                    // Whistle: head tips back with a small overshoot while kneeling, then levels.
+                    float up = kf(t, k(0, 0), k(14, 0), k(18, -0.48f), k(21, -0.38f),
+                        k(28, -0.38f), k(35, 0.05f), k(38, 0), k(45, 0));
+                    return new Vec3f(v.getX() + up, v.getY() + beckon * 0.25f, v.getZ());
+                }
+                case "body" -> {
+                    float lean = kneel * 0.32f;
+                    return new Vec3f(v.getX() + lean, v.getY(), v.getZ());
+                }
+            }
+            return v;
+        }
+    }
+
+    // Light-footed shadow-boxing: bounce, three snapping jabs with body English, guard up
+    private static class PhysicalIntroAnimation extends IntroAnimation {
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            float t = tick + tickDelta;
+            float warm = kf(t, k(0, 0), k(5, 1), k(27, 1), k(33, 0), k(45, 0));
+            float guard = kf(t, k(0, 0), k(29, 0), k(34, -2.15f), k(37, -1.9f), k(45, -1.9f));
+            // Three keyed jabs (right, left, right), each with its own snap-out and pull-back.
+            float rJab = kf(t, k(0, 0), k(6, 0.3f), k(9, -2.3f), k(12, -0.3f),
+                k(20, 0.25f), k(23, -2.45f), k(26, -0.35f), k(30, 0), k(45, 0)) * warm;
+            float lJab = kf(t, k(0, 0), k(12, 0.3f), k(15, -2.35f), k(18, -0.3f), k(28, 0), k(45, 0)) * warm;
+            if (type == TransformType.POSITION && "body".equals(modelPart)) {
+                float bounce = Math.abs((float) Math.sin(t * 0.42f)) * 0.32f * warm;
+                return new Vec3f(v.getX(), v.getY() + bounce, v.getZ());
+            }
+            if (type != TransformType.ROTATION) return v;
+            switch (modelPart) {
+                case "rightArm" -> {
+                    float armX = rJab + guard;
+                    return new Vec3f(v.getX() + armX, v.getY() - kf(t, k(0, 0), k(29, 0), k(34, 0.55f), k(45, 0.5f)),
+                        v.getZ() + kf(t, k(0, 0), k(29, 0), k(34, 0.65f), k(45, 0.6f)));
+                }
+                case "leftArm" -> {
+                    float armX = lJab + guard;
+                    return new Vec3f(v.getX() + armX, v.getY() + kf(t, k(0, 0), k(29, 0), k(34, 0.55f), k(45, 0.5f)),
+                        v.getZ() - kf(t, k(0, 0), k(29, 0), k(34, 0.65f), k(45, 0.6f)));
+                }
+                case "body" -> {
+                    // Body English: the torso counter-rotates into each jab, a tick behind the fist.
+                    float twist = (rJab - lJab) * -0.16f
+                        + kf(t, k(0, 0), k(30, 0), k(35, 0.08f), k(45, 0.06f));
+                    return new Vec3f(v.getX(), v.getY() + twist, v.getZ());
+                }
+                case "head" -> {
+                    float bob = (float) Math.sin(t * 0.42f - 0.5) * 0.07f * warm;
+                    return new Vec3f(v.getX() + bob, v.getY() + (rJab - lJab) * -0.05f, v.getZ());
                 }
             }
             return v;

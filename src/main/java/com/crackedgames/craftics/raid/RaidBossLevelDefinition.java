@@ -68,6 +68,13 @@ public class RaidBossLevelDefinition extends LevelDefinition {
         return tiles;
     }
 
+    @Override
+    public GridTile patternTileAt(int x, int z) {
+        Block block = Math.floorMod(x + z, 2) == 0
+            ? Blocks.WHITE_CONCRETE : Blocks.LIGHT_GRAY_CONCRETE;
+        return new GridTile(TileType.NORMAL, block);
+    }
+
     @Override public String getArenaBiomeId() { return RaidBossDefinition.ARENA_BIOME_ID; }
     @Override public int getArenaVariantIndex() {
         return boss.arenaVariant() >= 0 ? boss.arenaVariant() : Math.max(0, variantIndex);

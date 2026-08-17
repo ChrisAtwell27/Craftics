@@ -139,10 +139,16 @@ public class TransitionOverlay {
     private static final java.util.Random TIP_RNG = new java.util.Random();
 
     // Timing (in ticks)
-    private static final int FADE_IN_TICKS = 15;   // ~0.75s
+    // A swipe wants to be quicker than the fade it replaced: a curtain crossing the screen
+    // reads as slow long before a dissolve does, and the walkers are the part worth watching.
+    private static final int FADE_IN_TICKS = 8;    // ~0.4s swipe on
     private static final int HOLD_TICKS = 5;        // brief hold at full black
-    private static final int FADE_OUT_TICKS = 15;   // ~0.75s
+    private static final int FADE_OUT_TICKS = 8;   // ~0.4s swipe off
     private static int holdTimer = 0;
+    /** The server said the load finished while walkers were still on screen; sweep once
+     *  they have left. Cleared when it fires, and by {@link #startTransition} so a fresh
+     *  transition can never inherit the previous one's pending exit. */
+    private static boolean exitRequested = false;
 
     /**
      * Start a transition. Screen fades to black, then fires the action callback.
@@ -159,6 +165,11 @@ public class TransitionOverlay {
         actionFired = false;
         alpha = 0f;
         holdTimer = 0;
+        exitRequested = false;
+        // A transition starting while the last one still has walkers on screen means the
+        // previous sequence was abandoned (a cancelled load, a second transition racing the
+        // first). Clear them rather than let the old cast bleed into the new one's row.
+        LoadingWalkers.clear();
         currentTip = TIPS[TIP_RNG.nextInt(TIPS.length)];
         state = State.FADING_IN;
     }
@@ -169,7 +180,38 @@ public class TransitionOverlay {
      */
     public static void startFadeOut() {
         if (state == State.IDLE) return;
+        // The load is done, but the walkers have not left yet. Send them off the right edge
+        // first and let tick() start the sweep once the screen is theirs to give back -
+        // sweeping now would wipe them mid-stride, which is the one beat the sequence exists
+        // to show. With no walkers on screen this is a no-op and the fade starts immediately.
+        if (LoadingWalkers.isBusy()) {
+            exitRequested = true;
+            LoadingWalkers.beginExit();
+            return;
+        }
         state = State.FADING_OUT;
+    }
+
+    /**
+     * Start a transition that a party walks across - see {@link LoadingWalkers}.
+     *
+     * <p>{@code cast} is the server's list of affinity names, one per member. Empty means no
+     * walkers and this behaves exactly like {@link #startTransition}.
+     */
+    public static void startTransitionWithCast(String text, String subtitle,
+                                               java.util.List<String> cast, Runnable action) {
+        // A transition already running is the normal case, not an error: the victory screen
+        // starts one the moment its button is pressed, and the server's loading screen arrives
+        // a moment later carrying the cast. Restarting here replayed the swipe from zero - the
+        // "swipe twice" - and reset the walkers to the left edge, which is why they appeared
+        // to jump most of the way to the centre. Adopt the cast into the running transition
+        // instead, and only start a new one when nothing is on screen.
+        if (isActive()) {
+            if (!LoadingWalkers.isBusy()) LoadingWalkers.begin(cast);
+            return;
+        }
+        startTransition(text, subtitle, action);
+        LoadingWalkers.begin(cast);
     }
 
     /** Whether a transition is currently active (any phase). */
@@ -184,6 +226,15 @@ public class TransitionOverlay {
 
     /** Advance the fade state machine. Call once per client tick. */
     public static void tick() {
+        LoadingWalkers.tick();
+        // The walkers finished filing off the right edge, so the screen can be handed back.
+        // Deliberately checked here rather than from inside LoadingWalkers: the overlay owns
+        // its own state machine, and a renderer reaching in to drive it is how the two end up
+        // disagreeing about whether a transition is running.
+        if (state == State.HOLDING && exitRequested && !LoadingWalkers.isBusy()) {
+            exitRequested = false;
+            state = State.FADING_OUT;
+        }
         switch (state) {
             case FADING_IN -> {
                 alpha += 1f / FADE_IN_TICKS;
@@ -230,47 +281,54 @@ public class TransitionOverlay {
         int screenW = client.getWindow().getScaledWidth();
         int screenH = client.getWindow().getScaledHeight();
 
-        int a = (int) (alpha * 255);
-        int color = (a << 24); // black with variable alpha
+        // A swipe, not a fade. The black is always fully opaque; what changes is how much of
+        // the screen it covers. It enters from the left, crosses, holds the whole screen, then
+        // keeps travelling the same way to uncover - so the curtain reads as one object moving
+        // across rather than the world dimming and brightening in place.
+        //
+        // alpha is still the 0..1 coverage, so isFullyBlack() and every caller that reasons
+        // about "is the screen hidden yet" behave exactly as before.
+        final int black = 0xFF000000;
+        int covered = Math.round(screenW * alpha);
+        if (state == State.FADING_OUT) {
+            // Uncovering: the left edge of the black marches right, revealing behind it.
+            int left = screenW - covered;
+            context.fill(left, 0, screenW, screenH, black);
+        } else {
+            context.fill(0, 0, covered, screenH, black);
+        }
 
-        context.fill(0, 0, screenW, screenH, color);
+        // The cast only draws once the curtain has actually covered the screen - part-way
+        // through a swipe they would be standing on the live world.
+        if (alpha >= 1f) {
+            LoadingWalkers.render(context, 1f);
+        }
 
-        // Draw text only when mostly opaque
-        if (alpha > 0.5f) {
-            int textAlpha = (int) (Math.min(1f, (alpha - 0.5f) * 2f) * 255);
-
+        // Title and subtitle sit ABOVE the row rather than dead centre, which is where the
+        // walkers stand. Both are anchored off LoadingWalkers.rowTopY() instead of the screen
+        // centre, so tuning the walkers' size or baseline moves the text with them rather than
+        // leaving it overlapping the sprites.
+        if (alpha >= 1f) {
+            int rowTop = LoadingWalkers.rowTopY();
             if (!displayText.isEmpty()) {
-                int textColor = 0xFFFFFF | (textAlpha << 24);
-                context.drawCenteredTextWithShadow(
-                    client.textRenderer,
-                    Text.literal(displayText),
-                    screenW / 2, screenH / 2 - 10,
-                    textColor
-                );
+                context.drawCenteredTextWithShadow(client.textRenderer,
+                    Text.literal(displayText), screenW / 2, rowTop - 34, 0xFFFFFFFF);
             }
-
             if (!subtitleText.isEmpty()) {
-                int subColor = 0xAAAAAA | (textAlpha << 24);
-                context.drawCenteredTextWithShadow(
-                    client.textRenderer,
-                    Text.literal(subtitleText),
-                    screenW / 2, screenH / 2 + 8,
-                    subColor
-                );
+                context.drawCenteredTextWithShadow(client.textRenderer,
+                    Text.literal(subtitleText), screenW / 2, rowTop - 20, 0xFFAAAAAA);
             }
+        }
 
-            if (!currentTip.isEmpty()) {
-                int tipColor = 0x888888 | (textAlpha << 24);
-                // "TIP:" rendered in the book's gold; the tip body inherits the
-                // faded grey so it still fades in with the rest of the overlay.
-                Text tipLine = Text.literal("TIP: ")
-                    .styled(s -> s.withBold(true)
-                        .withColor(net.minecraft.text.TextColor.fromRgb(GuideTheme.GOLD & 0x00FFFFFF)))
-                    .append(Text.literal(currentTip).styled(s -> s.withBold(false)));
-                context.drawCenteredTextWithShadow(
-                    client.textRenderer, tipLine,
-                    screenW / 2, screenH - 30, tipColor);
-            }
+        // The tip stays pinned to the bottom edge, well clear of the row.
+        if (alpha >= 1f && !currentTip.isEmpty()) {
+            Text tipLine = Text.literal("TIP: ")
+                .styled(s -> s.withBold(true)
+                    .withColor(net.minecraft.text.TextColor.fromRgb(GuideTheme.GOLD & 0x00FFFFFF)))
+                .append(Text.literal(currentTip).styled(s -> s.withBold(false)));
+            context.drawCenteredTextWithShadow(
+                client.textRenderer, tipLine,
+                screenW / 2, screenH - 14, 0xFF888888);
         }
     }
 

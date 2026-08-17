@@ -105,10 +105,18 @@ public enum DamageType {
             case RANGED   -> scan.get(TrimEffects.Bonus.RANGED_POWER);
             default       -> 0;
         };
-        // Generic melee power stacks on top of type-specific
-        if (type == SLASHING || type == CLEAVING || type == BLUNT || type == PHYSICAL) {
-            bonus += scan.get(TrimEffects.Bonus.MELEE_POWER);
-        }
+        // Melee Power is deliberately NOT folded in here.
+        //
+        // This method returns AFFINITY POINTS, and adding Melee Power to each of the four
+        // melee types made a single diamond-trimmed piece read as "+1 Slashing, +1 Cleaving,
+        // +1 Blunt and +1 Physical" - four affinities at once, from one trim, worth triple
+        // damage each. It also meant the bonus behaved like an affinity rather than the stat
+        // it is named after: it fed weapon-affinity scaling and half-bonuses for secondary
+        // types instead of the Melee Power progression stat.
+        //
+        // It now contributes to that stat instead - see CombatManager.powerPoints - which is
+        // the one place melee power belongs, and which already carries both the flat per-point
+        // damage and the percentage that keeps it relevant as weapons scale.
         return bonus;
     }
 
