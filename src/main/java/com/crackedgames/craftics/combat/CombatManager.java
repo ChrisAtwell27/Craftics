@@ -828,6 +828,17 @@ public class CombatManager {
         if (!lastSentMusicKey.isEmpty()) {
             sendMusicTo(member);
         }
+        // Bestiary credit for THIS member. startCombat unlocks only for its own
+        // `player`, and every caller registers the rest of the party AFTER
+        // startCombat returns, so at that point partyPlayers is still empty and
+        // only the leader was ever credited. On an island that is the owner, which
+        // is why members were seeing the owner's encounters instead of their own.
+        // Doing it here also covers somebody joining a run already in progress,
+        // which a one-shot pass over the roster would miss.
+        if (enemies != null && !enemies.isEmpty()
+                && member.getEntityWorld() instanceof ServerWorld memberWorld) {
+            unlockBestiaryForCombat(memberWorld, member);
+        }
     }
 
     /**
@@ -8530,7 +8541,7 @@ public class CombatManager {
      * Check if an enemy has landed on a void/death tile and kill it instantly if so.
      * Returns true if the enemy fell to its death.
      */
-    private boolean checkEnemyFallDeath(CombatEntity entity) {
+    public boolean checkEnemyFallDeath(CombatEntity entity) {
         if (entity == null || !entity.isAlive()) return false;
         GridPos pos = entity.getGridPos();
         if (pos == null || !arena.isInBounds(pos)) return false;

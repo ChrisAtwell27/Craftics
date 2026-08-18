@@ -53,9 +53,32 @@ public final class BossAttackVfx {
 
     // ── public hooks ─────────────────────────────────────────────────────────
 
-    /** Dread at telegraph time: a low resonant toll, the boss's aura flaring,
-     *  and particles converging on the doomed tiles in shrinking pulses across
-     *  the player's turn - the attack visibly charging, not a silent red tile. */
+    /**
+     * The windup: what the boss does while the attack is charging, across the
+     * player's turn.
+     *
+     * <p>This used to be one convergence onto the middle of the footprint plus a
+     * couple of ambient puffs, which reads as "some particles are happening"
+     * rather than "something is about to hit me". Three things fix that, and all
+     * three are about telling the player something they can act on:
+     *
+     * <ul>
+     *   <li><b>An opening beat.</b> The instant the warning appears there is a
+     *       camera jolt, a screen tint in the boss's colour and a low hit, so the
+     *       telegraph announces itself instead of fading in. You feel it start.</li>
+     *   <li><b>Every doomed tile is marked, not just the centre.</b> Each warning
+     *       tile gets its own flash and a column of the boss's particles rising
+     *       out of it, so a wide footprint reads as a shape rather than a blob.</li>
+     *   <li><b>The boss performs the attack it is about to make.</b> A slam
+     *       throws rubble skyward, a charge sprays down the lane it will run, a
+     *       summon breathes souls out of the ground. Windup and payoff are the
+     *       same gesture, so the shape becomes learnable.</li>
+     * </ul>
+     *
+     * <p>Intensity climbs across the three pulses: shake, pitch and particle
+     * count all rise as the resolve approaches, so the last beat before impact is
+     * the loudest one.
+     */
     public static void telegraph(ServerWorld world, GridArena arena,
                                  CombatEntity boss, EnemyAction.BossAbility ba) {
         List<GridPos> tiles = ba.warningTiles();
@@ -63,28 +86,162 @@ public final class BossAttackVfx {
         Theme theme = themeFor(boss);
         Category cat = categorize(ba.abilityName());
         GridPos center = centroid(tiles);
+        GridPos bossPos = boss != null ? boss.getGridPos() : center;
         double radius = Math.min(4.5, maxDist(tiles, center) + 0.8);
         VfxContext ctx = contextFor(world, arena, boss, center);
         VfxAnchor epicenter = groundAnchor(arena, center);
 
         VfxDescriptor.Builder b = VfxDescriptor.builder();
+
+        // Beat 1: it starts NOW.
         VfxDescriptor.PhaseBuilder p0 = b.phase(0)
+            .shake(0.35f, 8)
+            .screenFlash((theme.accent() & 0x00FFFFFF) | 0x33000000, 6)
             .sound(epicenter, SoundEvents.BLOCK_BELL_RESONATE, 0.9f, 0.55f)
             .converge(epicenter, radius, theme.primary(), 16)
-            .particles(theme.secondary(), VfxAnchor.ORIGIN, 10, new Vec3d(0.5, 0.8, 0.5), 0.05);
+            // The boss flares as the wind-up begins, so the eye goes to the
+            // caster and not only to the floor.
+            .ring(VfxAnchor.ORIGIN, 1.2, theme.primary(), 14)
+            .directionalBurst(VfxAnchor.ORIGIN, theme.secondary(), 12, 0.35, 70, 0.5);
         if (cat == Category.SLAM || cat == Category.CHARGE) {
-            // Heavy attacks rumble while they charge.
             p0.sound(epicenter, SoundEvents.ENTITY_RAVAGER_STEP, 0.8f, 0.5f);
         }
-        // Two follow-up pulses with tightening convergence: the noose closing.
+
+        // Per-tile marks: the footprint as a shape, not a blob. Capped for the
+        // same reason sweepTiles caps - a lane-wide ability can cover dozens of
+        // tiles and each one costs a phase.
+        int marked = 0;
+        for (GridPos t : tiles) {
+            if (marked >= 20) break;
+            VfxAnchor tileAnchor = new VfxAnchor.AtGridTile(t.x(), t.z(), 0.1);
+            b.phase(2 + (marked % 4))
+                .tileRingFlash(tileAnchor, 0, theme.accent(), 12)
+                .directionalBurst(tileAnchor, theme.primary(), 4, 0.18, 20, 1.0);
+            marked++;
+        }
+
+        // The boss rehearses the attack it is about to throw.
+        addWindupGesture(b, arena, theme, cat, bossPos, center, tiles);
+
+        // Beats 2 and 3: the noose closing, louder each time.
         b.phase(12)
-            .converge(epicenter, radius * 0.66, theme.primary(), 12)
+            .shake(0.18f, 5)
+            .converge(epicenter, radius * 0.66, theme.primary(), 14)
             .sound(epicenter, SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), 0.5f, 0.6f)
         .phase(24)
-            .converge(epicenter, radius * 0.4, theme.primary(), 10)
-            .particles(theme.secondary(), epicenter, 6, new Vec3d(0.3, 0.1, 0.3), 0.02)
-            .sound(epicenter, SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), 0.55f, 0.75f);
+            .shake(0.5f, 10)
+            .screenFlash((theme.accent() & 0x00FFFFFF) | 0x40000000, 8)
+            .converge(epicenter, radius * 0.4, theme.primary(), 18)
+            .particles(theme.secondary(), epicenter, 10, new Vec3d(0.3, 0.1, 0.3), 0.02)
+            .sound(epicenter, SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), 0.7f, 0.95f);
         Vfx.play(world, b.build(), ctx);
+    }
+
+    /**
+     * The category-specific half of the windup: the boss visibly preparing THIS
+     * attack, so the telegraph teaches its shape and not just its footprint.
+     *
+     * <p>Deliberately anchored on the boss, or on the line between boss and
+     * target, rather than on the warning tiles that the per-tile marks already
+     * cover. The two layers answer different questions: the marks say WHERE, this
+     * says WHAT, and for the attacks that travel, WHICH WAY.
+     */
+    private static void addWindupGesture(VfxDescriptor.Builder b, GridArena arena, Theme theme,
+                                         Category cat, GridPos bossPos, GridPos center,
+                                         List<GridPos> tiles) {
+        VfxAnchor bossGround = groundAnchor(arena, bossPos);
+
+        switch (cat) {
+            case SLAM -> {
+                // Rubble thrown skyward off the boss. The lifetimes are short on
+                // purpose: every block is discarded mid-flight, so they leave the
+                // screen going up and never come back down. That is the whole
+                // read - something heavy is up there and it has to land somewhere.
+                for (int i = 0; i < 5; i++) {
+                    double driftX = (i - 2) * 0.09;
+                    double driftZ = ((i % 2 == 0) ? 1 : -1) * 0.07;
+                    b.phase(3 + i * 2)
+                        .launchFloorBlock(bossGround, new Vec3d(driftX, 1.15 + i * 0.05, driftZ), 22);
+                }
+                b.phase(4)
+                    .shake(0.3f, 10)
+                    .sound(bossGround, SoundEvents.ENTITY_RAVAGER_ROAR, 0.7f, 0.6f);
+                b.phase(20)
+                    .directionalBurst(bossGround, theme.secondary(), 14, 0.5, 35, 1.0);
+            }
+            case CHARGE -> {
+                // Particles rake down the lane the boss will run, so the player
+                // reads the direction BEFORE the dash rather than during it.
+                b.phase(3)
+                    .trail(bossGround, groundAnchor(arena, center), theme.primary(), theme.secondary(), 22, 0.0)
+                    .directionalBurst(bossGround, theme.primary(), 18, 0.75, 12, 0.05)
+                    .sound(bossGround, SoundEvents.ENTITY_HORSE_BREATHE, 0.8f, 0.7f);
+                // Hooves digging in, the way a sprinter loads before the start.
+                b.phase(14)
+                    .directionalBurst(bossGround, theme.secondary(), 12, 0.5, 25, 0.2)
+                    .trail(bossGround, groundAnchor(arena, center), theme.primary(), theme.secondary(), 26, 0.0);
+                b.phase(26)
+                    .directionalBurst(bossGround, theme.primary(), 20, 0.9, 8, 0.05);
+            }
+            case LINE -> {
+                // The strike travels, so the warning travels: tiles light nearest
+                // first, which points the sweep before it happens.
+                sweepTiles(b, arena, null, tiles, theme.accent(), 2);
+                b.phase(6).trail(bossGround, groundAnchor(arena, center),
+                    theme.primary(), theme.secondary(), 20, 0.0);
+            }
+            case SUMMON -> {
+                // Something is coming UP, so everything rises: souls out of each
+                // marked tile, and the ground cracking under the boss.
+                int i = 0;
+                for (GridPos t : tiles) {
+                    if (i >= 12) break;
+                    b.phase(5 + i * 2).directionalBurst(
+                        new VfxAnchor.AtGridTile(t.x(), t.z(), 0.05), theme.primary(), 8, 0.3, 15, 1.0);
+                    i++;
+                }
+                b.phase(8).sound(bossGround, SoundEvents.ENTITY_EVOKER_PREPARE_SUMMON, 0.9f, 0.8f);
+            }
+            case TERRAIN -> {
+                // The floor itself is the subject, so shake it and knock dust off
+                // it. Low hops with short lifetimes: the tiles twitch, they do not
+                // become debris.
+                int i = 0;
+                for (GridPos t : tiles) {
+                    if (i >= 12) break;
+                    b.phase(4 + i)
+                        .launchFloorBlock(new VfxAnchor.AtGridTile(t.x(), t.z(), 0.05),
+                            new Vec3d(0, 0.35, 0), 12);
+                    i++;
+                }
+                b.phase(6).shake(0.22f, 14)
+                    .sound(bossGround, SoundEvents.BLOCK_ROOTED_DIRT_BREAK, 0.9f, 0.6f);
+            }
+            case PULL -> {
+                // Reversed on purpose: everything streams tiles-to-boss, so the
+                // windup shows which way the player is about to be dragged.
+                int i = 0;
+                for (GridPos t : tiles) {
+                    if (i >= 10) break;
+                    b.phase(4 + i * 2).trail(groundAnchor(arena, t), bossGround,
+                        theme.primary(), theme.secondary(), 14, 0.45);
+                    i++;
+                }
+                b.phase(10).ring(VfxAnchor.ORIGIN, 1.6, theme.secondary(), 16)
+                    .sound(bossGround, SoundEvents.ENTITY_WARDEN_SONIC_CHARGE, 0.6f, 1.2f);
+            }
+            case MAGIC -> {
+                b.phase(4)
+                    .ring(VfxAnchor.ORIGIN, 1.5, theme.primary(), 20)
+                    .directionalBurst(VfxAnchor.ORIGIN, theme.primary(), 14, 0.25, 45, 0.9)
+                    .sound(bossGround, SoundEvents.ENTITY_EVOKER_CAST_SPELL, 0.8f, 1.1f);
+                b.phase(18)
+                    .ring(VfxAnchor.ORIGIN, 2.1, theme.secondary(), 22)
+                    .sound(bossGround, SoundEvents.ENTITY_EVOKER_CAST_SPELL, 0.7f, 1.35f);
+            }
+            case GENERIC -> b.phase(6)
+                .directionalBurst(VfxAnchor.ORIGIN, theme.primary(), 10, 0.3, 40, 0.7);
+        }
     }
 
     /** The payoff at resolve time: a category-shaped, boss-themed impact -

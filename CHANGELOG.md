@@ -1,6 +1,6 @@
 ﻿Changelog
 
-0.3.8.5
+0.3.9
 
 Battle Intros
 
@@ -8,6 +8,34 @@ Battle Intros
 - Fighters are handed their matching weapon for the pose: a Blunt main walks in holding their mace, a Ranged main their bow - whichever qualifying weapon is already in their inventory. Physical and Pet mains pose bare-handed on purpose
 - About 2.2 seconds per fighter, camera controls and combat input locked for the duration, and it only plays on fights worth making an entrance for - mid-biome levels start immediately as before
 - Every failsafe the rest of the mod has learned the hard way is wired in: the sequence aborts cleanly if the fight ends mid-intro, waits for the loading swipe to clear before starting, and can never strand the camera or the input lock
+
+Bestiary Crediting the Wrong Player
+
+- Fixed the bestiary only filling in for the island's owner. Party members fought the same mobs and unlocked nothing for it, while entries kept appearing for whoever owned the island whether they had been in the fight or not
+- The unlock ran while the fight was still being set up, which is before anyone except the leader has been attached to it, so the only player it could ever credit was the one the fight was built around. Credit is now handed out per player as each one joins, which also covers somebody dropping into a run already in progress
+
+Universal Attractor
+
+- The Universal Attractor no longer drags enemies inside walls. It checked whether another creature was standing on a tile but never whether the tile held a block, so obstacles and fallen rubble read as open floor and mobs were pulled straight into them
+- Enemies pulled over a pit now fall in and die instead of hovering above the hole. It is the same fall a Concussive Blast shove already caused, and flying mobs stop at the rim exactly as they do for every other pull or knockback
+- Pulled mobs now actually move. The pull updated the battle grid but never the creature itself, so its real position was left behind to catch up on its own
+
+Returning Home from a Trading Hall
+
+- /home now behaves properly inside a trading hall or bartering station. It used to send you home while leaving the fixed booth camera in place, so you arrived still looking through the market with nothing but the Leave button to break out of the view
+- It now does exactly what that Leave button does before sending you home
+
+Auction Board Listings
+
+- Fixed artifacts on the auction board showing no price, no seller and no sign they could be bought, just a bare item name. Artifacts have their tooltips rewritten to describe what they do inside Craftics rather than in their own mod, and that rewrite was throwing away the board's own lines along with the mod's
+- The same wipe applied to every item with a rewritten tooltip, so totems, Simply Swords and the rest were being listed just as blankly
+
+It Takes a Pillage Event Intros
+
+- The Pillager Camp and Bastille intros no longer show a pillager portrait. Both are narration - the party catching smoke through the trees, a map running out at a wall - so nobody is actually speaking, and a pillager inviting the party to come sack its own camp made little sense
+- The portrait also chose the voice, so every narrated line was being grunted out in pillager. Both now use the plain narrator with no portrait, matching the dig site and the other event intros
+
+0.3.8.5
 
 Odd-Shaped Arena Floors
 

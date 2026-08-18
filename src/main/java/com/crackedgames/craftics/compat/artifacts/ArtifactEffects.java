@@ -65,8 +65,31 @@ public final class ArtifactEffects {
     }
 
     /** Pull an enemy 1 tile toward the given anchor point if the destination is valid. */
-    private static boolean pullToward(GridArena arena, CombatEntity enemy, GridPos anchor) {
+    /**
+     * Drag {@code enemy} one tile toward {@code anchor}. Returns true if it moved.
+     *
+     * <p>Mirrors the knockback rules used elsewhere in combat, which this deliberately
+     * did not before:
+     *
+     * <ul>
+     *   <li><b>Solid tiles stop the pull.</b> Only entity occupancy was checked, so an
+     *       OBSTACLE or RUBBLE tile - which holds a real block, not an entity - read as
+     *       free and the mob was dragged inside the block.</li>
+     *   <li><b>The world entity is teleported too.</b> {@code GridArena.moveEntity}
+     *       updates the grid only; without the matching teleport the mob's actual
+     *       position never followed, which is the other half of the clipping.</li>
+     *   <li><b>A pit is a legal destination and is lethal.</b> Being dragged over a
+     *       VOID tile now drops the mob, same as a knockback into one. It used to move
+     *       the grid entry there and leave the mob hanging in the air over the hole.
+     *       Hazard-immune (flying) mobs stop at the rim instead, exactly as they do for
+     *       every other pull and shove.</li>
+     * </ul>
+     */
+    private static boolean pullToward(CombatEffectContext ctx, CombatEntity enemy, GridPos anchor) {
+        GridArena arena = ctx.getArena();
+        if (arena == null || enemy == null || anchor == null) return false;
         GridPos pos = enemy.getGridPos();
+        if (pos == null) return false;
         int dx = Integer.signum(anchor.x() - pos.x());
         int dz = Integer.signum(anchor.z() - pos.z());
         if (dx == 0 && dz == 0) return false;
@@ -81,7 +104,30 @@ public final class ArtifactEffects {
             if (dest.equals(pos)) continue;
             if (!arena.isInBounds(dest)) continue;
             if (arena.isOccupied(dest)) continue;
-            arena.moveEntity(enemy, dest);
+            com.crackedgames.craftics.core.GridTile tile = arena.getTile(dest);
+            if (tile == null) continue;
+            boolean voidDest = tile.getType() == com.crackedgames.craftics.core.TileType.VOID
+                && !enemy.isHazardImmune();
+            if (!voidDest && !tile.isWalkable()) continue;
+            if (!arena.moveEntity(enemy, dest)) continue;
+            if (enemy.getMobEntity() != null) {
+                net.minecraft.util.math.BlockPos bp = arena.gridToBlockPos(dest);
+                enemy.getMobEntity().requestTeleport(bp.getX() + 0.5,
+                    arena.getEntityY(dest, enemy.isFlying()), bp.getZ() + 0.5);
+            }
+            if (voidDest) {
+                ServerPlayerEntity puller = ctx.getPlayer();
+                if (puller != null) {
+                    var cm = com.crackedgames.craftics.combat.CombatManager
+                        .getActiveCombat(puller.getUuid());
+                    // getActiveCombat never returns null (it lazily makes an inactive
+                    // manager), so the fall check is gated on actually being in a fight.
+                    if (cm != null && com.crackedgames.craftics.combat.CombatManager
+                            .isEngaged(puller.getUuid())) {
+                        cm.checkEnemyFallDeath(enemy);
+                    }
+                }
+            }
             return true;
         }
         return false;
@@ -130,7 +176,7 @@ public final class ArtifactEffects {
         @Override
         public CombatResult onDealDamage(CombatEffectContext ctx, CombatEntity target, int damage) {
             if (target != null && target.isAlive()) {
-                if (pullToward(ctx.getArena(), target, ctx.getArena().getPlayerGridPos())) {
+                if (pullToward(ctx, target, ctx.getArena().getPlayerGridPos())) {
                     syncIfPossible(ctx);
                 }
             }
@@ -574,7 +620,7 @@ public final class ArtifactEffects {
             GridPos anchor = arena.getPlayerGridPos();
             boolean anyMoved = false;
             for (CombatEntity e : ctx.getAllEnemies()) {
-                if (pullToward(arena, e, anchor)) anyMoved = true;
+                if (pullToward(ctx, e, anchor)) anyMoved = true;
             }
             if (anyMoved) syncIfPossible(ctx);
         }

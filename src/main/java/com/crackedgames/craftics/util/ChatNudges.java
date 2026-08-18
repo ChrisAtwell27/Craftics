@@ -15,7 +15,9 @@ import net.minecraft.text.Text;
  *
  * <p>One message every {@link #INTERVAL_MINUTES} minutes. Only the Discord line is live right
  * now; the bug-report nudge is written and commented out in {@link #tick} until the report
- * intake is pointed at its final endpoint.
+ * intake is pointed at its final endpoint. The Discord line rotates through several phrasings
+ * (see {@link #DISCORD_PREFIXES}) so a standing reminder does not become the same sentence
+ * every half hour that everyone learns to skip.
  * Nothing fires when the server is empty, and nothing fires during a fight - a link dropped
  * into the combat log in the middle of a boss turn is noise at exactly the wrong moment.
  */
@@ -30,8 +32,27 @@ public final class ChatNudges {
 
     public static final String DISCORD_URL = "https://discord.gg/kY9F5Sjf4d";
 
-    private static final String DISCORD_PREFIX =
-        "§d§lCraftics §7- join the Discord for updates and help: ";
+    /**
+     * The line that precedes the link, rotated so the reminder does not read as the same
+     * sentence every half hour. Each one asks for something different - help, ideas, bug
+     * sightings, showing off a run - because a player who tunes out "join the Discord"
+     * may still answer "have an idea?".
+     *
+     * <p>Cycled in order rather than rolled at random, for the same reason the Discord and
+     * bug-report nudges alternate rather than rolling: a random pick repeats itself often
+     * enough to look broken, and with a 30 minute gap a repeat is the only thing anyone
+     * would notice.
+     *
+     * <p>Every entry ends with its own punctuation and a trailing space, since the link is
+     * appended directly onto it.
+     */
+    private static final String[] DISCORD_PREFIXES = {
+        "§d§lCraftics §7- join the Discord for updates and help: ",
+        "§d§lCraftics §7- have an idea? Come tell us in the Discord: ",
+        "§d§lCraftics §7- stuck on something? Someone in the Discord has probably beaten it: ",
+        "§d§lCraftics §7- patch notes and previews go up in the Discord first: ",
+        "§d§lCraftics §7- beaten a boss you are proud of? Show it off in the Discord: ",
+    };
 
     /** Written and ready; not sent yet. See the note in {@link #tick}. */
     private static final String BUG_REPORT_MESSAGE =
@@ -41,11 +62,14 @@ public final class ChatNudges {
     private static int ticks = 0;
     /** Flips each time one fires, so the two alternate instead of rolling randomly. */
     private static boolean showDiscordNext = true;
+    /** Which {@link #DISCORD_PREFIXES} entry goes out next. */
+    private static int discordVariant = 0;
 
     /** Reset between worlds so a fresh session does not inherit the last one's timer. */
     public static void reset() {
         ticks = 0;
         showDiscordNext = true;
+        discordVariant = 0;
     }
 
     /** Called once per server tick. Cheap: an int compare on all but one tick in 36,000. */
@@ -78,7 +102,9 @@ public final class ChatNudges {
      * event has to be attached by hand, version split and all.
      */
     private static Text discordMessage() {
-        return Text.literal(DISCORD_PREFIX)
+        String prefix = DISCORD_PREFIXES[discordVariant];
+        discordVariant = (discordVariant + 1) % DISCORD_PREFIXES.length;
+        return Text.literal(prefix)
             .append(Text.literal("§b§n" + DISCORD_URL)
                 .styled(s -> s.withClickEvent(openUrl(DISCORD_URL))
                     .withHoverEvent(openUrlHover())));

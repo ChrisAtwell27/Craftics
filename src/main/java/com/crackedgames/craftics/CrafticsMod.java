@@ -1154,6 +1154,10 @@ public class CrafticsMod implements ModInitializer {
             com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.applyBiomeOverrides();
             com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.applyBiomeOverrides();
             com.crackedgames.craftics.compat.springtolife.SpringToLifeCompat.applyBiomeOverrides();
+            // Puts the archer and skirmisher into the Dark Forest and Stony Peaks, and the
+            // clay golem onto the peaks only. Self-gating: BiomeCompatHelper drops any entry
+            // whose entity is absent from the live registry, so this is a no-op without the mod.
+            com.crackedgames.craftics.compat.takesapillage.TakesAPillageCompat.applyBiomeOverrides();
             // Deeper and Darker fully replaces the deep_dark pool, so it must run
             // LAST - after creeperoverhaul's cave_creeper swap - to win.
             com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.applyBiomeOverrides();
@@ -1176,6 +1180,10 @@ public class CrafticsMod implements ModInitializer {
                     com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.applyBiomeOverrides();
                     com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.applyBiomeOverrides();
                     com.crackedgames.craftics.compat.springtolife.SpringToLifeCompat.applyBiomeOverrides();
+                    // Puts the archer and skirmisher into the Dark Forest and Stony Peaks, and the
+                    // clay golem onto the peaks only. Self-gating: BiomeCompatHelper drops any entry
+                    // whose entity is absent from the live registry, so this is a no-op without the mod.
+                    com.crackedgames.craftics.compat.takesapillage.TakesAPillageCompat.applyBiomeOverrides();
                     com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.applyBiomeOverrides();
                 }
             }
@@ -2729,6 +2737,14 @@ public class CrafticsMod implements ModInitializer {
 
                 final ServerPlayerEntity homePlayer = player;
                 overworld.getServer().execute(() -> {
+                    // A scene (trading hall, bartering station) puts the player in a fixed
+                    // cinematic camera that only the scene's own exit clears. /home used to
+                    // teleport out from under it, leaving the player home but still looking
+                    // through the booth camera with nothing but the scene's Leave button to
+                    // break out. Route it through the same handler that button uses, so
+                    // /home IS Leave: it sends the camera-exit and scene-off packets and
+                    // tears the scene down. No-op when the player is not in one.
+                    com.crackedgames.craftics.scene.SceneController.handleLeave(homePlayer);
                     // Infinite mode: /home banks and leaves the run (host = run over,
                     // member = steps out). Must run BEFORE the teleport so the stash
                     // restore replaces the run items while state is still coherent.

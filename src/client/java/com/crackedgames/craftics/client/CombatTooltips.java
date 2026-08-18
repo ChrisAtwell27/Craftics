@@ -31,6 +31,17 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (lines.size() > 1) {
             lines.subList(1, lines.size()).clear();
         }
+        // Put back anything WE wrote onto the stack. A LORE component is Craftics text -
+        // the auction board's price / seller / "Click to buy", trade menu lines, admin
+        // markers - whereas the mod description this strip exists to remove comes from the
+        // item class, not from a component. Clearing indiscriminately made every artifact
+        // listing on the auction board render as a bare item name: no price, no seller, and
+        // no hint that it was clickable. Every strip path below shares this helper, so the
+        // same hole existed for totems, Simply Swords and the rest.
+        var loreComponent = stack.get(net.minecraft.component.DataComponentTypes.LORE);
+        if (loreComponent != null) {
+            lines.addAll(loreComponent.lines());
+        }
         appendEnchantmentLines(stack, lines);
     }
 

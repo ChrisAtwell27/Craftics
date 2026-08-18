@@ -6,6 +6,7 @@ import com.crackedgames.craftics.api.registry.AllyRegistry;
 import com.crackedgames.craftics.combat.CombatEntity;
 import com.crackedgames.craftics.combat.ai.AIRegistry;
 import com.crackedgames.craftics.combat.ai.PillagerAI;
+import com.crackedgames.craftics.compat.BiomeCompatHelper;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.item.Items;
 
@@ -113,9 +114,17 @@ public final class TakesAPillageCompat {
 
         // Event intro dialogues, on the raid's accept/decline vote rails (the choice
         // actions are the raid's own - one vote machine, see offerAcceptDeclineFight).
+        //
+        // Speaker is deliberately EMPTY on both. These lines are narration - the party
+        // sighting a camp through the trees, the map running out at a wall - not a
+        // pillager addressing anyone, and a pillager would hardly be inviting the party
+        // to sack its own camp. Speaker drives both the portrait and the per-word voice,
+        // so naming one put a pillager head on the box and grunted every line of it. The
+        // empty string is the narrator convention used by dig_site_intro and the addon
+        // event intros.
         com.crackedgames.craftics.combat.dialogue.DialogueRegistry.register(
             new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
-                "craftics:pillager_camp_intro", "minecraft:pillager", "pillager_camp_intro",
+                "craftics:pillager_camp_intro", "", "pillager_camp_intro",
                 java.util.List.of(
                     "Smoke through the trees. Banners on sharpened stakes.",
                     "A pillager camp - and among the crossbows, soldiers you haven't fought before.",
@@ -127,7 +136,7 @@ public final class TakesAPillageCompat {
                         "Slip past", "raid:decline"))));
         com.crackedgames.craftics.combat.dialogue.DialogueRegistry.register(
             new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
-                "craftics:bastille_intro", "minecraft:pillager", "bastille_intro",
+                "craftics:bastille_intro", "", "bastille_intro",
                 java.util.List.of(
                     "The map ends at a stone bastille, gates barred, walls manned.",
                     "Three garrisons stand between you and its vault.",
@@ -146,6 +155,68 @@ public final class TakesAPillageCompat {
         loaded = true;
         CrafticsMod.LOGGER.info(
             "[Craftics × It Takes a Pillage] enabled - archer, skirmisher, legioner, clay golem");
+    }
+
+
+    /**
+     * Put the mod's illagers into the two biomes that already field the vanilla
+     * illager line: the Dark Forest and Stony Peaks.
+     *
+     * <p>Before this they existed only inside the Pillager Camp and the Bastille,
+     * so the archer and skirmisher were locked behind an event roll even though
+     * both biomes are built around pillagers and vindicators. They fill roles the
+     * vanilla pool there does not have: the archer outranges a pillager's
+     * crossbow, and the skirmisher's 3 tile walk closes ground nothing else in
+     * those biomes can.
+     *
+     * <p><b>Only when the mod is installed.</b> Every append routes through
+     * {@link BiomeCompatHelper}, which drops any entry whose entity id is absent
+     * from the live registry, so a server without It Takes a Pillage keeps the
+     * untouched vanilla pool. That check is on the ENTITY rather than the mod id,
+     * which is the stronger test: it also covers the mod being present but its
+     * entities failing to register.
+     *
+     * <p>Note this cannot key off the {@code EnemyRegistry} templates registered
+     * in {@link #register}: those are deliberately registered even when the mod is
+     * missing, for datapacks to reference, so their presence proves nothing about
+     * whether the mob can actually spawn.
+     *
+     * <p>The legioner is deliberately left out. Its HP is authored unscaled
+     * because it is meant to be a wall of a fixed height at any depth (see
+     * {@code PillageEvents.scaledHp}), and a normal biome spawn would scale it
+     * like anything else and undo that.
+     *
+     * <p>Must run after every {@code BiomeRegistry.loadFromDatapacks}: CrafticsMod
+     * calls this from both the {@code SERVER_STARTED} and the
+     * {@code END_DATA_PACK_RELOAD} hook.
+     */
+    public static void applyBiomeOverrides() {
+        // Dark Forest: pillager 7 / vindicator 5 / evoker 3. The archer slots in
+        // as the long shot, the skirmisher as the flanker that reaches you.
+        BiomeCompatHelper.appendHostileMob("forest",
+            new com.crackedgames.craftics.level.MobPoolEntry(
+                ARCHER, 5, ARCHER_HP, ARCHER_ATK, ARCHER_DEF, ARCHER_RANGE, false));
+        BiomeCompatHelper.appendHostileMob("forest",
+            new com.crackedgames.craftics.level.MobPoolEntry(
+                SKIRMISHER, 4, SKIRMISHER_HP, SKIRMISHER_ATK, SKIRMISHER_DEF, 1, false,
+                SKIRMISHER, SKIRMISHER_SPEED));
+
+        // Stony Peaks: pillager 6 / vindicator 5, and the clay golem on top. The
+        // golem is a mountain fixture rather than a forest one - a stone-and-clay
+        // construct reads as belonging on the peaks, and the Dark Forest's identity
+        // is the illagers themselves, not their siege equipment.
+        BiomeCompatHelper.appendHostileMob("mountain",
+            new com.crackedgames.craftics.level.MobPoolEntry(
+                ARCHER, 5, ARCHER_HP, ARCHER_ATK, ARCHER_DEF, ARCHER_RANGE, false));
+        BiomeCompatHelper.appendHostileMob("mountain",
+            new com.crackedgames.craftics.level.MobPoolEntry(
+                SKIRMISHER, 4, SKIRMISHER_HP, SKIRMISHER_ATK, SKIRMISHER_DEF, 1, false,
+                SKIRMISHER, SKIRMISHER_SPEED));
+        // Same stat line the Bastille fields it at, so a golem met in the wild is
+        // the golem you already learned to fight.
+        BiomeCompatHelper.appendHostileMob("mountain",
+            new com.crackedgames.craftics.level.MobPoolEntry(
+                CLAY_GOLEM, 3, 16, 3, 2, 1, false, CLAY_GOLEM, 2));
     }
 
     public static boolean isLoaded() {
