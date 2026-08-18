@@ -26,11 +26,11 @@ import java.util.Random;
  * {@link MinibossContext#spawnMob} - they are block-backed combatants with no mob entity, and
  * {@code spawnMob} only knows how to spawn real mob entities.
  *
- * <p>Graves are {@code scenery} (see {@code CombatManager#placeBlockObject}): by design they do
- * NOT count toward the base "all enemies cleared" room-clear check, so a fight could otherwise
- * report victory while a grave still stands. {@link #isComplete} closes that gap explicitly by
- * scanning {@link MinibossContext#enemies()} for any living {@code craftics:grave} - the fight
- * only completes once every grave is down AND the field (zombies etc.) is clear.
+ * <p>Graves are {@code scenery} (see {@code CombatManager#placeBlockObject}): they do NOT count
+ * toward room-clear, and this mechanic deliberately adds no {@link #isComplete} gate of its own,
+ * so the level ends the moment the last zombie falls even with all three graves still standing.
+ * Graves are optional counterplay - breaking one permanently narrows the zombie stream - not a
+ * chore the player is forced to grind through before the room can close.
  */
 public final class PlainsGraveyardMechanic implements MinibossMechanic {
 
@@ -118,20 +118,6 @@ public final class PlainsGraveyardMechanic implements MinibossMechanic {
         }
         // One-shot zombie groan on the raise round, not spammed per-grave.
         if (raisedAny) ctx.playSound(SoundEvents.ENTITY_ZOMBIE_AMBIENT, 0.6f, 0.9f);
-    }
-
-    @Override
-    public boolean isComplete(MinibossContext ctx) {
-        // Graves are `scenery` (CombatManager#placeBlockObject) and deliberately do NOT count
-        // toward the base "all enemies cleared" room-clear check - so this extra check is load
-        // bearing, not redundant. Without it the fight could complete with a living grave still
-        // standing (and still raising zombies) once the rest of the field was clear.
-        for (CombatEntity e : ctx.enemies()) {
-            if (e.isAlive() && "craftics:grave".equals(e.getEntityTypeId())) {
-                return false;
-            }
-        }
-        return true;
     }
 
     /** True if the given tile still hosts a living grave in the enemies list. */

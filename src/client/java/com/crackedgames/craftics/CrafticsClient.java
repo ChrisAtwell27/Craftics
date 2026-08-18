@@ -491,9 +491,15 @@ public class CrafticsClient implements ClientModInitializer {
 
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.LevelUpPayload.ID, (payload, context) -> {
-                context.client().execute(() -> context.client().setScreen(new com.crackedgames.craftics.client.LevelUpScreen(
-                    payload.playerLevel(), payload.unspentPoints(), payload.statData()
-                )));
+                context.client().execute(() -> {
+                    var levelUp = new com.crackedgames.craftics.client.LevelUpScreen(
+                        payload.playerLevel(), payload.unspentPoints(), payload.statData());
+                    context.client().setScreen(levelUp);
+                    // Arm the reopen guard: victory hands out loot in the same breath as the level,
+                    // and a full inventory opens the overflow container right on top of this
+                    // screen. Without this the screen was lost and the point never got spent.
+                    com.crackedgames.craftics.client.LevelUpScreen.armReopen(levelUp);
+                });
             }
         );
 
@@ -924,6 +930,12 @@ public class CrafticsClient implements ClientModInitializer {
             // No-op whenever nothing is waiting, which is every tick outside that window.
             com.crackedgames.craftics.client.VictoryChoiceScreen.reopenIfLost(client);
 
+            // And the level-up screen, if something (usually the inventory-full loot container)
+            // replaced it before the point was spent. Runs AFTER the victory guard on purpose:
+            // both only act when no screen is showing, so the victory choice is answered first and
+            // the level-up screen comes back when it closes.
+            com.crackedgames.craftics.client.LevelUpScreen.reopenIfLost(client);
+
             // Lead-command ally glow is server-driven via LeadSelectPayload:
             // the server toggles glowing on the picked mob so the data tracker
             // sync makes it visible to everyone in the party.
@@ -944,8 +956,14 @@ public class CrafticsClient implements ClientModInitializer {
                 }
             }
 
+            // Respec is allowed mid-level, not just in the hub. An infinite run can go a long way
+            // past the point where a build stops working, and the run's progression is its own
+            // (InfiniteRunManager stashes the real one), so being locked out of it until the run
+            // ends meant living with an early pick for the rest of the run. The refund still costs
+            // an XP level each, and the server re-applies Vitality and re-syncs the HUD; AP and
+            // Speed changes land on the next turn, since the current turn's pool is already dealt.
             while (respecKey.wasPressed()) {
-                if (client.currentScreen == null && !CombatState.isInCombat()) {
+                if (client.currentScreen == null) {
                     client.setScreen(new com.crackedgames.craftics.client.RespecScreen());
                 }
             }
@@ -968,7 +986,7 @@ public class CrafticsClient implements ClientModInitializer {
             }
 
             while (affinityRespecKey.wasPressed()) {
-                if (client.currentScreen == null && !CombatState.isInCombat()) {
+                if (client.currentScreen == null) {
                     client.setScreen(new com.crackedgames.craftics.client.AffinityRespecScreen());
                 }
             }

@@ -235,7 +235,11 @@ public class BiomeJsonLoader {
             return new MobPoolEntry(
                 entry.entityTypeId(), weight,
                 entry.hp(), entry.attack(), entry.defense(), entry.range(),
-                passive, entry.aiKey(), entry.speed()
+                passive, entry.aiKey(), entry.speed(),
+                // A pool entry may override the template's NBT; otherwise it inherits it,
+                // so an enemy registered once with its tags can be dropped into any biome
+                // without restating them.
+                parseSpawnNbt(obj, entry.spawnNbt())
             );
         }
         String type = obj.get("type").getAsString();
@@ -247,8 +251,38 @@ public class BiomeJsonLoader {
             obj.has("defense") ? obj.get("defense").getAsInt() : 0,
             obj.has("range") ? obj.get("range").getAsInt() : 1,
             passive,
-            type,
-            obj.has("speed") ? obj.get("speed").getAsInt() : 0
+            obj.has("ai") ? obj.get("ai").getAsString() : type,
+            obj.has("speed") ? obj.get("speed").getAsInt() : 0,
+            parseSpawnNbt(obj, null)
         );
+    }
+
+    /**
+     * Optional {@code "nbt"} on a pool entry, written as an SNBT string - the same
+     * syntax {@code /summon} takes, so it can be copied straight out of a command:
+     *
+     * <pre>{@code {"type": "mymod:creature", "nbt": "{Variant:3,Tame:1b}"}}</pre>
+     *
+     * <p>A malformed string is warned about and dropped rather than failing the biome:
+     * one unparseable tag should cost that entry its extras, not take the whole level
+     * definition down with it.
+     *
+     * @param fallback NBT inherited from an enemy template, used when the entry has none
+     */
+    private static net.minecraft.nbt.NbtCompound parseSpawnNbt(JsonObject obj,
+                                                               net.minecraft.nbt.NbtCompound fallback) {
+        if (!obj.has("nbt")) return fallback;
+        String snbt = obj.get("nbt").getAsString();
+        if (snbt == null || snbt.isBlank()) return fallback;
+        try {
+            //? if <=1.21.4 {
+            return net.minecraft.nbt.StringNbtReader.parse(snbt);
+            //?} else {
+            /*return net.minecraft.nbt.StringNbtReader.readCompound(snbt);
+            *///?}
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.warn("Bad spawn NBT in biome JSON: {} - entry spawns without it", snbt);
+            return fallback;
+        }
     }
 }

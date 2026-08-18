@@ -1,5 +1,52 @@
 ﻿Changelog
 
+0.4.0
+
+Addon API: Spawning What You Are, Not What Your Entity Type Says
+
+- Enemy and ally entries can now carry **spawn NBT**, merged onto the mob the moment it appears. A datapack can author it as an SNBT string, the same syntax /summon takes, so variant mobs need no Java at all
+- For what NBT cannot express - an entity that has to be initialised through its own mod's API - there is a **spawn customizer** hook that runs on the live mob before its first turn
+- Both are looked up by the combatant's AI key first and its entity type second. That ordering is the point: a mod that ships ONE entity type for hundreds of creatures can give each its own initialisation while they all share a type. Without it, every one of them spawns blank and identical
+- The arena's own flags are re-applied after any NBT merge. Loading NBT onto a live entity restores its whole serialized state, so an authored tag would happily switch AI and gravity back on and let a mob wander off its tile. Your NBT decides what the mob IS; the arena decides how it is held
+
+Addon API: Attack Types
+
+- A new third idea alongside damage types and affinities. An **attack type** is a trait of the attack itself - nobody levels it - and it exists only to be compared against what the defender is, producing a multiplier
+- All three are orthogonal. A weapon can be Slashing damage, so it scales from the Slashing affinity, while being typed Fire, so it lands hard on a grass defender and poorly on a water one. Retyping it changes nothing about what the player levels to improve it
+- Effectiveness is authored as a **chart per attacking type** - what it is strong and weak against - and defenders simply declare what they ARE. That is the only shape that scales: a thousand creatures across eighteen types needs eighteen chart entries and one line per creature, where per-creature resistance tables would need eighteen thousand cells
+- Dual types multiply through, so strong against one and weak against the other cancels out. Immunity is absorbing - nothing later brings it back above zero
+- Typing applies in **every direction**: player on enemy, enemy on ally, ally on enemy, and enemy on player. A mob types its own attacks once, or an AI overrides it per action for a creature with a movepool. The player's defending types come from a provider, since a player's typing usually derives from something that changes mid-run
+- A mount that intercepts a hit aimed at its rider is judged as the mount, because the animal is the thing being hit
+- Players are told what happened - "It's super effective!", "It's not very effective...", "It has no effect..." - so matchups are legible without a wiki
+- Inert until something opts in. An untyped weapon, an unregistered type or an untyped defender all return a plain 1x, so nothing about existing combat changes
+
+Addon API: Custom Enemy Actions
+
+- An addon can define an enemy action whose resolution is genuinely new, rather than composing the forty shapes Craftics already has
+- Deliberately one extra member of a sealed set rather than an open interface. The turn machine dispatches with pattern-matching switches the compiler checks for exhaustiveness; unsealing would surrender that across dozens of sites, and an unhandled action would look like an enemy that just stands there
+- Handlers are given a context whose damage and movement methods route through Craftics' own pipeline, so an addon action cannot accidentally skip resistances, typings, shields, death handling or the pit-fall check
+- Wrap one in a boss ability and it inherits the whole telegraph system: warning tiles, the wind-up VFX and the one-turn delay, with the handler firing when it resolves
+- An unregistered action id costs that enemy its turn and logs once. An addon can be uninstalled while a save still holds an AI that names its actions, and a missing handler should not wedge the fight waiting for something that will never resolve
+
+Addon API: Allies From Outside the Hub
+
+- Craftics' battle party is built from real mobs standing in the hub: you tag a wolf, it is snapshotted and put back afterwards. A mod whose party is DATA ON THE PLAYER has no wolf to tag, so there is now a **field ally provider** hook for it
+- Provider allies may each declare their own AI key, spawn NBT and display name, which is what lets a single entity type field a whole party of visibly different creatures. Without the name, six creatures sharing an entity type all read as six copies of the same thing
+- They are fielded as temporary: they fight the battle and are gone, never carried between levels and never materialised into the hub. An ally that was never a hub entity must not be "returned" to one, or the player ends up with a second copy of a creature the owning mod is still tracking
+- The party cap is passed through as advisory and the result is deliberately not truncated to it. The cap is written for tamed wolves; a mod with a six-creature party owns its own rules, and silently cutting that to one would look like a Craftics bug
+
+Addon API: Affinity Reskins
+
+- The eight affinities can be renamed and re-iconed. Their number stays fixed because they are the axes level-up points are spent on and the screens are laid out for exactly eight; what a total-conversion mod needs is not more axes but different ones
+- One call renames the affinity everywhere it is shown: the level-up screen, the respec screen, the Infinite Mode class picker, the damage-type panel, weapon tooltips including the Simply Swords and Simply Bows compat ones, the combat damage feedback line with its Resisted and Weak notes, and both chat messages
+- The damage type that scales from the affinity is renamed with it. A player who saw "Fire affinity" next to "Slashing damage" would read it as a bug rather than a theme
+- Nothing mechanical changes, and points are saved by internal name, so a reskin can be added to or removed from a live world without touching player progress
+
+Allies Leaking Into the Hub
+
+- Fixed temporary allies - spawn-egg summons, and now provider-supplied party creatures - being materialised into the hub world as real mobs when combat ended abnormally
+- The normal end-of-fight path already excluded them correctly. The abnormal-exit rescue path, which recovers allies when a fight is torn down unexpectedly, rescued every living ally without checking, so a summon that should have evaporated turned into a permanent animal standing in your hub
+
 0.3.9
 
 Battle Intros

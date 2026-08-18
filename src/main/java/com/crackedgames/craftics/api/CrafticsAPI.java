@@ -137,6 +137,199 @@ public final class CrafticsAPI {
      *
      * @param entry the ally definition (stats, recruitment mode, and AI)
      */
+    /**
+     * Register a hook that runs on a freshly spawned arena mob, enemy or ally.
+     *
+     * <p>Craftics creates every combatant by looking its entity type up and creating it
+     * bare. That is enough when the entity type IS the identity, and not enough for a mod
+     * that ships one entity type for many creatures and stores which one elsewhere - every
+     * one of them would spawn blank and identical.
+     *
+     * <p>{@code key} is matched against the combatant's {@code aiKey} first and its entity
+     * type id second. That order is what makes the one-type-many-creatures case work: give
+     * each creature its own {@code aiKey} and each gets its own initialisation while they
+     * all share a type.
+     *
+     * <p>For anything expressible as entity NBT, prefer {@code spawnNbt} on the enemy or
+     * ally entry instead - a datapack can author that with no Java at all. Use this for
+     * what NBT cannot say. Both run when both are present, NBT first.
+     *
+     * @see com.crackedgames.craftics.api.SpawnCustomizer
+     * @since 0.3.9
+     */
+    /**
+     * Register a control item pinned to the hotbar for the duration of a fight, beside the
+     * Move item.
+     *
+     * <p>Craftics already treats one item this way. Move is created when combat starts, locked
+     * to a slot, restocked if it goes missing, undroppable, and destroyed afterwards - it is a
+     * button that happens to live in the hotbar. A mod whose fights are commanded rather than
+     * swung needs more of those buttons, and a control the player has to remember to carry is
+     * a control they will lose.
+     *
+     * <p>The tool's {@code onUse} handler fires server-side on a mid-fight right-click and
+     * Craftics does nothing else with the click, so the addon can open whatever UI it likes -
+     * a vanilla screen handler, or its own payload to its own screen. Craftics deliberately
+     * ships no menu framework here: a move-selection screen is the addon's design, and
+     * anything Craftics invented would fit it worse.
+     *
+     * @see com.crackedgames.craftics.api.CombatTool
+     * @since 0.4.0
+     */
+    public static void registerCombatTool(CombatTool tool) {
+        com.crackedgames.craftics.api.registry.CombatToolRegistry.register(tool);
+    }
+
+    /**
+     * Register a provider of allies that take the field with a player at the start of a fight.
+     *
+     * <p>Craftics' own battle party is built from real mobs standing in the hub: you tag a
+     * wolf, it is snapshotted and discarded when combat starts, and put back afterwards. A mod
+     * whose party is DATA ON THE PLAYER rather than entities in a yard cannot use that model -
+     * there is no wolf to tag. This is the hook for that case.
+     *
+     * <p>Provider allies are fielded as temporary: they fight the battle and are gone, never
+     * carried between levels and never materialised into the hub. An ally that was never a hub
+     * entity must not be "returned" to one, or the player ends up with a second copy of a
+     * creature the owning mod is still tracking in its own party.
+     *
+     * <p>Each ally may declare its own {@code aiKey}, spawn NBT and display name, which is
+     * what lets a single entity type field a whole party of visibly different creatures.
+     *
+     * @see com.crackedgames.craftics.api.FieldAllyProvider
+     * @since 0.3.9
+     */
+    public static void registerFieldAllyProvider(String key, FieldAllyProvider provider) {
+        com.crackedgames.craftics.api.registry.FieldAllyProviderRegistry.register(key, provider);
+    }
+
+    /**
+     * Rename and re-icon one of the eight affinities.
+     *
+     * <p>The eight are fixed in NUMBER on purpose - they are the axes a player spends
+     * level-up points on, and the levelling and respec screens are laid out for exactly
+     * eight. What a total-conversion mod needs is not more axes but different ones, so the
+     * eight slots are reskinnable instead.
+     *
+     * <p>One call renames the affinity <b>everywhere it is shown</b>: the level-up screen,
+     * the respec screen, the infinite-mode class picker, the damage-type panel, weapon
+     * tooltips, the combat damage feedback line, and the chat message for gaining a point.
+     * The damage type that scales from the affinity is renamed with it, since a player who
+     * saw "Fire affinity" next to "Slashing damage" would read it as a bug.
+     *
+     * <p>Nothing mechanical changes. A reskinned Slashing affinity still boosts Slashing
+     * weapons and still grants the sweep chance.
+     *
+     * <p>Call this from a {@link CrafticsAddon}: it runs in common initialization, so the
+     * server and the client both learn the skin. A server-only registration would rename
+     * the chat lines and leave every screen showing the old name.
+     *
+     * @see com.crackedgames.craftics.api.AffinitySkin
+     * @since 0.3.9
+     */
+    public static void reskinAffinity(
+            com.crackedgames.craftics.combat.PlayerProgression.Affinity affinity,
+            AffinitySkin skin) {
+        com.crackedgames.craftics.api.registry.AffinitySkinRegistry.reskin(affinity, skin);
+    }
+
+    /**
+     * Register a handler for an addon-defined enemy action.
+     *
+     * <p>Have an AI return {@code new EnemyAction.CustomAction("mymod:flamethrower", tiles, 6)}
+     * and this handler resolves it. Wrap that in a {@code BossAbility} to get a telegraphed
+     * charge-up - warning tiles, windup VFX and the one-turn delay - with the handler
+     * firing when it resolves.
+     *
+     * <p>The handler is given a context wired into the real combat pipeline, so damage it
+     * deals goes through resistances, attack typings, shields and death handling exactly
+     * as a built-in action would.
+     *
+     * @see com.crackedgames.craftics.api.CustomActionHandler
+     * @since 0.3.9
+     */
+    public static void registerCustomAction(String actionId, CustomActionHandler handler) {
+        com.crackedgames.craftics.api.registry.CustomActionRegistry.register(actionId, handler);
+    }
+
+    /**
+     * Register an attack type and its effectiveness chart.
+     *
+     * <p>An attack type is a trait of an ATTACK, not of a player. Nobody levels it. It
+     * exists only to be compared against what a defender is, producing a damage
+     * multiplier, and it is deliberately separate from both {@code DamageType} (which
+     * decides the affinity a weapon scales from) and {@code Affinity} (which is what a
+     * player levels). A weapon can be Slashing and Fire at once.
+     *
+     * <p>Charts are authored per attacking type - what it is strong and weak against -
+     * because that is the shape that scales. Defenders then declare only what they ARE,
+     * via {@link #setDefendingTypes}.
+     *
+     * @see com.crackedgames.craftics.api.registry.AttackTypeEntry
+     * @since 0.3.9
+     */
+    public static void registerAttackType(
+            com.crackedgames.craftics.api.registry.AttackTypeEntry entry) {
+        com.crackedgames.craftics.api.registry.AttackTypeRegistry.register(entry);
+    }
+
+    /**
+     * The attack type a mob's ordinary attacks carry.
+     *
+     * <p>Without this only the player's weapons could be typed, so every enemy would swing
+     * untyped and a chart would do half of nothing. Set it once per creature and its melee,
+     * ranged and ability damage are all typed.
+     *
+     * <p>A creature with a movepool overrides it per action from inside its AI with
+     * {@code self.setPendingAttackType(id)} just before returning the action. That override
+     * is cleared before every decision, so it only ever applies to the action that asked
+     * for it.
+     *
+     * @since 0.3.9
+     */
+    public static void setDefaultAttackType(String mobKey, String typeId) {
+        com.crackedgames.craftics.api.registry.AttackTypeRegistry
+            .setDefaultAttackType(mobKey, typeId);
+    }
+
+    /**
+     * Declare how to work out which types the PLAYER defends as, so incoming attacks can be
+     * resisted or land hard.
+     *
+     * <p>A function rather than a fixed list because a player's typing usually derives from
+     * something that changes during a run. Called on every hit the player takes, so keep it
+     * cheap; returning null or empty means untyped, which is the default.
+     *
+     * @since 0.3.9
+     */
+    public static void setPlayerDefendingTypesProvider(
+            java.util.function.Function<net.minecraft.server.network.ServerPlayerEntity,
+                                        java.util.List<String>> provider) {
+        com.crackedgames.craftics.api.registry.AttackTypeRegistry
+            .setPlayerDefendingTypesProvider(provider);
+    }
+
+    /**
+     * Declare which attack types a mob DEFENDS as.
+     *
+     * <p>{@code mobKey} is matched against the combatant's {@code aiKey} first and its
+     * entity type id second, the same rule spawn customizers use - so one entity type can
+     * still carry a different typing per creature.
+     *
+     * <p>A defender with several types multiplies through all of them, so strong against
+     * one and weak against another cancels out. Passing no types clears the entry.
+     *
+     * @since 0.3.9
+     */
+    public static void setDefendingTypes(String mobKey, String... typeIds) {
+        com.crackedgames.craftics.api.registry.AttackTypeRegistry
+            .setDefendingTypes(mobKey, typeIds);
+    }
+
+    public static void registerSpawnCustomizer(String key, SpawnCustomizer customizer) {
+        com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry.register(key, customizer);
+    }
+
     public static void registerAlly(AllyEntry entry) {
         AllyRegistry.register(entry);
     }

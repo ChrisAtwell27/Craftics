@@ -101,7 +101,8 @@ public class InfiniteClassScreen extends Screen {
         for (int i = 0; i < affinities.length; i++) {
             PlayerProgression.Affinity a = affinities[i];
             boolean hover = rowHovered(mouseX, mouseY, y);
-            drawRow(ctx, y, hover, a.icon + " " + a.displayName, "§8" + a.description);
+            drawRow(ctx, y, hover, com.crackedgames.craftics.api.registry.AffinitySkinRegistry.iconOf(a) + " " + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(a),
+                "§8" + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.descriptionOf(a));
             y += ROW_H + ROW_GAP;
         }
         boolean skipHover = rowHovered(mouseX, mouseY, y);

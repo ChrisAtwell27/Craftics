@@ -45,6 +45,53 @@ public class LevelUpScreen extends Screen {
     private int cardH   = CARD_HEIGHT;
     private int cardGap = CARD_GAP;
 
+    /**
+     * The level-up screen the player still owes a pick to, or null.
+     *
+     * <p>Same shape, and the same reason, as {@link VictoryChoiceScreen}'s reopen guard: a screen
+     * cannot stop {@code MinecraftClient.setScreen} from replacing it, and something usually does.
+     * The reported case is an infinite-mode boss kill with a full inventory: the loot that will not
+     * fit opens the "Inventory Full - Loot" container (see {@code LootDelivery.openOverflowChest}),
+     * which lands on top of the level-up screen a moment after it appears. The screen was simply
+     * gone after that, and the point stayed unspent with nothing left to ask for it.
+     *
+     * <p>So rather than trying to hold the screen open, it is re-opened: {@link #reopenIfLost} runs
+     * on the client tick and puts the SAME instance back once no screen is showing, which keeps the
+     * phase and the remaining point count. Cleared by {@link #close}, which covers both a pick
+     * being made and the player dismissing the screen deliberately, so it can never fight a
+     * legitimate close.
+     */
+    private static LevelUpScreen awaitingPick;
+
+    /** Arm the re-open guard for a freshly opened level-up screen. */
+    public static void armReopen(LevelUpScreen screen) {
+        awaitingPick = screen;
+    }
+
+    /** Disarm: the pick was made, or the player dismissed the screen. */
+    public static void clearReopen() {
+        awaitingPick = null;
+    }
+
+    /** Put the screen back if another screen replaced it before the pick was made. */
+    public static void reopenIfLost(net.minecraft.client.MinecraftClient client) {
+        if (awaitingPick == null || client == null) return;
+        // Left the world: the pick died with the session, and holding it would re-open a dead
+        // screen over whatever world is joined next.
+        if (client.world == null) { awaitingPick = null; return; }
+        if (client.currentScreen != null) return;
+        client.setScreen(awaitingPick);
+        client.mouse.unlockCursor();
+    }
+
+    @Override
+    public void close() {
+        // Reached by both buttons (they call close() after sending the pick) and by Esc. Either way
+        // the player is done with this screen, so the watchdog must stop putting it back.
+        clearReopen();
+        super.close();
+    }
+
     public LevelUpScreen(int playerLevel, int unspentPoints, String statData) {
         super(Text.literal("Level Up!"));
         this.playerLevel    = playerLevel;
@@ -162,7 +209,8 @@ public class LevelUpScreen extends Screen {
             PlayerProgression.Affinity affinity = affinities[i];
             int y = startY + i * (cardH + cardGap);
 
-            String btnText = affinity.icon + " " + affinity.displayName + " - " + affinity.description;
+            String btnText = com.crackedgames.craftics.api.registry.AffinitySkinRegistry.iconOf(affinity) + " " + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(affinity)
+                + " - " + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.descriptionOf(affinity);
 
             final int affinityIndex = i;
             GuideButton btn = GuideButton.of(

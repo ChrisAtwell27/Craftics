@@ -22,7 +22,11 @@ public class PlayerEntityMixin {
             at = @At("HEAD"), cancellable = true)
     private void craftics$blockMoveItemDrop(net.minecraft.item.ItemStack stack, boolean throwRandomly,
                                              boolean retainOwnership, CallbackInfoReturnable<net.minecraft.entity.ItemEntity> cir) {
-        if (com.crackedgames.craftics.item.MoveSlotManager.isMoveStack(stack)) {
+        // Combat tools get the same protection as Move: they are buttons, and a button the
+        // player can Q-drop is a button they will drop mid-fight and then be unable to use.
+        if (com.crackedgames.craftics.item.MoveSlotManager.isMoveStack(stack)
+                || (!stack.isEmpty() && com.crackedgames.craftics.api.registry.CombatToolRegistry
+                        .isToolItem(stack.getItem()))) {
             cir.setReturnValue(null);
         }
     }
@@ -31,7 +35,11 @@ public class PlayerEntityMixin {
             at = @At("HEAD"), cancellable = true)
     private void craftics$blockMoveItemDrop(net.minecraft.item.ItemStack stack, boolean throwRandomly,
                                              CallbackInfoReturnable<net.minecraft.entity.ItemEntity> cir) {
-        if (com.crackedgames.craftics.item.MoveSlotManager.isMoveStack(stack)) {
+        // Combat tools get the same protection as Move: they are buttons, and a button the
+        // player can Q-drop is a button they will drop mid-fight and then be unable to use.
+        if (com.crackedgames.craftics.item.MoveSlotManager.isMoveStack(stack)
+                || (!stack.isEmpty() && com.crackedgames.craftics.api.registry.CombatToolRegistry
+                        .isToolItem(stack.getItem()))) {
             cir.setReturnValue(null);
         }
     }

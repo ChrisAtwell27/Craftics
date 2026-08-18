@@ -28,6 +28,34 @@ public sealed interface EnemyAction {
     record MoveAttackMove(List<GridPos> approachPath, int damage, List<GridPos> retreatPath) implements EnemyAction {}
     record Flee(List<GridPos> path) implements EnemyAction {}
     record StartFuse() implements EnemyAction {}
+    /**
+     * An action defined by an addon, resolved by whoever registered {@code id}.
+     *
+     * <p>The escape hatch that keeps the rest of this interface sealed. Every other shape
+     * here is dispatched by pattern-matching switches the compiler checks for
+     * exhaustiveness; unsealing to let addons add shapes would give that checking up
+     * across dozens of sites. Instead there is exactly one shape the turn machine forwards
+     * straight back to an addon, and the other thirty-nine keep their guarantees.
+     *
+     * <p>Wrap one in a {@link BossAbility} to get a telegraphed charge-up: warning tiles,
+     * the windup VFX and the one-turn delay all come for free, and the handler fires when
+     * it resolves.
+     *
+     * @param id      registry key, e.g. {@code "mymod:flamethrower"}
+     * @param tiles   tiles the action names, or empty
+     * @param damage  a damage figure for the handler to use, or 0
+     * @param params  arbitrary parameters for the handler, or null
+     */
+    record CustomAction(String id, List<GridPos> tiles, int damage,
+                        net.minecraft.nbt.NbtCompound params) implements EnemyAction {
+        public CustomAction(String id) {
+            this(id, List.of(), 0, null);
+        }
+        public CustomAction(String id, List<GridPos> tiles, int damage) {
+            this(id, tiles, damage, null);
+        }
+    }
+
     record Idle() implements EnemyAction {}
 
     /** Enderman: instant teleport to a tile (no lerp animation) */

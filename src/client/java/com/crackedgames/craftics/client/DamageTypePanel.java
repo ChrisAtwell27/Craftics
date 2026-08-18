@@ -120,9 +120,11 @@ public class DamageTypePanel {
      *  (which carries per-type icons). Falls back to the first letter. */
     private static String affinityGlyph(DamageType type) {
         try {
+            String skinned = com.crackedgames.craftics.api.registry.AffinitySkinRegistry.iconOrNull(type);
+            if (skinned != null) return skinned;
             return PlayerProgression.Affinity.valueOf(type.name()).icon;
         } catch (IllegalArgumentException e) {
-            return type.displayName.substring(0, 1);
+            return com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(type).substring(0, 1);
         }
     }
 
@@ -208,7 +210,7 @@ public class DamageTypePanel {
                 int rowY = top + i * slot + (slot - 8) / 2;
                 ctx.drawText(tr, Text.literal(glyph), gx, rowY, cColors[i], false);
                 if (mouseX >= cx && mouseX < cx + cw && mouseY >= rowY - 3 && mouseY < rowY + 11) {
-                    String tip = cTypes[i].displayName + ": +" + DamageType.formatAffinityHalfPoints(bonusHalf);
+                    String tip = com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(cTypes[i]) + ": +" + DamageType.formatAffinityHalfPoints(bonusHalf);
                     ctx.drawTooltip(tr, Text.literal(tip), mouseX, mouseY);
                 }
             }
@@ -275,7 +277,7 @@ public class DamageTypePanel {
             int bonusHalf = computeBonus(armorCounts, trimBonuses, type);
 
             // Label (darkened so it reads on parchment; bar keeps the vibrant color)
-            String label = type.displayName;
+            String label = com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(type);
             ctx.drawText(tr, label, panelX, panelY, labelColors[i], false);
 
             // Bonus number on right

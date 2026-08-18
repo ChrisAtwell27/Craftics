@@ -72,6 +72,21 @@ class MinibossCoverageTest {
     }
 
     @Test
+    void noMechanicHoldsVictoryOpen() {
+        // handleVictory() consults isComplete() before it will win the level, so an override here
+        // is the one way a mechanic can make its own props a must-kill. The Graveyard used to do
+        // exactly that with its graves, which meant a room holding nothing but scenery could not
+        // be left. Room-clear is CombatEntity.blocksRoomClear() and nothing else; a mechanic that
+        // wants a prop to matter makes it hurt while it stands, not a chore on the way out.
+        for (MinibossMechanic m : ALL) {
+            assertThrows(NoSuchMethodException.class,
+                () -> m.getClass().getDeclaredMethod("isComplete", MinibossContext.class),
+                m.biomeId() + " overrides isComplete(), which gates the level on something other "
+                    + "than blocksRoomClear()");
+        }
+    }
+
+    @Test
     void everyMechanicHasATitle() {
         for (MinibossMechanic m : ALL) {
             assertNotNull(m.introTitle());

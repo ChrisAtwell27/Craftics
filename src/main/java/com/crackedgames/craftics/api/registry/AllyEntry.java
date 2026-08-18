@@ -43,7 +43,10 @@ public record AllyEntry(
     @Nullable AllyRoundHook roundHook,
     @Nullable Item healItem,
     int healAmount,
-    boolean rideable
+    boolean rideable,
+    /** Entity NBT merged onto the ally at spawn, or null. Same purpose as the enemy
+     *  equivalent: an ally whose identity is not its entity type. */
+    @Nullable net.minecraft.nbt.NbtCompound spawnNbt
 ) {
     /** How a hub mob qualifies to be recruited into combat. */
     public enum RecruitMode {
@@ -86,6 +89,7 @@ public record AllyEntry(
         private Item healItem = null;
         private int healAmount = 0;
         private boolean rideable = false;
+        private net.minecraft.nbt.NbtCompound spawnNbt = null;
 
         public Builder(String entityTypeId) {
             this.entityTypeId = entityTypeId;
@@ -128,12 +132,21 @@ public record AllyEntry(
         /** Whether the player can mount this ally as a combat mount. Default {@code false}. */
         public Builder rideable(boolean v) { this.rideable = v; return this; }
 
+        /** Entity NBT merged onto the ally the moment it spawns. See
+         *  {@link com.crackedgames.craftics.api.SpawnCustomizer} for the code-hook
+         *  alternative when NBT cannot express what the mod needs. */
+        public Builder spawnNbt(net.minecraft.nbt.NbtCompound nbt) {
+            this.spawnNbt = nbt;
+            return this;
+        }
+
         public AllyEntry build() {
             if (entityTypeId == null || entityTypeId.isBlank()) {
                 throw new IllegalStateException("AllyEntry requires a non-blank entityTypeId");
             }
             return new AllyEntry(entityTypeId, hp, attack, defense, range, speed,
-                recruitMode, ai, scalesWithOwnerGear, roundHook, healItem, healAmount, rideable);
+                recruitMode, ai, scalesWithOwnerGear, roundHook, healItem, healAmount, rideable,
+                spawnNbt);
         }
     }
 }

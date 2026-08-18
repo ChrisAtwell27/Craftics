@@ -148,6 +148,17 @@ public class CombatEntity {
     public int getMaxHp() { return maxHp; }
     public int getCurrentHp() { return currentHp; }
     public void heal(int amount) { currentHp = Math.min(getEffectiveMaxHp(), currentHp + amount); }
+    /**
+     * Set HP outright, for restoring a mid-fight save point (see {@link ResumeSnapshot}).
+     *
+     * <p>Deliberately not a general setter, and deliberately not routed through {@code heal} or
+     * {@code takeDamage}: those fire the on-damage and on-death bookkeeping (kill credit, death
+     * animation, boss phase checks), none of which applies to an entity that is simply being put
+     * back the way it was. Floors at 1, because a record is only ever written for a live entity.
+     */
+    public void restoreHp(int hp) {
+        this.currentHp = Math.max(1, Math.min(getEffectiveMaxHp(), hp));
+    }
     public int getAttackPower() { return Math.max(0, attackPower + attackBoost + bonusAttack + getAttackBuffBonus() - attackPenalty); }
     // Mirrors getAttackPower() above: bonusAttack (set by setBonusAttack) folds into
     // the "total attack" accessor everyone reads, so permanentBonusDefense (set by
@@ -537,6 +548,15 @@ public class CombatEntity {
     public boolean hasStackLayers() { return stackChain != null && !stackChain.isEmpty(); }
 
     /** Display name override used by stack-layer transformations (overrides the species name). */
+    /**
+     * A name set by whoever created this combatant, used when the entity type cannot supply
+     * one. The motivating case is a mod that fields many creatures under a single entity
+     * type: without this, every one of them derives the same name from the type id, so a
+     * whole party reads as six copies of the same thing.
+     */
+    private String nameOverride = null;
+    public void setNameOverride(String name) { this.nameOverride = name; }
+
     private String stackDisplayName = null;
     public void setStackDisplayName(String name) { this.stackDisplayName = name; }
     public String getStackDisplayName() { return stackDisplayName; }
@@ -596,6 +616,18 @@ public class CombatEntity {
     private boolean mountWall = false;
     public boolean isMountWall() { return mountWall; }
     public void setMountWall(boolean v) { this.mountWall = v; }
+
+    /**
+     * The attack type this combatant's NEXT action carries, overriding whatever its mob key
+     * defaults to. Set by an AI just before it returns an action, for a creature whose moves
+     * are not all the same type - the usual case for anything with a movepool.
+     *
+     * <p>Left null means "use the default for this mob", which covers a creature whose every
+     * attack is the same type and needs no per-turn bookkeeping.
+     */
+    private String pendingAttackType = null;
+    public String getPendingAttackType() { return pendingAttackType; }
+    public void setPendingAttackType(String typeId) { this.pendingAttackType = typeId; }
 
     private String aiOverrideKey = null;
     public String getAiOverrideKey() { return aiOverrideKey; }
@@ -1245,6 +1277,9 @@ public class CombatEntity {
     public String getDisplayName() {
         if (bossDisplayName != null) return bossDisplayName;
         if (stackDisplayName != null) return stackDisplayName;
+        // Below the two above on purpose: a boss title and a stack label are both things
+        // Craftics decided about this specific fight and should win over a creator's name.
+        if (nameOverride != null) return nameOverride;
         String id = entityTypeId;
         int colon = id.indexOf(':');
         if (colon >= 0) id = id.substring(colon + 1);

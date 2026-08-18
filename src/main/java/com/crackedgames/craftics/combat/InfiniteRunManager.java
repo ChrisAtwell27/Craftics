@@ -268,6 +268,12 @@ public final class InfiniteRunManager {
         host.infiniteParticipants = joinUuids(participants);
         parkNormalRun(host);
         host.startBiomeRun(STARTING_BIOME);
+        // A fresh run, so no mid-fight save point from a previous one may be resumed into it. The
+        // resume path (resumeRun) deliberately does NOT do this: keeping the save point is the
+        // whole point of parking a run.
+        List<UUID> startingRoster = new java.util.ArrayList<>(participants);
+        startingRoster.add(hostUuid);
+        data.clearResumeSnapshots(startingRoster);
 
         UUID islandOwner = data.getEffectiveWorldOwner(hostUuid);
         data.getPlayerData(islandOwner).infiniteHostRef = hostUuid.toString();
@@ -446,7 +452,7 @@ public final class InfiniteRunManager {
         CrafticsSavedData data = CrafticsSavedData.get(world);
         syncStats(player, progression, data.getPlayerData(player.getUuid()));
         player.sendMessage(Text.literal("§5§l∞ §r§d"
-            + affinity.displayName + " class!§7 +1 " + affinity.displayName
+            + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(affinity) + " class!§7 +1 " + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(affinity)
             + " affinity and a " + weaponName + " to open with."), false);
     }
 

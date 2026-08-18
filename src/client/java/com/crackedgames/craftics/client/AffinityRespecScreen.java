@@ -252,7 +252,7 @@ public class AffinityRespecScreen extends Screen {
             int labelY = y + (CARD_HEIGHT - 8) / 2;
 
             // Affinity name + icon
-            String label = affinity.icon + " " + affinity.displayName;
+            String label = com.crackedgames.craftics.api.registry.AffinitySkinRegistry.iconOf(affinity) + " " + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(affinity);
             GuideTheme.drawInk(context, this.textRenderer, label, labelX, labelY, TEXT);
 
             // Current value + delta indicator
@@ -279,7 +279,7 @@ public class AffinityRespecScreen extends Screen {
                 // place description 2px below the last row, which is 6px above the button row
                 int descY = startY + affinities.length * (CARD_HEIGHT + CARD_GAP) - 2;
                 GuideTheme.drawCentered(context, this.textRenderer,
-                    affinity.description, centerX, descY, TEXT_FAINT);
+                    com.crackedgames.craftics.api.registry.AffinitySkinRegistry.descriptionOf(affinity), centerX, descY, TEXT_FAINT);
             }
         }
     }

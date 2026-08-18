@@ -480,7 +480,8 @@ public class CombatManager {
      *  in-progress air countdown (e.g. mid deep-water swim) in the same pass. */
     private final java.util.Map<java.util.UUID, Integer> respirationAir = new java.util.HashMap<>();
     private int turnNumber;
-    private int peacefulTurnCount = 0;
+    /** Turn the last resume snapshot was taken on, so the per-turn capture fires exactly once. */
+    private int lastSnapshotTurn = -1;
     private boolean endTurnHintSent = false;
     private ServerPlayerEntity player;
 
@@ -2416,6 +2417,57 @@ public class CombatManager {
     }
 
     /** Spawn one raid reinforcement mid-fight, with the standard arena mob setup. */
+
+    /**
+     * Merge an enemy entry's authored NBT onto a freshly spawned arena mob.
+     *
+     * <p>Exists because Craftics creates every enemy the same way - look the entity type
+     * up, create it bare - which is enough for a zombie and not enough for anything whose
+     * identity lives somewhere other than its entity type: a variant, a mob that should
+     * arrive equipped, or a mod that ships one entity type for many creatures and records
+     * which one in its tags.
+     *
+     * <p><b>The arena flags are re-applied afterwards, and that is not belt-and-braces.</b>
+     * {@code readNbt} on a live entity reloads its whole serialized state, so it will
+     * happily restore NoAI, NoGravity, Invulnerable, Silent and the command tags from
+     * whatever the authored tag says - or from the entity's own defaults where the tag is
+     * silent. Craftics sets those five to hold a mob still on its tile and to keep it out
+     * of the vanilla AI system entirely, so letting an authored tag win would produce a
+     * mob that wanders off, falls, or stops answering to the grid. Author intent wins for
+     * everything about WHAT the mob is; the arena wins for HOW it is held.
+     *
+     * <p>Failures are logged and swallowed. The mob is already spawned and placed by this
+     * point, so throwing would abandon the rest of the arena build - strictly worse than
+     * one enemy that did not get its extras.
+     */
+    private void applySpawnNbt(net.minecraft.entity.mob.MobEntity mob,
+                               net.minecraft.nbt.NbtCompound authored) {
+        if (mob == null || authored == null || authored.isEmpty()) return;
+        try {
+            net.minecraft.nbt.NbtCompound merged = new net.minecraft.nbt.NbtCompound();
+            mob.writeNbt(merged);
+            for (String key : authored.getKeys()) {
+                net.minecraft.nbt.NbtElement value = authored.get(key);
+                if (value != null) merged.put(key, value.copy());
+            }
+            mob.readNbt(merged);
+
+            // Re-assert everything the arena owns, in case the authored tag (or the
+            // entity's own defaults, for keys the tag omitted) put it back.
+            mob.setAiDisabled(true);
+            mob.setInvulnerable(true);
+            mob.setNoGravity(true);
+            mob.noClip = true;
+            mob.setPersistent();
+            if (!mob.getCommandTags().contains("craftics_arena")) {
+                mob.addCommandTag("craftics_arena");
+            }
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.error("Spawn NBT for '{}' could not be applied; "
+                + "the mob spawns without it", mob.getType(), t);
+        }
+    }
+
     private CombatEntity spawnRaidReinforcement(String typeId, GridPos tile,
                                                 int hp, int atk, int def, int range) {
         if (player == null || arena == null) return null;
@@ -3053,13 +3105,20 @@ public class CombatManager {
                 && playerMounted && mountMob != null && player != null && player.hasVehicle()) {
             CombatEntity mount = findMountEntity();
             if (mount != null && mount.isAlive()) {
-                int dealt = mount.takeDamage(Math.max(0, incomingRaw));
+                // The animal is the defender here, not the rider, so effectiveness is worked
+                // out against the animal's types.
+                int mountTyped = applyTypeEffectiveness(Math.max(0, incomingRaw), attacker, mount);
+                int dealt = mount.takeDamage(mountTyped);
                 sendMessage("§6" + mount.getDisplayName() + " takes the hit for "
                     + dealt + "! §7(" + mount.getCurrentHp() + "/" + mount.getMaxHp() + ")");
                 checkAndHandleDeath(mount);
                 return 0;
             }
         }
+        // Type effectiveness on the way IN. Placed after the mount branch so a hit the animal
+        // intercepted is judged against the animal, and before the difficulty and boss-cap
+        // maths below so those operate on the figure the matchup actually produced.
+        incomingRaw = applyTypeEffectivenessOnPlayer(incomingRaw, attacker);
         // Hard ceiling on a single boss hit. LevelGenerator caps a boss's BASE attack, but
         // per-ability riders (Tidecaller riptide +3, Deluge +2 on water, and the like) stack on
         // top of that base, so the actual hit can exceed the base cap. Clamp the resolved hit
@@ -3432,6 +3491,68 @@ public class CombatManager {
                 player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), DamageType.SPECIAL);
     }
 
+
+    /**
+     * The attack type a combatant's current action carries: whatever its AI set for this
+     * action, else the default registered for its mob key, else untyped.
+     */
+    private static String attackTypeOf(CombatEntity attacker) {
+        if (attacker == null) return null;
+        String pending = attacker.getPendingAttackType();
+        if (pending != null) return pending;
+        return com.crackedgames.craftics.api.registry.AttackTypeRegistry
+            .defaultAttackTypeOf(attacker.getAiKey(), attacker.getEntityTypeId());
+    }
+
+    /**
+     * Scale damage by type effectiveness for a hit landing on another combatant, and tell the
+     * party about it.
+     *
+     * <p>Used for every direction that is not the player's own weapon swing - enemy on ally,
+     * ally on enemy, enemy on enemy. Without these the chart only worked when the player
+     * attacked, which is half a type system: a Fire enemy would hit a Water ally at full
+     * strength and the player would have no way to tell the matchups mattered.
+     *
+     * <p>Floors a landed hit at 1 exactly as the player path does, so a heavily resisted
+     * attack still chips rather than silently doing nothing. A no-effect matchup is the one
+     * case that goes to zero.
+     */
+    private int applyTypeEffectiveness(int damage, CombatEntity attacker, CombatEntity defender) {
+        if (damage <= 0 || attacker == null || defender == null) return damage;
+        String type = attackTypeOf(attacker);
+        if (type == null) return damage;
+        double mult = com.crackedgames.craftics.api.registry.AttackTypeRegistry
+            .multiplierFor(type, defender.getAiKey(), defender.getEntityTypeId());
+        if (mult == 1.0) return damage;
+        String note = com.crackedgames.craftics.api.registry.AttackTypeRegistry
+            .describeMultiplier(mult);
+        if (note != null) sendMessage(note);
+        return mult == 0.0 ? 0 : Math.max(1, (int) (damage * mult));
+    }
+
+    /**
+     * Scale incoming damage by type effectiveness for a hit landing on the PLAYER.
+     *
+     * <p>Separate from the combatant form because the player has no {@code aiKey} to look up:
+     * their defending types come from a provider an addon registers, since a player's typing
+     * is usually derived from something that changes during a run rather than being fixed.
+     */
+    private int applyTypeEffectivenessOnPlayer(int damage, CombatEntity attacker) {
+        if (damage <= 0 || attacker == null || player == null) return damage;
+        String type = attackTypeOf(attacker);
+        if (type == null) return damage;
+        var defending = com.crackedgames.craftics.api.registry.AttackTypeRegistry
+            .playerDefendingTypes(player);
+        if (defending.isEmpty()) return damage;
+        double mult = com.crackedgames.craftics.api.registry.AttackTypeRegistry
+            .multiplierForTypes(type, defending);
+        if (mult == 1.0) return damage;
+        String note = com.crackedgames.craftics.api.registry.AttackTypeRegistry
+            .describeMultiplier(mult);
+        if (note != null) sendMessage(note);
+        return mult == 0.0 ? 0 : Math.max(1, (int) (damage * mult));
+    }
+
     private int applySpecialUtilityDamage(CombatEntity target, int baseDamage) {
         int adjustedDamage = MobResistances.applyResistance(
             target.getEntityTypeId(), DamageType.SPECIAL, baseDamage + getSpecialUtilityDamageBonus());
@@ -3657,6 +3778,9 @@ public class CombatManager {
                 p.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), "minecraft:respiration"));
         }
         this.turnNumber = 1;
+        // A new fight has not been saved yet. Without this the per-turn capture would skip turn 1
+        // whenever the previous level also stopped on turn 1.
+        this.lastSnapshotTurn = -1;
         // Sudden death is per fight, and rides the turn counter it is measured against.
         this.suddenDeath = false;
         this.suddenDeathBoosted.clear();
@@ -4465,6 +4589,12 @@ public class CombatManager {
                         spawn.entityTypeId(), bossBiomeId, ce.getEntityId(), spawn.hp());
                 }
                 ce.setMobEntity(mob);
+                // Addon spawn customisation, in this order on purpose: the NBT lands
+                // first so a code hook sees the tagged entity and can correct or extend
+                // it rather than fight it. Both are no-ops for every vanilla mob.
+                applySpawnNbt(mob, spawn.spawnNbt());
+                com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry
+                    .apply(world, mob, ce);
                 enemies.add(ce);
                 arena.placeEntity(ce);
                 fireEffectHook(h -> h.onEnemySpawn(effectContext, ce));
@@ -6943,6 +7073,29 @@ public class CombatManager {
         } else if (mobResistMult != 1.0) {
             baseDamage = Math.max(1, (int)(baseDamage * mobResistMult));
         }
+
+        // Attack typing: a SECOND, independent multiplier from what the attack IS versus
+        // what the defender IS. Deliberately not folded into mobResistMult above - that
+        // one is keyed on DamageType, which also decides which affinity the weapon scales
+        // from, whereas a typing is a trait of the attack alone and changes nothing about
+        // levelling. A weapon can be Slashing (scaling the Slashing affinity) and Fire
+        // (landing hard on a grass defender) at the same time.
+        //
+        // Untyped weapon, unregistered type, or an untyped defender all return 1.0, so
+        // this is inert until an addon opts in - which is why it can sit in the hot path.
+        var typedWeapon = com.crackedgames.craftics.api.registry.WeaponRegistry.get(weaponStack.getItem());
+        String attackTypeId = typedWeapon != null ? typedWeapon.attackType() : null;
+        double typeMult = com.crackedgames.craftics.api.registry.AttackTypeRegistry
+            .multiplierFor(attackTypeId, target.getAiKey(), target.getEntityTypeId());
+        if (typeMult != 1.0) {
+            // A no-effect matchup floors at zero; everything else keeps the same
+            // "a hit that landed deals at least 1" rule the resistance math uses, so a
+            // heavily resisted attack still chips rather than silently doing nothing.
+            baseDamage = typeMult == 0.0 ? 0 : Math.max(1, (int) (baseDamage * typeMult));
+            String note = com.crackedgames.craftics.api.registry.AttackTypeRegistry
+                .describeMultiplier(typeMult);
+            if (note != null) sendMessage(note);
+        }
         // NOTE: the Marked damage bonus (2x / 1.5x boss) is applied centrally in
         // CombatEntity.takeDamage(), so every damage source to a marked target is
         // amplified -no per-site multiplier needed here.
@@ -7481,10 +7634,10 @@ public class CombatManager {
 
             String tripleMsg = fUsedTriple ? " §d§l\u2726 DOUBLE!" : "";
             String critMsg = fLuckCrit ? " §6§l\u2726 LUCKY CRIT!" : "";
-            String typeMsg = fDamageTypeBonus > 0 ? " " + fDamageType.color + "+" + fDamageTypeBonus + " " + fDamageType.displayName : "";
+            String typeMsg = fDamageTypeBonus > 0 ? " " + fDamageType.color + "+" + fDamageTypeBonus + " " + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(fDamageType) : "";
             String resistMsg = fMobResistMult == 0.0 ? " \u00a74IMMUNE!" :
-                fMobResistMult < 1.0 ? " \u00a7cResisted (" + fDamageType.displayName + ")" :
-                fMobResistMult > 1.0 ? " \u00a7aWeak! (" + fDamageType.displayName + ")" : "";
+                fMobResistMult < 1.0 ? " \u00a7cResisted (" + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(fDamageType) + ")" :
+                fMobResistMult > 1.0 ? " \u00a7aWeak! (" + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(fDamageType) + ")" : "";
             if (fSuppressDirectHit) {
                 // Empty-tile attack: no direct hit landed; the AoE messages
                 // below report what the shape caught.
@@ -12753,7 +12906,11 @@ public class CombatManager {
         boolean anyThreat = false;
         GridPos playerPos = arena != null ? arena.getPlayerGridPos() : null;
         for (CombatEntity e : enemies) {
-            if (!e.isAlive() || e.isAlly()) continue;
+            // Same room-clear rule as the victory checks. Scenery (graves, hives, banners) is not
+            // a "living enemy" for this purpose, and it must not read as a threat either: a grave
+            // resolves an AI whose isHostileThreat defaults to true, which would hold the idle
+            // counter at zero forever and strand the player in a room of harmless mobs.
+            if (!e.blocksRoomClear()) continue;
             anyEnemyAlive = true;
             EnemyAI ai = resolveAi(e);
             // No AI resolved → treat as a threat (fail safe; never auto-end on it).
@@ -12784,6 +12941,315 @@ public class CombatManager {
         sendMessage("§e§lNothing left to fight -moving on!");
         handleVictory();
         return true;
+    }
+
+    // ── Mid-fight save points (leave and rejoin) ─────────────────────────────
+
+    /**
+     * The record a snapshot is filed under and keyed by: the fight leader's. Their run cursor
+     * ({@code activeBiomeId} + {@code activeBiomeLevelIndex}) is the pair the level was built
+     * from, and the same pair a re-entry resolves before it asks for a snapshot back.
+     */
+    private CrafticsSavedData.PlayerData resumeCursorOwner(CrafticsSavedData data) {
+        java.util.UUID key = leaderUuid != null
+            ? leaderUuid
+            : (player != null ? player.getUuid() : null);
+        return key == null ? null : data.getPlayerData(key);
+    }
+
+    /**
+     * Write a save point for this level: the roster, everyone's health and effects, and where
+     * everything stood. Called once per player turn (see the edge trigger in {@link #tick}).
+     *
+     * <p>This is what stops a level from being healed out of. Leaving a fight used to discard it
+     * entirely, so a player could go home, top up, and get the level rebuilt at full health; now
+     * whichever way they leave, the last completed turn is already on disk.
+     *
+     * <p>Skipped for raid bosses and dev arenas: neither has a run cursor to file under, and
+     * neither is a level anyone can re-enter.
+     */
+    private void captureResumeSnapshot() {
+        if (!active || arena == null || player == null) return;
+        if (raidBossContext != null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        CrafticsSavedData.PlayerData lead = resumeCursorOwner(data);
+        if (lead == null || !lead.isInBiomeRun()) return;
+
+        List<ResumeSnapshot.PlayerState> playerStates = new ArrayList<>();
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p == null || p.isRemoved()) continue;
+            // A fallen member is revived at the next level regardless, so recording them at 0 HP
+            // would only produce a record the restore has to throw away.
+            if (deadPartyMembers.contains(p.getUuid())) continue;
+            GridPos g = gridPosOf(p);
+            List<ResumeSnapshot.EffectState> fx = new ArrayList<>();
+            CombatEffects pfx = playerCombatEffects.get(p.getUuid());
+            if (pfx != null) {
+                for (var entry : pfx.getAll().entrySet()) {
+                    CombatEffects.ActiveEffect eff = entry.getValue();
+                    // Frozen effects are hub-applied ones whose clock has not started. The next
+                    // combat start re-freezes those from the player's own buffs, so carrying them
+                    // through a resume would double them up.
+                    if (eff == null || eff.isFrozen()) continue;
+                    fx.add(new ResumeSnapshot.EffectState(
+                        entry.getKey().name(), eff.turnsRemaining, eff.amplifier));
+                }
+            }
+            playerStates.add(new ResumeSnapshot.PlayerState(p.getUuid(), p.getHealth(),
+                p.getHungerManager().getFoodLevel(), p.getHungerManager().getSaturationLevel(),
+                g.x(), g.z(), fx));
+        }
+
+        List<ResumeSnapshot.EnemyState> roster = new ArrayList<>();
+        if (enemies != null) {
+            for (CombatEntity e : enemies) {
+                if (e == null || !e.isAlive()) continue;
+                roster.add(ResumeSnapshot.capture(e));
+            }
+        }
+
+        ResumeSnapshot.Snapshot snap = new ResumeSnapshot.Snapshot(System.currentTimeMillis(),
+            lead.activeBiomeId, lead.activeBiomeLevelIndex, turnNumber, playerStates, roster);
+        // Filed on every participant's OWN record, not just the leader's: a member who rejoins
+        // alone still has the state, and nothing has to resolve a host who may be offline.
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p == null) continue;
+            CrafticsSavedData.PlayerData pd = data.getPlayerData(p.getUuid());
+            pd.resumeSnapshots = ResumeSnapshot.push(pd.resumeSnapshots, snap);
+        }
+        data.markDirty();
+    }
+
+    /**
+     * Resume this level from its newest save point, if one is still good for it. Call right after
+     * the party is in the arena and {@link #startCombat} has run; a no-op when there is nothing to
+     * resume, which is every first entry into a level.
+     *
+     * <p>A save point older than {@link ResumeSnapshot#MAX_AGE_MILLIS} is not used: the player gets
+     * the level they were on, rebuilt fresh, exactly as before this existed.
+     */
+    public void tryRestoreResumeSnapshot() {
+        if (!active || arena == null || player == null) return;
+        if (raidBossContext != null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        CrafticsSavedData.PlayerData lead = resumeCursorOwner(data);
+        if (lead == null || !lead.isInBiomeRun()) return;
+        ResumeSnapshot.Snapshot snap = ResumeSnapshot.newestFor(lead.resumeSnapshots,
+            lead.activeBiomeId, lead.activeBiomeLevelIndex, System.currentTimeMillis());
+        if (snap == null) return;
+        applyResumeSnapshot(snap);
+    }
+
+    /**
+     * Put a save point back on the field.
+     *
+     * <p>The roster is reconciled rather than rebuilt wholesale, because what spawned an entity
+     * decides how much of it a record can recreate:
+     * <ul>
+     *   <li><b>Bosses and allies</b> are matched to a record and have their state written onto the
+     *       entity the fresh build already made. Their wiring is not in the record and cannot be: a
+     *       boss carries its AI key, phase setup and display name, and a pet carries the owner link
+     *       that decides whether the player still has it after the level.</li>
+     *   <li><b>Plain hostiles</b> are cleared out and respawned from records, which is what carries
+     *       mid-fight arrivals (raised zombies, split slimes, hive bees) back onto the field.</li>
+     *   <li><b>Block-backed props</b> (graves, hives, banners, egg sacs) are left exactly as the
+     *       fresh build placed them. They have no mob to respawn, and their world block and tile
+     *       registration belong to the mechanic that placed them.</li>
+     * </ul>
+     *
+     * <p>Not restored, by design: boss phase state, AI cooldowns, tile state (fire, ice, webs,
+     * rubble) and mid-level event gates. {@code turnNumber} does come back, so everything keyed off
+     * the turn counter (sudden death, the every-Nth-round hooks) resumes rather than restarts.
+     */
+    private void applyResumeSnapshot(ResumeSnapshot.Snapshot snap) {
+        List<ResumeSnapshot.EnemyState> pending = new ArrayList<>();
+        for (ResumeSnapshot.EnemyState rec : snap.enemies()) {
+            if (rec.hasMob()) pending.add(rec);
+        }
+
+        for (CombatEntity e : new ArrayList<>(enemies)) {
+            if (e == null || !e.isAlive()) continue;
+            if (e.getMobEntity() == null) continue; // prop: the fresh build owns it
+            // A linked entity counts as identity too: a Creaking only dies when its heart does,
+            // and the link is minted by the level build. Respawning one from a record would put an
+            // unkillable mob on the field and soft-lock the room.
+            boolean identityMatters = e.isBoss() || e.isAlly()
+                || e.getLinkedHeartId() >= 0 || e.getLinkedCreakingId() >= 0;
+            ResumeSnapshot.EnemyState match = identityMatters ? takeResumeMatch(pending, e) : null;
+            if (match != null) {
+                restoreStateOnto(e, match);
+            } else {
+                // Either it was already dead when the player left, or it is a plain hostile that
+                // the record loop below puts back with the HP and position it actually had.
+                discardRestoredEntity(e);
+            }
+        }
+
+        int respawned = 0;
+        for (ResumeSnapshot.EnemyState rec : pending) {
+            // A record left over here found no counterpart in the fresh build. For most mobs that
+            // is exactly the case worth rebuilding (a mid-fight arrival), but not for these two:
+            //  - a boss is more than its stats. Its AI key, phase setup, footprint and display
+            //    name are established by the spawn path, and a bare mob wearing a boss's HP would
+            //    stand there doing nothing.
+            //  - a Creaking dies only with its heart, and that link is minted by the level build.
+            //    Spawning one from a record puts an unkillable mob in the room.
+            // Dropping the record leaves the fight slightly easier, which beats either failure.
+            if (rec.boss() || !isRestoreRespawnable(rec.typeId())) {
+                CrafticsMod.LOGGER.info(
+                    "Resume: not rebuilding '{}' from a save point (boss or level-wired entity)",
+                    rec.typeId());
+                continue;
+            }
+            // Footprint is deliberately left as the spawn path resolves it: placeEntity has
+            // already registered tiles for that shape, and widening it afterwards would leave the
+            // grid and the entity disagreeing about which tiles are occupied.
+            CombatEntity ce = spawnRaidReinforcement(rec.typeId(), rec.gridPos(),
+                Math.max(1, rec.maxHp()), rec.atk(), rec.def(), rec.range());
+            if (ce == null) continue; // nowhere it fits any more; the room is that much easier
+            if (rec.ally()) {
+                ce.setAlly(true);
+                if (rec.has('t')) ce.setTemporaryAlly(true);
+                if (!rec.ownerUuid().isEmpty()) {
+                    try {
+                        ce.setOwnerUuid(java.util.UUID.fromString(rec.ownerUuid()));
+                    } catch (IllegalArgumentException ignored) {
+                        // The owner link is a nicety here; the ally still fights for the party.
+                    }
+                }
+            }
+            if (rec.has('g')) ce.setBackgroundBoss(true);
+            ce.restoreHp(rec.curHp());
+            ResumeSnapshot.applyStatus(ce, rec.status());
+            respawned++;
+        }
+
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p == null || p.isRemoved()) continue;
+            ResumeSnapshot.PlayerState st = snap.playerState(p.getUuid());
+            if (st == null) continue;
+            if (st.health() > 0) {
+                p.setHealth(Math.min(st.health(), p.getMaxHealth()));
+            }
+            p.getHungerManager().setFoodLevel(st.food());
+            p.getHungerManager().setSaturationLevel(st.saturation());
+            CombatEffects fx = playerCombatEffects.computeIfAbsent(
+                p.getUuid(), k -> new CombatEffects());
+            fx.clear();
+            for (ResumeSnapshot.EffectState eff : st.effects()) {
+                try {
+                    fx.addEffect(CombatEffects.EffectType.valueOf(eff.type()),
+                        eff.turns(), eff.amp());
+                } catch (IllegalArgumentException ignored) {
+                    // An effect this build no longer has. Dropping it beats refusing the resume.
+                }
+            }
+            GridPos tile = st.gridPos();
+            if (arena.isInBounds(tile) && arena.getOccupant(tile) == null) {
+                GridTile gt = arena.getTile(tile);
+                if (gt != null && gt.isWalkable()) {
+                    BlockPos bp = arena.gridToBlockPos(tile);
+                    p.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                }
+            }
+        }
+        arena.setPlayerGridPos(gridPosOf(player));
+
+        // Resuming mid-fight means resuming the turn clock with it.
+        this.turnNumber = Math.max(1, snap.turnNumber());
+        // And this turn is already saved: without it the tick loop would immediately write the
+        // state it just restored back over the older of the two save points.
+        this.lastSnapshotTurn = this.turnNumber;
+
+        sendMessage("§e↺ Picking up where you left off: §fturn " + turnNumber
+            + "§e, " + countLivingHostiles() + " enemies still standing.");
+        CrafticsMod.LOGGER.info(
+            "Resumed {} level {} for {} at turn {} ({} recorded combatants, {} respawned)",
+            snap.biomeId(), snap.levelIndex() + 1, player.getName().getString(),
+            snap.turnNumber(), snap.enemies().size(), respawned);
+        sendSync();
+        refreshHighlights();
+    }
+
+    /**
+     * Whether a save point may respawn this entity type at all. False for anything whose lethality
+     * or behaviour is wired by the level build rather than carried in its stats: a Creaking is
+     * killable only through its heart, so one spawned without that link never dies.
+     */
+    private static boolean isRestoreRespawnable(String typeId) {
+        return !"minecraft:creaking".equals(typeId);
+    }
+
+    /** Living combatants that still have to be dealt with. Message text only. */
+    private int countLivingHostiles() {
+        int n = 0;
+        if (enemies != null) {
+            for (CombatEntity e : enemies) {
+                if (e != null && e.blocksRoomClear()) n++;
+            }
+        }
+        return n;
+    }
+
+    /**
+     * Pull the record that describes {@code e} out of {@code pending}, or null if none does.
+     * Matched on entity type plus side, because a stable per-entity id across a rebuild does not
+     * exist (ids are minted by the spawn) and two zombies of the same type are interchangeable for
+     * this purpose anyway.
+     */
+    private ResumeSnapshot.EnemyState takeResumeMatch(List<ResumeSnapshot.EnemyState> pending,
+                                                      CombatEntity e) {
+        for (int i = 0; i < pending.size(); i++) {
+            ResumeSnapshot.EnemyState rec = pending.get(i);
+            if (!rec.typeId().equals(e.getEntityTypeId())) continue;
+            if (rec.ally() != e.isAlly()) continue;
+            if (rec.boss() != e.isBoss()) continue;
+            return pending.remove(i);
+        }
+        return null;
+    }
+
+    /** Write a record's health, status and tile onto an entity the fresh build already made. */
+    private void restoreStateOnto(CombatEntity e, ResumeSnapshot.EnemyState rec) {
+        // Max first, then current: a boss whose max HP moved mid-fight (stack layers, phase
+        // changes) would otherwise clamp the restored current HP to the stale maximum.
+        if (rec.maxHp() > 0) e.setMaxHp(rec.maxHp());
+        e.restoreHp(rec.curHp());
+        ResumeSnapshot.applyStatus(e, rec.status());
+        GridPos tile = rec.gridPos();
+        if (arena.isInBounds(tile) && !tile.equals(e.getGridPos())) {
+            // A refused move leaves it where it spawned, which is a valid tile by construction.
+            // Forcing it is how an entity ends up occupying no tiles at all.
+            arena.moveEntity(e, tile);
+        }
+    }
+
+    /** Take an entity off the field silently: no death, no loot, no XP, no kill credit. */
+    private void discardRestoredEntity(CombatEntity e) {
+        MobEntity mob = e.getMobEntity();
+        if (mob != null) {
+            clearStackPassengers(mob);
+            if (!mob.isRemoved()) mob.discard();
+        }
+        arena.removeEntity(e);
+        enemies.remove(e);
+    }
+
+    /**
+     * Drop this level's save points. Called when the level stops being resumable: it was won, or
+     * the run it belonged to ended in defeat. Without this a player who lost could walk back into
+     * a level they had already left behind and resume a fight that is over.
+     */
+    private void clearResumeSnapshots() {
+        if (player == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        List<java.util.UUID> ids = new ArrayList<>();
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p != null) ids.add(p.getUuid());
+        }
+        CrafticsSavedData.get(world).clearResumeSnapshots(ids);
     }
 
     private void startEnemyTurn() {
@@ -13167,6 +13633,15 @@ public class CombatManager {
         tickCounter++;
 
         tickIntro();
+
+        // Mid-fight save point, once per player turn. Edge-triggered on the turn counter rather
+        // than hooked into the ~10 places that set phase = PLAYER_TURN: every one of them would
+        // have to remember to call this, and the one that forgot would be the level that could
+        // still be healed out of. See ResumeSnapshot.
+        if (phase == CombatPhase.PLAYER_TURN && turnNumber != lastSnapshotTurn) {
+            lastSnapshotTurn = turnNumber;
+            captureResumeSnapshot();
+        }
 
         // AFK turn watchdog (CrafticsConfig.turnTimerEnabled, off by default): if the current
         // player does nothing for turnTimerSeconds, auto-end their turn so an AFK player can't
@@ -14731,19 +15206,16 @@ public class CombatManager {
 
             // Same room-clear rule as every other victory path: scenery left standing is not a
             // reason to keep the fight open, or this auto-end would never tick with a grave up.
-            boolean hasHostile = anyEnemyBlockingVictory();
-            if (!hasHostile) {
-                peacefulTurnCount++;
-                int remaining = 3 - peacefulTurnCount;
-                if (peacefulTurnCount >= 3) {
-                    sendMessage("§a§lNo enemies remain! Combat complete.");
-                    handleVictory();
-                    return;
-                } else {
-                    sendMessage("§a☮ No hostile enemies on the field. Auto-ending in §e" + remaining + "§a turn" + (remaining != 1 ? "s" : "") + "...");
-                }
-            } else {
-                peacefulTurnCount = 0;
+            //
+            // Ends the level on the spot rather than counting off "auto-ending in N turns". The
+            // countdown was already a lie: tickEnemyTurn runs the identical check one tick later
+            // and wins the fight there, so the only thing the counter produced was a promise of
+            // three more turns immediately followed by VICTORY. Nothing the player can still do
+            // in a room holding only graves, hives and other scenery is worth waiting for.
+            if (!anyEnemyBlockingVictory()) {
+                sendMessage("§a§lNo enemies remain! Combat complete.");
+                handleVictory();
+                return;
             }
 
             endTurnHintSent = false;
@@ -15087,6 +15559,10 @@ public class CombatManager {
             // hiding in it, so stealth buys time rather than permanent safety.
             pendingAction = searchForHiddenTarget(currentEnemy);
         } else {
+            // Cleared before every decision, not after every hit. A per-action type override
+            // is only meaningful for the action the AI is about to name, and leaving a stale
+            // one set would silently retype every later attack that never asked for it.
+            currentEnemy.setPendingAttackType(null);
             pendingAction = ai.decideAction(currentEnemy, arena, aiTargetPos);
             // Mob-vs-mob predators: downgrade to Idle if the prey is on a stealth
             // tile and we're not adjacent to it. Uses the returned action's target.
@@ -15529,7 +16005,8 @@ public class CombatManager {
                 // Mob attacks another mob (predator hunting prey)
                 CombatEntity target = findEnemyById(am.targetEntityId());
                 if (target != null && target.isAlive()) {
-                    int dealt = target.takeDamage(am.damage());
+                    int typed = applyTypeEffectiveness(am.damage(), currentEnemy, target);
+                    int dealt = target.takeDamage(typed);
                     sendMessage("§6" + currentEnemy.getDisplayName() + " attacks " + target.getDisplayName() + " for " + dealt + "!");
                     checkAndHandleDeath(target);
                 } else {
@@ -15917,11 +16394,97 @@ public class CombatManager {
                 }
             }
 
+            case EnemyAction.CustomAction ca -> {
+                // Addon-defined action: hand resolution straight back to whoever
+                // registered the id. See CustomActionHandler for why this is one member of
+                // the sealed set rather than an unsealed interface.
+                //
+                // Resolved synchronously and the turn ends immediately after, the same as
+                // Attack. A handler that wants a wind-up wraps itself in a BossAbility
+                // instead, which gets the warning tiles and the telegraph for free and
+                // arrives here a turn later.
+                resolveCustomAction(ca);
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay());
+            }
+
             default -> {
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
             }
         }
+    }
+
+
+    /**
+     * Run an addon-registered custom action, giving its handler a context wired into the
+     * real combat pipeline rather than a set of raw fields.
+     *
+     * <p>The context routes damage through {@code damageEnemy}-equivalent handling and
+     * movement through the same grid rules built-in knockback uses, so an addon action
+     * cannot accidentally skip resistances, attack typings, shields, death processing or
+     * the pit-fall check. That is the whole point of handing over a context instead of the
+     * arena: an addon that pokes HP directly would silently bypass half the combat rules,
+     * and the bug would look like a balance problem rather than a missing call.
+     */
+    private void resolveCustomAction(EnemyAction.CustomAction ca) {
+        final CombatEntity actor = currentEnemy;
+        if (actor == null) return;
+        final GridArena arenaRef = arena;
+        final ServerWorld worldRef = (player != null && player.getEntityWorld() instanceof ServerWorld sw)
+            ? sw : null;
+        if (arenaRef == null || worldRef == null) return;
+
+        com.crackedgames.craftics.api.CustomActionHandler.Context ctx =
+            new com.crackedgames.craftics.api.CustomActionHandler.Context() {
+                @Override public CombatEntity self() { return actor; }
+                @Override public GridArena arena() { return arenaRef; }
+                @Override public ServerWorld world() { return worldRef; }
+                @Override public GridPos playerPos() { return arenaRef.getPlayerGridPos(); }
+                @Override public java.util.List<GridPos> tiles() {
+                    return ca.tiles() == null ? java.util.List.of() : ca.tiles();
+                }
+                @Override public net.minecraft.nbt.NbtCompound params() {
+                    return ca.params() == null ? new net.minecraft.nbt.NbtCompound() : ca.params();
+                }
+                @Override public int damage() { return ca.damage(); }
+
+                @Override public void damage(CombatEntity target, int amount) {
+                    if (target == null || amount <= 0) return;
+                    if (target.isAlly() || target.getEntityId() == actor.getEntityId()) {
+                        // Enemy-on-ally and enemy-on-self both already have a path that
+                        // handles death, ownership and the ally roster.
+                        target.takeDamage(amount);
+                        checkAndHandleDeath(target);
+                        return;
+                    }
+                    // Anything else an enemy action can hit is the player.
+                    damagePlayer(amount, actor);
+                }
+
+                @Override public boolean moveSelfTo(GridPos dest) {
+                    if (dest == null || !arenaRef.isInBounds(dest)) return false;
+                    if (arenaRef.isOccupied(dest)) return false;
+                    com.crackedgames.craftics.core.GridTile t = arenaRef.getTile(dest);
+                    if (t == null) return false;
+                    boolean voidDest = t.getType() == TileType.VOID && !actor.isHazardImmune();
+                    if (!voidDest && !t.isWalkable()) return false;
+                    if (!arenaRef.moveEntity(actor, dest)) return false;
+                    if (actor.getMobEntity() != null) {
+                        BlockPos bp = arenaRef.gridToBlockPos(dest);
+                        actor.getMobEntity().requestTeleport(bp.getX() + 0.5,
+                            arenaRef.getEntityY(dest, actor.isFlying()), bp.getZ() + 0.5);
+                    }
+                    if (voidDest) checkEnemyFallDeath(actor);
+                    return true;
+                }
+
+                @Override public void message(String text) {
+                    if (text != null && !text.isEmpty()) sendMessage(text);
+                }
+            };
+
+        com.crackedgames.craftics.api.registry.CustomActionRegistry.resolve(ca.id(), ctx);
     }
 
     /**
@@ -15951,6 +16514,7 @@ public class CombatManager {
         boolean scalesWithGear = !ally.isSeekerProjectile()
             && (entry == null || entry.scalesWithOwnerGear());
 
+        ally.setPendingAttackType(null);   // see the note at the enemy decision point
         EnemyAction action = ai.decideAction(ally, arena, enemies);
 
         int doneDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
@@ -15998,6 +16562,10 @@ public class CombatManager {
                 }
                 totalDamage += petBonus;
             }
+            // Type effectiveness for the ally's own attack, applied once here where the
+            // figure is finalised rather than where it lands, because the hit resolves a
+            // tick or more later via the queued action.
+            totalDamage = applyTypeEffectiveness(totalDamage, ally, target);
             pendingAllyAttackTarget = target;
             pendingAction = new EnemyAction.MoveAndAttackMob(
                 attack.path(), target.getEntityId(), totalDamage);
@@ -23020,9 +23588,6 @@ public class CombatManager {
         // Inert but deliberately NOT scenery: egg sacs are must-kill for room-clear, which is why
         // initEggSacs gates on reachability. This only silences the per-turn "waits..." spam.
         eggSac.setInertObject(true);
-        // Inert but deliberately NOT scenery: egg sacs are must-kill for room-clear, which is why
-        // initEggSacs gates on reachability. This only silences the per-turn "waits..." spam.
-        eggSac.setInertObject(true);
 
         enemies.add(eggSac);
         arena.placeEntity(eggSac);
@@ -23070,14 +23635,9 @@ public class CombatManager {
         obj.setPassableForBoss(true);
         obj.setAiOverrideKey(typeId);
         obj.setImmovable(true);
-        // Graves and war banners are optional counterplay: breaking them weakens the boss, but the
-        // room must clear with them still standing. Every caller of this helper is one of those two,
-        // and the must-kill egg sac is built elsewhere and correctly does not pass through here.
-        obj.setScenery(true);
-        obj.setInertObject(true);
-        // Graves and war banners are optional counterplay: breaking them weakens the boss, but the
-        // room must clear with them still standing. Every caller of this helper is one of those two,
-        // and the must-kill egg sac is built elsewhere and correctly does not pass through here.
+        // Graves, hives, war banners and props are optional counterplay: breaking them weakens the
+        // fight, but the room must be able to clear with them still standing. The must-kill egg sac
+        // is built elsewhere and correctly does not pass through here.
         obj.setScenery(true);
         obj.setInertObject(true);
 
@@ -26262,6 +26822,10 @@ public class CombatManager {
 
     private void handleGameOver() {
         phase = CombatPhase.GAME_OVER;
+        // Defeat ends the run, so the fight that was lost must not be resumable. This is also the
+        // half that keeps the feature from becoming a second life: losing costs the run, not a
+        // rewind to the turn before the killing blow.
+        clearResumeSnapshots();
         lastXpLevelsLost.clear();
         // Release the death-animation invulnerability (see startPlayerDeathAnimation) now that
         // the fight is resolving - leaving it set would follow the player out of the arena.
@@ -26961,6 +27525,9 @@ public class CombatManager {
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
         }
         phase = CombatPhase.LEVEL_COMPLETE;
+        // The level is over, so its save points are too: leaving them would let a player walk back
+        // into a level they already cleared and resume a fight that no longer exists.
+        clearResumeSnapshots();
         sendMessage("§a§l*** VICTORY! ***");
         fireEffectHook(h -> h.onCombatEnd(effectContext));
 
@@ -30859,6 +31426,19 @@ public class CombatManager {
         refreshHighlights();
     }
 
+    /**
+     * Re-send the combat HUD after something outside the fight changed this player's stats: a
+     * mid-fight respec (H / J). No-op when the fight is not running.
+     *
+     * <p>Only the display and the HP pool move. The current turn's AP and move points are
+     * deliberately left alone: they were dealt at the start of the turn, and re-seeding them here
+     * would hand a player a second helping of both every time they opened the respec screen.
+     */
+    public void syncAfterStatsChanged() {
+        if (!active) return;
+        sendSync();
+    }
+
     /** Apply the combat HP bonus (Vitality stat + Host trim) to a party member.
      *  Mirrors the per-leader application inside {@link #startCombat} so non-
      *  leader party members aren't stuck at base HP. Preserves their HP ratio
@@ -32825,7 +33405,13 @@ public class CombatManager {
                     if (petOwner == null) petOwner = player;
                     List<HubPetCollector.PetData> rescued = new ArrayList<>();
                     for (CombatEntity e : enemies) {
-                        if (e.isAlive() && e.isAlly()) {
+                        // Temporary allies (spawn-egg summons, provider-supplied party
+                        // creatures) are excluded here for the same reason the normal exit
+                        // path excludes them: they never came from the hub, so "rescuing" one
+                        // into it spawns a creature that should not exist there. This branch
+                        // used to rescue every living ally, which quietly materialised summons
+                        // into the hub on any abnormal exit.
+                        if (e.isAlive() && e.isAlly() && !e.isTemporaryAlly()) {
                             rescued.add(HubPetCollector.PetData.fromCombatEntity(e, e.getOriginalHubNbt()));
                         }
                     }
@@ -33525,7 +34111,23 @@ public class CombatManager {
             ce.setOwnerUuid(snapshot.playerUuid());
             ce.setMobEntity(mob);
             ce.setOriginalHubNbt(snapshot.fullEntityNbt());
-            ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(snapshot.entityTypeId()));
+            // Provider-supplied allies fight this battle only. The flag is what keeps them
+            // out of the hub afterwards: they were never a hub entity, so materialising one
+            // would hand the player a second copy of a creature its own mod still tracks.
+            if (snapshot.temporary()) ce.setTemporaryAlly(true);
+            // Without this a provider that fields many creatures under one entity type gets a
+            // party where every member derives the same name from that type.
+            if (snapshot.displayName() != null) ce.setNameOverride(snapshot.displayName());
+            // An ally may declare an AI key distinct from its entity type, which is what
+            // lets one entity type field many different creatures.
+            String allyAiKey = snapshot.aiKey() != null ? snapshot.aiKey() : snapshot.entityTypeId();
+            if (snapshot.aiKey() != null) ce.setAiOverrideKey(snapshot.aiKey());
+            // Spawn customisation, same order and reasoning as the enemy path: NBT first so a
+            // code hook sees the tagged entity. This is the path a data-driven party arrives
+            // through, so without it a provider ally would spawn blank.
+            applySpawnNbt(mob, snapshot.spawnNbt());
+            com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry.apply(world, mob, ce);
+            ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(allyAiKey));
             enemies.add(ce);
             arena.placeEntity(ce);
 
@@ -34421,6 +35023,14 @@ public class CombatManager {
         ce.setTemporaryAlly(true); // spawn-egg summons fight this battle only -never returned to hub
         ce.setOwnerUuid(player.getUuid());
         ce.setMobEntity(mob);
+        // Allies get the same spawn customisation enemies do - an ally whose identity is
+        // not its entity type has to be able to say so too. Keyed off the mob's own world
+        // rather than a local, since the two summon paths reach here with different scopes.
+        var allyEntry = com.crackedgames.craftics.api.registry.AllyRegistry.getOrNull(typeId);
+        applySpawnNbt(mob, allyEntry != null ? allyEntry.spawnNbt() : null);
+        if (mob.getEntityWorld() instanceof ServerWorld allyWorld) {
+            com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry.apply(allyWorld, mob, ce);
+        }
         ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(typeId));
         enemies.add(ce);
         arena.placeEntity(ce);
@@ -34489,6 +35099,14 @@ public class CombatManager {
         ce.setTemporaryAlly(true);
         ce.setOwnerUuid(ownerUuid);
         ce.setMobEntity(mob);
+        // Allies get the same spawn customisation enemies do - an ally whose identity is
+        // not its entity type has to be able to say so too. Keyed off the mob's own world
+        // rather than a local, since the two summon paths reach here with different scopes.
+        var allyEntry = com.crackedgames.craftics.api.registry.AllyRegistry.getOrNull(typeId);
+        applySpawnNbt(mob, allyEntry != null ? allyEntry.spawnNbt() : null);
+        if (mob.getEntityWorld() instanceof ServerWorld allyWorld) {
+            com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry.apply(allyWorld, mob, ce);
+        }
         ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(typeId));
         if (lifespanRounds > 0) ce.setSummonLifespanRounds(lifespanRounds);
         enemies.add(ce);

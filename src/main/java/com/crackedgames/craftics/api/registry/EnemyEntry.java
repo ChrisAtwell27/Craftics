@@ -36,8 +36,17 @@ public record EnemyEntry(
     int attack,
     int defense,
     int range,
-    int speed
+    int speed,
+    /** Entity NBT merged onto the mob at spawn, or null. See SpawnCustomizer for when
+     *  to use this versus a code hook. */
+    @org.jetbrains.annotations.Nullable net.minecraft.nbt.NbtCompound spawnNbt
 ) {
+    /** Entry carrying no spawn NBT. */
+    public EnemyEntry(String id, String entityTypeId, String aiKey,
+                      int hp, int attack, int defense, int range, int speed) {
+        this(id, entityTypeId, aiKey, hp, attack, defense, range, speed, null);
+    }
+
     public static Builder builder(String id, String entityTypeId) {
         return new Builder(id, entityTypeId);
     }
@@ -52,6 +61,7 @@ public record EnemyEntry(
         private int defense = 0;
         private int range = 1;
         private int speed = 0;
+        private net.minecraft.nbt.NbtCompound spawnNbt = null;
 
         public Builder(String id, String entityTypeId) {
             this.id = id;
@@ -98,6 +108,21 @@ public record EnemyEntry(
             return this;
         }
 
+        /**
+         * Entity NBT merged onto the mob the moment it spawns, before its first turn.
+         *
+         * <p>For anything whose identity is not its entity type: a variant, a mob that
+         * should arrive holding something, or a mod that ships one entity type for many
+         * creatures and stores which one in its tags. What NBT cannot express - an entity
+         * that must be initialised through its own mod's API - is what
+         * {@link com.crackedgames.craftics.api.SpawnCustomizer} is for, and both run when
+         * both are present.
+         */
+        public Builder spawnNbt(net.minecraft.nbt.NbtCompound nbt) {
+            this.spawnNbt = nbt;
+            return this;
+        }
+
         public EnemyEntry build() {
             if (id == null || id.isBlank()) {
                 throw new IllegalStateException("EnemyEntry requires a non-blank id");
@@ -108,7 +133,7 @@ public record EnemyEntry(
             }
             return new EnemyEntry(id, entityTypeId,
                 aiKey != null ? aiKey : entityTypeId,
-                hp, attack, defense, range, speed);
+                hp, attack, defense, range, speed, spawnNbt);
         }
     }
 }

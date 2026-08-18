@@ -343,6 +343,12 @@ public final class RunInviteManager {
         } else {
             pd.startBiomeRun(biome.biomeId);
             pd.discoverBiome(biome.biomeId);
+            // A brand new run starts at level 1 with nothing carried in. Any mid-fight save point
+            // still on file is from a run that was abandoned, and its biome/level key would match
+            // this one, so it has to go or the first level opens mid-fight.
+            List<UUID> starting = new java.util.ArrayList<>(participants);
+            starting.add(starter.getUuid());
+            data.clearResumeSnapshots(starting);
             data.markDirty();
             levelIndex = 0;
         }
@@ -428,6 +434,11 @@ public final class RunInviteManager {
         }
 
         hostCm.finishPartyJoin();
+
+        // Mid-fight resume, last so it runs with the whole party attached and positioned: this is
+        // the entry path a player comes back through after leaving a level, and a no-op on every
+        // first entry. See ResumeSnapshot for what comes back and what rebuilds clean.
+        hostCm.tryRestoreResumeSnapshot();
         CrafticsMod.LOGGER.info("{} started {} (biome {}, level {}, {} player(s))",
             starter.getName().getString(), levelDef.getName(), biome.biomeId,
             levelIndex + 1, participants.size());

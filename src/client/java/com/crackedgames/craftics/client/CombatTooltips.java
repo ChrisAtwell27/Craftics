@@ -289,7 +289,7 @@ public class CombatTooltips implements ItemTooltipCallback {
                     for (int i = 0; i < types.length; i++) {
                         int v = bonuses[i];
                         if (v > 0) {
-                            lines.add(Text.literal("\u00a79  " + types[i].displayName + ": +"
+                            lines.add(Text.literal("\u00a79  " + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(types[i]) + ": +"
                                 + com.crackedgames.craftics.combat.DamageType.formatAffinityHalfPoints(v)
                                 + " per piece"));
                         }
@@ -327,7 +327,7 @@ public class CombatTooltips implements ItemTooltipCallback {
                             ? "\u00a78  Echo: carry a weapon to focus the bonus"
                             : "\u00a7b  Echo: +" + com.crackedgames.craftics.compat.deeperanddarker
                                 .WardenSetEffects.DOMINANT_AFFINITY_BONUS + " "
-                                + dominant.color + dominant.displayName));
+                                + dominant.color + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(dominant)));
                     }
 
                     // Hybrid set \u2014 shown when the client wears a qualifying two-material
@@ -835,12 +835,12 @@ public class CombatTooltips implements ItemTooltipCallback {
         }
         sb.append(" \u00a77| ");
         if (ap > 1) sb.append("\u00a7c");
-        sb.append(ap).append(" AP \u00a77| ").append(type.color).append(type.displayName);
+        sb.append(ap).append(" AP \u00a77| ").append(type.color).append(com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(type));
         // Hybrid weapons scale off a second affinity at half weight; a tooltip that named
         // only the first would send the player building the wrong armor.
         if (entry.secondaryDamageType() != null) {
             sb.append("\u00a77 + ").append(entry.secondaryDamageType().color)
-                .append(entry.secondaryDamageType().displayName)
+                .append(com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(entry.secondaryDamageType()))
                 .append("\n\u00a78Hybrid: the second affinity scales at half weight");
         }
         if (breakChance > 0) {

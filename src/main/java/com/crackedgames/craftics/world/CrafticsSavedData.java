@@ -82,6 +82,29 @@ public class CrafticsSavedData extends PersistentState {
     /** Shared X column + build Y for the fixed event/scene rooms. */
     private static final int ROOM_X = 1500;
     private static final int ROOM_Y = 100;
+    /**
+     * How far either side of a slot origin an arena's blocks can reach.
+     *
+     * <p>Not the same as the arena's grid. {@code ArenaBuilder.loadAndPlaceSchem} CENTRES the
+     * schematic on the level definition's grid ({@code ox + w/2 - schemWidth/2}), so an 8x8 event
+     * definition holding a 90-wide biome schematic paints from ~41 blocks BEFORE the origin to ~45
+     * after it, plus its own 3-block clear pad. Anything sharing a slot with that has to be at
+     * least twice this far away, and this is also the box
+     * {@code ArenaBuilder.clearArenaSlot} scrubs before reusing a slot.
+     */
+    public static final int ARENA_SLOT_CLEAR_RADIUS = 64;
+    /**
+     * The two event ARENA slots sit past every room in the column, spaced {@code 400} apart.
+     *
+     * <p>They used to be at Z 700 and Z 800, inside the 100-block room spacing, and that is a
+     * mismatch: the rooms are mod-built and small, while these two hold real arenas built from
+     * biome schematics (an "Ambush!" reuses the CURRENT biome's arena schematic, which is how a
+     * jungle arena ended up painted across the trial chamber slot and showing through the next
+     * trial chamber built there). 100 blocks is not enough for that, and it left the village scene
+     * at Z 900 one oversized schematic away from being overwritten.
+     */
+    private static final int EVENT_ARENA_Z = 1600;
+    private static final int TRIAL_ARENA_Z = 2000;
 
     private final Map<UUID, PlayerData> players = new HashMap<>();
     private final Map<UUID, Party> parties = new HashMap<>();
@@ -261,6 +284,18 @@ public class CrafticsSavedData extends PersistentState {
          */
         public String parkedNormalBiomeId = "";
         public int parkedNormalLevelIndex = 0;
+        /**
+         * Mid-fight save points for the level this player is on, newest last. See
+         * {@link com.crackedgames.craftics.combat.ResumeSnapshot} for the format and the two rules
+         * that bound it (at most two kept, none resumed after 24 hours).
+         *
+         * <p>Stored per player rather than once per run so a rejoin can restore without the rest
+         * of the party being present, and stored as one string because PlayerData is read back
+         * through two version-specific fromNbt bodies - a nested compound would have to be written
+         * twice and kept in step.
+         */
+        public String resumeSnapshots = "";
+
         /** Last known player name, for offline leaderboard rows. Refreshed on join. */
         public String lastKnownName = "";
 
@@ -589,6 +624,7 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putInt("infiniteParkedLevelIndex", infiniteParkedLevelIndex);
             nbt.putString("parkedNormalBiomeId", parkedNormalBiomeId);
             nbt.putInt("parkedNormalLevelIndex", parkedNormalLevelIndex);
+            nbt.putString("resumeSnapshots", resumeSnapshots);
             nbt.putString("lastKnownName", lastKnownName);
             return nbt;
         }
@@ -710,6 +746,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.infiniteParkedLevelIndex = nbt.contains("infiniteParkedLevelIndex") ? nbt.getInt("infiniteParkedLevelIndex") : 0;
             pd.parkedNormalBiomeId = nbt.contains("parkedNormalBiomeId") ? nbt.getString("parkedNormalBiomeId") : "";
             pd.parkedNormalLevelIndex = nbt.contains("parkedNormalLevelIndex") ? nbt.getInt("parkedNormalLevelIndex") : 0;
+            pd.resumeSnapshots = nbt.contains("resumeSnapshots") ? nbt.getString("resumeSnapshots") : "";
             pd.lastKnownName = nbt.contains("lastKnownName") ? nbt.getString("lastKnownName") : "";
             return pd;
         }
@@ -809,6 +846,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.infiniteParkedLevelIndex = nbt.getInt("infiniteParkedLevelIndex", 0);
             pd.parkedNormalBiomeId = nbt.getString("parkedNormalBiomeId", "");
             pd.parkedNormalLevelIndex = nbt.getInt("parkedNormalLevelIndex", 0);
+            pd.resumeSnapshots = nbt.getString("resumeSnapshots", "");
             pd.lastKnownName = nbt.getString("lastKnownName", "");
             return pd;
         }
@@ -829,6 +867,31 @@ public class CrafticsSavedData extends PersistentState {
 
     public PlayerData getPlayerData(ServerPlayerEntity player) {
         return getPlayerData(player.getUuid());
+    }
+
+    /**
+     * Drop the mid-fight save points of every listed player (see
+     * {@link com.crackedgames.craftics.combat.ResumeSnapshot}).
+     *
+     * <p>Called when a level or a run stops being resumable: it was won, it was lost, or a NEW run
+     * is starting. That last one is not optional. A save point is keyed by biome id and level
+     * index, so without clearing on a fresh start, abandoning a run mid-fight and immediately
+     * starting another one in the same biome would drop the player into the abandoned fight at its
+     * level 1. Deliberately NOT hooked into {@code startBiomeRun}/{@code endBiomeRun} themselves:
+     * suspending and resuming an infinite run calls both to shuffle its cursor between the live and
+     * parked fields, and clearing there would throw away exactly the state this exists to keep.
+     */
+    public void clearResumeSnapshots(java.util.Collection<UUID> playerIds) {
+        boolean changed = false;
+        for (UUID id : playerIds) {
+            if (id == null) continue;
+            PlayerData pd = players.get(id);
+            if (pd != null && !pd.resumeSnapshots.isEmpty()) {
+                pd.resumeSnapshots = "";
+                changed = true;
+            }
+        }
+        if (changed) markDirty();
     }
 
     /** Flag an offline hardcore-run participant for wipe-on-join. */
@@ -1330,7 +1393,7 @@ public class CrafticsSavedData extends PersistentState {
     public net.minecraft.util.math.BlockPos getEventArenaOrigin(UUID playerId) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
-        return new net.minecraft.util.math.BlockPos(ROOM_X, ROOM_Y, 700);
+        return new net.minecraft.util.math.BlockPos(ROOM_X, ROOM_Y, EVENT_ARENA_Z);
     }
 
     /**
@@ -1345,12 +1408,14 @@ public class CrafticsSavedData extends PersistentState {
     public net.minecraft.util.math.BlockPos getTrialChamberOrigin(UUID playerId) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
-        return new net.minecraft.util.math.BlockPos(ROOM_X, ROOM_Y, 800);
+        return new net.minecraft.util.math.BlockPos(ROOM_X, ROOM_Y, TRIAL_ARENA_Z);
     }
 
     /** Merchant-scene origin within the player's island dim, one Z slot per scene type so the
-     *  Village (Z 900) and Bartering Station (Z 1000) can be active independently. Both sit
-     *  past trader (Z 500), dig (Z 600), event (Z 700), and trial (Z 800) in the fixed room column. */
+     *  Village (Z 900) and Bartering Station (Z 1000) can be active independently. Both sit past
+     *  trader (Z 500) and dig (Z 600) in the fixed room column; the event and trial ARENAS are no
+     *  longer neighbours here (see {@link #EVENT_ARENA_Z}), which is what used to put an oversized
+     *  arena schematic within reach of the village. */
     public net.minecraft.util.math.BlockPos getSceneOrigin(UUID playerId, String sceneName) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;

@@ -231,6 +231,15 @@ public enum DamageType {
         return getMobHeadAffinityPoints(helmet, type) * DAMAGE_PER_AFFINITY_POINT;
     }
 
+    /**
+     * The affinity a damage type scales from. Public because display code needs it too:
+     * a reskin is registered against an affinity, and a damage type has to be able to
+     * find its affinity to show the same name (see {@code AffinitySkinRegistry}).
+     */
+    public static PlayerProgression.Affinity affinityOf(DamageType type) {
+        return mapToAffinity(type);
+    }
+
     /** Map DamageType to the corresponding Affinity for level-up bonuses. */
     private static PlayerProgression.Affinity mapToAffinity(DamageType type) {
         return switch (type) {

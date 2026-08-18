@@ -20,8 +20,19 @@ public record MobPoolEntry(
     int range,
     boolean passive,
     String aiKey,
-    int speed
+    int speed,
+    /** Entity NBT merged onto the mob at spawn, or null. Lets a datapack field a mob
+     *  whose identity is not its entity type (a variant, an equipped mob, or a mod that
+     *  ships one entity type for many creatures). */
+    @org.jetbrains.annotations.Nullable net.minecraft.nbt.NbtCompound spawnNbt
 ) {
+    /** Pool entry with an explicit AI key and speed, carrying no spawn NBT. */
+    public MobPoolEntry(String entityTypeId, int weight, int baseHp, int baseAttack,
+                        int baseDefense, int range, boolean passive, String aiKey, int speed) {
+        this(entityTypeId, weight, baseHp, baseAttack, baseDefense, range, passive,
+             aiKey, speed, null);
+    }
+
     /** Pool entry whose AI matches its entity type, at its entity type's default speed. */
     public MobPoolEntry(String entityTypeId, int weight, int baseHp, int baseAttack,
                         int baseDefense, int range, boolean passive) {

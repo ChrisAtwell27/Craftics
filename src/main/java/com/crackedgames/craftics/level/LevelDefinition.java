@@ -149,7 +149,16 @@ public abstract class LevelDefinition {
      */
     public record EnemySpawn(String entityTypeId, GridPos position,
                               int hp, int attack, int defense, int range,
-                              String aiKey, int speed) {
+                              String aiKey, int speed,
+                              @org.jetbrains.annotations.Nullable
+                              net.minecraft.nbt.NbtCompound spawnNbt) {
+        /** Spawn with an explicit AI key and speed, carrying no spawn NBT. */
+        public EnemySpawn(String entityTypeId, GridPos position,
+                          int hp, int attack, int defense, int range,
+                          String aiKey, int speed) {
+            this(entityTypeId, position, hp, attack, defense, range, aiKey, speed, null);
+        }
+
         /** Spawn whose AI matches its entity type, at the entity type's default speed. */
         public EnemySpawn(String entityTypeId, GridPos position,
                           int hp, int attack, int defense, int range) {

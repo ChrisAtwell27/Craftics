@@ -39,8 +39,31 @@ public class HubPetCollector {
         NbtCompound fullEntityNbt,
         AllyEntry allyEntry,
         UUID playerUuid,
-        boolean saddledMount
-    ) {}
+        boolean saddledMount,
+        /**
+         * True when this ally came from a {@code FieldAllyProvider} rather than from a real
+         * mob in the hub. It fights the battle and is gone: never carried between levels,
+         * never materialised into the hub afterwards. Putting one "back" would spawn a real
+         * creature the owning mod is still tracking in its own party, giving the player two
+         * of it.
+         */
+        boolean temporary,
+        /** NBT merged onto the mob at spawn. Distinct from {@code fullEntityNbt}, which is
+         *  the hub-restore blob for a real pet. */
+        @org.jetbrains.annotations.Nullable NbtCompound spawnNbt,
+        /** AI and typing key, or null to use the entity type id. What lets one entity type
+         *  field many different creatures. */
+        @org.jetbrains.annotations.Nullable String aiKey,
+        /** Name shown in combat, or null for the entity's own. */
+        @org.jetbrains.annotations.Nullable String displayName
+    ) {
+        /** A real hub pet: permanent, no spawn NBT, AI from its entity type. */
+        public TamedPetSnapshot(String entityTypeId, UUID entityUuid, NbtCompound fullEntityNbt,
+                                AllyEntry allyEntry, UUID playerUuid, boolean saddledMount) {
+            this(entityTypeId, entityUuid, fullEntityNbt, allyEntry, playerUuid, saddledMount,
+                 false, null, null, null);
+        }
+    }
 
     /**
      * Collect the player's battle-party mobs for combat. Each mob in the party
@@ -53,7 +76,14 @@ public class HubPetCollector {
 
         CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
         List<UUID> party = pd.getPartyMobs();
-        if (party.isEmpty()) return List.of();
+        // Do NOT bail on an empty hub party. A mod whose party is data on the player rather
+        // than mobs in a yard has no hub entries at all, so returning here would mean its
+        // provider was never asked and its creatures never took the field. The loop below is
+        // a no-op for an empty list, and the provider pass at the end still runs.
+        if (party.isEmpty()
+                && com.crackedgames.craftics.api.registry.FieldAllyProviderRegistry.isEmpty()) {
+            return List.of();
+        }
 
         // A party member's pets live on THEIR island, not on the leader's, and a run starts in
         // the leader's world - so searching only `world` found nothing for anyone but the
@@ -122,7 +152,49 @@ public class HubPetCollector {
         }
         PartyMobSync.sync(player);
 
+        // Allies contributed from outside the hub-party model. Appended after real pets so
+        // freeSlots reflects what the hub already took, and so a provider cannot displace a
+        // pet the player explicitly tagged.
+        appendProvidedAllies(world, player, results, cap);
+
         return results;
+    }
+
+    /**
+     * Ask every {@code FieldAllyProvider} for allies and append them as temporary snapshots.
+     *
+     * <p>Marked temporary, which is what keeps them out of the hub: they fight the battle and
+     * are gone. A provider ally was never a hub entity, so "returning" one would spawn a real
+     * creature into the world that the owning mod is still tracking in its own party.
+     *
+     * <p>{@code freeSlots} is passed as advisory and the result is deliberately not truncated
+     * to it. Craftics' cap is written for tamed wolves; a mod with a six-creature party owns
+     * its own rules, and silently cutting it to one would look like a Craftics bug.
+     */
+    private static void appendProvidedAllies(ServerWorld world, ServerPlayerEntity player,
+                                             List<TamedPetSnapshot> results, int cap) {
+        if (com.crackedgames.craftics.api.registry.FieldAllyProviderRegistry.isEmpty()) return;
+        int freeSlots = cap - results.size();
+        var provided = com.crackedgames.craftics.api.registry.FieldAllyProviderRegistry
+            .collect(world, player, freeSlots);
+        for (var fa : provided) {
+            results.add(new TamedPetSnapshot(
+                fa.entityTypeId(),
+                java.util.UUID.randomUUID(),   // no hub entity to identify; a fresh id keeps
+                                               // downstream maps that key on it well-formed
+                null,                          // no hub-restore blob: it never came from the hub
+                fa.stats(),
+                player.getUuid(),
+                false,                         // provider allies are never auto-mounts
+                true,                          // temporary
+                fa.spawnNbt(),
+                fa.aiKey(),
+                fa.displayName()));
+        }
+        if (!provided.isEmpty()) {
+            CrafticsMod.LOGGER.info("{} provided ally/allies joining for {}",
+                provided.size(), player.getName().getString());
+        }
     }
 
     /**

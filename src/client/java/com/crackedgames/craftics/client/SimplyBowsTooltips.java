@@ -54,10 +54,10 @@ public final class SimplyBowsTooltips {
             .append(entry.range()).append(" §7| ");
         if (entry.apCost() > 1) stat.append("§c");
         stat.append(entry.apCost()).append(" AP §7| ").append(entry.damageType().color)
-            .append(entry.damageType().displayName);
+            .append(com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(entry.damageType()));
         if (entry.secondaryDamageType() != null) {
             stat.append("§7 + ").append(entry.secondaryDamageType().color)
-                .append(entry.secondaryDamageType().displayName);
+                .append(com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(entry.secondaryDamageType()));
         }
         lines.add(Text.literal(stat.toString()));
         if (entry.secondaryDamageType() != null) {

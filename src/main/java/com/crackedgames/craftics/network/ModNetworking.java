@@ -210,7 +210,7 @@ public class ModNetworking {
                     ps.allocateAffinity(affinities[ordinal]);
                     progression.saveStats(player);
                     player.sendMessage(net.minecraft.text.Text.literal(
-                        "§6+" + affinities[ordinal].displayName + " affinity! §7(Now +" +
+                        "§6+" + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(affinities[ordinal]) + " affinity! §7(Now +" +
                         ps.getAffinityPoints(affinities[ordinal]) + ")"), false);
                     com.crackedgames.craftics.achievement.AchievementManager.checkProgression(player);
 
@@ -310,6 +310,18 @@ public class ModNetworking {
 
             player.sendMessage(net.minecraft.text.Text.literal(
                 "\u00a7aStats respecced! \u00a77(-" + totalRefunded + " XP level" + (totalRefunded != 1 ? "s" : "") + ")"), false);
+
+            // Respeccing is allowed mid-level now, so the two things a stat change touches outside
+            // the number itself have to be redone here: Vitality is backed by a real max-health
+            // modifier (this both grows and shrinks it, preserving the HP ratio), and the combat
+            // HUD is only pushed by the fight itself.
+            com.crackedgames.craftics.combat.CombatManager.applyHpBonusFromStats(player);
+            if (com.crackedgames.craftics.combat.CombatManager.isEngaged(player.getUuid())) {
+                com.crackedgames.craftics.combat.CombatManager
+                    .getActiveCombat(player.getUuid()).syncAfterStatsChanged();
+                player.sendMessage(net.minecraft.text.Text.literal(
+                    "\u00a77AP and Speed changes apply from your next turn."), false);
+            }
         });
 
         // Rotate the Move item's locked hotbar slot one step left or right.

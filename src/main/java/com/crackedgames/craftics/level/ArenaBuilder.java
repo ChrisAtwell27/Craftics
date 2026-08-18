@@ -49,6 +49,12 @@ public class ArenaBuilder {
     // FORCE_STATE skips per-block client updates - client gets full chunk data after build
     static final int SET_FLAGS = Block.FORCE_STATE;
 
+    /** How far below and above a slot's floor {@link #clearArenaSlot} scrubs. Above covers the
+     *  tallest arena schematic in the pack (~90) plus its clear pad; below covers the few blocks a
+     *  schematic carves under the floor. */
+    private static final int SLOT_CLEAR_BELOW = 6;
+    private static final int SLOT_CLEAR_ABOVE = 100;
+
     private static float pendingCameraYaw = -1;
     private static BlockPos structureOrigin = null;
     private static GridPos structurePlayerStart = null;
@@ -393,6 +399,67 @@ public class ArenaBuilder {
         return stale.size();
     }
 
+    /**
+     * Scrub a slot back to empty space before building in it.
+     *
+     * <p>The box is {@link com.crackedgames.craftics.world.CrafticsSavedData#ARENA_SLOT_CLEAR_RADIUS}
+     * either side of the origin, which is sized for the widest schematic a slot can hold once
+     * {@link #loadAndPlaceSchem}'s centring is accounted for. Slots are spaced further apart than
+     * that box (300 between numbered arenas, 400 between the event arenas), so this can never reach
+     * into a neighbour.
+     *
+     * <p>Cost is paid per non-empty chunk section rather than per block in the box: an untouched
+     * slot is a few dozen section checks and no reads at all, and a slot holding a previous arena
+     * costs about what that arena cost to place. That is what makes it affordable on every build
+     * rather than only on the ones we can prove need it.
+     */
+    public static void clearArenaSlot(ServerWorld world, BlockPos origin) {
+        int radius = com.crackedgames.craftics.world.CrafticsSavedData.ARENA_SLOT_CLEAR_RADIUS;
+        int minX = origin.getX() - radius, maxX = origin.getX() + radius;
+        int minZ = origin.getZ() - radius, maxZ = origin.getZ() + radius;
+        // Below the floor as well: schematics carve a few blocks down, and a taller predecessor's
+        // ceiling has to go or the new arena opens under someone else's roof.
+        int worldBottom = world.getBottomY();
+        int worldTop = worldBottom + world.getHeight() - 1;
+        int minY = Math.max(worldBottom, origin.getY() - SLOT_CLEAR_BELOW);
+        int maxY = Math.min(worldTop, origin.getY() + SLOT_CLEAR_ABOVE);
+        net.minecraft.block.BlockState air = Blocks.AIR.getDefaultState();
+        int cleared = 0;
+
+        for (int cx = minX >> 4; cx <= (maxX >> 4); cx++) {
+            for (int cz = minZ >> 4; cz <= (maxZ >> 4); cz++) {
+                net.minecraft.world.chunk.WorldChunk chunk = world.getChunk(cx, cz);
+                if (chunk == null) continue;
+                net.minecraft.world.chunk.ChunkSection[] sections = chunk.getSectionArray();
+                for (int sectionY = minY >> 4; sectionY <= (maxY >> 4); sectionY++) {
+                    int idx = chunk.getSectionIndex(sectionY << 4);
+                    if (idx < 0 || idx >= sections.length) continue;
+                    net.minecraft.world.chunk.ChunkSection section = sections[idx];
+                    // An empty section is already exactly what we want the slot to be.
+                    if (section == null || section.isEmpty()) continue;
+                    int y0 = Math.max(minY, sectionY << 4);
+                    int y1 = Math.min(maxY, (sectionY << 4) + 15);
+                    int x0 = Math.max(minX, cx << 4), x1 = Math.min(maxX, (cx << 4) + 15);
+                    int z0 = Math.max(minZ, cz << 4), z1 = Math.min(maxZ, (cz << 4) + 15);
+                    for (int x = x0; x <= x1; x++) {
+                        for (int z = z0; z <= z1; z++) {
+                            for (int y = y0; y <= y1; y++) {
+                                BlockPos bp = new BlockPos(x, y, z);
+                                if (chunk.getBlockState(bp).isAir()) continue;
+                                world.setBlockState(bp, air, SET_FLAGS);
+                                cleared++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (cleared > 0) {
+            CrafticsMod.LOGGER.info("Cleared {} leftover block(s) from the arena slot at {}",
+                cleared, origin);
+        }
+    }
+
     public static GridArena buildAt(ServerWorld world, LevelDefinition levelDef, BlockPos origin) {
         int level = levelDef.getLevelNumber();
         int w = levelDef.getWidth();
@@ -408,6 +475,15 @@ public class ArenaBuilder {
         // with old drops - free loot that was never meant to be collectable twice, and a
         // slow entity leak in every arena slot the world has ever built.
         sweepDroppedItems(world, origin, w, h);
+
+        // And anything the LAST arena built here left standing. Slots are reused - by level number
+        // for numbered arenas, and by one shared slot for every event arena (trial chamber, ambush,
+        // treasure vault) - and each build only clears the ground its own schematic covers. A build
+        // whose schematic is smaller than its predecessor's therefore opened inside the leftovers of
+        // that predecessor: the reported case was a trial chamber standing in the middle of the
+        // jungle arena an "Ambush!" had painted into the same slot two biomes earlier, since an
+        // ambush borrows the current biome's arena schematic.
+        clearArenaSlot(world, origin);
 
         int ox = origin.getX(), oy = origin.getY(), oz = origin.getZ();
 

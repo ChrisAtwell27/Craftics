@@ -54,6 +54,8 @@ public final class MoveSlotManager {
                     inv.setStack(i, ItemStack.EMPTY);
                 }
             }
+            // Addon combat tools are controls too, so they leave with the Move item.
+            enforceTools(inv, false, clampSlot(pd.lockedMoveSlot));
             return;
         }
 
@@ -63,6 +65,7 @@ public final class MoveSlotManager {
         if (isMoveStack(lockedStack)) {
             // Nothing to do - and ensure any stray duplicates are merged out.
             removeStrayDuplicates(inv, locked);
+            enforceTools(inv, true, locked);
             return;
         }
 
@@ -73,6 +76,7 @@ public final class MoveSlotManager {
             inv.setStack(strayIdx, lockedStack);
             inv.setStack(locked, moveStack);
             removeStrayDuplicates(inv, locked);
+            enforceTools(inv, true, locked);
             return;
         }
 
@@ -88,7 +92,98 @@ public final class MoveSlotManager {
             }
         }
         inv.setStack(locked, MoveItem.newStack());
+        enforceTools(inv, true, locked);
     }
+
+    /**
+     * Pin every registered {@link com.crackedgames.craftics.api.CombatTool} to a slot beside
+     * the Move item, and strip them when no fight is running.
+     *
+     * <p>Called from {@link #enforce}, so tools get exactly the treatment Move gets: created
+     * at the start of a fight, restocked if they go missing, put back if the player drags one
+     * away, and destroyed afterwards. A control the player can lose is a control they will
+     * lose, which is the whole reason Move works this way.
+     *
+     * <p><b>Slot claiming is deliberately non-destructive.</b> A tool's slot is
+     * {@code (moveSlot + order)} wrapped around the hotbar, and whatever is sitting there gets
+     * pushed to a free slot rather than deleted. A fight that quietly ate the player's sword
+     * because a tool wanted slot 4 would be a far worse bug than a tool landing somewhere
+     * unexpected, so when there is nowhere to push to the tool yields and retries next tick
+     * instead of forcing it.
+     */
+    private static void enforceTools(PlayerInventory inv, boolean inCombat, int moveSlot) {
+        if (com.crackedgames.craftics.api.registry.CombatToolRegistry.isEmpty()) return;
+
+        for (com.crackedgames.craftics.api.CombatTool tool
+                : com.crackedgames.craftics.api.registry.CombatToolRegistry.ordered()) {
+
+            if (!inCombat) {
+                if (tool.stripOutsideCombat()) stripItem(inv, tool.item());
+                continue;
+            }
+
+            int want = ((moveSlot + tool.order()) % 9 + 9) % 9;
+            // Never displace Move itself: a tool ordered a full lap around the hotbar would
+            // otherwise land on it and the two would fight over the slot every tick.
+            if (want == moveSlot) continue;
+
+            ItemStack atWant = inv.getStack(want);
+            if (!atWant.isEmpty() && atWant.getItem() == tool.item()) {
+                stripItemExcept(inv, tool.item(), want);
+                continue;
+            }
+
+            // Already somewhere else (player dragged it): swap it home.
+            int stray = findItemSlot(inv, tool.item());
+            if (stray >= 0) {
+                ItemStack toolStack = inv.getStack(stray);
+                inv.setStack(stray, atWant);
+                inv.setStack(want, toolStack);
+                stripItemExcept(inv, tool.item(), want);
+                continue;
+            }
+
+            // Not in the inventory at all: make one, moving any occupant aside first.
+            if (!atWant.isEmpty()) {
+                int empty = inv.getEmptySlot();
+                // Unlike Move, a tool does NOT drop the player's item to take its slot. Move is
+                // load-bearing - without it the player cannot act - so it wins at any cost. A
+                // tool is a convenience, and destroying or dropping gear for one is not a trade
+                // worth making. Retry next tick, by which point a slot may have freed.
+                if (empty < 0) continue;
+                inv.setStack(empty, atWant);
+            }
+            inv.setStack(want, new ItemStack(tool.item()));
+        }
+    }
+
+    /** Remove every copy of {@code item} from the inventory. */
+    private static void stripItem(PlayerInventory inv, net.minecraft.item.Item item) {
+        for (int i = 0; i < inv.size(); i++) {
+            ItemStack s = inv.getStack(i);
+            if (!s.isEmpty() && s.getItem() == item) inv.setStack(i, ItemStack.EMPTY);
+        }
+    }
+
+    /** Remove every copy of {@code item} except the one in {@code keepSlot}. */
+    private static void stripItemExcept(PlayerInventory inv, net.minecraft.item.Item item,
+                                        int keepSlot) {
+        for (int i = 0; i < inv.size(); i++) {
+            if (i == keepSlot) continue;
+            ItemStack s = inv.getStack(i);
+            if (!s.isEmpty() && s.getItem() == item) inv.setStack(i, ItemStack.EMPTY);
+        }
+    }
+
+    /** First slot holding {@code item}, or -1. */
+    private static int findItemSlot(PlayerInventory inv, net.minecraft.item.Item item) {
+        for (int i = 0; i < inv.size(); i++) {
+            ItemStack s = inv.getStack(i);
+            if (!s.isEmpty() && s.getItem() == item) return i;
+        }
+        return -1;
+    }
+
 
     /**
      * Rotate the locked slot by one hotbar position. Wraps within 0..8. The

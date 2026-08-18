@@ -45,7 +45,7 @@ public final class SimplySwordsTooltips {
         StringBuilder stat = new StringBuilder();
         stat.append("§c").append(dmg).append(" DMG §7| Range ").append(range).append(" §7| ");
         if (ap > 1) stat.append("§c");
-        stat.append(ap).append(" AP §7| ").append(dt.color).append(dt.displayName);
+        stat.append(ap).append(" AP §7| ").append(dt.color).append(com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(dt));
         lines.add(Text.literal(stat.toString()));
 
         if (unique) {

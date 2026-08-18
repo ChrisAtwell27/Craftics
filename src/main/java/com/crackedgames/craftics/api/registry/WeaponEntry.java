@@ -56,8 +56,25 @@ public record WeaponEntry(
     boolean isRanged,
     double breakChance,
     @Nullable WeaponAbilityHandler ability,
-    @Nullable com.crackedgames.craftics.api.TargetlessCastHandler targetlessCast
+    @Nullable com.crackedgames.craftics.api.TargetlessCastHandler targetlessCast,
+    /**
+     * Optional attack type id, e.g. {@code "mymod:fire"}. Purely a trait of the attack:
+     * it is compared against what the defender IS to produce a multiplier, and never
+     * affects which affinity the weapon scales from - that stays {@code damageType}.
+     * Null means untyped, which is every vanilla weapon.
+     */
+    @Nullable String attackType
 ) {
+    /** Entry with no attack type - the shape every weapon had before typings existed. */
+    public WeaponEntry(Item item, DamageType damageType, @Nullable DamageType secondaryDamageType,
+                       IntSupplier attackPower, int apCost, int range,
+                       boolean isRanged, double breakChance,
+                       @Nullable WeaponAbilityHandler ability,
+                       @Nullable com.crackedgames.craftics.api.TargetlessCastHandler targetlessCast) {
+        this(item, damageType, secondaryDamageType, attackPower, apCost, range, isRanged,
+             breakChance, ability, targetlessCast, null);
+    }
+
     public static Builder builder(Item item) { return new Builder(item); }
 
     /** Fluent builder for {@link WeaponEntry}. */
@@ -72,6 +89,7 @@ public record WeaponEntry(
         private double breakChance = 0.0;
         private WeaponAbilityHandler ability = null;
         private com.crackedgames.craftics.api.TargetlessCastHandler targetlessCast = null;
+        private String attackType = null;
 
         public Builder(Item item) { this.item = item; }
 
@@ -122,9 +140,20 @@ public record WeaponEntry(
             return this;
         }
 
+        /**
+         * Optional attack type, e.g. {@code "mymod:fire"}. Orthogonal to
+         * {@link #damageType}: the damage type decides which affinity the weapon scales
+         * from, the attack type decides how well it lands against what it is hitting.
+         * Leave unset for an untyped weapon, which is every vanilla one.
+         */
+        public Builder attackType(String attackTypeId) {
+            this.attackType = attackTypeId;
+            return this;
+        }
+
         public WeaponEntry build() {
             return new WeaponEntry(item, damageType, secondaryDamageType, attackPower, apCost,
-                range, isRanged, breakChance, ability, targetlessCast);
+                range, isRanged, breakChance, ability, targetlessCast, attackType);
         }
     }
 }

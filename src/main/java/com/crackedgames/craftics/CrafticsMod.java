@@ -232,6 +232,30 @@ public class CrafticsMod implements ModInitializer {
             }
             net.minecraft.item.ItemStack stack = player.getStackInHand(hand);
             net.minecraft.item.Item item = stack.getItem();
+            // Addon combat tools: a right-click on one is a button press, not an item use.
+            // Checked before the trial-key chain below so a tool can share nothing with it and
+            // an addon cannot be shadowed by a built-in.
+            var craftTool = com.crackedgames.craftics.api.registry.CombatToolRegistry.byItem(item);
+            if (craftTool != null && player instanceof net.minecraft.server.network.ServerPlayerEntity toolUser) {
+                var toolCombat = com.crackedgames.craftics.combat.CombatManager
+                    .getActiveCombat(toolUser.getUuid());
+                // Gated on an ACTIVE fight, not merely on holding the tool. Outside combat the
+                // tool should not exist at all (enforce strips it), so a click here means a
+                // stale copy and running the handler would open a menu for a fight that ended.
+                if (toolCombat != null && toolCombat.isActive() && craftTool.onUse() != null) {
+                    boolean handled;
+                    try {
+                        handled = craftTool.onUse().onUse(toolUser, toolCombat);
+                    } catch (Throwable t) {
+                        LOGGER.error("Combat tool '{}' threw on use", craftTool.id(), t);
+                        handled = true;   // swallow: a throwing menu must not fall through to
+                                          // an ordinary item use the player never asked for
+                    }
+                    if (handled) {
+                        return net.minecraft.util.TypedActionResult.success(stack, false);
+                    }
+                }
+            }
             String forced;
             String label;
             if (item == net.minecraft.item.Items.TRIAL_KEY) {
@@ -285,6 +309,30 @@ public class CrafticsMod implements ModInitializer {
             }
             net.minecraft.item.ItemStack stack = player.getStackInHand(hand);
             net.minecraft.item.Item item = stack.getItem();
+            // Addon combat tools: a right-click on one is a button press, not an item use.
+            // Checked before the trial-key chain below so a tool can share nothing with it and
+            // an addon cannot be shadowed by a built-in.
+            var craftTool = com.crackedgames.craftics.api.registry.CombatToolRegistry.byItem(item);
+            if (craftTool != null && player instanceof net.minecraft.server.network.ServerPlayerEntity toolUser) {
+                var toolCombat = com.crackedgames.craftics.combat.CombatManager
+                    .getActiveCombat(toolUser.getUuid());
+                // Gated on an ACTIVE fight, not merely on holding the tool. Outside combat the
+                // tool should not exist at all (enforce strips it), so a click here means a
+                // stale copy and running the handler would open a menu for a fight that ended.
+                if (toolCombat != null && toolCombat.isActive() && craftTool.onUse() != null) {
+                    boolean handled;
+                    try {
+                        handled = craftTool.onUse().onUse(toolUser, toolCombat);
+                    } catch (Throwable t) {
+                        LOGGER.error("Combat tool '{}' threw on use", craftTool.id(), t);
+                        handled = true;   // swallow: a throwing menu must not fall through to
+                                          // an ordinary item use the player never asked for
+                    }
+                    if (handled) {
+                        return net.minecraft.util.ActionResult.SUCCESS;
+                    }
+                }
+            }
             String forced;
             String label;
             if (item == net.minecraft.item.Items.TRIAL_KEY) {

@@ -806,6 +806,77 @@ CrafticsAPI.registerEquipmentScanner("mymod", (player) -&gt; {
     return mods;
 });</code></pre>
 
+
+    <!-- ================================================================
+         AFFINITY RESKINS
+         ================================================================ -->
+    <h2 id="affinity-reskins">Affinity Reskins</h2>
+    <p>
+      Craftics has eight affinities - Slashing, Cleaving, Blunt, Ranged, Water, Special, Pet, Physical. They are the axes a player spends level-up points on.
+    </p>
+    <p>
+      The count is fixed on purpose. The level-up and respec screens are laid out for exactly eight, and a mod that added ten more would not get a bigger screen, it would get an unreadable one. What a total-conversion mod usually needs is not <em>more</em> axes but <em>different</em> ones, so the eight slots can be renamed and re-iconed instead.
+    </p>
+
+    <h3>Reskinning</h3>
+    <pre><code>CrafticsAPI.reskinAffinity(PlayerProgression.Affinity.SLASHING,
+    AffinitySkin.of("Physical", "§c⚔", "+3 dmg to physical moves"));
+
+CrafticsAPI.reskinAffinity(PlayerProgression.Affinity.SPECIAL,
+    AffinitySkin.of("Special", "§d✨", "+3 dmg to special moves"));
+
+// Rename only, keeping Craftics' icon and description:
+CrafticsAPI.reskinAffinity(PlayerProgression.Affinity.PET,
+    AffinitySkin.named("Ally"));</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Factory</th><th>Replaces</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>AffinitySkin.of(name, icon, description)</code></td><td>All three.</td></tr>
+          <tr><td><code>AffinitySkin.named(name)</code></td><td>The name only; icon and description keep Craftics' originals.</td></tr>
+          <tr><td><code>new AffinitySkin(name, icon, description)</code></td><td>Any field passed <code>null</code> keeps the original.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>What a reskin reaches</h3>
+    <p>
+      One call renames the affinity <strong>everywhere a player can see it</strong>. That is the contract, not a best effort - every display site in Craftics reads through the skin registry rather than the enum field:
+    </p>
+    <ul>
+      <li>The level-up screen's affinity buttons</li>
+      <li>The respec screen</li>
+      <li>The Infinite Mode class picker</li>
+      <li>The damage-type panel, including its per-type letter and icon</li>
+      <li>Weapon tooltips, including the compat tooltips for Simply Swords and Simply Bows</li>
+      <li>The combat damage feedback line, including the <em>Resisted</em> and <em>Weak!</em> notes</li>
+      <li>The chat message for gaining an affinity point</li>
+      <li>The Infinite Mode class-pick confirmation message</li>
+    </ul>
+
+    <div class="callout">
+      <p>
+        <strong>The damage type is renamed with it.</strong> Each affinity has a one-to-one damage type, and a player sees both. Renaming the Slashing affinity to "Physical" while weapon tooltips still said "Slashing damage" would read as a bug rather than a theme, so the damage type follows its affinity automatically.
+      </p>
+    </div>
+
+    <div class="callout">
+      <p>
+        <strong>Register from a <code>CrafticsAddon</code>, not a plain initializer.</strong> Addon entrypoints run in common initialization, so the server and the client both learn the skin. A server-only registration renames the chat lines and leaves every screen showing the old name - the exact half-applied state that looks like a Craftics bug.
+      </p>
+    </div>
+
+    <h3>What does not change</h3>
+    <p>
+      Nothing mechanical. A reskinned Slashing affinity still boosts Slashing weapons, still grants its sweep chance, and still occupies the same save slot - so a reskin can be added to or removed from an existing world without touching player progress. Affinity points are saved by enum name, not by display name.
+    </p>
+    <p>
+      If what you want is a new axis of effectiveness rather than a renamed one, that is <a href="enemies.html#attack-types">Attack Types</a> - they are unlimited, and unlike affinities nobody levels them.
+    </p>
+
   </main>
 </div>
 

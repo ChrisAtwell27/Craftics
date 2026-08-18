@@ -659,6 +659,454 @@ CrafticsAPI.registerAlly(AllyEntry.builder("minecraft:cat")
       <strong>Note:</strong> Datapack allies always use the default melee AI (<code>MeleeAllyAI</code>) and cannot have a custom <code>roundHook</code>. If your ally needs custom combat behavior or per-round effects, register it through <code>CrafticsAPI.registerAlly()</code> in your <code>onCrafticsInit()</code> method instead.
     </div>
 
+
+
+
+    <!-- ================================================================
+         FIELD ALLY PROVIDERS
+         ================================================================ -->
+    <h2 id="field-ally-providers">Field Ally Providers</h2>
+    <p>
+      Craftics' battle party is built from <strong>real mobs standing in the hub</strong>. You Shift+Right-Click a wolf to tag it, and when combat starts it is snapshotted, removed from the hub, fielded as an ally, and put back afterwards. That model assumes the ally exists in the world before the fight.
+    </p>
+    <p>
+      A mod whose party is <strong>data on the player</strong> cannot use it. There is no wolf to tag - there is a list of creatures the player is carrying, and they should appear in the arena because the player owns them. A <code>FieldAllyProvider</code> is the hook for that: Craftics asks, the addon answers with specs, and they are fielded alongside any real hub pets.
+    </p>
+
+    <h3>Registering a provider</h3>
+    <pre><code>CrafticsAPI.registerFieldAllyProvider("mymod:party", (world, player, freeSlots) -&gt; {
+    List&lt;FieldAlly&gt; out = new ArrayList&lt;&gt;();
+    for (Creature c : MyModApi.partyOf(player)) {
+        out.add(FieldAlly.builder("mymod:creature")
+            .stats(AllyEntry.builder("mymod:creature")
+                .hp(c.hp()).attack(c.attack()).defense(c.defense()).range(1).build())
+            .aiKey("mymod:" + c.species())   // per-species AI, typing and spawn hook
+            .spawnNbt(c.toNbt())             // what it IS
+            .displayName(c.nickname())       // what it is called in combat
+            .build());
+    }
+    return out;
+});</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Builder Method</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>builder(entityTypeId)</code></td>
+            <td>yes</td>
+            <td>The entity type to render the ally as.</td>
+          </tr>
+          <tr>
+            <td><code>stats(AllyEntry)</code></td>
+            <td><strong>yes</strong></td>
+            <td>Combat stats. Required, unlike a hub pet - there is no real mob to derive them from.</td>
+          </tr>
+          <tr>
+            <td><code>aiKey(String)</code></td>
+            <td>no</td>
+            <td>AI, attack typing and spawn-customizer key. Defaults to the entity type id. <strong>This is what lets one entity type field many different creatures.</strong></td>
+          </tr>
+          <tr>
+            <td><code>spawnNbt(NbtCompound)</code></td>
+            <td>no</td>
+            <td>Merged onto the mob at spawn, same rules as an enemy's.</td>
+          </tr>
+          <tr>
+            <td><code>displayName(String)</code></td>
+            <td>no</td>
+            <td>Name shown in combat. Without it, every ally sharing an entity type derives the same name from that type - a six-creature party would read as six copies of one thing.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>The party cap is advisory</h3>
+    <p>
+      Providers receive <code>freeSlots</code>: how many slots remain under the player's own party cap after real hub pets are counted. It may be zero or negative.
+    </p>
+    <p>
+      <strong>Craftics does not truncate what you return.</strong> The cap is written for tamed wolves and scales off the player's Pet affinity; a mod with a six-creature party owns its own rules, and silently cutting that to one would look like a Craftics bug rather than a design decision. Respect <code>freeSlots</code> if it suits your design, ignore it if it does not.
+    </p>
+
+    <h3>Provider allies never touch the hub</h3>
+    <div class="callout">
+      <p>
+        They are fielded as <strong>temporary</strong> allies: they fight the battle and are gone, never carried between levels and never materialised into the hub afterwards. This is not a limitation, it is the only correct behaviour - a provider ally was never a hub entity, so putting one "back" would spawn a real creature into the world that your mod is still tracking in its own party, leaving the player with two of it.
+      </p>
+      <p>
+        If you want a creature's damage or state to persist across a run, keep that in your own state and reflect it in the stats you hand back next time.
+      </p>
+    </div>
+
+    <h3>Ordering and failure</h3>
+    <p>
+      Providers are asked <em>after</em> real hub pets are collected, so <code>freeSlots</code> reflects what the hub already took and a provider can never displace a pet the player explicitly tagged.
+    </p>
+    <p>
+      Every registered provider is asked and the results are concatenated, so two mods can both field allies without knowing about each other. The key exists so a provider can be replaced rather than duplicated. A provider that throws is logged and skipped - one broken addon costs its own allies, not everyone else's, and never the fight.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>Spawn customizers run on provider allies too.</strong> The spawn NBT is applied and then <a href="enemies.html#spawn-customization">the spawn customizer</a> for the ally's <code>aiKey</code> fires, exactly as on the enemy path. That is the route a data-driven party arrives through, so a creature that needs initialising through its own mod's API gets initialised here.
+      </p>
+    </div>
+
+    <!-- ================================================================
+         CUSTOM ACTIONS
+         ================================================================ -->
+    <h2 id="custom-actions">Custom Actions</h2>
+    <p>
+      <code>EnemyAction</code> is a sealed set of about forty shapes - <code>Move</code>, <code>Attack</code>, <code>Pounce</code>, <code>Teleport</code>, <code>Explode</code> and so on. An AI returns one and the turn machine carries it out. Composing those shapes covers a great deal, but not an action whose <em>resolution</em> is genuinely new.
+    </p>
+    <p>
+      For that, return an <code>EnemyAction.CustomAction</code> and register a handler for its id. Craftics recognises that one shape and hands resolution straight back to you.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>Why this instead of an open interface.</strong> Sealing is load-bearing: the turn machine dispatches with pattern-matching switches, and the compiler checks they cover every shape. Unsealing so addons could add their own would give that checking up across dozens of sites, and the failures would be silent - an unhandled action would look like an enemy that just stands there. One extra member of the set keeps the guarantee for the other thirty-nine.
+      </p>
+    </div>
+
+    <h3>Registering a handler</h3>
+    <pre><code>CrafticsAPI.registerCustomAction("mymod:flamethrower", ctx -&gt; {
+    for (GridPos tile : ctx.tiles()) {
+        CombatEntity victim = ctx.arena().getOccupant(tile);
+        if (victim != null) ctx.damage(victim, ctx.damage());
+    }
+    ctx.message("§cThe flames wash down the lane!");
+});</code></pre>
+
+    <h3>Returning one from an AI</h3>
+    <pre><code>@Override
+public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
+    List&lt;GridPos&gt; lane = AIUtils.tilesInLine(self.getGridPos(), playerPos, 4);
+    return new EnemyAction.CustomAction("mymod:flamethrower", lane, 6);
+}</code></pre>
+
+    <h3>Getting a telegraphed wind-up for free</h3>
+    <p>
+      Wrap the custom action in a <code>BossAbility</code> and it inherits the entire charge-up system: the warning tiles are painted, the windup VFX plays across the player's turn - camera shake, per-tile marks, a gesture matched to the attack's shape - and the handler fires a turn later when it resolves.
+    </p>
+    <pre><code>return new EnemyAction.BossAbility(
+    "mymod:flamethrower",                                        // names the VFX category
+    new EnemyAction.CustomAction("mymod:flamethrower", lane, 6),  // what resolves next turn
+    lane);                                                        // tiles to warn on</code></pre>
+    <p>
+      The ability name is matched against keywords to pick a windup gesture, so naming it something containing <code>beam</code>, <code>line</code>, <code>slam</code>, <code>charge</code>, <code>summon</code> or <code>pull</code> gets the matching telegraph automatically.
+    </p>
+
+    <h3>The Context</h3>
+    <p>
+      Handlers are handed a context rather than raw fields, and the damage and movement methods on it are not conveniences - they are the supported route.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Method</th><th>Returns</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>self()</code></td><td>CombatEntity</td><td>The enemy performing the action.</td></tr>
+          <tr><td><code>arena()</code></td><td>GridArena</td><td>The arena, for tile and occupant queries.</td></tr>
+          <tr><td><code>world()</code></td><td>ServerWorld</td><td>For particles and sounds.</td></tr>
+          <tr><td><code>playerPos()</code></td><td>GridPos</td><td>Where the targeted player is standing.</td></tr>
+          <tr><td><code>tiles()</code></td><td>List&lt;GridPos&gt;</td><td>The tiles the AI named. Empty if none.</td></tr>
+          <tr><td><code>params()</code></td><td>NbtCompound</td><td>Parameters the AI attached. Empty compound if none.</td></tr>
+          <tr><td><code>damage()</code></td><td>int</td><td>The damage figure the AI attached, or 0.</td></tr>
+          <tr><td><code>damage(target, amount)</code></td><td>void</td><td>Deal damage through Craftics' own pipeline.</td></tr>
+          <tr><td><code>moveSelfTo(dest)</code></td><td>boolean</td><td>Move this enemy, respecting grid rules.</td></tr>
+          <tr><td><code>message(text)</code></td><td>void</td><td>Send a line to everyone in the fight.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <p>
+        <strong>Use <code>ctx.damage()</code>, not the entity's HP.</strong> It routes through the same path built-in attacks take, so resistances, attack typings, shields, status effects and death processing all apply. Writing HP directly skips every one of those, and the resulting bug looks like a balance problem rather than a missing call. <code>moveSelfTo()</code> is the same bargain for movement: it refuses solid tiles, teleports the world entity to match the grid, and drops the mob into a pit if it lands on one.
+      </p>
+    </div>
+
+    <h3>What happens around the handler</h3>
+    <p>
+      The handler <em>is</em> the action: damage, movement, effects, particles and messages are all yours. Craftics still owns the turn rotation, death checks on anything you damaged, and the telegraph if you wrapped the action in a <code>BossAbility</code>.
+    </p>
+    <p>
+      An unregistered id costs that enemy its turn and logs once. That is deliberate - an addon can be uninstalled while a save still holds an AI naming its actions, and a missing handler should not wedge the fight waiting for something that will never resolve. A handler that throws is caught with the same outcome.
+    </p>
+
+    <!-- ================================================================
+         SPAWN CUSTOMIZATION
+         ================================================================ -->
+    <h2 id="spawn-customization">Spawn Customization</h2>
+    <p>
+      Craftics builds every combatant the same way: look the entity type up in the registry and create it bare. That is everything a zombie needs, because a zombie's entity type <em>is</em> its identity. It is not enough for anything whose identity lives somewhere else.
+    </p>
+    <p>
+      The case that forces the issue is a mod that ships <strong>one entity type for hundreds of creatures</strong> and records which creature it is in NBT or a component. Created bare, every single one spawns blank and identical. Variants, mobs that should arrive holding something, and pre-tamed allies all hit smaller versions of the same wall.
+    </p>
+    <p>
+      Two mechanisms solve it, and they cover different ground. Use the first where you can.
+    </p>
+
+    <h3>Spawn NBT (no Java required)</h3>
+    <p>
+      Any enemy or ally entry can carry NBT that is merged onto the mob the instant it spawns, before it takes its first turn. This is authorable from a datapack, so a pack with no code at all can field variant mobs.
+    </p>
+    <p>
+      In biome JSON, add an <code>"nbt"</code> field written as an SNBT string. That is the same syntax <code>/summon</code> takes, so it can be copied straight out of a working command:
+    </p>
+    <pre><code>{
+  "type": "mymod:creature",
+  "nbt": "{Variant:3,Tame:1b}",
+  "ai": "mymod:charizard",
+  "weight": 5,
+  "hp": 14,
+  "attack": 4
+}</code></pre>
+    <p>
+      From Java, the same thing on an <code>EnemyEntry</code> or <code>AllyEntry</code>:
+    </p>
+    <pre><code>EnemyEntry.builder("mymod:charizard", "mymod:creature")
+    .ai("mymod:charizard")
+    .hp(14).attack(4).range(2)
+    .spawnNbt(StringNbtReader.parse("{Species:\"charizard\",Level:36}"))
+    .build();</code></pre>
+    <p>
+      A pool entry's <code>"nbt"</code> overrides the template's; otherwise the entry inherits it, so an enemy registered once with its tags can be dropped into any biome without restating them. A malformed SNBT string is logged and dropped rather than failing the biome, so one bad tag costs that entry its extras instead of taking the level definition down.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>The arena flags survive the merge, deliberately.</strong> Applying NBT to a live entity reloads its whole serialized state, so an authored tag - or the entity's own defaults for keys the tag omits - would happily restore <code>NoAI</code>, <code>NoGravity</code>, <code>Invulnerable</code>, <code>Silent</code> and the command tags. Craftics sets those to pin a mob to its grid tile and keep it out of vanilla AI entirely. They are re-applied after every merge. Your NBT decides <em>what</em> the mob is; the arena decides <em>how it is held</em>.
+      </p>
+    </div>
+
+    <h3>Spawn Customizer (code hook)</h3>
+    <p>
+      For anything NBT cannot say - typically an entity that has to be initialised through its own mod's API rather than by writing tags onto it - register a <code>SpawnCustomizer</code>. It runs once on the live entity, after Craftics has created, positioned and tagged it.
+    </p>
+    <pre><code>CrafticsAPI.registerSpawnCustomizer("mymod:charizard", (world, mob, entity) -&gt; {
+    MyModApi.setSpecies(mob, "charizard");
+    MyModApi.setLevel(mob, 36);
+});</code></pre>
+
+    <div class="callout">
+      <p>
+        <strong>The lookup order is the whole trick.</strong> The key is matched against the combatant's <code>aiKey</code> first and its entity type id second. That is what makes one-entity-type-many-creatures work: give each creature its own <code>aiKey</code> and each gets its own initialisation, while they all share a single entity type. Keying on the entity type alone would hand all of them the same hook.
+      </p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>world</code></td>
+            <td>ServerWorld</td>
+            <td>The arena world.</td>
+          </tr>
+          <tr>
+            <td><code>mob</code></td>
+            <td>MobEntity</td>
+            <td>The live entity, already positioned and tagged <code>craftics_arena</code>.</td>
+          </tr>
+          <tr>
+            <td><code>entity</code></td>
+            <td>CombatEntity</td>
+            <td>The Craftics combatant wrapping it, carrying its stats, grid position and <code>aiKey</code>. Stats and footprint are already set.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Both mechanisms run when both are present, <strong>NBT first</strong>, so a customizer always sees the tagged entity and can correct or extend it rather than fight it. Both apply to enemies and to summoned allies.
+    </p>
+    <p>
+      A customizer that throws is caught and logged. By the time it runs the mob is already spawned and placed, so letting the exception out would abandon the rest of the arena build - one enemy missing its extras beats a half-populated fight.
+    </p>
+
+    <!-- ================================================================
+         ATTACK TYPES
+         ================================================================ -->
+    <h2 id="attack-types">Attack Types</h2>
+    <p>
+      An <strong>attack type</strong> is a trait of an attack that decides how well it lands against a defender, and nothing else. It is a third idea alongside two that already exist, and keeping them apart is the point:
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Concept</th><th>Levellable?</th><th>What it decides</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Affinity</code></td>
+            <td>Yes - players spend points in it</td>
+            <td>How much harder a player's attacks of that kind hit.</td>
+          </tr>
+          <tr>
+            <td><code>DamageType</code></td>
+            <td>No</td>
+            <td>Which affinity a weapon scales from, plus its AP cost profile.</td>
+          </tr>
+          <tr>
+            <td><strong><code>AttackType</code></strong></td>
+            <td><strong>No - never</strong></td>
+            <td>A multiplier from what the attack IS versus what the defender IS.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      They are orthogonal. A weapon can be <code>SLASHING</code> damage - so it scales from the player's Slashing affinity - while being typed <code>mymod:fire</code>, so it lands hard on a grass defender and poorly on a water one. Retyping the weapon changes nothing about what the player levels to improve it.
+    </p>
+
+    <h3>Registering a chart</h3>
+    <p>
+      Effectiveness is authored once per attacking type as a chart of what it is good and bad against. Only the interesting matchups are written down; anything unlisted is <code>1.0</code>.
+    </p>
+    <pre><code>CrafticsAPI.registerAttackType(AttackTypeEntry.builder("mymod:fire")
+    .displayName("Fire").colorCode("§c")
+    .superEffectiveAgainst("mymod:grass", "mymod:ice", "mymod:bug")
+    .notVeryEffectiveAgainst("mymod:water", "mymod:rock", "mymod:fire")
+    .noEffectAgainst("mymod:stone_idol")
+    .build());</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Builder Method</th><th>Multiplier</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>superEffectiveAgainst(String...)</code></td><td>2.0</td><td>Double damage against each listed defending type.</td></tr>
+          <tr><td><code>notVeryEffectiveAgainst(String...)</code></td><td>0.5</td><td>Half damage against each listed defending type.</td></tr>
+          <tr><td><code>noEffectAgainst(String...)</code></td><td>0.0</td><td>No damage at all. Absorbing - nothing later can bring it back up.</td></tr>
+          <tr><td><code>against(double, String...)</code></td><td>custom</td><td>Any multiplier, for charts that want something other than the usual three.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Typing an attack and typing a defender</h3>
+    <p>
+      A weapon declares what it is:
+    </p>
+    <pre><code>WeaponEntry.builder(MyItems.FLAME_FANG)
+    .damageType(DamageType.SLASHING)   // scales the Slashing affinity
+    .attackType("mymod:fire")          // lands as Fire
+    .attackPower(9).apCost(1).range(1)
+    .build();</code></pre>
+    <p>
+      A defender declares what it is. The key follows the same <code>aiKey</code>-then-entity-type rule as spawn customizers, so a single entity type can still carry per-creature typings:
+    </p>
+    <pre><code>CrafticsAPI.setDefendingTypes("mymod:charizard", "mymod:fire", "mymod:flying");
+CrafticsAPI.setDefendingTypes("mymod:squirtle",  "mymod:water");</code></pre>
+    <p>
+      A defender with more than one type multiplies its way through them, so being strong against one and weak against the other cancels to <code>1.0</code>. Players see a line on the hit - <em>"It's super effective!"</em>, <em>"It's not very effective..."</em>, <em>"It has no effect..."</em> - so effectiveness is legible without a wiki.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>Why a chart instead of per-mob resistance tables.</strong> Craftics' existing <code>MobResistances</code> lists resistances per mob id, which is right for a few dozen hand-authored mobs. A roster of a thousand creatures across eighteen types needs eighteen chart entries and one line per creature; the per-mob shape would need eighteen thousand cells. Both systems run, and their multipliers stack, so an addon can use either or both.
+      </p>
+    </div>
+
+
+    <h3>Typing works in every direction</h3>
+    <p>
+      A weapon's <code>attackType</code> covers the player attacking. That is one of four directions, and a chart that only applies to one of them is half a type system - a Fire enemy would hit your Water ally at full strength, and nothing would tell the player the matchup mattered.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Attacker → Defender</th><th>Attacking type comes from</th><th>Defending types come from</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Player → enemy</td>
+            <td><code>WeaponEntry.attackType()</code></td>
+            <td><code>setDefendingTypes(mobKey, ...)</code></td>
+          </tr>
+          <tr>
+            <td>Enemy → ally</td>
+            <td><code>setDefaultAttackType</code> or the AI's per-action override</td>
+            <td><code>setDefendingTypes(mobKey, ...)</code></td>
+          </tr>
+          <tr>
+            <td>Ally → enemy</td>
+            <td><code>setDefaultAttackType</code> or the AI's per-action override</td>
+            <td><code>setDefendingTypes(mobKey, ...)</code></td>
+          </tr>
+          <tr>
+            <td>Enemy → player</td>
+            <td><code>setDefaultAttackType</code> or the AI's per-action override</td>
+            <td><code>setPlayerDefendingTypesProvider</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Typing a mob's own attacks</h4>
+    <p>
+      Set it once per creature and its melee, ranged and ability damage are all typed:
+    </p>
+    <pre><code>CrafticsAPI.setDefaultAttackType("mymod:charizard", "mymod:fire");</code></pre>
+
+    <p>
+      A creature with a movepool overrides it per action from inside its AI, immediately before returning the action:
+    </p>
+    <pre><code>@Override
+public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
+    Move move = pickMove(self);
+    self.setPendingAttackType(move.typeId());     // this action only
+    return new EnemyAction.MoveAndAttack(path, move.power());
+}</code></pre>
+
+    <div class="callout">
+      <p>
+        <strong>The override is cleared before every decision, not after every hit.</strong> A per-action type is only meaningful for the action the AI is about to name; leaving a stale one set would silently retype every later attack that never asked for one. So an AI that sets it must set it each turn, which is also the only way a movepool can work.
+      </p>
+    </div>
+
+    <h4>Typing the player as a defender</h4>
+    <p>
+      The player has no <code>aiKey</code> to look up, so their defending types come from a provider. A function rather than a fixed list, because a player's typing usually derives from something that changes during a run:
+    </p>
+    <pre><code>CrafticsAPI.setPlayerDefendingTypesProvider(player -&gt; {
+    Creature active = MyModApi.activeCreatureOf(player);
+    return active == null ? List.of() : active.types();
+});</code></pre>
+    <p>
+      It is called on every hit the player takes, so keep it cheap. Returning null or an empty list means untyped, which is the default and leaves incoming damage behaving exactly as it did before typings existed.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>A mount intercepting a hit is judged as the mount.</strong> When a saddled ally takes a blow aimed at its rider, effectiveness is worked out against the animal's types, not the player's - the animal is the thing being hit.
+      </p>
+    </div>
+
+    <h4>How the multiplier is applied</h4>
+    <p>
+      A landed hit floors at 1 in every direction, matching how mob resistances already behave, so a heavily resisted attack still chips rather than silently doing nothing. A no-effect matchup is the single case that reaches zero, and immunity is absorbing - once a defender's type list zeroes the multiplier, nothing later in the list brings it back.
+    </p>
+    <p>
+      Effectiveness stacks with <code>MobResistances</code> rather than replacing it. The two answer different questions - one is keyed on <code>DamageType</code>, which also decides which affinity a weapon scales from, the other purely on the matchup - so an addon can use either or both.
+    </p>
+
+    <p>
+      The whole system is inert until something opts in. An untyped weapon, an unregistered type or an untyped defender all return <code>1.0</code>, which is why it can sit in the damage path unconditionally without changing any existing behaviour.
+    </p>
+
   </main>
 </div>
 

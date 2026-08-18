@@ -18,11 +18,13 @@ import java.util.Random;
 /**
  * The forest's occasional hazard: wild bee hives hanging in the arena.
  *
- * <p>A hive is a destructible block object, not scenery you can ignore - while
- * it stands it releases a hostile bee every round (the per-round release itself
- * lives in {@code CombatManager.tickBeeHives}, which drives player-placed hives
- * from the same code). Leaving one up is a slowly growing swarm, so the fight
- * pressures you into spending attacks on the hive.
+ * <p>A hive is a destructible block object: while it stands it releases a hostile
+ * bee every round (the per-round release itself lives in
+ * {@code CombatManager.tickBeeHives}, which drives player-placed hives from the
+ * same code). Leaving one up is a slowly growing swarm, so the fight pressures you
+ * into spending attacks on the hive. The pressure is the bees, though, never a
+ * chore: the hive is {@code scenery} (see {@code CombatManager#placeBlockObject}),
+ * so the level ends the moment the last bee falls with every hive still hanging.
  *
  * <p>The payoff for dealing with it: break a hive with a <b>Silk Touch</b> tool
  * and you keep the hive as an item, which you can then place on your own side to

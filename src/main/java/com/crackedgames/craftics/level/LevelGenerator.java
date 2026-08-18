@@ -465,7 +465,10 @@ public class LevelGenerator {
                 mob.baseAttack() + (isPassive ? 0 : atkBonus),
                 mob.baseDefense() + (isPassive ? 0 : defBonus),
                 mob.range(),
-                mob.aiKey(), mob.speed()
+                mob.aiKey(), mob.speed(),
+                // Carry the pool entry's spawn NBT onto the spawn so it survives to the
+                // point the mob is actually created.
+                mob.spawnNbt()
             ));
         }
 
