@@ -556,6 +556,8 @@ public class CombatEntity {
      */
     private String nameOverride = null;
     public void setNameOverride(String name) { this.nameOverride = name; }
+    /** The explicitly set name, or null to derive one from the entity type. */
+    public String getNameOverride() { return nameOverride; }
 
     private String stackDisplayName = null;
     public void setStackDisplayName(String name) { this.stackDisplayName = name; }
@@ -580,6 +582,25 @@ public class CombatEntity {
         this.alive = true;
         this.deathProcessed = false;
         this.entityId = entityIdForNewMob;
+    }
+
+    /**
+     * Point this combatant at a freshly spawned mob, after the one it had was discarded.
+     *
+     * <p>Used when an ally leaves the grid and comes back - benched, then swapped in. The
+     * combatant object survives the trip, which is the entire reason to do it this way: its
+     * wounds, buffs, poison stacks, mark timers, AI memory and summon lifespan all ride along
+     * because they never went anywhere. Rebuilding it from its snapshot would quietly restore
+     * a one-HP ally to full and reset a timed summon's clock, and would keep doing so for
+     * every piece of per-fight state added after this was written.
+     *
+     * <p>The entity id moves with the mob because a mob cannot be spawned with a chosen id.
+     * {@link #applyStackLayer} re-points it the same way when a stack variant swaps its mob.
+     */
+    public void rebindMob(MobEntity mob, GridPos pos) {
+        this.mobEntity = mob;
+        this.entityId = mob.getId();
+        this.gridPos = pos;
     }
 
     /**
@@ -628,6 +649,25 @@ public class CombatEntity {
     private String pendingAttackType = null;
     public String getPendingAttackType() { return pendingAttackType; }
     public void setPendingAttackType(String typeId) { this.pendingAttackType = typeId; }
+
+    /**
+     * How likely this combatant's NEXT action is to land, as a multiplier where 1.0 always
+     * hits. Set by an AI just before it returns an action, for a creature whose moves are not
+     * all equally reliable - the heavy swing that misses half the time is a move design, not
+     * a property of the creature.
+     *
+     * <p>Shares the lifecycle of {@link #pendingAttackType} deliberately: both are cleared
+     * immediately before the AI decides, both describe the one action it is about to name.
+     * A stale accuracy is worse than a stale type - a mistyped hit is visible in the
+     * effectiveness message, while a silently reduced hit rate for the rest of the fight
+     * looks like bad luck.
+     *
+     * <p>{@link AccuracyRoll#NO_OVERRIDE} means "use the default", which is every attack in
+     * Craftics today.
+     */
+    private double pendingAccuracy = AccuracyRoll.NO_OVERRIDE;
+    public double getPendingAccuracy() { return pendingAccuracy; }
+    public void setPendingAccuracy(double accuracy) { this.pendingAccuracy = accuracy; }
 
     private String aiOverrideKey = null;
     public String getAiOverrideKey() { return aiOverrideKey; }

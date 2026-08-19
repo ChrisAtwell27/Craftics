@@ -132,12 +132,6 @@ public final class CrafticsAPI {
     // === Allies ===
 
     /**
-     * Register a combat ally - a mob recruited from the player's hub that fights
-     * alongside them. Use {@link AllyEntry#builder(String)} for a fluent API.
-     *
-     * @param entry the ally definition (stats, recruitment mode, and AI)
-     */
-    /**
      * Register a hook that runs on a freshly spawned arena mob, enemy or ally.
      *
      * <p>Craftics creates every combatant by looking its entity type up and creating it
@@ -157,6 +151,20 @@ public final class CrafticsAPI {
      * @see com.crackedgames.craftics.api.SpawnCustomizer
      * @since 0.3.9
      */
+    public static void registerSpawnCustomizer(String key, SpawnCustomizer customizer) {
+        com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry.register(key, customizer);
+    }
+
+    /**
+     * Register a combat ally - a mob recruited from the player's hub that fights
+     * alongside them. Use {@link AllyEntry#builder(String)} for a fluent API.
+     *
+     * @param entry the ally definition (stats, recruitment mode, and AI)
+     */
+    public static void registerAlly(AllyEntry entry) {
+        AllyRegistry.register(entry);
+    }
+
     /**
      * Register a control item pinned to the hotbar for the duration of a fight, beside the
      * Move item.
@@ -201,6 +209,56 @@ public final class CrafticsAPI {
      */
     public static void registerFieldAllyProvider(String key, FieldAllyProvider provider) {
         com.crackedgames.craftics.api.registry.FieldAllyProviderRegistry.register(key, provider);
+    }
+
+    /**
+     * The allies this player has benched in the fight they are currently in.
+     *
+     * <p>What a switch menu is drawn from. Returns empty when the player is not fighting or
+     * brought no reserves, so it is safe to call unconditionally.
+     *
+     * <p>The bench comes from {@link FieldAllyProvider#reserves}. Craftics' own hub pets never
+     * appear on it: a hub pet is a real animal owed back to the yard afterwards, and one that
+     * is neither in the yard nor in the fight is an animal in no place at all.
+     *
+     * @see com.crackedgames.craftics.api.BenchedAlly
+     * @since 0.4.1
+     */
+    public static java.util.List<BenchedAlly> benchedAllies(net.minecraft.server.network.ServerPlayerEntity player) {
+        if (player == null) return java.util.List.of();
+        var combat = com.crackedgames.craftics.combat.CombatManager.getActiveCombat(player.getUuid());
+        if (combat == null || !combat.isActive()) return java.util.List.of();
+        return combat.benchedAllies(player.getUuid());
+    }
+
+    /**
+     * Swap a benched ally onto the grid in place of one that is fighting, for 1 AP.
+     *
+     * <p>The counterpart to {@link #registerCombatTool}: the tool opens the addon's menu, the
+     * menu asks for a swap, and this is the ask. Craftics owns what a switch MEANS - what it
+     * costs, what it refuses, where the incoming creature stands - and the addon owns the
+     * screen the player picked from, on the same split the combat tools use.
+     *
+     * <p>A creature that leaves the field keeps everything it was carrying. Bench a wounded,
+     * poisoned ally and it comes back wounded and poisoned; a bench that healed would make
+     * swapping the cheapest heal in the game.
+     *
+     * <p>Refused, with a message to the player and no AP spent, when it is not their turn,
+     * when the ally is not theirs, when it is one of Craftics' own hub pets, when someone is
+     * riding it, or when the incoming creature is too large for the tile being vacated.
+     *
+     * @param player               the player whose ally is being swapped
+     * @param outgoingAllyEntityId entity id of the ally to withdraw
+     * @param reserveIndex         {@link BenchedAlly#index()} of the ally to field
+     * @return true if the swap happened
+     * @since 0.4.1
+     */
+    public static boolean switchFieldAlly(net.minecraft.server.network.ServerPlayerEntity player,
+                                          int outgoingAllyEntityId, int reserveIndex) {
+        if (player == null) return false;
+        var combat = com.crackedgames.craftics.combat.CombatManager.getActiveCombat(player.getUuid());
+        if (combat == null || !combat.isActive()) return false;
+        return combat.handleSwitchAlly(player, outgoingAllyEntityId, reserveIndex);
     }
 
     /**
@@ -324,14 +382,6 @@ public final class CrafticsAPI {
     public static void setDefendingTypes(String mobKey, String... typeIds) {
         com.crackedgames.craftics.api.registry.AttackTypeRegistry
             .setDefendingTypes(mobKey, typeIds);
-    }
-
-    public static void registerSpawnCustomizer(String key, SpawnCustomizer customizer) {
-        com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry.register(key, customizer);
-    }
-
-    public static void registerAlly(AllyEntry entry) {
-        AllyRegistry.register(entry);
     }
 
     // === Custom Status Effects ===

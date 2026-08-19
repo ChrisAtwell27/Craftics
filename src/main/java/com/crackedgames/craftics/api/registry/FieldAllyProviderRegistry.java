@@ -70,6 +70,35 @@ public final class FieldAllyProviderRegistry {
         return out;
     }
 
+    /**
+     * Ask every provider what it wants benched for this player.
+     *
+     * <p>Iterates in the same registration order {@link #collect} uses, so a player's bench
+     * reads in the order their mods were loaded rather than shuffling between fights.
+     *
+     * <p>No {@code freeSlots}: a bench has no cap to be advised about. Craftics' party cap
+     * governs how many allies stand on the grid, and a benched creature stands nowhere.
+     */
+    public static List<FieldAllyProvider.FieldAlly> collectReserves(ServerWorld world,
+                                                                    ServerPlayerEntity player) {
+        if (PROVIDERS.isEmpty() || world == null || player == null) return List.of();
+        List<FieldAllyProvider.FieldAlly> out = new ArrayList<>();
+        for (Map.Entry<String, FieldAllyProvider> e : PROVIDERS.entrySet()) {
+            try {
+                List<FieldAllyProvider.FieldAlly> got = e.getValue().reserves(world, player);
+                if (got != null) {
+                    for (FieldAllyProvider.FieldAlly a : got) {
+                        if (a != null) out.add(a);
+                    }
+                }
+            } catch (Throwable t) {
+                CrafticsMod.LOGGER.error("Field ally provider '{}' threw; its reserves are skipped",
+                    e.getKey(), t);
+            }
+        }
+        return out;
+    }
+
     /** Clear every registration. Test hook. */
     public static void clear() {
         PROVIDERS.clear();

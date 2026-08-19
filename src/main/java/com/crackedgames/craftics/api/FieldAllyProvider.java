@@ -69,6 +69,34 @@ public interface FieldAllyProvider {
     List<FieldAlly> provide(ServerWorld world, ServerPlayerEntity player, int freeSlots);
 
     /**
+     * Which allies this provider wants on the <b>bench</b> - carried into the fight but not
+     * on the grid, available to be swapped in for one that is.
+     *
+     * <p>A party larger than the field is the whole point of a party. Six creatures where
+     * three fight is a different game from six creatures all swinging at once, and the choice
+     * of which three is the interesting part. Craftics' own hub pets have no bench and are not
+     * getting one: a hub pet is a real animal that was standing in your yard, and one that is
+     * neither in the yard nor on the field is an animal in no place at all, which every
+     * end-of-fight path would have to be taught about before it could be safe. A provider ally
+     * is data the owning mod already holds, so a bench costs it nothing.
+     *
+     * <p>Reserves are fielded by {@link #provide}'s rules once swapped in - same stats, same
+     * AI key, same spawn NBT - and are temporary exactly as field allies are. A benched
+     * creature that never enters the fight simply evaporates with the rest of them.
+     *
+     * <p>Default is an empty bench, so a provider written before this existed keeps working
+     * and reads correctly: it has no reserves, not an unanswered question.
+     *
+     * @param world  the world the fight is starting in
+     * @param player the player these reserves belong to
+     * @return the allies to bench, or an empty list. Never null
+     * @since 0.4.1
+     */
+    default List<FieldAlly> reserves(ServerWorld world, ServerPlayerEntity player) {
+        return List.of();
+    }
+
+    /**
      * One ally a provider wants fielded.
      *
      * @param entityTypeId the entity type to render it as

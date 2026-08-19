@@ -55,13 +55,20 @@ public class HubPetCollector {
          *  field many different creatures. */
         @org.jetbrains.annotations.Nullable String aiKey,
         /** Name shown in combat, or null for the entity's own. */
-        @org.jetbrains.annotations.Nullable String displayName
+        @org.jetbrains.annotations.Nullable String displayName,
+        /**
+         * True when this ally starts the fight on the bench rather than on the grid: carried
+         * in, given no tile and no world mob, and fielded only if the player swaps it in.
+         * Only ever set on a {@code temporary} provider ally - a hub pet is a real animal and
+         * has nowhere to be benched to.
+         */
+        boolean reserve
     ) {
         /** A real hub pet: permanent, no spawn NBT, AI from its entity type. */
         public TamedPetSnapshot(String entityTypeId, UUID entityUuid, NbtCompound fullEntityNbt,
                                 AllyEntry allyEntry, UUID playerUuid, boolean saddledMount) {
             this(entityTypeId, entityUuid, fullEntityNbt, allyEntry, playerUuid, saddledMount,
-                 false, null, null, null);
+                 false, null, null, null, false);
         }
     }
 
@@ -178,23 +185,39 @@ public class HubPetCollector {
         var provided = com.crackedgames.craftics.api.registry.FieldAllyProviderRegistry
             .collect(world, player, freeSlots);
         for (var fa : provided) {
-            results.add(new TamedPetSnapshot(
-                fa.entityTypeId(),
-                java.util.UUID.randomUUID(),   // no hub entity to identify; a fresh id keeps
-                                               // downstream maps that key on it well-formed
-                null,                          // no hub-restore blob: it never came from the hub
-                fa.stats(),
-                player.getUuid(),
-                false,                         // provider allies are never auto-mounts
-                true,                          // temporary
-                fa.spawnNbt(),
-                fa.aiKey(),
-                fa.displayName()));
+            results.add(providedSnapshot(fa, player, false));
         }
-        if (!provided.isEmpty()) {
-            CrafticsMod.LOGGER.info("{} provided ally/allies joining for {}",
-                provided.size(), player.getName().getString());
+        // Reserves are appended AFTER the field allies so they can never displace one. The
+        // bench is asked for separately rather than being carved off the front of `provided`:
+        // a provider that returns six and means all six to fight must keep getting all six.
+        var benched = com.crackedgames.craftics.api.registry.FieldAllyProviderRegistry
+            .collectReserves(world, player);
+        for (var fa : benched) {
+            results.add(providedSnapshot(fa, player, true));
         }
+        if (!provided.isEmpty() || !benched.isEmpty()) {
+            CrafticsMod.LOGGER.info("{} provided ally/allies joining for {} ({} benched)",
+                provided.size(), player.getName().getString(), benched.size());
+        }
+    }
+
+    /** One provider ally as a snapshot, fielded or benched. */
+    private static TamedPetSnapshot providedSnapshot(
+            com.crackedgames.craftics.api.FieldAllyProvider.FieldAlly fa,
+            ServerPlayerEntity player, boolean reserve) {
+        return new TamedPetSnapshot(
+            fa.entityTypeId(),
+            java.util.UUID.randomUUID(),   // no hub entity to identify; a fresh id keeps
+                                           // downstream maps that key on it well-formed
+            null,                          // no hub-restore blob: it never came from the hub
+            fa.stats(),
+            player.getUuid(),
+            false,                         // provider allies are never auto-mounts
+            true,                          // temporary
+            fa.spawnNbt(),
+            fa.aiKey(),
+            fa.displayName(),
+            reserve);
     }
 
     /**

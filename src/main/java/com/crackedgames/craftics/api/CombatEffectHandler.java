@@ -51,7 +51,13 @@ public interface CombatEffectHandler {
     /** Fires when the player lands a critical hit. */
     default void onCrit(CombatEffectContext ctx, CombatEntity target, int damage) {}
 
-    /** Fires when the player's attack misses (if miss mechanics exist). */
+    /**
+     * Fires when the player's own attack misses its target.
+     *
+     * <p>A miss deals no damage at all, so {@link #onDealDamage} never runs for the same
+     * swing. Only the player's shot is reported here - an ally's miss is the ally's, and a
+     * miss by something swinging AT the player arrives as {@link #onDodge} instead.
+     */
     default void onMiss(CombatEffectContext ctx, CombatEntity target) {}
 
     // === Damage receiving ===

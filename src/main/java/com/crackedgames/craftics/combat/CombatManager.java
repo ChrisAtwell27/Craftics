@@ -768,6 +768,39 @@ public class CombatManager {
     private final List<HubPetCollector.PetData> savedPets = new ArrayList<>();
     private List<HubPetCollector.TamedPetSnapshot> hubPetSnapshots = new ArrayList<>();
     public void setHubPetSnapshots(List<HubPetCollector.TamedPetSnapshot> snapshots) { this.hubPetSnapshots = snapshots; }
+    /**
+     * The bench: allies carried into this fight with no tile and no world mob, swappable for
+     * one that is on the grid.
+     *
+     * <p>Only ever holds {@code temporary} provider allies, which is what keeps the bench out
+     * of every end-of-fight path. A benched HUB pet would be a real animal that is in neither
+     * the hub nor the fight, and all eight {@code petsRescued} sites plus {@code savePets}
+     * filter on {@code !isTemporaryAlly()} over {@code enemies} alone - each would have to
+     * learn about it, and any one that did not would either duplicate the animal or destroy
+     * it, since the hub copy was already discarded when the party was collected.
+     *
+     * <p>Holds snapshots rather than entity ids on purpose: a benched ally has no live entity,
+     * and entity ids are recycled, so an id-keyed bench would alias a later respawn.
+     */
+    private final List<ReserveSlot> reserveAllies = new ArrayList<>();
+
+    /**
+     * One place on the bench.
+     *
+     * <p>{@code withdrawn} is null for an ally that has never been on the grid, and otherwise
+     * the very combatant that walked off it. Keeping the object rather than re-deriving one
+     * from the snapshot is what stops benching from healing: swap a one-HP creature out and
+     * back and it returns at one HP, still poisoned, with its summon timer still running.
+     */
+    private record ReserveSlot(HubPetCollector.TamedPetSnapshot snapshot,
+                               @org.jetbrains.annotations.Nullable CombatEntity withdrawn) {
+
+        /** What to call this slot in a menu, without needing a live entity to ask. */
+        String label() {
+            if (withdrawn != null) return withdrawn.getDisplayName();
+            return snapshot.displayName() != null ? snapshot.displayName() : snapshot.entityTypeId();
+        }
+    }
 
     // True once a normal combat exit (boss win, biome complete, return-home,
     // next-level) has explicitly disposed of the surviving allied pets. When
@@ -3095,6 +3128,19 @@ public class CombatManager {
                              boolean mitigable) {
         lastHitAvoided = false; // set true below only if the hit is fully avoided
 
+        // Did the blow connect at all? Asked before the mount redirect below, because an
+        // attack that went wide missed the animal too - resolving it against the mount would
+        // have a camel eat a swing the zombie never landed. Setting lastHitAvoided is what
+        // stops the knockback, thorns, weapon debuffs and counters downstream: every caller
+        // that applies those gates on this flag, not on the returned damage.
+        if (mitigable && attacker != null && rollMiss(attacker)) {
+            lastHitAvoided = true;
+            playDodgeFeedback("§7§l✦ MISSED!",
+                "§7§l✦ Missed!§r §7The " + attacker.getDisplayName() + "'s attack goes wide.");
+            fireEffectHook(h -> h.onDodge(effectContext, attacker));
+            return 0;
+        }
+
         // Mounted: an ordinary single-target swing or shot hits the ANIMAL, not the people on
         // it. A zombie swinging at a camel carrying four players is hitting the camel, and
         // routing that to whichever rider happened to be the turn holder meant one person ate
@@ -3502,6 +3548,53 @@ public class CombatManager {
         if (pending != null) return pending;
         return com.crackedgames.craftics.api.registry.AttackTypeRegistry
             .defaultAttackTypeOf(attacker.getAiKey(), attacker.getEntityTypeId());
+    }
+
+    /**
+     * How likely a combatant's current action is to land: whatever was set for this action,
+     * else always.
+     *
+     * <p>Deliberately the exact shape of {@link #attackTypeOf} - one reader, one slot, one
+     * fallback. Anything that wants to impair a combatant's aim WRITES the slot at the
+     * decision point rather than being consulted here; blindness is the first such writer.
+     * Reading the impairments here instead would mean every future one has to be taught to
+     * every damage path, and any that also wrote the slot would apply itself twice.
+     */
+    private static double accuracyOf(CombatEntity attacker) {
+        if (attacker == null) return AccuracyRoll.DEFAULT;
+        double pending = attacker.getPendingAccuracy();
+        return pending >= 0.0 ? pending : AccuracyRoll.DEFAULT;
+    }
+
+    /**
+     * Rolls whether {@code attacker}'s blow lands, announcing it if it does not.
+     *
+     * <p>Every combatant-versus-combatant damage path asks this immediately before applying
+     * damage, and none of them ask it any earlier. Rolling at decision time instead would
+     * settle the miss a tick before the swing animation plays, so the miss message would beat
+     * the swing on screen.
+     *
+     * @return true when the attack missed and the caller must skip the hit entirely - not
+     *         deal zero. Zero damage already means three other things to {@code takeDamage},
+     *         and a hit that "lands for 0" still fires every on-hit rider below it
+     */
+    private boolean attackMisses(CombatEntity attacker, CombatEntity target) {
+        if (!rollMiss(attacker)) return false;
+        if (attacker != null && target != null) {
+            sendMessage("§7" + attacker.getDisplayName() + " misses " + target.getDisplayName() + "!");
+        }
+        return true;
+    }
+
+    /**
+     * The bare to-hit roll, with no announcement.
+     *
+     * <p>Separate from {@link #attackMisses} because an attack aimed at the PLAYER has no
+     * defending {@link CombatEntity} to name, and its feedback is the full dodge burst rather
+     * than a chat line.
+     */
+    private boolean rollMiss(CombatEntity attacker) {
+        return !AccuracyRoll.roll(accuracyOf(attacker), combatRng).hit();
     }
 
     /**
@@ -5441,6 +5534,16 @@ public class CombatManager {
                 return;
             }
             int rawDamage = ally.getAttackPower() + computeAllyPetBonus(ally);
+            if (attackMisses(ally, victim)) {
+                // The AP is still spent. The order was given and the ally swung at it;
+                // refunding on a miss would make commanding a blinded pet strictly free,
+                // and a free retry until it connects is not a miss chance at all.
+                apRemaining -= LEAD_COMMAND_AP;
+                handleLeadSelect(-1);
+                sendSync();
+                refreshHighlights();
+                return;
+            }
             int dealt = victim.takeDamage(rawDamage);
             apRemaining -= LEAD_COMMAND_AP;
             sendMessage("§a" + ally.getDisplayName() + " strikes " + victim.getDisplayName()
@@ -7330,13 +7433,19 @@ public class CombatManager {
         pendingAttackAction = () -> {
             if (!active || player == null || !fTarget.isAlive()) return;
 
-            // Ranged accuracy check -miss chance for ranged attacks
-            if (fIsRangedWeapon && CrafticsMod.CONFIG.rangedAccuracy() < 1.0f) {
-                if (Math.random() > CrafticsMod.CONFIG.rangedAccuracy()) {
-                    sendMessage("§7Arrow missed " + fTarget.getDisplayName() + "!");
-                    sendSync();
-                    return;
-                }
+            // Ranged accuracy: the shot can go wide. Rolled here at impact rather than at
+            // swing time so the arrow is already in flight when it misses, and drawn from
+            // combatRng rather than Math.random() so it matches the AC dodge and is seedable.
+            //
+            // Skipped when the direct hit is suppressed: that swing was aimed at an empty tile
+            // and the anchor enemy is only there to orient the shape, so returning early would
+            // cancel the cone or sweep that IS the attack. There is nothing to miss.
+            if (fIsRangedWeapon && !fSuppressDirectHit
+                    && !AccuracyRoll.roll(CrafticsMod.CONFIG.rangedAccuracy(), combatRng).hit()) {
+                sendMessage("§7Arrow missed " + fTarget.getDisplayName() + "!");
+                fireEffectHook(h -> h.onMiss(effectContext, fTarget));
+                sendSync();
+                return;
             }
 
             // Projectile redirect: hitting a ghast fireball reverses its direction
@@ -15550,6 +15659,17 @@ public class CombatManager {
             ? null
             : com.crackedgames.craftics.combat.ai.AIUtils.seekWaterIfBurning(currentEnemy, arena);
 
+        // Cleared before every decision, not after every hit. A per-action override is only
+        // meaningful for the action the AI is about to name, and leaving a stale one set would
+        // silently retype - or silently re-roll - every later attack that never asked for it.
+        //
+        // Above the branch rather than inside it: the water-seek and stealth-search branches
+        // below return an action WITHOUT consulting the AI, so a clear that lived in the else
+        // let an override outlive the action it was set for whenever a burning mob went for
+        // water or lost sight of its target.
+        currentEnemy.setPendingAttackType(null);
+        currentEnemy.setPendingAccuracy(AccuracyRoll.NO_OVERRIDE);
+
         if (waterSeek != null) {
             pendingAction = waterSeek;
         } else if (invisibleToThisEnemy
@@ -15559,10 +15679,6 @@ public class CombatManager {
             // hiding in it, so stealth buys time rather than permanent safety.
             pendingAction = searchForHiddenTarget(currentEnemy);
         } else {
-            // Cleared before every decision, not after every hit. A per-action type override
-            // is only meaningful for the action the AI is about to name, and leaving a stale
-            // one set would silently retype every later attack that never asked for it.
-            currentEnemy.setPendingAttackType(null);
             pendingAction = ai.decideAction(currentEnemy, arena, aiTargetPos);
             // Mob-vs-mob predators: downgrade to Idle if the prey is on a stealth
             // tile and we're not adjacent to it. Uses the returned action's target.
@@ -16005,10 +16121,14 @@ public class CombatManager {
                 // Mob attacks another mob (predator hunting prey)
                 CombatEntity target = findEnemyById(am.targetEntityId());
                 if (target != null && target.isAlive()) {
-                    int typed = applyTypeEffectiveness(am.damage(), currentEnemy, target);
-                    int dealt = target.takeDamage(typed);
-                    sendMessage("§6" + currentEnemy.getDisplayName() + " attacks " + target.getDisplayName() + " for " + dealt + "!");
-                    checkAndHandleDeath(target);
+                    // Falls through to the shared turn-advance tail below rather than
+                    // returning, so a miss ends the turn exactly the way a hit does.
+                    if (!attackMisses(currentEnemy, target)) {
+                        int typed = applyTypeEffectiveness(am.damage(), currentEnemy, target);
+                        int dealt = target.takeDamage(typed);
+                        sendMessage("§6" + currentEnemy.getDisplayName() + " attacks " + target.getDisplayName() + " for " + dealt + "!");
+                        checkAndHandleDeath(target);
+                    }
                 } else {
                     sendMessage("§7" + currentEnemy.getDisplayName() + " looks around...");
                 }
@@ -16515,6 +16635,22 @@ public class CombatManager {
             && (entry == null || entry.scalesWithOwnerGear());
 
         ally.setPendingAttackType(null);   // see the note at the enemy decision point
+        ally.setPendingAccuracy(AccuracyRoll.NO_OVERRIDE);
+
+        // A blinded ally swings wide instead of losing its turn. Enemies fumble their whole
+        // turn to blindness at a check allies never reach, which is why an enemy blinding a
+        // player's pet has done precisely nothing since blindness was added - the debuff was
+        // applied, displayed on the HUD, and then read by no ally code path at all.
+        //
+        // Halving accuracy rather than copying the fumble is the treatment that fits: a pet
+        // that silently forfeits turns reads as the game being broken, while one that visibly
+        // swings and misses reads as blinded. The countdown ticks here, on the ally's own
+        // turn, because that is the only point an ally reliably passes once per round.
+        if (ally.getBlindedTurns() > 0) {
+            ally.setBlindedTurns(ally.getBlindedTurns() - 1);
+            ally.setPendingAccuracy(AccuracyRoll.BLINDED_MULTIPLIER);
+        }
+
         EnemyAction action = ai.decideAction(ally, arena, enemies);
 
         int doneDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
@@ -24331,7 +24467,10 @@ public class CombatManager {
         if (currentEnemy.isAlly() && pendingAction instanceof EnemyAction.MoveAndAttackMob maam) {
             CombatEntity allyTarget = findEnemyById(maam.targetEntityId());
             pendingAllyAttackTarget = null;
-            if (allyTarget != null && allyTarget.isAlive()) {
+            // A missed swing skips the whole block: no damage, no aggro, no on-hit ability,
+            // no Fang shock. Landing for zero would still fire every one of those.
+            if (allyTarget != null && allyTarget.isAlive()
+                    && !attackMisses(currentEnemy, allyTarget)) {
                 int dealt = allyTarget.takeDamage(maam.damage());
                 allyTarget.setAggroAllyEntityId(currentEnemy.getEntityId());
                 // Special on-hit ability (strider burn, soak, slow, ...).
@@ -24485,7 +24624,7 @@ public class CombatManager {
         // Handle mob-vs-mob attacks (MoveAndAttackMob)
         if (pendingAction instanceof EnemyAction.MoveAndAttackMob maam) {
             CombatEntity target = findEnemyById(maam.targetEntityId());
-            if (target != null && target.isAlive()) {
+            if (target != null && target.isAlive() && !attackMisses(currentEnemy, target)) {
                 int bannerBonus = target.isAlly()
                     ? BannerEffects.defenseBonusAt(target.getGridPos(), tileEffects)
                         + walkingBannerBonusAt(target.getGridPos())
@@ -24565,6 +24704,10 @@ public class CombatManager {
                     : ((currentEnemyPetAggroTarget != null && currentEnemyPetAggroTarget.isAlive())
                         ? currentEnemyPetAggroTarget : null);
             if (petTarget != null) {
+                // Checked inside the pet branch, never on the branch condition: the else
+                // below redirects the whole shot onto the player, so a miss folded into
+                // the `if` would turn a fumbled shot at a wolf into a hit on its owner.
+                if (!attackMisses(currentEnemy, petTarget)) {
                 // Addon combat effects: modify ally incoming damage
                 int raHookedDmg = fireEffectHookChained(raDamage,
                     (h, d) -> h.onAllyTakeDamage(effectContext, petTarget, currentEnemy, d));
@@ -24575,6 +24718,7 @@ public class CombatManager {
                     fireEffectHook(h -> h.onAllyDeath(effectContext, petTarget));
                 }
                 checkAndHandleDeath(petTarget);
+                } // end pet hit (skipped on a miss)
             } else {
                 // Route the entire ranged post-hit chain to the actual target
                 // player via the swap pattern (mirrors the melee path). Without
@@ -24687,6 +24831,8 @@ public class CombatManager {
             if (distToTarget <= 1) {
                 int damage = (int)(mam.damage() * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
                 if (petTarget != null) {
+                    // Checked inside the pet branch - see the ranged path's note.
+                    if (!attackMisses(currentEnemy, petTarget)) {
                     // Addon combat effects: modify ally incoming damage
                     final CombatEntity mamPet = petTarget;
                     int mamHookedDmg = fireEffectHookChained(damage,
@@ -24698,6 +24844,7 @@ public class CombatManager {
                         fireEffectHook(h -> h.onAllyDeath(effectContext, mamPet));
                     }
                     checkAndHandleDeath(petTarget);
+                    } // end pet hit (skipped on a miss)
                 } else {
                     ServerPlayerEntity savedMamPlayer = this.player;
                     boolean mamSwapped = mamTargetPlayer != null && mamTargetPlayer != savedMamPlayer;
@@ -24812,6 +24959,8 @@ public class CombatManager {
 
         damage = (int)(damage * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
         if (petTarget != null) {
+            // Checked inside the pet branch - see the ranged path's note.
+            if (!attackMisses(currentEnemy, petTarget)) {
             // Addon combat effects: modify ally incoming damage
             final CombatEntity melPet = petTarget;
             int melHookedDmg = fireEffectHookChained(damage,
@@ -24823,6 +24972,7 @@ public class CombatManager {
                 fireEffectHook(h -> h.onAllyDeath(effectContext, melPet));
             }
             checkAndHandleDeath(petTarget);
+            } // end pet hit (skipped on a miss)
         } else {
             // Route the ENTIRE post-hit chain (damage, on-hit bleed/burn/poison
             // effects, smite extra hit, knockback, thorns/counter retaliation,
@@ -33724,6 +33874,11 @@ public class CombatManager {
         pendingVictory = null;
         // Reset for the next combat -the pet disposition is undecided again.
         petsRescued = false;
+        // The bench evaporates with the fight. Nothing on it is owed anything: every slot
+        // holds a temporary provider ally, whose whole contract is that it exists for this
+        // battle and is gone - and whose owning mod still holds the real creature's state.
+        // Left uncleared, the next fight would open with the last one's leftovers benched.
+        reserveAllies.clear();
         // Last line of defence on the death-animation invulnerability: however this fight ended,
         // nobody leaves it untouchable.
         for (ServerPlayerEntity p : getAllParticipants()) {
@@ -33750,6 +33905,12 @@ public class CombatManager {
         if (!savedPets.isEmpty()) {
             CrafticsMod.LOGGER.info("Saved {} pet(s) for next level.", savedPets.size());
         }
+        // The bench goes where the temporary allies above go: nowhere. This runs at the level
+        // boundary, which is exactly where a provider ally's battle ends, and a bench that
+        // outlived it would let the player swap creatures onto the next level's field after
+        // their fielded siblings had already evaporated - resurrecting a party the run was
+        // finished with, one AP at a time.
+        reserveAllies.clear();
     }
 
     /**
@@ -33901,6 +34062,191 @@ public class CombatManager {
         sendMessage("§7You slide down off " + mountMob.getName().getString() + ".");
         sendSync();
         refreshHighlights();
+    }
+
+    /** AP a party switch costs. A swap is an action; it is not a free re-think. */
+    private static final int SWITCH_ALLY_AP = 1;
+
+    /**
+     * The allies {@code ownerUuid} has benched in this fight, in bench order.
+     *
+     * <p>Filtered by owner because a party fight holds one bench per member and a menu must
+     * only ever offer the player their own creatures.
+     */
+    public List<com.crackedgames.craftics.api.BenchedAlly> benchedAllies(java.util.UUID ownerUuid) {
+        if (!active || ownerUuid == null || reserveAllies.isEmpty()) return List.of();
+        List<com.crackedgames.craftics.api.BenchedAlly> out = new ArrayList<>();
+        for (int i = 0; i < reserveAllies.size(); i++) {
+            ReserveSlot slot = reserveAllies.get(i);
+            if (!ownerUuid.equals(slot.snapshot().playerUuid())) continue;
+            CombatEntity held = slot.withdrawn();
+            AllyEntry stats = slot.snapshot().allyEntry();
+            int maxHp = held != null ? held.getEffectiveMaxHp() : (stats != null ? stats.hp() : 1);
+            int hp = held != null ? held.getCurrentHp() : maxHp;
+            String aiKey = slot.snapshot().aiKey() != null
+                ? slot.snapshot().aiKey() : slot.snapshot().entityTypeId();
+            out.add(new com.crackedgames.craftics.api.BenchedAlly(
+                i, slot.snapshot().entityTypeId(), aiKey, slot.label(), hp, maxHp));
+        }
+        return out;
+    }
+
+    /**
+     * Swap a benched ally onto the grid in place of one already fighting.
+     *
+     * <p>Every refusal returns before anything is spent or moved, which is the contract the
+     * rest of the action handlers keep - a rejected action must cost the player nothing.
+     *
+     * <p>Only a {@code temporary} provider ally can be benched. A hub pet is a real animal
+     * the run has to give back afterwards, and one sitting on a bench is in neither the hub
+     * nor the fight; see {@link #reserveAllies}.
+     *
+     * @param requester      the player asking for the swap
+     * @param outgoingAllyId entity id of the ally to withdraw
+     * @param reserveIndex   index into the player's bench of the ally to field
+     * @return true if the swap happened
+     */
+    public boolean handleSwitchAlly(ServerPlayerEntity requester, int outgoingAllyId,
+                                    int reserveIndex) {
+        if (!active || player == null || arena == null || requester == null) return false;
+        if (phase != CombatPhase.PLAYER_TURN) {
+            sendMessage("§cYou can only switch on your turn.");
+            return false;
+        }
+        // In a party fight this manager belongs to the leader while `player` tracks whoever is
+        // currently acting, so the asker has to be checked rather than assumed. An addon's own
+        // screen reaches this without passing through handleAction's turn-holder guard, which
+        // is the only thing standing between a menu click and acting on someone else's turn.
+        if (!requester.getUuid().equals(player.getUuid())) {
+            requester.sendMessage(net.minecraft.text.Text.literal("§cIt is not your turn."), false);
+            return false;
+        }
+        if (reserveIndex < 0 || reserveIndex >= reserveAllies.size()) {
+            sendMessage("§cNo such reserve.");
+            return false;
+        }
+        // The bench is shared storage in a party fight - one list, every member's creatures -
+        // so the incoming slot needs its own ownership check. Validating only the outgoing
+        // ally would let a member field a teammate's creature onto their own tile.
+        if (!requester.getUuid().equals(reserveAllies.get(reserveIndex).snapshot().playerUuid())) {
+            sendMessage("§cThat reserve is not yours.");
+            return false;
+        }
+        CombatEntity outgoing = findEnemyById(outgoingAllyId);
+        if (outgoing == null || !outgoing.isAlive() || !outgoing.isAlly()) {
+            sendMessage("§cThat is not one of your allies.");
+            return false;
+        }
+        if (!player.getUuid().equals(outgoing.getOwnerUuid())) {
+            sendMessage("§cThat ally is not yours to move.");
+            return false;
+        }
+        if (!outgoing.isTemporaryAlly()) {
+            sendMessage("§c" + outgoing.getDisplayName() + " has nowhere to be benched to.");
+            return false;
+        }
+        // A mounted ally is off the grid entirely: mounting parks its position on the rider's
+        // tile as a sentinel and removes it from the arena, so there is no tile to hand over.
+        if (outgoing.isMounted()) {
+            sendMessage("§cYou cannot bench the animal someone is riding.");
+            return false;
+        }
+        if (apRemaining < SWITCH_ALLY_AP) {
+            sendMessage("§cNot enough AP to switch.");
+            return false;
+        }
+
+        // Read before anything is removed - removal is what clears the tile.
+        GridPos tile = outgoing.getGridPos();
+
+        // Drop every reference to the outgoing ally BEFORE it leaves. A Lead walk left running
+        // keeps calling arena.moveEntity on it, and moveEntity re-inserts whatever it moves
+        // into the occupant map - which would put a phantom back on a tile nothing stands on,
+        // blocking it for the rest of the fight.
+        if (leadWalkAlly == outgoing) clearLeadWalk();
+        if (leadSelectedAlly == outgoing) handleLeadSelect(-1);
+
+        ReserveSlot incoming = reserveAllies.remove(reserveIndex);
+        ReserveSlot benched = withdrawToBench(outgoing);
+
+        CombatEntity fielded = fieldAlly(incoming.snapshot(), tile, incoming.withdrawn());
+        if (fielded == null) {
+            // The reserve would not fit - a bigger footprint needs tiles the outgoing ally's
+            // own footprint did not free. Put the board back as it was rather than leaving
+            // the player a body down for an action that did not happen.
+            reserveAllies.remove(benched);
+            if (fieldAlly(benched.snapshot(), tile, benched.withdrawn()) == null) {
+                // Its own tile refused it, which should not be reachable. Leave it benched
+                // rather than dropping it out of the fight entirely, and say so plainly.
+                reserveAllies.add(benched);
+                sendMessage("§c" + benched.label() + " could not get back on and is benched.");
+            }
+            reserveAllies.add(Math.min(reserveIndex, reserveAllies.size()), incoming);
+            sendMessage("§cThere is no room for " + incoming.label() + " there.");
+            sendSync();
+            refreshHighlights();
+            return false;
+        }
+
+        apRemaining -= SWITCH_ALLY_AP;
+        // The AFK watchdog only ever resets on a CombatActionPayload, and a switch driven by
+        // an addon's own screen never touches one. Without this, taking a turn through a menu
+        // counts as idling and the watchdog ends the turn under the open menu.
+        turnIdleTicks = 0;
+        sendMessage("§a" + fielded.getDisplayName() + " takes the field. §7(-"
+            + SWITCH_ALLY_AP + " AP)");
+        sendSync();
+        refreshHighlights();
+        return true;
+    }
+
+    /**
+     * Take a living ally off the grid and put it on the bench, keeping the combatant itself.
+     *
+     * <p>Removal follows {@code despawnSummon} rather than the death path on purpose: dying
+     * fires the ally-death hook, announces the ally has fallen, and leaves it in
+     * {@code enemies} as a corpse. A benched ally did none of those things.
+     */
+    private ReserveSlot withdrawToBench(CombatEntity ally) {
+        if (arena != null) arena.removeEntity(ally);
+        enemies.remove(ally);
+        MobEntity mob = ally.getMobEntity();
+        if (mob != null && mob.isAlive()) mob.discard();
+        ally.setMobEntity(null);
+        ReserveSlot slot = new ReserveSlot(benchSnapshotOf(ally), ally);
+        reserveAllies.add(slot);
+        return slot;
+    }
+
+    /**
+     * The snapshot a withdrawn ally is re-fielded from.
+     *
+     * <p>Carries only what building its next MOB needs - type, spawn NBT, AI key, name. Its
+     * stats are deliberately absent from the equation: the combatant riding alongside in the
+     * bench slot already holds them, wounds included.
+     */
+    private HubPetCollector.TamedPetSnapshot benchSnapshotOf(CombatEntity ally) {
+        return new HubPetCollector.TamedPetSnapshot(
+            ally.getEntityTypeId(),
+            java.util.UUID.randomUUID(),
+            ally.getOriginalHubNbt(),
+            // Its stats as they stand. Never read while the combatant travels with the slot,
+            // but a snapshot whose stats were null or zero would be a trap for the first
+            // caller that ever fields one of these fresh.
+            AllyEntry.builder(ally.getEntityTypeId())
+                .hp(ally.getMaxHp())
+                .attack(ally.getAttackPower())
+                .defense(ally.getDefense())
+                .range(ally.getRange())
+                .speed(ally.getMoveSpeed())
+                .build(),
+            ally.getOwnerUuid(),
+            false,
+            ally.isTemporaryAlly(),
+            null,                       // spawn NBT was already merged into this combatant
+            ally.getAiOverrideKey(),
+            ally.getNameOverride(),
+            true);
     }
 
     /**
@@ -34064,10 +34410,17 @@ public class CombatManager {
      */
     private void spawnHubPets() {
         if (hubPetSnapshots.isEmpty() || arena == null || player == null) return;
-        ServerWorld world = (ServerWorld) player.getEntityWorld();
         GridPos playerStart = arena.getPlayerGridPos();
 
         for (HubPetCollector.TamedPetSnapshot snapshot : hubPetSnapshots) {
+            // Benched. Skipped here, before a tile is even looked for, which is what
+            // guarantees the three things a reserve must not have: no spawn tile taken from
+            // an ally that is actually fighting, no entry in `enemies` so nothing hands it a
+            // turn, and no mob in the world for the player to walk up to.
+            if (snapshot.reserve()) {
+                reserveAllies.add(new ReserveSlot(snapshot, null));
+                continue;
+            }
             // Find a safe tile near the player start (skips occupied tiles, hazards,
             // and cobweb overlays -see findPetSpawnTile).
             GridPos spawnPos = findPetSpawnTile(playerStart);
@@ -34076,26 +34429,76 @@ public class CombatManager {
                 continue;
             }
 
-            // Spawn the pet entity
-            var entityType = Registries.ENTITY_TYPE.get(Identifier.of(snapshot.entityTypeId()));
-            BlockPos blockPos = arena.gridToBlockPos(spawnPos);
-            var rawEntity = entityType.create(world, null, blockPos,
-                net.minecraft.entity.SpawnReason.MOB_SUMMONED, false, false);
-            if (!(rawEntity instanceof net.minecraft.entity.mob.MobEntity mob)) continue;
+            CombatEntity ce = spawnAllyFromSnapshot(snapshot, spawnPos);
+            if (ce == null) continue;
 
-            mob.refreshPositionAndAngles(
-                blockPos.getX() + 0.5, blockPos.getY(), blockPos.getZ() + 0.5, 0, 0);
-            mob.setPersistent();
-            mob.setAiDisabled(true);
-            mob.setInvulnerable(true);
-            mob.setNoGravity(true);
-            mob.noClip = true;
-            mob.setSilent(true);
-            mob.addCommandTag("craftics_arena");
-            world.spawnEntity(mob);
+            if (snapshot.saddledMount() && !playerMounted) {
+                // A saddled rideable party mob auto-mounts the player for the run.
+                mountPlayerOn(ce);
+            } else {
+                sendMessage("\u00a7a" + ce.getDisplayName() + " joins the fight!");
+            }
+            CrafticsMod.LOGGER.info("Spawned hub pet {} at {}", snapshot.entityTypeId(), spawnPos);
+        }
+        hubPetSnapshots.clear();
+    }
 
-            // Build combat stats from the ally definition
-            AllyEntry allyEntry = snapshot.allyEntry();
+    /**
+     * Build one ally from its snapshot, put its mob in the world and place it on the grid.
+     *
+     * <p>Extracted so fight-start and a mid-fight swap-in cannot drift apart. Hand-copying
+     * this block is specifically how an ally loses its owner's Pet-affinity HP: max HP is
+     * constructor-only, so {@code computeAllyPetHpBonus} has to be folded in BEFORE the
+     * {@code CombatEntity} exists and there is no setter to repair it afterwards.
+     *
+     * <p>The auto-mount branch deliberately stays with the caller. Fielding a mount by swap
+     * mid-fight is a different problem - the rider is standing on the animal being replaced.
+     *
+     * @return the placed ally, or null if its entity type would not produce a mob
+     */
+    private CombatEntity spawnAllyFromSnapshot(HubPetCollector.TamedPetSnapshot snapshot,
+                                               GridPos spawnPos) {
+        return fieldAlly(snapshot, spawnPos, null);
+    }
+
+    /**
+     * Put an ally on the grid: either a new one built from its snapshot, or one that has been
+     * here before and is coming back off the bench.
+     *
+     * @param returning the combatant to re-field, or null to build a fresh one. A returning
+     *                  ally keeps everything it was carrying - see {@link CombatEntity#rebindMob}
+     */
+    private CombatEntity fieldAlly(HubPetCollector.TamedPetSnapshot snapshot,
+                                   GridPos spawnPos, CombatEntity returning) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        var entityType = Registries.ENTITY_TYPE.get(Identifier.of(snapshot.entityTypeId()));
+        BlockPos blockPos = arena.gridToBlockPos(spawnPos);
+        var rawEntity = entityType.create(world, null, blockPos,
+            net.minecraft.entity.SpawnReason.MOB_SUMMONED, false, false);
+        if (!(rawEntity instanceof net.minecraft.entity.mob.MobEntity mob)) return null;
+
+        mob.refreshPositionAndAngles(
+            blockPos.getX() + 0.5, blockPos.getY(), blockPos.getZ() + 0.5, 0, 0);
+        mob.setPersistent();
+        mob.setAiDisabled(true);
+        mob.setInvulnerable(true);
+        mob.setNoGravity(true);
+        mob.noClip = true;
+        mob.setSilent(true);
+        mob.addCommandTag("craftics_arena");
+        world.spawnEntity(mob);
+
+        // Build combat stats from the ally definition
+        AllyEntry allyEntry = snapshot.allyEntry();
+        String allyAiKey = snapshot.aiKey() != null ? snapshot.aiKey() : snapshot.entityTypeId();
+
+        CombatEntity ce;
+        if (returning != null) {
+            // Coming back off the bench. Stats are NOT rebuilt: this combatant already has
+            // them, along with the damage it took before it left.
+            ce = returning;
+            ce.rebindMob(mob, spawnPos);
+        } else {
             // Max HP is constructor-only, so the owner's Pet-affinity HP has to be
             // folded in here rather than applied to the CombatEntity afterwards.
             int hp = allyEntry.hp()
@@ -34104,7 +34507,7 @@ public class CombatManager {
             int def = allyEntry.defense();
             int range = allyEntry.range();
 
-            CombatEntity ce = new CombatEntity(
+            ce = new CombatEntity(
                 mob.getId(), snapshot.entityTypeId(), spawnPos,
                 hp, atk, def, range);
             ce.setAlly(true);
@@ -34120,26 +34523,28 @@ public class CombatManager {
             if (snapshot.displayName() != null) ce.setNameOverride(snapshot.displayName());
             // An ally may declare an AI key distinct from its entity type, which is what
             // lets one entity type field many different creatures.
-            String allyAiKey = snapshot.aiKey() != null ? snapshot.aiKey() : snapshot.entityTypeId();
             if (snapshot.aiKey() != null) ce.setAiOverrideKey(snapshot.aiKey());
-            // Spawn customisation, same order and reasoning as the enemy path: NBT first so a
-            // code hook sees the tagged entity. This is the path a data-driven party arrives
-            // through, so without it a provider ally would spawn blank.
-            applySpawnNbt(mob, snapshot.spawnNbt());
-            com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry.apply(world, mob, ce);
-            ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(allyAiKey));
-            enemies.add(ce);
-            arena.placeEntity(ce);
-
-            if (snapshot.saddledMount() && !playerMounted) {
-                // A saddled rideable party mob auto-mounts the player for the run.
-                mountPlayerOn(ce);
-            } else {
-                sendMessage("\u00a7a" + ce.getDisplayName() + " joins the fight!");
-            }
-            CrafticsMod.LOGGER.info("Spawned hub pet {} at {}", snapshot.entityTypeId(), spawnPos);
         }
-        hubPetSnapshots.clear();
+        // Spawn customisation, same order and reasoning as the enemy path: NBT first so a
+        // code hook sees the tagged entity. This is the path a data-driven party arrives
+        // through, so without it a provider ally would spawn blank.
+        //
+        // Runs again for a returning ally, because the MOB is new: skipping it would field a
+        // blank-looking creature whose appearance the addon had already described once. A
+        // customizer is therefore called once per mob, not once per ally.
+        applySpawnNbt(mob, snapshot.spawnNbt());
+        com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry.apply(world, mob, ce);
+        ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(allyAiKey));
+        enemies.add(ce);
+        // Checked, unlike every other placement site. A swap chooses the tile the outgoing
+        // ally vacated, and a reserve with a bigger footprint needs tiles that tile does not
+        // free - so this is the one caller that can actually be refused.
+        if (!arena.placeEntity(ce)) {
+            enemies.remove(ce);
+            mob.discard();
+            return null;
+        }
+        return ce;
     }
 
     public void refreshHighlights() {

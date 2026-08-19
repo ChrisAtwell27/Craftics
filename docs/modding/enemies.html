@@ -755,6 +755,54 @@ CrafticsAPI.registerAlly(AllyEntry.builder("minecraft:cat")
       </p>
     </div>
 
+    <h3 id="reserves">Reserves and switching</h3>
+    <p>
+      A party larger than the field is the point of having a party. Override <code>reserves</code> to send creatures into the fight on the <strong>bench</strong> - carried along, given no tile and no mob in the world, and fielded only when the player swaps one in.
+    </p>
+    <pre><code>CrafticsAPI.registerFieldAllyProvider("mymod:party", new FieldAllyProvider() {
+    @Override
+    public List&lt;FieldAlly&gt; provide(ServerWorld world, ServerPlayerEntity player, int freeSlots) {
+        return MyModApi.partyOf(player).active().stream().map(MyMod::toFieldAlly).toList();
+    }
+
+    @Override
+    public List&lt;FieldAlly&gt; reserves(ServerWorld world, ServerPlayerEntity player) {
+        return MyModApi.partyOf(player).benched().stream().map(MyMod::toFieldAlly).toList();
+    }
+});</code></pre>
+    <p>
+      Reserves are built from the same <code>FieldAlly</code> as field allies and follow the same rules once they take the field - same stats, same <code>aiKey</code>, same spawn NBT, still temporary. <code>reserves</code> defaults to an empty bench, so a provider written before this existed keeps working and reads correctly: it has no reserves, rather than an unanswered question.
+    </p>
+
+    <h4>Asking for a switch</h4>
+    <p>
+      Craftics does not draw the menu. Read the bench, show it however you like, and ask for the swap:
+    </p>
+    <pre><code>for (BenchedAlly benched : CrafticsAPI.benchedAllies(player)) {
+    // benched.index(), .displayName(), .hp(), .maxHp(), .aiKey()
+}
+
+CrafticsAPI.switchFieldAlly(player, outgoingAllyEntityId, benched.index());</code></pre>
+    <p>
+      This is the same split the <a href="../modding.html">combat tools</a> use: register a tool, open your own screen from its <code>onUse</code>, and call back in. Craftics owns what a switch <em>means</em> - it costs 1 AP, it happens on your turn, the incoming creature takes the tile the outgoing one vacated - and your mod owns the screen the player picked from.
+    </p>
+    <p>
+      A benched ally is addressed by <strong>index</strong>, not by entity id, because it has no entity: no mob in the world, no tile on the grid, nothing to be found by. That absence is what being benched is. Indices are only valid until the next swap reorders the bench, so read it again rather than holding them.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>A creature keeps what it was carrying.</strong> Bench a wounded, poisoned ally and it returns wounded and poisoned, with any summon timer still running. A bench that healed would make swapping the cheapest heal in the game.
+      </p>
+      <p>
+        <strong>Only provider allies have a bench.</strong> Craftics' own hub pets do not and are not getting one. A hub pet is a real animal that was standing in your yard and is owed back to it afterwards; one that is neither in the yard nor in the fight is an animal in no place at all, and every end-of-fight path would have to be taught about it before that could be safe. Your creatures are data your mod already holds, so a bench costs them nothing.
+      </p>
+    </div>
+
+    <p>
+      A switch is refused - with a message to the player and no AP spent - when it is not their turn, when the ally is not theirs, when it is one of Craftics' hub pets, when someone is riding it, or when the incoming creature is too large for the tile being vacated.
+    </p>
+
     <!-- ================================================================
          CUSTOM ACTIONS
          ================================================================ -->

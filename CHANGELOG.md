@@ -1,5 +1,34 @@
 ﻿Changelog
 
+0.4.1
+
+Addon API: A Bench, and Switching Off It
+
+- A field ally provider can now declare **reserves** alongside the allies it fields: creatures carried into the fight with no tile and no mob in the world, fielded only when the player swaps one in. A party larger than the field is the point of having a party - six creatures where three fight is a different game from six all swinging at once, and choosing which three is the interesting part
+- A switch costs **1 AP** and puts the incoming creature on the tile the outgoing one vacated. It is refused, with no AP spent, when it is not your turn, when the ally is not yours, when someone is riding it, or when the incoming creature is too large for the tile being freed
+- A benched creature keeps everything it was carrying. Bench a wounded, poisoned ally and it comes back wounded and poisoned with its summon timer still running - the combatant itself goes to the bench rather than being rebuilt from its definition, so every scrap of per-fight state rides along, including state added later that nobody remembers to copy. A bench that healed would be the cheapest heal in the game
+- **No menu.** Craftics owns what a switch means and the addon owns the screen the player picked from, the same split the combat tools use: read the bench, draw it however you like, ask for the swap. A party-selection UI is your design
+- Reserves are addressed by index rather than entity id, because a benched ally has no entity - no mob, no tile, nothing to be found by. That absence is what being benched is
+- **Only provider allies get a bench**, and Craftics' own hub pets deliberately do not. A hub pet is a real animal that was standing in your yard and is owed back to it; one that is neither in the yard nor in the fight is an animal in no place at all. Every end-of-fight path filters on exactly the flag that excludes it, and each would have to learn about a bench before one could be safe - where a miss duplicates the animal and a false positive destroys it, since the hub copy was discarded when the party was collected
+
+Accuracy
+
+- Attacks can now **miss**. Accuracy is a per-action multiplier living beside the attack type, on the same slot with the same lifecycle: set for the one action an AI is about to name, cleared before the next decision. A creature whose movepool holds a wild haymaker and a reliable jab needs the haymaker to land less often, and nothing about the defender expresses that
+- Distinct from the armor-class dodge, which is the defender's property and answers "did I get out of the way". Accuracy is the attack's own
+- **Inert until something asks for it.** Every attack defaults to always landing, and a certain hit deliberately draws no randomness at all - so adding the roll to the damage paths does not shift any other roll in the fight. Had it drawn and discarded, every dodge and crit downstream would have started landing differently on the day this shipped, which reads as a balance change nobody made
+- A miss skips the hit outright rather than dealing zero. Zero already means three other things, and a hit that "lands for 0" still fires every on-hit rider behind it - knockback, thorns, weapon debuffs, counters
+- The player's existing ranged miss now runs through the same roll, and no longer cancels an empty-tile cone or sweep: that swing was aimed at a tile, the anchor enemy is only there to orient the shape, and there was never anything to miss
+- `onMiss` fires. The addon hook has been declared since the effect API existed and was invoked from nowhere
+
+Blinded Pets
+
+- Fixed blindness doing nothing whatsoever to an ally. Enemies could apply it, the HUD showed it ticking down, and no ally code path ever read it - the debuff was applied to a wolf and then simply ignored
+- A blinded ally now swings at half accuracy for the turn instead of losing it. Enemies fumble their whole turn to blindness at a check allies never reach, and copying that would have a pet silently forfeit turns, which reads as the game being broken; one that visibly swings and misses reads as blinded
+
+Stale Per-Action Overrides
+
+- Fixed an attack-type override outliving the action it was set for. The clear sat inside the branch that consults the AI, while the two branches that return an action without consulting it - a burning mob running for water, one that has lost sight of its target - skipped it, leaving the override to silently retype every later attack that never asked for one
+
 0.4.0
 
 Addon API: Spawning What You Are, Not What Your Entity Type Says
