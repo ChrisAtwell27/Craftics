@@ -139,6 +139,16 @@
             <td>Register a combat ally recruited from the player hub to fight alongside the player.</td>
           </tr>
           <tr>
+            <td><a href="modding/enemies.html#enemy-bench">Trainers &amp; enemy benches</a></td>
+            <td><code>switchEnemy()</code> / <code>sendOutEnemy()</code></td>
+            <td>Give an enemy a team of creatures it fields one at a time, withdrawing and sending out mid-fight.</td>
+          </tr>
+          <tr>
+            <td><a href="modding/enemies.html#custom-actions">Custom actions</a></td>
+            <td><code>registerCustomAction()</code></td>
+            <td>Define an action whose resolution is genuinely new. One handler serves both enemies and allies.</td>
+          </tr>
+          <tr>
             <td><a href="modding/world.html#biomes">Biomes</a></td>
             <td><code>registerBiome()</code></td>
             <td>Add a biome programmatically. JSON datapacks also work for biomes.</td>
@@ -191,7 +201,7 @@ gpr.key=ghp_yourtokenhere</code></pre>
 
     <h3>Step 2: Add the Maven repository and dependency</h3>
     <p>
-      In your addon's <code>build.gradle</code>, add the Craftics Maven repository and a <code>modImplementation</code> dependency. The version format is <code>0.2.0+&lt;mc_version&gt;</code>, for example <code>0.2.0+1.21.1</code>.
+      In your addon's <code>build.gradle</code>, add the Craftics Maven repository and a <code>modImplementation</code> dependency. The version format is <code>&lt;mod_version&gt;+&lt;mc_version&gt;</code>, for example <code>0.4.0+1.21.1</code>.
     </p>
     <pre><code>repositories {
     maven {
@@ -207,8 +217,42 @@ gpr.key=ghp_yourtokenhere</code></pre>
 }
 
 dependencies {
-    modImplementation "com.crackedgames:craftics:0.2.0+1.21.1"
+    modImplementation "com.crackedgames:craftics:0.4.0+1.21.1"
 }</code></pre>
+
+    <div class="callout">
+      <p>
+        <strong>Resolve Craftics from this Maven, not as a loose jar file.</strong> Craftics ships several libraries as nested jars inside its own - Fantasy, three Cardinal Components modules and the player animation library. Fabric Loader unpacks those at runtime, but a <code>files(...)</code> dependency is just a path on the classpath and nothing ever looks inside <code>META-INF/jars</code>. The build succeeds and the game dies at startup reaching for a class that is sitting in a jar nobody opened, such as <code>VoidChunkGenerator</code>.
+      </p>
+      <p>
+        This is a development-environment problem only. In a modpack the loader unpacks the nested jars normally, so it never reaches players - which is what makes it confusing to hit. Every mod that nests its libraries behaves this way; the same trap turns up as missing Kotlin classes behind Cobblemon and missing endec classes behind owo.
+      </p>
+      <p>
+        If you have a reason to consume a local build as a flat file anyway, declare what it nests yourself, for development only:
+      </p>
+      <pre><code>repositories {
+    maven { name = 'KosmX';      url = 'https://maven.kosmx.dev/' }
+    maven { name = 'Ladysnake';  url = 'https://maven.ladysnake.org/releases' }
+    maven { name = 'Nucleoid';   url = 'https://maven.nucleoid.xyz/' }
+    maven { name = 'WispForest'; url = 'https://maven.wispforest.io/releases/' }
+}
+
+dependencies {
+    // The nested jars a flat-file dependency loses.
+    modRuntimeOnly "xyz.nucleoid:fantasy:0.6.4+1.21"
+    modRuntimeOnly "dev.kosmx.player-anim:player-animation-lib-fabric:2.0.4+1.21.1"
+    modRuntimeOnly "org.ladysnake.cardinal-components-api:cardinal-components-base:6.1.3"
+    modRuntimeOnly "org.ladysnake.cardinal-components-api:cardinal-components-entity:6.1.3"
+    modRuntimeOnly "org.ladysnake.cardinal-components-api:cardinal-components-world:6.1.3"
+
+    // owo is NOT nested - Craftics needs it at runtime but deliberately does not
+    // bundle it, so it is a separate mod in a pack and a separate line here.
+    modRuntimeOnly "io.wispforest:owo-lib:0.12.15.4+1.21"
+}</code></pre>
+      <p>
+        These versions track Craftics' own <code>gradle.properties</code> and can change between releases. Pinning them by hand is a maintenance cost the Maven dependency does not have.
+      </p>
+    </div>
 
     <h3>Step 3: Declare the dependency in fabric.mod.json</h3>
     <p>
@@ -223,7 +267,7 @@ dependencies {
     "fabricloader": "&gt;=0.16.0",
     "minecraft": "~1.21.1",
     "java": "&gt;=21",
-    "craftics": "&gt;=0.2.0"
+    "craftics": "&gt;=0.4.0"
   }
 }</code></pre>
 

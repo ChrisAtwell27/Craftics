@@ -166,6 +166,138 @@ public final class CrafticsAPI {
     }
 
     /**
+     * Give an enemy a bench: creatures it carries into the fight on no tile, fielded only when
+     * it switches one in.
+     *
+     * <p>A trainer with a team is not a boss mechanic. A route trainer with three creatures is
+     * the ordinary case and a gym leader is the same thing with better ones, so this is
+     * available to any enemy - set it from a spawn customizer, from a boss AI's setup, or from
+     * whatever built the fight.
+     *
+     * <p>The bench lives on the trainer and dies with it. A defeated trainer's remaining team
+     * leaves with it, which is both the rule a real battle uses and the one that needs no
+     * cleanup pass to enforce.
+     *
+     * @see com.crackedgames.craftics.api.EnemyBench
+     * @since 0.4.0
+     */
+    public static void setEnemyBench(com.crackedgames.craftics.combat.CombatEntity trainer,
+                                     java.util.List<com.crackedgames.craftics.api.EnemyBench> bench) {
+        if (trainer == null) return;
+        trainer.getBench().clear();
+        if (bench != null) {
+            for (var b : bench) {
+                if (b != null) trainer.getBench().add(b);
+            }
+        }
+    }
+
+    /** Read an enemy's bench. Empty when it has none. */
+    public static java.util.List<com.crackedgames.craftics.api.EnemyBench> enemyBench(
+            com.crackedgames.craftics.combat.CombatEntity trainer) {
+        return trainer == null ? java.util.List.of()
+            : java.util.List.copyOf(trainer.getBench());
+    }
+
+    /**
+     * Switch a trainer's benched creature in for one of its creatures on the field.
+     *
+     * <p>Typically called from the trainer's own AI, or from a {@code CustomAction} handler so
+     * the switch costs the trainer its turn the way a real one does.
+     *
+     * <p>The outgoing creature returns to the bench <b>carrying its damage and status</b>: it
+     * is captured from its live state, not rebuilt from its definition. A switch that healed
+     * would make rotating a team strictly better than fighting with it.
+     *
+     * <p>Refused, with nothing changed, when the outgoing creature is not on the field, is not
+     * an enemy, is the trainer itself, or when the reserve will not fit the tile being freed.
+     *
+     * @return true if the switch happened
+     * @since 0.4.0
+     */
+    public static boolean switchEnemy(net.minecraft.server.network.ServerPlayerEntity anyParticipant,
+                                      com.crackedgames.craftics.combat.CombatEntity trainer,
+                                      com.crackedgames.craftics.combat.CombatEntity outgoing,
+                                      int reserveIndex) {
+        if (anyParticipant == null) return false;
+        var cm = com.crackedgames.craftics.combat.CombatManager
+            .getActiveCombat(anyParticipant.getUuid());
+        if (cm == null || !cm.isActive()) return false;
+        return cm.switchEnemy(trainer, outgoing, reserveIndex);
+    }
+
+    /**
+     * Send a trainer's benched creature out onto an empty tile, withdrawing nothing.
+     *
+     * <p>What opens a trainer fight and what answers a knockout;
+     * {@link #switchEnemy} answers a bad matchup. A switch captures the outgoing creature's
+     * live state onto the bench, so it needs one on the field to capture - when a trainer's
+     * last creature faints there is nothing to withdraw, and the bench would otherwise be
+     * stranded while the trainer conceded with reserves left.
+     *
+     * <p>The reserve is removed from the bench rather than swapped, since nothing is coming
+     * back to replace it. It is fielded through the same path a switch uses, so its NBT,
+     * spawn customizer, AI key and typing all land as if it had started on the grid.
+     *
+     * <pre>{@code
+     * // The leader's next Pokemon, after the last one fainted.
+     * if (!trainer.getBench().isEmpty()) {
+     *     CrafticsAPI.sendOutEnemy(player, trainer, 0, new GridPos(4, 2));
+     * }
+     * }</pre>
+     *
+     * @param anyParticipant any player in the fight, used to find it
+     * @param trainer        the enemy whose bench is being drawn from
+     * @param reserveIndex   index into {@code trainer.getBench()}
+     * @param tile           where to field it. Refused if out of bounds, occupied, not
+     *                       standable, or too small for the creature's footprint
+     * @return true if the creature was fielded
+     * @since 0.4.0
+     */
+    public static boolean sendOutEnemy(net.minecraft.server.network.ServerPlayerEntity anyParticipant,
+                                       com.crackedgames.craftics.combat.CombatEntity trainer,
+                                       int reserveIndex,
+                                       com.crackedgames.craftics.core.GridPos tile) {
+        if (anyParticipant == null) return false;
+        var cm = com.crackedgames.craftics.combat.CombatManager
+            .getActiveCombat(anyParticipant.getUuid());
+        if (cm == null || !cm.isActive()) return false;
+        return cm.sendOutEnemy(trainer, reserveIndex, tile);
+    }
+
+    /**
+     * Order one of the player's allies to take a specific action on its next turn, instead of
+     * letting its AI decide.
+     *
+     * <p>The other half of the {@link CombatTool} loop: the tool opens your menu, the player
+     * picks, and this is where the answer goes. Craftics owns the turn structure and how the
+     * action resolves; the addon owns the screen and the choice.
+     *
+     * <p>The order is <b>consumed as it is obeyed</b>, so the ally follows it once and then
+     * goes back to thinking for itself. A standing order would have the creature repeat last
+     * turn's move forever on any turn the player forgot to issue a new one, which reads as the
+     * ally being stuck.
+     *
+     * <p>Everything downstream is the ordinary ally path: a commanded attack goes through the
+     * same damage, resistance, attack-typing and accuracy handling an AI-chosen one does. The
+     * order decides WHAT the ally does, never how it resolves. Pair it with
+     * {@code EnemyAction.CustomAction} to order a move the addon defines.
+     *
+     * @param ally   the ally to order. Must belong to this player
+     * @param action what to do, or null to cancel a pending order
+     * @return true if the order was accepted
+     * @since 0.4.0
+     */
+    public static boolean commandAlly(net.minecraft.server.network.ServerPlayerEntity player,
+                                      com.crackedgames.craftics.combat.CombatEntity ally,
+                                      com.crackedgames.craftics.combat.ai.EnemyAction action) {
+        if (player == null || ally == null || !ally.isAlly()) return false;
+        if (ally.getOwnerUuid() != null && !ally.getOwnerUuid().equals(player.getUuid())) return false;
+        ally.setCommandedAction(action);
+        return true;
+    }
+
+    /**
      * Register a control item pinned to the hotbar for the duration of a fight, beside the
      * Move item.
      *
@@ -222,7 +354,7 @@ public final class CrafticsAPI {
      * is neither in the yard nor in the fight is an animal in no place at all.
      *
      * @see com.crackedgames.craftics.api.BenchedAlly
-     * @since 0.4.1
+     * @since 0.4.0
      */
     public static java.util.List<BenchedAlly> benchedAllies(net.minecraft.server.network.ServerPlayerEntity player) {
         if (player == null) return java.util.List.of();
@@ -251,7 +383,7 @@ public final class CrafticsAPI {
      * @param outgoingAllyEntityId entity id of the ally to withdraw
      * @param reserveIndex         {@link BenchedAlly#index()} of the ally to field
      * @return true if the swap happened
-     * @since 0.4.1
+     * @since 0.4.0
      */
     public static boolean switchFieldAlly(net.minecraft.server.network.ServerPlayerEntity player,
                                           int outgoingAllyEntityId, int reserveIndex) {

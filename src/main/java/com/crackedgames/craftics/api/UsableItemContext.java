@@ -58,6 +58,35 @@ public interface UsableItemContext {
     /** Heal {@code entity} by {@code amount} (capped at its max HP). */
     void healEntity(CombatEntity entity, int amount);
 
+    /**
+     * Take an enemy out of the fight as <b>captured</b> rather than defeated.
+     *
+     * <p>For a thrown ball, a net, a bribe - anything that ends a creature's part in the
+     * battle by taking it rather than killing it. The item's own entry supplies the reach and
+     * the targeting ({@code range} plus {@code SINGLE_ENEMY}), and the <b>chance is the
+     * addon's</b>: roll it in the handler, call this when it succeeds, and return
+     * {@code ItemUseResult.ok()} either way so a failed attempt still costs the throw.
+     *
+     * <p>Removed silently: no death, no loot roll, no kill credit, no achievement progress.
+     * A captured creature was not beaten, and paying out a defeat for one would make catching
+     * strictly better than fighting. Anything the capture SHOULD award - experience, an entry
+     * in a registry, a reward - is the addon's to grant in the same handler, where it already
+     * knows what was caught.
+     *
+     * <p>Where the creature goes afterwards is likewise the addon's: it holds the target and
+     * can route it to a party, to storage when that party is full, or anywhere else. Craftics
+     * only guarantees it is off the field.
+     *
+     * <p>Returning {@code ok()} afterwards runs the usual victory check, so capturing the last
+     * enemy ends the fight exactly as defeating it would.
+     *
+     * @param target the enemy to take. Allies and the player are refused
+     * @return true if it was on the field and is now gone
+     * @since 0.4.0
+     */
+    boolean captureEntity(CombatEntity target);
+
+
     // --- Status effects ------------------------------------------------------
 
     /** Apply a combat effect to the player. Supports every {@link CombatEffects.EffectType}. */

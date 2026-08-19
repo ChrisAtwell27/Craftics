@@ -403,6 +403,39 @@ public interface EventHandler {
                  EventManager eventManager);
 }</code></pre>
 
+    <h3 id="event-becomes-fight">Turning an event into a fight</h3>
+    <p>
+      An event does not have to end in rewards. It can <strong>replace the level that follows it</strong>, which is how a trainer battle, a gym, or an ambush is built: the event is the encounter, and the level it queues is the fight.
+    </p>
+    <p>
+      Set the level on the <code>EventManager</code> your handler was handed. Craftics reads it back after your handler returns and builds that level instead of the one it had queued.
+    </p>
+
+    <pre><code>CrafticsAPI.registerEvent(new EventEntry(
+    "mymod:trainer_battle",
+    "Trainer Battle",
+    0.15f,
+    1,
+    false,  // forced: no accept/decline prompt, it just happens
+    (participants, world, eventManager) -&gt; {
+        for (ServerPlayerEntity p : participants) {
+            p.sendMessage(Text.literal("§eA trainer blocks the road!"), false);
+        }
+        // The next "level" is the battle itself.
+        eventManager.setPendingNextLevel(buildTrainerLevel());
+    }
+));</code></pre>
+
+    <div class="callout">
+      <p>
+        <strong>This works for forced and choice events alike.</strong> A forced event used to be able to hand out rewards and nothing else - it built the level it had queued before your handler ran, so a redirect was discarded and a forced event could never become a fight. Both paths now read the pending level back afterwards.
+      </p>
+    </div>
+
+    <p>
+      If your handler starts a fight <em>itself</em> rather than queuing one, leave the pending level alone. Craftics checks whether combat is already running and will not build a second arena on top of yours.
+    </p>
+
     <h3>Forcing an event</h3>
     <p>
       During development or for scripted sequences you can force a specific event to trigger at the next between-level transition for a given player. Pass <code>null</code> to clear any forced event.

@@ -90,8 +90,25 @@ public interface CustomActionHandler {
          * Deal damage to a combatant through Craftics' own pipeline, so resistances,
          * attack typings, shields, effects and death handling all apply exactly as they
          * would for a built-in action. Prefer this over touching HP directly.
+         *
+         * <p>Routing follows {@link #self()}'s side, so the same handler works for both.
+         * An enemy's action hits allies and, for anything that is neither an ally nor
+         * itself, the player. An ally's action hits creatures only and never falls through
+         * to the player - say {@link #damagePlayer(int)} to mean the player.
          */
         void damage(CombatEntity target, int amount);
+
+        /**
+         * Deal damage to the player directly.
+         *
+         * <p>Exists so an action can name the player rather than being inferred into
+         * hitting them. Before this, "the player" was whatever was left after ruling out
+         * allies and the actor, so a handler that meant the player had to pass a throwaway
+         * combatant as a token - and an ally's action had no way to say it at all.
+         *
+         * @since 0.4.0
+         */
+        default void damagePlayer(int amount) {}
 
         /**
          * Move this enemy to a tile, respecting the grid the way built-in movement does:
@@ -101,6 +118,26 @@ public interface CustomActionHandler {
          * @return true if the move happened
          */
         boolean moveSelfTo(GridPos dest);
+
+        /**
+         * Heal a combatant.
+         *
+         * <p>Exists because an action is not always an attack. A trainer walking to its
+         * wounded creature and using a potion on it is an action, and until this was here the
+         * handler could move the trainer there and then do nothing when it arrived.
+         */
+        void heal(CombatEntity target, int amount);
+
+        /**
+         * Apply one of Craftics' built-in status effects, through the same path an item uses -
+         * so confusion still rolls its chance and weakness still sets its own timer.
+         */
+        void applyEffect(CombatEntity target,
+                         com.crackedgames.craftics.combat.CombatEffects.EffectType type,
+                         int turns, int amplifier);
+
+        /** Apply an addon-registered custom effect by id. */
+        void applyCustomEffect(CombatEntity target, String effectId, int turns, int amplifier);
 
         /** Send a line to everyone in the fight. */
         void message(String text);

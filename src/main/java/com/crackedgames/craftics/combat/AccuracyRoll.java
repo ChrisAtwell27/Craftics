@@ -60,6 +60,21 @@ public final class AccuracyRoll {
     public static final double BLINDED_MULTIPLIER = 0.5;
 
     /**
+     * Apply blindness to whatever accuracy an attack was already going to use.
+     *
+     * <p>Scales rather than assigns. A commanded or addon-authored move brings its own
+     * accuracy, and overwriting it with {@value #BLINDED_MULTIPLIER} would make a wild
+     * haymaker <b>more</b> likely to land while blinded than while sighted - blindness
+     * would read as a buff on exactly the attacks it should punish hardest.
+     *
+     * @param current the accuracy already set, or {@link #NO_OVERRIDE} when none is
+     * @return the blinded accuracy, itself a value that can be blinded again
+     */
+    public static double blinded(double current) {
+        return current == NO_OVERRIDE ? BLINDED_MULTIPLIER : current * BLINDED_MULTIPLIER;
+    }
+
+    /**
      * Result of a to-hit roll: whether it landed, the chance used, and the d100 drawn.
      *
      * @param rolled the d100 result, or {@code 0} when the hit was certain and no roll

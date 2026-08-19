@@ -90,7 +90,7 @@ public interface FieldAllyProvider {
      * @param world  the world the fight is starting in
      * @param player the player these reserves belong to
      * @return the allies to bench, or an empty list. Never null
-     * @since 0.4.1
+     * @since 0.4.0
      */
     default List<FieldAlly> reserves(ServerWorld world, ServerPlayerEntity player) {
         return List.of();

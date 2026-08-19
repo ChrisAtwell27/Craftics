@@ -803,6 +803,223 @@ CrafticsAPI.switchFieldAlly(player, outgoingAllyEntityId, benched.index());</cod
       A switch is refused - with a message to the player and no AP spent - when it is not their turn, when the ally is not theirs, when it is one of Craftics' hub pets, when someone is riding it, or when the incoming creature is too large for the tile being vacated.
     </p>
 
+
+    <!-- ================================================================
+         THE BENCH
+         ================================================================ -->
+    <h2 id="bench">The Bench, and Switching Off It</h2>
+    <p>
+      A <a href="#field-ally-providers">field ally provider</a> can declare <strong>reserves</strong> alongside the allies it fields: creatures carried into the fight with no tile and no mob in the world, fielded only when the player swaps one in.
+    </p>
+    <p>
+      A party larger than the field is the point of having a party. Six creatures where three fight is a different game from six all swinging at once, and choosing which three is the interesting part.
+    </p>
+
+    <h3>Declaring reserves</h3>
+    <pre><code>CrafticsAPI.registerFieldAllyProvider("mymod:party", new FieldAllyProvider() {
+    @Override
+    public List&lt;FieldAlly&gt; provide(ServerWorld world, ServerPlayerEntity player, int freeSlots) {
+        return activeThree(player);     // what starts on the grid
+    }
+
+    @Override
+    public List&lt;FieldAlly&gt; reserves(ServerWorld world, ServerPlayerEntity player) {
+        return theRest(player);         // carried, benched, swappable
+    }
+});</code></pre>
+    <p>
+      <code>reserves</code> is a defaulted method returning an empty list, so a provider written before the bench existed keeps working and reads correctly: it has no reserves, not an unanswered question.
+    </p>
+
+    <h3>Reading the bench and switching</h3>
+    <pre><code>for (BenchedAlly b : CrafticsAPI.benchedAllies(player)) {
+    // b.index(), b.entityTypeId(), b.aiKey(), b.displayName(), b.hp(), b.maxHp()
+}
+
+boolean ok = CrafticsAPI.switchFieldAlly(player, outgoingAllyEntityId, reserveIndex);</code></pre>
+
+    <div class="callout">
+      <p>
+        <strong>Reserves are addressed by index, not entity id.</strong> A benched ally has no entity - no mob, no tile, nothing to be found by. That absence is what being benched <em>is</em>, so an id would have to be invented for something that does not exist.
+      </p>
+    </div>
+
+    <h3>What a switch costs and when it is refused</h3>
+    <p>
+      A switch costs <strong>1 AP</strong> and places the incoming creature on the tile the outgoing one vacated. <code>switchFieldAlly</code> returns false, with no AP spent, when:
+    </p>
+    <ul>
+      <li>it is not the player's turn</li>
+      <li>the outgoing ally is not theirs</li>
+      <li>someone is riding the outgoing ally</li>
+      <li>the incoming creature is too large for the tile being freed</li>
+    </ul>
+
+    <h3>A benched creature keeps everything</h3>
+    <div class="callout">
+      <p>
+        Bench a wounded, poisoned ally and it returns wounded and poisoned, with its summon timer still running. The combatant itself goes to the bench rather than being rebuilt from its definition, so every scrap of per-fight state rides along - including state added to Craftics later that nobody remembers to copy. A bench that healed would be the cheapest heal in the game.
+      </p>
+    </div>
+
+    <h3>No menu, and only provider allies</h3>
+    <p>
+      Craftics owns what a switch <em>means</em>; the addon owns the screen the player picked from. Read the bench, draw it however you like, ask for the swap - the same split the <a href="gear.html#combat-tools">combat tools</a> use.
+    </p>
+    <p>
+      <strong>Craftics' own hub pets deliberately have no bench.</strong> A hub pet is a real animal that was standing in your yard and is owed back to it; one that is neither in the yard nor in the fight is an animal in no place at all. Every end-of-fight path filters on exactly the flag that excludes it, and each would have to learn about a bench before one could be safe - where a miss duplicates the animal and a false positive destroys it, since the hub copy was discarded when the party was collected.
+    </p>
+
+    <!-- ================================================================
+         TRAINERS AND ENEMY BENCHES
+         ================================================================ -->
+    <h2 id="enemy-bench">Trainers and Enemy Benches</h2>
+    <p>
+      The mirror of <a href="#bench">the player's bench</a>. Any enemy can carry a team of creatures it fields one at a time, withdrawing and sending out as the fight turns against it.
+    </p>
+    <p>
+      This is deliberately <strong>not</strong> a boss mechanic. A route trainer with three creatures is the ordinary case and a gym leader is the same thing with better ones, so the bench lives on <code>CombatEntity</code> rather than on anything boss-shaped.
+    </p>
+
+    <h3>Giving an enemy a bench</h3>
+    <p>
+      A benched creature is described by an <code>EnemyBench</code> rather than by a live entity, because it has no entity yet - no mob, no tile, nothing to be found by. Stats are required for the same reason: there is no world entity to derive them from.
+    </p>
+
+    <pre><code>CombatEntity leader = /* the trainer on the field */;
+
+leader.getBench().add(
+    EnemyBench.builder("cobblemon:pokemon")
+        .stats(AllyEntry.builder("cobblemon:pokemon")
+            .hp(120).attack(14).defense(8).range(1)
+            .build())
+        .aiKey("cobblemon:onix")        // AI, typing and spawn hooks key off this
+        .displayName("Brock's Onix")
+        .spawnNbt(onixNbt)              // merged onto the mob when it is fielded
+        .build());</code></pre>
+
+    <div class="callout">
+      <p>
+        <strong><code>aiKey</code> is what lets one entity type field a whole team.</strong> A mod that renders hundreds of creatures through a single entity type would otherwise field them all blank and identical. AI, <a href="#attack-types">typing</a> and <a href="#spawn-customization">spawn customizers</a> are all looked up by the AI key first and the entity type second. Give each creature its own <code>displayName</code> too, or a team sharing an entity type reads as several copies of one creature.
+      </p>
+    </div>
+
+    <h3>Switching, and sending out</h3>
+    <p>
+      Two calls, for two different situations. Reach for the wrong one and it will refuse rather than improvise.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Call</th><th>Use it when</th><th>The bench entry</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>CrafticsAPI.switchEnemy(anyParticipant, trainer, outgoing, reserveIndex)</code></td>
+            <td>Answering a bad matchup, with a creature still on the field. The incoming one takes the tile the outgoing one vacates.</td>
+            <td><strong>Swapped.</strong> The outgoing creature goes back to the bench in its place.</td>
+          </tr>
+          <tr>
+            <td><code>CrafticsAPI.sendOutEnemy(anyParticipant, trainer, reserveIndex, tile)</code></td>
+            <td>Opening a trainer fight, or answering a knockout, with nothing to withdraw. You choose the tile.</td>
+            <td><strong>Removed.</strong> Nothing is coming back to take its place.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre><code>// The leader's next creature, after the last one fainted.
+if (!leader.getBench().isEmpty()) {
+    CrafticsAPI.sendOutEnemy(player, leader, 0, new GridPos(4, 2));
+}
+
+// Rotating out of a bad matchup, with one still standing.
+CrafticsAPI.switchEnemy(player, leader, fielded, 1);</code></pre>
+
+    <p>
+      Both field the incoming creature through the same path a level's own enemies take, so its spawn NBT, its spawn customizer, its AI key and its typing land exactly as if it had started the fight on the grid.
+    </p>
+
+    <h3>When they refuse</h3>
+    <p>
+      Each returns <code>false</code> and changes <em>nothing</em> - the bench included - rather than improvising a placement the player did not expect. A switch that silently repositions is worse than one that says no.
+    </p>
+    <ul>
+      <li>The reserve index is out of range, or the trainer is not an enemy.</li>
+      <li><code>switchEnemy</code>: the outgoing creature is not on the field, is not an enemy, or <em>is</em> the trainer. A trainer cannot bench itself - it is the thing holding the bench, and removing it strands the whole team with nobody able to switch them back in.</li>
+      <li><code>sendOutEnemy</code>: the tile is out of bounds, occupied, or not standable.</li>
+      <li>The incoming creature's footprint does not fit - for a switch, the space the outgoing one freed; for a send-out, the tile you named.</li>
+    </ul>
+
+    <div class="callout">
+      <p>
+        <strong>A withdrawn creature keeps its damage and its status effects.</strong> It is captured from its live state rather than rebuilt from its definition, for the same reason the player's bench keeps the combatant itself: a switch that healed would be the cheapest heal in the fight, and a trainer would simply rotate its team instead of ever losing.
+      </p>
+    </div>
+
+    <h3>Commanding an ally</h3>
+    <p>
+      The player's side of the same idea. <code>CrafticsAPI.commandAlly(player, ally, action)</code> leaves a standing order that overrides the ally's own judgement on its next turn, and is consumed as it is read so it is obeyed exactly once. Any <code>EnemyAction</code> works, <a href="#custom-actions">custom actions</a> included.
+    </p>
+
+    <pre><code>// The move the player picked from your own UI.
+ally.setPendingAttackType("cobblemon:water");   // typing for this one move
+ally.setPendingAccuracy(0.85);                  // and its accuracy
+
+CrafticsAPI.commandAlly(player, ally, new EnemyAction.CustomAction(
+    "mymod:surf", List.of(targetTile), 12, params));</code></pre>
+
+    <p>
+      Set the <a href="#attack-types">attack type</a> and <a href="#accuracy">accuracy</a> on the ally when you issue the order, not when it resolves. Both ride along with the order and are read on the ally's turn; the order decides <em>what</em>, never how it resolves, so a commanded move goes through the same damage, typing and accuracy handling an AI-chosen one does.
+    </p>
+    <p>
+      A blinded ally still swings wide at a commanded move: blindness <em>scales</em> whatever accuracy the order brought rather than replacing it, so an already-unreliable move gets worse rather than better.
+    </p>
+
+    <!-- ================================================================
+         ACCURACY
+         ================================================================ -->
+    <h2 id="accuracy">Accuracy</h2>
+    <p>
+      Attacks can miss. Accuracy is a <strong>per-action multiplier</strong> living beside the attack type, on the same slot with the same lifecycle: set for the one action an AI is about to name, cleared before the next decision.
+    </p>
+    <p>
+      A creature whose movepool holds a wild haymaker and a reliable jab needs the haymaker to land less often, and nothing about the <em>defender</em> can express that.
+    </p>
+
+    <h3>Setting it</h3>
+    <pre><code>@Override
+public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
+    Move move = pickMove(self);
+    self.setPendingAttackType(move.typeId());   // what it is
+    self.setPendingAccuracy(move.accuracy());   // how often it lands, 0.0 - 1.0
+    return new EnemyAction.MoveAndAttack(path, move.power());
+}</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Constant</th><th>Value</th><th>Meaning</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>AccuracyRoll.NO_OVERRIDE</code></td><td>-1.0</td><td>Use the default. Every attack in Craftics itself.</td></tr>
+          <tr><td><code>AccuracyRoll.DEFAULT</code></td><td>1.0</td><td>Always lands.</td></tr>
+          <tr><td><code>AccuracyRoll.FLOOR</code></td><td>5</td><td>Lowest hit chance, as a percentage - nothing is ever hopeless.</td></tr>
+          <tr><td><code>AccuracyRoll.CAP</code></td><td>100</td><td>Highest hit chance.</td></tr>
+          <tr><td><code>AccuracyRoll.BLINDED_MULTIPLIER</code></td><td>0.5</td><td>Applied to an ally blinded for the turn.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>How it behaves</h3>
+    <ul>
+      <li><strong>Distinct from the armor-class dodge.</strong> Dodge is the defender's property and answers "did I get out of the way". Accuracy is the attack's own.</li>
+      <li><strong>Inert until something asks for it.</strong> Every attack defaults to always landing, and a certain hit draws <em>no randomness at all</em>. Had it drawn and discarded, every dodge and crit downstream would have started landing differently the day it shipped - which reads as a balance change nobody made.</li>
+      <li><strong>A miss skips the hit outright</strong> rather than dealing zero. Zero already means three other things, and a hit that "lands for 0" still fires every on-hit rider behind it: knockback, thorns, weapon debuffs, counters.</li>
+      <li><strong><code>onMiss</code> fires</strong> on the combat effect handler.</li>
+    </ul>
+
     <!-- ================================================================
          CUSTOM ACTIONS
          ================================================================ -->
@@ -866,8 +1083,12 @@ public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos play
           <tr><td><code>tiles()</code></td><td>List&lt;GridPos&gt;</td><td>The tiles the AI named. Empty if none.</td></tr>
           <tr><td><code>params()</code></td><td>NbtCompound</td><td>Parameters the AI attached. Empty compound if none.</td></tr>
           <tr><td><code>damage()</code></td><td>int</td><td>The damage figure the AI attached, or 0.</td></tr>
-          <tr><td><code>damage(target, amount)</code></td><td>void</td><td>Deal damage through Craftics' own pipeline.</td></tr>
-          <tr><td><code>moveSelfTo(dest)</code></td><td>boolean</td><td>Move this enemy, respecting grid rules.</td></tr>
+          <tr><td><code>damage(target, amount)</code></td><td>void</td><td>Deal damage through Craftics' own pipeline. Routes by <em>whose</em> action it is - see below.</td></tr>
+          <tr><td><code>damagePlayer(amount)</code></td><td>void</td><td>Damage the player outright, rather than being inferred into it.</td></tr>
+          <tr><td><code>moveSelfTo(dest)</code></td><td>boolean</td><td>Move the actor, respecting grid rules.</td></tr>
+          <tr><td><code>heal(target, amount)</code></td><td>void</td><td>Heal a combatant. An action is not always an attack.</td></tr>
+          <tr><td><code>applyEffect(target, type, turns, amplifier)</code></td><td>void</td><td>Apply a built-in status effect through the same path an item uses.</td></tr>
+          <tr><td><code>applyCustomEffect(target, effectId, turns, amplifier)</code></td><td>void</td><td>Apply an addon-registered effect by id.</td></tr>
           <tr><td><code>message(text)</code></td><td>void</td><td>Send a line to everyone in the fight.</td></tr>
         </tbody>
       </table>
@@ -878,6 +1099,28 @@ public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos play
         <strong>Use <code>ctx.damage()</code>, not the entity's HP.</strong> It routes through the same path built-in attacks take, so resistances, attack typings, shields, status effects and death processing all apply. Writing HP directly skips every one of those, and the resulting bug looks like a balance problem rather than a missing call. <code>moveSelfTo()</code> is the same bargain for movement: it refuses solid tiles, teleports the world entity to match the grid, and drops the mob into a pit if it lands on one.
       </p>
     </div>
+
+    <h3>One handler, either side</h3>
+    <p>
+      The same registered handler resolves whether an <em>enemy</em> or one of the player's <em>allies</em> performs it, so a move behaves identically in either hand. Register it once and use it for both.
+    </p>
+    <p>
+      <code>ctx.damage()</code> routes by the side <code>ctx.self()</code> is on. An enemy's action hits allies, and anything that is neither an ally nor the actor is taken to be the player. An ally's action hits <strong>creatures only</strong> and never falls through to the player - so a pet's own move cannot end up striking its owner. Say <code>ctx.damagePlayer(amount)</code> when you mean the player, from either side.
+    </p>
+    <p>
+      Attack-type effectiveness is applied for you on creature targets, so pass the move's base figure and let the chart do its work. It is a no-op when the actor never declared a typing.
+    </p>
+
+    <pre><code>// Works unchanged for an enemy Pokemon and for one of yours.
+CrafticsAPI.registerCustomAction("mymod:earthquake", ctx -&gt; {
+    for (GridPos tile : ctx.tiles()) {
+        CombatEntity victim = ctx.arena().getOccupant(tile);
+        if (victim != null &amp;&amp; victim != ctx.self()) ctx.damage(victim, 10);
+    }
+    // Named explicitly, so it lands whichever side threw the move.
+    if (ctx.tiles().contains(ctx.playerPos())) ctx.damagePlayer(10);
+    ctx.message("§6The ground shakes!");
+});</code></pre>
 
     <h3>What happens around the handler</h3>
     <p>

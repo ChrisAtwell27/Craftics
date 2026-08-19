@@ -2501,6 +2501,170 @@ public class CombatManager {
         }
     }
 
+
+    /**
+     * Switch a trainer's benched creature in for one currently on the field.
+     *
+     * <p>The enemy-side mirror of the player's bench. A trainer with a team is not a boss
+     * mechanic - a route trainer with three creatures is the ordinary case - so this is
+     * available to any enemy that has been given a bench.
+     *
+     * <p>The outgoing creature <b>goes back to the bench carrying everything</b>: its damage,
+     * its status effects, its remaining turns. It is captured as a fresh bench entry built from
+     * its live state rather than from its original definition, for the same reason the player's
+     * bench keeps the combatant itself - a switch that healed would make switching the cheapest
+     * heal in the fight, and a trainer would simply rotate its team instead of ever losing.
+     *
+     * <p>Refused, with nothing changed, when the outgoing creature is not on the field, is not
+     * this trainer's, or when the reserve will not fit the tile being freed. A larger creature
+     * coming in for a smaller one has nowhere to stand, and forcing it would either overlap
+     * another combatant or drop it outside the arena.
+     *
+     * @param trainer       the enemy doing the switching
+     * @param outgoing      the creature leaving the field
+     * @param reserveIndex  index into {@code trainer.getBench()}
+     * @return true if the switch happened
+     */
+    public boolean switchEnemy(CombatEntity trainer, CombatEntity outgoing, int reserveIndex) {
+        if (trainer == null || outgoing == null || arena == null) return false;
+        var bench = trainer.getBench();
+        if (reserveIndex < 0 || reserveIndex >= bench.size()) return false;
+        if (!enemies.contains(outgoing) || outgoing.isAlly()) return false;
+        // A trainer cannot bench itself: it is the thing holding the bench, and removing it
+        // would strand the whole team with no one able to switch them back in.
+        if (outgoing.getEntityId() == trainer.getEntityId()) return false;
+
+        GridPos tile = outgoing.getGridPos();
+        if (tile == null) return false;
+
+        var reserve = bench.get(reserveIndex);
+        int[] fp = CombatEntity.getDefaultFootprint(reserve.entityTypeId());
+        if (fp[0] > outgoing.getSizeX() || fp[1] > outgoing.getSizeZ()) {
+            // Bigger than the space being freed. Refusing is the honest outcome: the
+            // alternative is overlapping a neighbour or shunting the creature somewhere the
+            // player did not expect, and a switch that silently repositions is worse than one
+            // that says no.
+            return false;
+        }
+
+        // Capture the outgoing creature's LIVE state onto the bench before removing it.
+        var returning = com.crackedgames.craftics.api.EnemyBench.builder(outgoing.getEntityTypeId())
+            .stats(com.crackedgames.craftics.api.registry.AllyEntry.builder(outgoing.getEntityTypeId())
+                .hp(Math.max(1, outgoing.getCurrentHp()))
+                .attack(outgoing.getAttackPower())
+                .defense(outgoing.getDefense())
+                .range(outgoing.getRange())
+                .build())
+            .aiKey(outgoing.getAiKey())
+            .displayName(outgoing.getDisplayName())
+            .build();
+
+        String outName = outgoing.getDisplayName();
+        discardRestoredEntity(outgoing);
+
+        CombatEntity brought = spawnBenchedEnemy(reserve, tile);
+        if (brought == null) {
+            // Could not field it after all. Put the outgoing creature's entry back so the
+            // trainer has not silently lost a team member to a failed switch.
+            bench.set(reserveIndex, returning);
+            return false;
+        }
+        bench.set(reserveIndex, returning);
+
+        sendMessage("§c" + trainer.getDisplayName() + " withdraws " + outName
+            + " and sends out " + brought.getDisplayName() + "!");
+        sendSync();
+        return true;
+    }
+
+    /**
+     * Send a trainer's benched creature out onto an empty tile, with nothing withdrawn.
+     *
+     * <p>The opening move of a trainer fight and the answer to a knockout, where
+     * {@link #switchEnemy} is the answer to a bad matchup. A switch has to capture the
+     * outgoing creature's live state, so it needs a creature on the field to capture; when a
+     * trainer's last one is knocked out there is nothing to withdraw, and without this the
+     * bench was stranded and the trainer conceded with reserves left. That is the opposite of
+     * how a gym battle ends.
+     *
+     * <p>The reserve is <b>removed</b> from the bench rather than swapped, because no entry is
+     * coming back to take its place - swapping would leave the same creature sittable twice.
+     * It is fielded through the same path a switch uses, so its NBT, spawn customizer, AI key
+     * and typing all land as they would have if it had started the fight on the grid.
+     *
+     * <p>Refused, with nothing changed, when the tile is out of bounds, occupied, not
+     * standable, or too small for the creature's footprint.
+     *
+     * @param trainer      the enemy whose bench is being drawn from
+     * @param reserveIndex index into {@code trainer.getBench()}
+     * @param tile         where to field it
+     * @return true if the creature was fielded
+     */
+    public boolean sendOutEnemy(CombatEntity trainer, int reserveIndex, GridPos tile) {
+        if (trainer == null || arena == null || tile == null) return false;
+        if (trainer.isAlly()) return false;
+        var bench = trainer.getBench();
+        if (reserveIndex < 0 || reserveIndex >= bench.size()) return false;
+
+        if (!arena.isInBounds(tile) || arena.isOccupied(tile)) return false;
+        com.crackedgames.craftics.core.GridTile t = arena.getTile(tile);
+        if (t == null || !t.isWalkable()) return false;
+
+        var reserve = bench.get(reserveIndex);
+        CombatEntity brought = spawnBenchedEnemy(reserve, tile);
+        if (brought == null) {
+            // Placement failed - most often a footprint that does not fit the tile. The bench
+            // is untouched, so the trainer has not lost a team member to a failed send-out.
+            return false;
+        }
+        bench.remove(reserveIndex);
+
+        sendMessage("§c" + trainer.getDisplayName() + " sends out " + brought.getDisplayName() + "!");
+        sendSync();
+        return true;
+    }
+
+    /**
+     * Put a benched enemy onto a tile, through the same spawn path a level's own enemies use -
+     * so its NBT, its spawn customizer, its AI key and its typing all land exactly as they
+     * would have if it had started the fight on the field.
+     */
+    private CombatEntity spawnBenchedEnemy(com.crackedgames.craftics.api.EnemyBench spec,
+                                           GridPos tile) {
+        if (!(player.getEntityWorld() instanceof ServerWorld world)) return null;
+        var type = Registries.ENTITY_TYPE.get(Identifier.of(spec.entityTypeId()));
+        BlockPos bp = arena.gridToBlockPos(tile);
+        var raw = type.create(world, null, bp, SpawnReason.MOB_SUMMONED, false, false);
+        if (!(raw instanceof MobEntity mob)) return null;
+
+        mob.refreshPositionAndAngles(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5, 0, 0);
+        mob.setAiDisabled(true);
+        mob.setInvulnerable(true);
+        mob.setNoGravity(true);
+        mob.noClip = true;
+        mob.setPersistent();
+        mob.addCommandTag("craftics_arena");
+        world.spawnEntity(mob);
+
+        var stats = spec.stats();
+        CombatEntity ce = new CombatEntity(mob.getId(), spec.entityTypeId(), tile,
+            stats.hp(), stats.attack(), stats.defense(), stats.range());
+        ce.setMobEntity(mob);
+        if (spec.aiKey() != null && !spec.aiKey().equals(spec.entityTypeId())) {
+            ce.setAiOverrideKey(spec.aiKey());
+        }
+        if (spec.displayName() != null) ce.setNameOverride(spec.displayName());
+        applySpawnNbt(mob, spec.spawnNbt());
+        com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry.apply(world, mob, ce);
+
+        if (!arena.placeEntity(ce)) {
+            mob.discard();
+            return null;
+        }
+        enemies.add(ce);
+        return ce;
+    }
+
     private CombatEntity spawnRaidReinforcement(String typeId, GridPos tile,
                                                 int hp, int atk, int def, int range) {
         if (player == null || arena == null) return null;
@@ -3644,6 +3808,48 @@ public class CombatManager {
             .describeMultiplier(mult);
         if (note != null) sendMessage(note);
         return mult == 0.0 ? 0 : Math.max(1, (int) (damage * mult));
+    }
+
+
+    /**
+     * Apply a built-in status effect to a combatant.
+     *
+     * <p>Shared by every context that can inflict one - item handlers and addon-defined
+     * actions - because the mapping from effect type to the right stacking call is not
+     * uniform. Confusion rolls a chance, weakness sets a penalty and its own timer, and each
+     * of the rest has its own stack method. A second copy of this switch would drift the
+     * first time an effect gained a rule, and the copy that missed it would silently apply
+     * the old behaviour.
+     */
+    private void applyEffectTo(CombatEntity target, CombatEffects.EffectType type,
+                               int turns, int amplifier) {
+        if (target == null || type == null) return;
+                switch (type) {
+                    case POISON -> target.stackPoison(turns, amplifier);
+                    case WITHER -> target.stackWither(turns, amplifier);
+                    case BURNING -> target.stackBurning(turns, amplifier);
+                    case SOAKED -> target.stackSoaked(turns, amplifier);
+                    case SLOWNESS -> target.stackSlowness(turns, amplifier);
+                    case CONFUSION -> {
+                        // Nerf: confusion is never guaranteed - roll confusionApplyChance.
+                        if (com.crackedgames.craftics.combat.ConfusionLogic.rollHits(
+                                Math.random(), CrafticsMod.CONFIG.confusionApplyChance())) {
+                            target.stackConfusion(turns, amplifier);
+                        }
+                    }
+                    case WEAKNESS -> {
+                        target.setAttackPenalty(2 * (amplifier + 1));
+                        target.setAttackPenaltyTurns(turns);
+                    }
+                    case BLEEDING -> target.stackBleed(amplifier + 1);
+                    case REGENERATION -> target.applyRegeneration(turns, amplifier);
+                    case ABSORPTION -> target.applyAbsorption(4 * (amplifier + 1), turns);
+                    case SLOW_FALLING -> target.applySlowFalling(turns);
+                    case STRENGTH -> target.applyAttackBuff(3 * (amplifier + 1), turns);
+                    case SPEED -> target.applySpeedBuff(2 * (amplifier + 1), turns);
+                    case RESISTANCE -> target.applyResistance(amplifier + 1, turns);
+                    default -> { /* effect type not applicable to enemy combatants */ }
+                }
     }
 
     private int applySpecialUtilityDamage(CombatEntity target, int baseDamage) {
@@ -8826,6 +9032,23 @@ public class CombatManager {
         return false;
     }
 
+    /**
+     * Damage one combatant on behalf of another, applying attack-type effectiveness and then
+     * the ordinary death handling.
+     *
+     * <p>Typing is applied here rather than by the caller because this is the path addon
+     * actions take, and {@code CustomActionHandler.Context.damage} promises Craftics' own
+     * pipeline. It is a no-op unless the attacker actually declared a pending attack type,
+     * so an untyped action deals exactly the figure it asked for.
+     */
+    private void hurtCombatant(CombatEntity target, int amount, CombatEntity source) {
+        if (target == null || amount <= 0) return;
+        int typed = source != null ? applyTypeEffectiveness(amount, source, target) : amount;
+        if (typed <= 0) return;
+        target.takeDamage(typed);
+        checkAndHandleDeath(target);
+    }
+
     private void checkAndHandleDeath(CombatEntity entity) {
         if (!entity.isAlive() && !entity.isDeathProcessed()) {
             // Crystals killed by a DoT tick, splash or a stray AoE never reach
@@ -12499,37 +12722,24 @@ public class CombatManager {
             entity.heal(amount);
         }
 
+        @Override public boolean captureEntity(CombatEntity target) {
+            // Refused for allies and for anything already off the field. Capturing your own
+            // ally would delete it from the fight with no way to get it back, and a double
+            // call on the same target would otherwise report success twice for one creature.
+            if (target == null || target.isAlly() || !enemies.contains(target)) return false;
+            String name = target.getDisplayName();
+            discardRestoredEntity(target);
+            sendMessage("§a" + name + " was captured!");
+            sendSync();
+            return true;
+        }
+
         @Override public void applyPlayerEffect(CombatEffects.EffectType type, int turns, int amplifier) {
             applyPlayerEffectLive(combatEffects, player != null ? player.getUuid() : null, type, turns, amplifier);
         }
         @Override public void applyEffect(CombatEntity target, CombatEffects.EffectType type,
                                           int turns, int amplifier) {
-            switch (type) {
-                case POISON -> target.stackPoison(turns, amplifier);
-                case WITHER -> target.stackWither(turns, amplifier);
-                case BURNING -> target.stackBurning(turns, amplifier);
-                case SOAKED -> target.stackSoaked(turns, amplifier);
-                case SLOWNESS -> target.stackSlowness(turns, amplifier);
-                case CONFUSION -> {
-                    // Nerf: confusion is never guaranteed - roll confusionApplyChance.
-                    if (com.crackedgames.craftics.combat.ConfusionLogic.rollHits(
-                            Math.random(), CrafticsMod.CONFIG.confusionApplyChance())) {
-                        target.stackConfusion(turns, amplifier);
-                    }
-                }
-                case WEAKNESS -> {
-                    target.setAttackPenalty(2 * (amplifier + 1));
-                    target.setAttackPenaltyTurns(turns);
-                }
-                case BLEEDING -> target.stackBleed(amplifier + 1);
-                case REGENERATION -> target.applyRegeneration(turns, amplifier);
-                case ABSORPTION -> target.applyAbsorption(4 * (amplifier + 1), turns);
-                case SLOW_FALLING -> target.applySlowFalling(turns);
-                case STRENGTH -> target.applyAttackBuff(3 * (amplifier + 1), turns);
-                case SPEED -> target.applySpeedBuff(2 * (amplifier + 1), turns);
-                case RESISTANCE -> target.applyResistance(amplifier + 1, turns);
-                default -> { /* effect type not applicable to enemy combatants */ }
-            }
+            applyEffectTo(target, type, turns, amplifier);
         }
         @Override public void applyCustomEffect(CombatEntity target, String effectId,
                                                 int turns, int amplifier) {
@@ -12827,6 +13037,45 @@ public class CombatManager {
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
             sendMessage("§2Trap sprung! " + msg.toString().trim());
             checkAndHandleDeath(victim);
+        }
+    }
+
+    /**
+     * Hand a new round to the first player in the turn queue.
+     *
+     * <p>Every path that opens a player round has to do this, and the two that skip the
+     * enemy phase entirely - the Phantom set bonus and the raid prep turn - used to go
+     * straight to {@code PLAYER_TURN} without it. That left the fight in a state no input
+     * could get out of: {@code currentTurnIndex} had already been wound back to 0 by
+     * {@link #handleEndTurn}, so the clients were told it was the first player's turn,
+     * while {@code this.player} was still whoever ended the round. The action guard only
+     * accepts {@code this.player}, so the first player's input was rejected and the last
+     * player's client never offered the button - nobody could act and nobody could pass.
+     * The AFK watchdog could not rescue it either, because it only runs during a turn it
+     * believes somebody holds.
+     *
+     * <p>The raid hit this every single time: its prep turn fires on turn 1, immediately
+     * after the first full round of a party fight.
+     *
+     * <p>Solo fights are unaffected - with no queue there is nobody to hand off to.
+     */
+    private void handOffRoundToFirstPartyPlayer() {
+        if (partyPlayers.size() <= 1) return;
+        rebuildTurnQueue();
+        if (turnQueue.isEmpty()) return;
+        currentTurnIndex = 0;
+        java.util.UUID firstUuid = turnQueue.get(0);
+        for (ServerPlayerEntity member : partyPlayers) {
+            if (member.getUuid().equals(firstUuid)) { this.player = member; break; }
+        }
+        retargetEffectsToCurrentPlayer();
+        if (arena != null) {
+            net.minecraft.util.math.BlockPos qOrigin = arena.getOrigin();
+            net.minecraft.util.math.BlockPos qBlock = player.getBlockPos();
+            arena.setPlayerGridPos(new GridPos(
+                qBlock.getX() - qOrigin.getX(),
+                qBlock.getZ() - qOrigin.getZ()
+            ));
         }
     }
 
@@ -13396,6 +13645,8 @@ public class CombatManager {
             sendMessage("§5§l✦ Phantom! §r§7You are invisible -enemies skip their turn.");
             // Skip directly to new player turn
             turnNumber++;
+            // The round still changes hands even though the enemies never acted.
+            handOffRoundToFirstPartyPlayer();
             movedThisTurn = false;
             tilesMovedThisTurn = 0;
             attackedWithoutShieldThisTurn = false;
@@ -13429,6 +13680,8 @@ public class CombatManager {
         if (raidActive && turnNumber <= 1) {
             sendMessage("§c§l✦ The pillagers close in! §r§7Take a turn to get into position.");
             turnNumber++;
+            // The round still changes hands even though the enemies never acted.
+            handOffRoundToFirstPartyPlayer();
             movedThisTurn = false;
             tilesMovedThisTurn = 0;
             attackedWithoutShieldThisTurn = false;
@@ -15342,25 +15595,7 @@ public class CombatManager {
             tickTidecallerWave();
             detonatePendingTnts();
 
-            if (partyPlayers.size() > 1) {
-                rebuildTurnQueue();
-                if (!turnQueue.isEmpty()) {
-                    currentTurnIndex = 0;
-                    java.util.UUID firstUuid = turnQueue.get(0);
-                    for (ServerPlayerEntity member : partyPlayers) {
-                        if (member.getUuid().equals(firstUuid)) { this.player = member; break; }
-                    }
-                    retargetEffectsToCurrentPlayer();
-                    if (arena != null) {
-                        net.minecraft.util.math.BlockPos qOrigin = arena.getOrigin();
-                        net.minecraft.util.math.BlockPos qBlock = player.getBlockPos();
-                        arena.setPlayerGridPos(new GridPos(
-                            qBlock.getX() - qOrigin.getX(),
-                            qBlock.getZ() - qOrigin.getZ()
-                        ));
-                    }
-                }
-            }
+            handOffRoundToFirstPartyPlayer();
 
             // Re-scan the acting player's equipment EVERY round start - solo included.
             // This scan used to live only inside the party branch above, so a solo
@@ -16523,7 +16758,7 @@ public class CombatManager {
                 // Attack. A handler that wants a wind-up wraps itself in a BossAbility
                 // instead, which gets the warning tiles and the telegraph for free and
                 // arrives here a turn later.
-                resolveCustomAction(ca);
+                resolveCustomAction(ca, currentEnemy);
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay());
             }
@@ -16547,8 +16782,8 @@ public class CombatManager {
      * arena: an addon that pokes HP directly would silently bypass half the combat rules,
      * and the bug would look like a balance problem rather than a missing call.
      */
-    private void resolveCustomAction(EnemyAction.CustomAction ca) {
-        final CombatEntity actor = currentEnemy;
+    private void resolveCustomAction(EnemyAction.CustomAction ca, CombatEntity actorIn) {
+        final CombatEntity actor = actorIn;
         if (actor == null) return;
         final GridArena arenaRef = arena;
         final ServerWorld worldRef = (player != null && player.getEntityWorld() instanceof ServerWorld sw)
@@ -16571,15 +16806,27 @@ public class CombatManager {
 
                 @Override public void damage(CombatEntity target, int amount) {
                     if (target == null || amount <= 0) return;
+                    // Routing follows the ACTOR's side. An ally using the same move as an
+                    // enemy must hit enemies with it, and the old form assumed the actor was
+                    // always an enemy - so anything an ally targeted that was not itself read
+                    // as "the player" and the move hit its own owner.
+                    if (actor.isAlly()) {
+                        // An ally's action hits creatures on the field - enemies it is aimed
+                        // at, and itself or its own side for recoil and moves that cost the
+                        // user. It never falls through to the player: an ally with no valid
+                        // creature target does nothing rather than turning on its own owner.
+                        hurtCombatant(target, amount, actor);
+                        return;
+                    }
                     if (target.isAlly() || target.getEntityId() == actor.getEntityId()) {
                         // Enemy-on-ally and enemy-on-self both already have a path that
                         // handles death, ownership and the ally roster.
-                        target.takeDamage(amount);
-                        checkAndHandleDeath(target);
+                        hurtCombatant(target, amount, actor);
                         return;
                     }
-                    // Anything else an enemy action can hit is the player.
-                    damagePlayer(amount, actor);
+                    // Anything else an ENEMY action can hit is the player. An ally never
+                    // reaches here; it must say damagePlayer() to mean the player.
+                    CombatManager.this.damagePlayer(amount, actor);
                 }
 
                 @Override public boolean moveSelfTo(GridPos dest) {
@@ -16597,6 +16844,37 @@ public class CombatManager {
                     }
                     if (voidDest) checkEnemyFallDeath(actor);
                     return true;
+                }
+
+                @Override public void heal(CombatEntity target, int amount) {
+                    if (target == null || amount <= 0) return;
+                    target.heal(amount);
+                }
+
+                @Override public void applyEffect(CombatEntity target,
+                                                  CombatEffects.EffectType type,
+                                                  int turns, int amplifier) {
+                    // Shared with the item path, so confusion still rolls its chance and
+                    // weakness still sets its own penalty timer.
+                    applyEffectTo(target, type, turns, amplifier);
+                }
+
+                @Override public void applyCustomEffect(CombatEntity target, String effectId,
+                                                        int turns, int amplifier) {
+                    if (target == null) return;
+                    if (com.crackedgames.craftics.api.registry.CombatEffectRegistry
+                            .get(effectId) == null) {
+                        CrafticsMod.LOGGER.warn(
+                            "Custom action applyCustomEffect: no effect registered with id '{}'",
+                            effectId);
+                        return;
+                    }
+                    target.applyCustomEffect(effectId, turns, amplifier);
+                }
+
+                @Override public void damagePlayer(int amount) {
+                    if (amount <= 0) return;
+                    CombatManager.this.damagePlayer(amount, actor);
                 }
 
                 @Override public void message(String text) {
@@ -16634,8 +16912,28 @@ public class CombatManager {
         boolean scalesWithGear = !ally.isSeekerProjectile()
             && (entry == null || entry.scalesWithOwnerGear());
 
+        // What a standing order carried, snapshotted before the reset below wipes it.
+        // An addon sets the type and accuracy of a commanded move at the moment it issues
+        // the order, and the order is obeyed a turn later - so clearing unconditionally here
+        // meant a commanded move always arrived untyped and at default accuracy, and the
+        // only way to give an ally a typed move was to route it through the ally AI.
+        String orderedAttackType = ally.getPendingAttackType();
+        double orderedAccuracy = ally.getPendingAccuracy();
+
         ally.setPendingAttackType(null);   // see the note at the enemy decision point
         ally.setPendingAccuracy(AccuracyRoll.NO_OVERRIDE);
+
+        // A player-issued order wins over the ally's own judgement, and is consumed as it is
+        // read so it is obeyed exactly once. Everything downstream is the ordinary ally path,
+        // so a commanded attack goes through the same damage, typing and accuracy handling an
+        // AI-chosen one does - the order decides WHAT, never how it resolves.
+        EnemyAction commanded = ally.consumeCommandedAction();
+        if (commanded != null) {
+            // Hand the order back its own typing and accuracy. Only on the commanded path:
+            // the AI sets its own as it decides, and needs the clean slate above.
+            ally.setPendingAttackType(orderedAttackType);
+            ally.setPendingAccuracy(orderedAccuracy);
+        }
 
         // A blinded ally swings wide instead of losing its turn. Enemies fumble their whole
         // turn to blindness at a check allies never reach, which is why an enemy blinding a
@@ -16646,12 +16944,16 @@ public class CombatManager {
         // that silently forfeits turns reads as the game being broken, while one that visibly
         // swings and misses reads as blinded. The countdown ticks here, on the ally's own
         // turn, because that is the only point an ally reliably passes once per round.
+
         if (ally.getBlindedTurns() > 0) {
             ally.setBlindedTurns(ally.getBlindedTurns() - 1);
-            ally.setPendingAccuracy(AccuracyRoll.BLINDED_MULTIPLIER);
+            // Scaled, not assigned - see AccuracyRoll.blinded. A commanded move brings its
+            // own accuracy, and overwriting it would make an inaccurate move land MORE often
+            // while blinded.
+            ally.setPendingAccuracy(AccuracyRoll.blinded(ally.getPendingAccuracy()));
         }
 
-        EnemyAction action = ai.decideAction(ally, arena, enemies);
+        EnemyAction action = commanded != null ? commanded : ai.decideAction(ally, arena, enemies);
 
         int doneDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
 
@@ -16712,6 +17014,18 @@ public class CombatManager {
             } else {
                 startEnemyMove(attack.path());
             }
+            return;
+        }
+
+        if (action instanceof EnemyAction.CustomAction ca) {
+            // The same handler the enemy path uses, with the ally as the actor - so an addon
+            // move behaves identically whoever throws it. Without this an ally handed a
+            // CustomAction fell through to Idle below and silently burned its turn, which
+            // meant an addon's moves worked fully in enemy hands and landed as a single
+            // plain hit in the player's.
+            resolveCustomAction(ca, ally);
+            enemyTurnState = EnemyTurnState.DONE;
+            enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay());
             return;
         }
 
@@ -28636,6 +28950,38 @@ public class CombatManager {
     }
 
     /**
+     * The level an addon event wants to run next, read back after its handler has executed.
+     *
+     * <p>Turning an event into a fight is the whole point of a campaign addon: a trainer
+     * battle is an event that becomes a level. A handler says so by setting a pending level,
+     * and there are two objects it could reasonably set it on - the {@link EventManager} it
+     * was handed, or the combat manager running the fight. This honours both, in that order,
+     * and falls back to the level that was already queued when the handler asked for nothing.
+     *
+     * <p>Both needed fixing. The forced-event path built its arena from a local captured
+     * <em>before</em> the handler ran and nulled the pending level first, so a non-choice
+     * event could hand out rewards and nothing else - it could never become a fight. And
+     * {@code EventManager.setPendingNextLevel} was read by nothing at all, which is the
+     * setter a handler reaches for first, since the EventManager is the object it is given.
+     *
+     * <p>Consumes what it finds, so a redirect cannot leak into a later event.
+     *
+     * @param handlerManager the EventManager the handler was passed, may be null
+     * @param fallback       the level queued before the handler ran
+     */
+    private com.crackedgames.craftics.level.LevelDefinition consumeAddonNextLevel(
+            EventManager handlerManager,
+            com.crackedgames.craftics.level.LevelDefinition fallback) {
+        if (handlerManager != null && handlerManager.getPendingNextLevel() != null) {
+            var fromManager = handlerManager.getPendingNextLevel();
+            handlerManager.setPendingNextLevel(null);
+            return fromManager;
+        }
+        if (pendingNextLevelDef != null) return pendingNextLevelDef;
+        return fallback;
+    }
+
+    /**
      * Handle the player's choice after winning a non-boss level.
      * goHome = true: teleport home, reset biome run
      * goHome = false: continue to next level (with possible trader encounter)
@@ -28680,10 +29026,11 @@ public class CombatManager {
                     }
                     // After handler: if no combat was started, auto-continue
                     if (!active && !trialChamberPending && !digSitePending) {
-                        if (pendingNextLevelDef != null) {
+                        var acceptedNext = consumeAddonNextLevel(evtMgr, pendingNextLevelDef);
+                        if (acceptedNext != null) {
                             spawnSavedPets();
-                            GridArena nextArena = buildArena(w, pendingNextLevelDef);
-                            transitionPartyToArena(choicePlayer, members, nextArena, pendingNextLevelDef);
+                            GridArena nextArena = buildArena(w, acceptedNext);
+                            transitionPartyToArena(choicePlayer, members, nextArena, acceptedNext);
                             pendingNextLevelDef = null;
                             pendingBiome = null;
                         }
@@ -29255,12 +29602,19 @@ public class CombatManager {
                                     } catch (Exception addonEx) {
                                         CrafticsMod.LOGGER.error("Addon event '{}' handler threw exception", addonEventId, addonEx);
                                     }
-                                    // Auto-continue to next level after simple event
+                                    // Auto-continue - into whatever the handler asked for, which
+                                    // may be a level of its own rather than the one that was queued.
+                                    var forcedNext = consumeAddonNextLevel(savedEventManager, nextLevelDef);
                                     pendingNextLevelDef = null;
                                     pendingBiome = null;
-                                    spawnSavedPets();
-                                    GridArena nextArena = buildArena(world, nextLevelDef);
-                                    transitionPartyToArena(savedPlayer, savedMembers, nextArena, nextLevelDef);
+                                    // A handler that started its own fight has already moved the
+                                    // party; building a second arena on top of it would tear that
+                                    // down and drop everyone into the wrong level.
+                                    if (!active) {
+                                        spawnSavedPets();
+                                        GridArena nextArena = buildArena(world, forcedNext);
+                                        transitionPartyToArena(savedPlayer, savedMembers, nextArena, forcedNext);
+                                    }
                                 }
                             } else {
                                 // Unknown addon event ID or no handler -skip to next level
@@ -34411,6 +34765,9 @@ public class CombatManager {
     private void spawnHubPets() {
         if (hubPetSnapshots.isEmpty() || arena == null || player == null) return;
         GridPos playerStart = arena.getPlayerGridPos();
+        // Counted rather than reported per ally: a cramped arena turns away several at once,
+        // and six near-identical lines read as a stack of errors instead of one tight arena.
+        int unplacedAllies = 0;
 
         for (HubPetCollector.TamedPetSnapshot snapshot : hubPetSnapshots) {
             // Benched. Skipped here, before a tile is even looked for, which is what
@@ -34426,6 +34783,7 @@ public class CombatManager {
             GridPos spawnPos = findPetSpawnTile(playerStart);
             if (spawnPos == null) {
                 CrafticsMod.LOGGER.warn("No valid spawn tile for hub pet {}", snapshot.entityTypeId());
+                unplacedAllies++;
                 continue;
             }
 
@@ -34439,6 +34797,14 @@ public class CombatManager {
                 sendMessage("\u00a7a" + ce.getDisplayName() + " joins the fight!");
             }
             CrafticsMod.LOGGER.info("Spawned hub pet {} at {}", snapshot.entityTypeId(), spawnPos);
+        }
+        // Said out loud, not just logged. A party larger than the arena has room for used to
+        // be near-impossible with a handful of tamed wolves, so a server-log warning was
+        // enough; an addon that fields a party of six on a cramped floor reaches it easily,
+        // and a creature that silently never appears reads as the game losing it.
+        if (unplacedAllies > 0) {
+            sendMessage("§e" + unplacedAllies + (unplacedAllies == 1 ? " ally" : " allies")
+                + " could not find room on this arena and stayed behind.");
         }
         hubPetSnapshots.clear();
     }

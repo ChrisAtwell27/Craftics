@@ -1,6 +1,6 @@
 ﻿Changelog
 
-0.4.1
+0.4.0
 
 Addon API: A Bench, and Switching Off It
 
@@ -29,7 +29,6 @@ Stale Per-Action Overrides
 
 - Fixed an attack-type override outliving the action it was set for. The clear sat inside the branch that consults the AI, while the two branches that return an action without consulting it - a burning mob running for water, one that has lost sight of its target - skipped it, leaving the override to silently retype every later attack that never asked for one
 
-0.4.0
 
 Addon API: Spawning What You Are, Not What Your Entity Type Says
 
@@ -56,6 +55,53 @@ Addon API: Custom Enemy Actions
 - Handlers are given a context whose damage and movement methods route through Craftics' own pipeline, so an addon action cannot accidentally skip resistances, typings, shields, death handling or the pit-fall check
 - Wrap one in a boss ability and it inherits the whole telegraph system: warning tiles, the wind-up VFX and the one-turn delay, with the handler firing when it resolves
 - An unregistered action id costs that enemy its turn and logs once. An addon can be uninstalled while a save still holds an AI that names its actions, and a missing handler should not wedge the fight waiting for something that will never resolve
+
+Addon API: Custom Actions in a Player's Hands
+
+- Fixed an ally handed a custom action doing nothing at all with it. The ally turn resolved only move, attack, flee and idle, and dispatched custom actions from the enemy path alone - so an ordered custom action fell through to idle and quietly burned the turn. An addon's move worked completely in an enemy's hands and landed as a single plain hit in yours, which made the same move strictly better on the side you were fighting
+- A handler's damage now routes by **whose action it is** rather than assuming an enemy threw it. An ally's action hits creatures and never falls through to the player; previously anything an ally targeted that was not itself was read as "the player", so a pet's own move hit its owner
+- Handlers can name the player outright with `damagePlayer`. Before this the player was whatever was left after ruling out allies and the actor, so an action that meant the player had to pass a throwaway combatant as a token, and an ally's action had no way to say it at all
+- Attack-type effectiveness is applied on the handler's behalf for creature targets, so an addon move deals the same damage from either side. It changes nothing for an action that never declared a typing
+
+Commanded Moves Losing Their Typing
+
+- Fixed the ally turn clearing the pending attack type and accuracy **before** reading the standing order. An addon sets both when it issues a command and the order is obeyed a turn later, so every commanded move arrived untyped and at default accuracy - leaving the ally AI as the only way to give an ally a typed move, which is the wrong seam for a player-issued order
+- Blindness now **scales** an accuracy the attack already brought instead of replacing it. Overwriting meant a wild haymaker was more likely to land while blinded than while sighted, so the debuff read as a buff on exactly the attacks it should punish hardest. Two sources of blindness now compound, and no stack of them can grind a combatant down to unable-to-act
+
+Addon API: An Event Can Become a Fight
+
+- Fixed a forced event being unable to turn into a level. The non-choice path built its arena from the level it had queued **before** the handler ran, and cleared the pending level first, so a handler that asked to run its own fight was silently overruled and the event could only hand out rewards. That rules out the entire shape a trainer battle, a gym or a scripted ambush needs, and left choice events as the only way to reach it
+- `EventManager.setPendingNextLevel` is now read back. It was public, it was on the object every handler is handed, and nothing anywhere called it - so the setter an author reaches for first did nothing at all on either path
+- Both paths now resolve the same way: whatever the handler set on its EventManager, else whatever it set on the combat manager, else the level already queued. A handler that starts its own fight instead of queuing one is left alone rather than having a second arena built on top of it
+
+Raid Softlock After the First Round
+
+- Fixed a raid locking up the moment the opening round ended, with the last player shown as still taking their turn and nobody able to act or pass. The raid's prep turn skips the first enemy phase so the party can reposition before any pillager fires, and that shortcut jumped straight back to the player phase without handing the round to the first player. The turn counter had already wound back, so every client was told it was the first player's turn while the server still believed it belonged to whoever ended the round: the first player's input was rejected as out of turn, and the last player's client never offered the button
+- The AFK timer could not rescue it either, because it only counts down during a turn it believes someone is holding. That is why the fight sat there indefinitely instead of timing out
+- The Phantom armor bonus skips the enemy phase the same way and had the same latent bug in any party fight, not just raids. Both now share one hand-off, so a third skip cannot reintroduce it
+
+Compat Item Stats Missing for Everyone but the Host
+
+- Fixed instrument, paladin and simply-swords items showing no Craftics stats for anyone except the world's host. Compat gear is registered late, after every other mod's items exist, and the three places that trigger it each kept their own hand-written list which had drifted apart. Instruments and paladins were only on the list the server runs, and a multiplayer client never reaches that one
+- The host was the one player who could not see the problem, since their client shares a process with the server and picks the registration up for free. From every other seat it looked like a permissions bug
+- All three now call one shared list, so a newly added compat cannot be registered in some sessions and not others
+
+Pets Not Coming Home After a Fight
+
+- Fixed a party member's pet failing to return to their island. The restore worked out which island the animal belonged to and then spawned it into whichever world the restore was running for, so a guest's wolf was placed at its own island's coordinates inside the host's dimension. From the owner's side the animal simply never came back
+- Solo play was never affected, which is why it survived this long: with one player the two worlds are the same world
+- A pet restored without stored NBT is also re-tamed to its actual owner rather than to whoever the fight was resolved for, and everyone who got an animal back now has their party list resynced instead of only the player the restore was called for
+
+Allies With Nowhere to Stand
+
+- A fielded ally that cannot be placed now says so in chat instead of only in the server log. With a handful of tamed wolves a full arena was near-impossible to hit, so a log line was enough; an addon fielding a party of six on a cramped floor reaches it easily, and a creature that silently never turns up reads as the game having lost it
+- Reported once with a count rather than once per ally, so a tight arena reads as a tight arena instead of a stack of errors
+
+Addon API: Sending Out From an Empty Field
+
+- A trainer can now field a benched creature onto an **empty tile with nothing withdrawn**. Switching captures the outgoing creature's live state onto the bench, so it needs one on the field to capture; when a trainer's last creature was knocked out there was nothing to withdraw, the bench was stranded, and the trainer conceded with reserves left - the opposite of how a gym battle ends
+- The reserve is removed from the bench rather than swapped, since nothing is coming back to take its place. Swapping would leave the same creature sittable twice
+- It is fielded through the same path a switch uses, so its NBT, spawn customizer, AI key and typing land exactly as if it had started the fight on the grid. Refused, with the bench untouched, when the tile is out of bounds, occupied, not standable, or too small for the creature's footprint
 
 Addon API: Allies From Outside the Hub
 

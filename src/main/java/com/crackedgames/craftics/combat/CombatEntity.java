@@ -646,6 +646,37 @@ public class CombatEntity {
      * <p>Left null means "use the default for this mob", which covers a creature whose every
      * attack is the same type and needs no per-turn bookkeeping.
      */
+    /**
+     * An action ordered by the player for this ally's next turn, used instead of asking its
+     * AI. Cleared as it is consumed, so an order is obeyed once and the ally goes back to
+     * thinking for itself - a standing order would have the creature repeat last turn's move
+     * forever whenever the player forgot to issue a new one.
+     */
+    /**
+     * Creatures this enemy is a trainer for: carried into the fight, on no tile, fielded only
+     * when it switches one in.
+     *
+     * <p>Lives on the combatant rather than in a map on the fight because a bench belongs to
+     * the trainer and dies with it. A defeated trainer's remaining team leaves with it, which
+     * is both the rule a Pokemon battle uses and the one that needs no cleanup pass to enforce.
+     */
+    private final java.util.List<com.crackedgames.craftics.api.EnemyBench> bench =
+        new java.util.ArrayList<>();
+    public java.util.List<com.crackedgames.craftics.api.EnemyBench> getBench() { return bench; }
+    public boolean hasBench() { return !bench.isEmpty(); }
+
+    private com.crackedgames.craftics.combat.ai.EnemyAction commandedAction = null;
+    public com.crackedgames.craftics.combat.ai.EnemyAction getCommandedAction() { return commandedAction; }
+    public void setCommandedAction(com.crackedgames.craftics.combat.ai.EnemyAction action) {
+        this.commandedAction = action;
+    }
+    /** Take the order and forget it, so it cannot be obeyed twice. */
+    public com.crackedgames.craftics.combat.ai.EnemyAction consumeCommandedAction() {
+        var a = commandedAction;
+        commandedAction = null;
+        return a;
+    }
+
     private String pendingAttackType = null;
     public String getPendingAttackType() { return pendingAttackType; }
     public void setPendingAttackType(String typeId) { this.pendingAttackType = typeId; }

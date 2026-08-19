@@ -67,12 +67,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         // Belt-and-suspenders: ensure compat-mod weapons are registered. The lifecycle
         // hooks usually win this race, but if they didn't (e.g. resource pack reload
         // before a world is loaded), the first tooltip render finishes the job.
-        com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
-        com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
-        com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.registerDeferred();
-        com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.registerDeferred();
-        com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.registerDeferred();
-        com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.registerDeferred();
+        com.crackedgames.craftics.compat.CompatRegistrations.registerAllDeferred();
 
         // Artifacts mod compat: replace the entire vanilla/Artifacts tooltip body with
         // Craftics-only lines so the player sees the in-Craftics behaviour, not the

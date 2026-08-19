@@ -1173,20 +1173,14 @@ public class CrafticsMod implements ModInitializer {
             com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(player)
                 ? net.minecraft.util.ActionResult.FAIL : net.minecraft.util.ActionResult.PASS);
 
-        // Deferred copper-tier registration. WeaponRegistry needs the actual Item
-        // instances from copperagebackport, but Fabric doesn't guarantee that mod's
-        // main entrypoint has run by the time ours does, so finish the registration
-        // on SERVER_STARTING, which fires after every mod's main-phase init.
+        // Deferred compat registration. WeaponRegistry needs the actual Item instances
+        // from the mods we support, but Fabric doesn't guarantee their main entrypoints
+        // have run by the time ours does, so finish the registration on SERVER_STARTING,
+        // which fires after every mod's main-phase init. The client has its own call at
+        // CLIENT_STARTED - see CompatRegistrations for why both are needed.
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTING.register(
             server -> {
-                com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
-                com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
-                com.crackedgames.craftics.compat.instruments.InstrumentsCompat.registerDeferred();
-                com.crackedgames.craftics.compat.paladins.PaladinsCompat.registerDeferred();
-                com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.registerDeferred();
-                com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.registerDeferred();
-                com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.registerDeferred();
-                com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.registerDeferred();
+                com.crackedgames.craftics.compat.CompatRegistrations.registerAllDeferred();
             });
 
         // Load biome definitions from JSON datapacks on server start

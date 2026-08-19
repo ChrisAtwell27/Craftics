@@ -24,7 +24,7 @@ package com.crackedgames.craftics.api;
  * @param hp           current health. Equal to {@code maxHp} for an ally that has not yet
  *                     been on the field; a wounded one that was benched keeps its damage
  * @param maxHp        its maximum health
- * @since 0.4.1
+ * @since 0.4.0
  */
 public record BenchedAlly(int index,
                           String entityTypeId,

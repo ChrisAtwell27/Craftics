@@ -835,17 +835,14 @@ public class CrafticsClient implements ClientModInitializer {
         com.crackedgames.craftics.client.vfx.EntityFloatTracker.register();
         com.crackedgames.craftics.client.HoverTargetArrowRenderer.register();
 
-        // Client-side deferred copper-tier registration. The MP client never sees
-        // ServerLifecycleEvents, but tooltips still need WeaponRegistry populated.
-        // CLIENT_STARTED fires after every mod's main entrypoint has run, so the
-        // copperagebackport items are guaranteed to be in Registries.ITEM by now.
+        // Client-side deferred compat registration. A multiplayer client never sees
+        // ServerLifecycleEvents, but its tooltips still need WeaponRegistry populated -
+        // without this, everyone except the host sees blank stats on every compat item.
+        // CLIENT_STARTED fires after every mod's main entrypoint has run, so the other
+        // mods' items are guaranteed to be in Registries.ITEM by now.
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STARTED.register(
             client -> {
-                com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
-                com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
-                com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.registerDeferred();
-                com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.registerDeferred();
-                com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.registerDeferred();
+                com.crackedgames.craftics.compat.CompatRegistrations.registerAllDeferred();
             });
 
         // Resolve keybind conflicts at startup. CLIENT_STARTED runs after every

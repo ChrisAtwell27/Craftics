@@ -318,6 +318,17 @@ public class HubPetCollector {
                 }
             }
             final ServerWorld world0 = petWorld;   // the loop body below spawns into this
+            // The player this animal belongs to, when they are online. Used for the tame/bond
+            // calls in the no-NBT fallback so a member's wolf is not re-owned to whoever the
+            // restore was called for. Falls back to that caller when its owner has logged off,
+            // which is the best available answer and matches the pre-multiplayer behaviour.
+            ServerPlayerEntity ownerPlayer = player;
+            if (pet.owner() != null && !pet.owner().equals(player.getUuid())
+                    && world.getServer() != null) {
+                ServerPlayerEntity online = world.getServer().getPlayerManager().getPlayer(pet.owner());
+                if (online != null) ownerPlayer = online;
+            }
+            final ServerPlayerEntity owner0 = ownerPlayer;
             // Defensive guard: never resurrect a dead pet. Restoration reads the
             // pre-combat NBT (full Health tag), so a fallen pet that slipped into
             // this list would otherwise reappear at the hub alive and well. Every
@@ -332,7 +343,7 @@ public class HubPetCollector {
                     // Restore from original NBT (preserves collar color, armor, name, variant, UUID)
                     NbtCompound nbt = pet.originalNbt().copy();
                     // Override position to a verified landing near the hub anchor
-                    double[] landing = findPetLanding(world, hubPos, offset);
+                    double[] landing = findPetLanding(world0, hubPos, offset);
                     double px = landing[0];
                     double py = landing[1];
                     double pz = landing[2];
@@ -348,7 +359,7 @@ public class HubPetCollector {
                     nbt.remove("Tags");
 
                     var entityType = Registries.ENTITY_TYPE.get(Identifier.of(pet.entityType()));
-                    Entity restored = entityType.create(world, null, BlockPos.ofFloored(px, py, pz),
+                    Entity restored = entityType.create(world0, null, BlockPos.ofFloored(px, py, pz),
                         SpawnReason.MOB_SUMMONED, false, false);
 
                     if (restored != null) {
@@ -360,15 +371,15 @@ public class HubPetCollector {
                             mob.setAiDisabled(false);
                             mob.setSilent(false);
                         }
-                        world.spawnEntity(restored);
+                        world0.spawnEntity(restored);
                         CrafticsMod.LOGGER.info("Restored pet to hub: {} at ({}, {}, {})",
                             pet.entityType(), (int) px, (int) py, (int) pz);
                     }
                 } else {
                     // Fallback: create a fresh entity (no NBT to restore)
                     var entityType = Registries.ENTITY_TYPE.get(Identifier.of(pet.entityType()));
-                    double[] landing = findPetLanding(world, hubPos, offset);
-                    var rawEntity = entityType.create(world, null,
+                    double[] landing = findPetLanding(world0, hubPos, offset);
+                    var rawEntity = entityType.create(world0, null,
                         BlockPos.ofFloored(landing[0], landing[1], landing[2]),
                         SpawnReason.MOB_SUMMONED, false, false);
                     if (rawEntity instanceof net.minecraft.entity.mob.MobEntity mob) {
@@ -377,18 +388,18 @@ public class HubPetCollector {
                         // Try to set tamed state
                         if (mob instanceof TameableEntity tameable) {
                             //? if <=1.21.4 {
-                            tameable.setOwnerUuid(player.getUuid());
+                            tameable.setOwnerUuid(owner0.getUuid());
                             //?} else
-                            /*tameable.setOwner(player);*/
+                            /*tameable.setOwner(owner0);*/
                             tameable.setTamed(true, false);
                         } else if (mob instanceof AbstractHorseEntity horse) {
                             //? if <=1.21.4 {
-                            horse.setOwnerUuid(player.getUuid());
+                            horse.setOwnerUuid(owner0.getUuid());
                             //?} else
-                            /*horse.setOwner(player);*/
-                            horse.bondWithPlayer(player);
+                            /*horse.setOwner(owner0);*/
+                            horse.bondWithPlayer(owner0);
                         }
-                        world.spawnEntity(mob);
+                        world0.spawnEntity(mob);
                     }
                 }
             } catch (Exception e) {
@@ -397,7 +408,19 @@ public class HubPetCollector {
             }
         }
         // Survivors kept their UUIDs, so the party list stays valid; resync to the client.
+        // Every owner who got an animal back, not only the player this was called for: in a
+        // party fight the others' clients would otherwise keep showing a party that no longer
+        // matches what is standing on their island.
         PartyMobSync.sync(player);
+        if (world.getServer() != null) {
+            java.util.Set<UUID> resynced = new java.util.HashSet<>();
+            resynced.add(player.getUuid());
+            for (PetData pet : survivingPets) {
+                if (pet.owner() == null || !resynced.add(pet.owner())) continue;
+                ServerPlayerEntity other = world.getServer().getPlayerManager().getPlayer(pet.owner());
+                if (other != null) PartyMobSync.sync(other);
+            }
+        }
     }
 
     /**

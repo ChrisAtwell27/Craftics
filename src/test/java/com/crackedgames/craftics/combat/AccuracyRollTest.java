@@ -128,4 +128,51 @@ class AccuracyRollTest {
         };
         assertTrue(AccuracyRoll.roll(2.0, exploding).hit());
     }
+
+    // ── Blindness ────────────────────────────────────────────────────────────
+
+    @Test
+    void blinded_setsTheMultiplierWhenNothingHadSetAnAccuracy() {
+        assertEquals(AccuracyRoll.BLINDED_MULTIPLIER,
+            AccuracyRoll.blinded(AccuracyRoll.NO_OVERRIDE));
+    }
+
+    @Test
+    void blinded_scalesAnAccuracyTheAttackAlreadyBrought() {
+        // The reason this is a multiply and not an assign. A move authored at 0.6 accuracy
+        // must get WORSE when its user is blinded; assigning 0.5 would be an improvement for
+        // anything below that, so blindness would buff exactly the wild swings it should hurt.
+        assertEquals(0.3, AccuracyRoll.blinded(0.6), 1e-9);
+    }
+
+    @Test
+    void blinded_neverImprovesAnyAccuracy() {
+        for (double a : new double[]{0.05, 0.2, 0.49, 0.5, 0.51, 0.9, 1.0, 2.0}) {
+            assertTrue(AccuracyRoll.blinded(a) < a,
+                "blindness must not improve accuracy " + a);
+        }
+    }
+
+    @Test
+    void blinded_stacks() {
+        // Two sources of blindness compound instead of the second being a no-op.
+        double once = AccuracyRoll.blinded(AccuracyRoll.NO_OVERRIDE);
+        assertEquals(0.25, AccuracyRoll.blinded(once), 1e-9);
+    }
+
+    @Test
+    void blinded_cannotSilenceACombatant() {
+        // Stacked blindness only ever approaches zero, so the floor keeps it actionable -
+        // an attacker that can never land is a stun, and stun is a different mechanic.
+        double acc = AccuracyRoll.NO_OVERRIDE;
+        for (int i = 0; i < 12; i++) acc = AccuracyRoll.blinded(acc);
+        assertTrue(acc > 0.0);
+        assertEquals(AccuracyRoll.FLOOR, AccuracyRoll.hitPercent(acc));
+    }
+
+    @Test
+    void blinded_leavesAnExplicitZeroAtZero() {
+        // An accuracy of exactly 0 means never, and blinding a never is still a never.
+        assertEquals(0.0, AccuracyRoll.blinded(0.0));
+    }
 }

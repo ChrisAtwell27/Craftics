@@ -877,6 +877,72 @@ CrafticsAPI.reskinAffinity(PlayerProgression.Affinity.PET,
       If what you want is a new axis of effectiveness rather than a renamed one, that is <a href="enemies.html#attack-types">Attack Types</a> - they are unlimited, and unlike affinities nobody levels them.
     </p>
 
+
+    <!-- ================================================================
+         COMBAT TOOLS
+         ================================================================ -->
+    <h2 id="combat-tools">Combat Tools</h2>
+    <p>
+      Craftics already treats one item as a button rather than an item. The Move item is created when a fight starts, locked to a slot the player chose, restocked if it goes missing, prevented from being dropped, and destroyed when the fight ends. It is a control that happens to live in the hotbar.
+    </p>
+    <p>
+      A mod whose fights are <em>commanded</em> rather than swung needs more of those. Picking a move, switching a creature, checking a matchup - each is a control, and a control the player has to remember to carry is a control they will lose. A registered <code>CombatTool</code> gets Move's treatment exactly.
+    </p>
+
+    <h3>Registering a tool</h3>
+    <pre><code>CrafticsAPI.registerCombatTool(CombatTool.builder("mymod:lead", MyItems.LEAD)
+    .order(1)                          // one slot right of Move
+    .onUse((player, combat) -&gt; {
+        MyMoveMenu.open(player);        // your screen, your rules
+        return true;                    // handled; no default item use
+    })
+    .build());</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Builder Method</th><th>Default</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>builder(id, item)</code></td>
+            <td>required</td>
+            <td>Unique id and the item to pin. Give it a <strong>distinct item</strong> - a tool sharing an item with ordinary gear would see that gear stripped along with the tool.</td>
+          </tr>
+          <tr>
+            <td><code>order(int)</code></td>
+            <td>1</td>
+            <td>How far right of the Move slot it sits, wrapping the hotbar. <code>1</code> is immediately adjacent.</td>
+          </tr>
+          <tr>
+            <td><code>stripOutsideCombat(boolean)</code></td>
+            <td>true</td>
+            <td>Destroy every copy when no fight is running. True for a control - a button that survives into the hub is an item the player can hoard, trade or lose.</td>
+          </tr>
+          <tr>
+            <td><code>onUse(handler)</code></td>
+            <td>none</td>
+            <td>Fired server-side on a mid-fight right-click. Return <code>true</code> to suppress the item's ordinary use.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Opening a menu</h3>
+    <div class="callout">
+      <p>
+        <strong>Craftics ships no menu framework here, deliberately.</strong> <code>onUse</code> fires and Craftics does nothing else with the click. From there you open whatever you like - a vanilla <code>ScreenHandler</code>, or your own payload to your own client screen. A move-selection screen is your design, and anything Craftics invented would fit it worse. This is the same split the <a href="enemies.html#bench">bench</a> uses: Craftics owns what an action <em>means</em>, the addon owns the screen the player picks from.
+      </p>
+    </div>
+
+    <h3>Behaviour worth knowing</h3>
+    <ul>
+      <li><strong>The handler only fires during an active fight.</strong> Outside combat the tool should not exist at all, so a click there means a stale copy - running the handler would open a menu for a fight that already ended.</li>
+      <li><strong>Tools yield rather than destroy.</strong> A tool's slot is <code>(moveSlot + order)</code> wrapped around the hotbar, and whatever is sitting there is pushed to a free slot. If the hotbar is full the tool gives up and retries next tick. Move drops the player's item to claim its slot because without Move you cannot act at all; a tool is a convenience, and a fight that ate your sword to place a button would be a far worse bug than a button arriving a tick late.</li>
+      <li><strong>Undroppable.</strong> Tools get Move's drop protection. A button the player can Q-drop mid-fight is a button they will drop mid-fight and then be unable to press.</li>
+      <li><strong>A throwing handler is swallowed and logged</strong>, and the click still counts as handled - a broken menu must not fall through to an ordinary item use the player never asked for.</li>
+    </ul>
+
   </main>
 </div>
 
