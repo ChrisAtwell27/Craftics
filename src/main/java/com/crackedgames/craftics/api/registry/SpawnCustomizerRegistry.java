@@ -53,6 +53,33 @@ public final class SpawnCustomizerRegistry {
      * the arena build and leave a half-populated fight - strictly worse than one enemy
      * that did not get its extra initialisation.
      */
+    /** AI keys already reported as having no customizer, so each is said once, not per spawn. */
+    private static final java.util.Set<String> WARNED_KEYS =
+        java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * Say so when a combatant was deliberately keyed and nothing claimed it.
+     *
+     * <p>Only for a combatant whose AI key differs from its entity type. That difference means
+     * somebody set the key on purpose - usually a mod whose one entity type stands in for many
+     * creatures - so a missing customizer there is a wiring mistake worth naming. A mob whose
+     * key is just its entity type is an ordinary mob nobody intended to customise, and warning
+     * about those would print a line for every zombie in every fight.
+     *
+     * <p>Exists because the failure is otherwise invisible: an undressed combatant looks like a
+     * generic one, and the only way to tell "my customizer ran and did nothing" from "my
+     * customizer was never called" was to add logging on the addon side and guess.
+     */
+    private static void warnUnmatchedKey(CombatEntity entity) {
+        String aiKey = entity.getAiKey();
+        if (aiKey == null || aiKey.equals(entity.getEntityTypeId())) return;
+        if (!WARNED_KEYS.add(aiKey)) return;
+        CrafticsMod.LOGGER.warn(
+            "No spawn customizer registered for AI key '{}' (entity type '{}'). "
+            + "That combatant spawns undressed. Registered keys: {}",
+            aiKey, entity.getEntityTypeId(), CUSTOMIZERS.keySet());
+    }
+
     public static void apply(ServerWorld world, MobEntity mob, CombatEntity entity) {
         if (CUSTOMIZERS.isEmpty() || world == null || mob == null || entity == null) return;
         SpawnCustomizer c = null;
@@ -61,7 +88,10 @@ public final class SpawnCustomizerRegistry {
         if (c == null && entity.getEntityTypeId() != null) {
             c = CUSTOMIZERS.get(entity.getEntityTypeId());
         }
-        if (c == null) return;
+        if (c == null) {
+            warnUnmatchedKey(entity);
+            return;
+        }
         try {
             c.onSpawn(world, mob, entity);
         } catch (Throwable t) {
@@ -72,6 +102,7 @@ public final class SpawnCustomizerRegistry {
 
     /** Clear every registration. Test hook. */
     public static void clear() {
+        WARNED_KEYS.clear();
         CUSTOMIZERS.clear();
     }
 }

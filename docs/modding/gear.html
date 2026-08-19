@@ -943,6 +943,168 @@ CrafticsAPI.reskinAffinity(PlayerProgression.Affinity.PET,
       <li><strong>A throwing handler is swallowed and logged</strong>, and the click still counts as handled - a broken menu must not fall through to an ordinary item use the player never asked for.</li>
     </ul>
 
+
+    <!-- ================================================================
+         AUTO-INTEGRATION
+         ================================================================ -->
+    <h2 id="auto-integration">Auto-Integration</h2>
+    <p>
+      Modded weapons and armor that nobody registered are given combat stats worked out from the item itself. You do not have to do anything for this, and it is why a weapon pack is playable the moment it is installed rather than after somebody writes a compat module for it.
+    </p>
+    <p>
+      <strong>An explicit registration always wins.</strong> Inference only ever fills a gap, so registering a weapon or an armor set - from code or from a datapack - is how you correct a guess, and you are never competing with it.
+    </p>
+
+    <h3>Weapons</h3>
+    <p>
+      Damage comes from the item's own vanilla attack rating, placed on <em>Craftics' ladder</em> for that weapon family by interpolation. It is not a formula: Craftics' numbers are hand-tuned and do not track vanilla, so a modded sword sitting between iron and diamond in vanilla terms simply gets a Craftics number between iron and diamond. The ladder is read from the live vanilla items at runtime, so it follows your config and your Minecraft version rather than a hardcoded table, and a weapon far above netherite is clamped rather than extrapolated.
+    </p>
+    <p>
+      Shape comes from the item's name, and decides damage type, AP cost, reach and signature trick. The families are Craftics' own, so a modded halberd behaves like a Craftics halberd:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Reads as</th><th>From names like</th><th>Type</th><th>AP</th><th>Reach</th></tr></thead>
+        <tbody>
+          <tr><td>Dagger</td><td>dagger, knife, sai, tanto, kris, dirk</td><td>Slashing</td><td>1</td><td>1</td></tr>
+          <tr><td>Light blade</td><td>sword, katana, rapier, cutlass, scimitar, falchion</td><td>Slashing</td><td>1</td><td>1</td></tr>
+          <tr><td>Warglaive</td><td>warglaive</td><td>Cleaving</td><td>1</td><td>1</td></tr>
+          <tr><td>Axe</td><td>axe, battleaxe, cleaver, hatchet</td><td>Cleaving</td><td>2</td><td>1</td></tr>
+          <tr><td>Greataxe</td><td>greataxe</td><td>Cleaving</td><td>3</td><td>1</td></tr>
+          <tr><td>Greatblade</td><td>greatsword, claymore, zweihander, flamberge</td><td>Cleaving</td><td>3</td><td>1</td></tr>
+          <tr><td>Spear</td><td>spear, pike, lance, javelin, trident, harpoon</td><td>Slashing</td><td>2</td><td>2</td></tr>
+          <tr><td>Polearm</td><td>halberd, glaive, naginata, bardiche, guisarme</td><td>Cleaving</td><td>2</td><td>2</td></tr>
+          <tr><td>Scythe</td><td>scythe</td><td>Cleaving</td><td>2</td><td>2</td></tr>
+          <tr><td>Hammer</td><td>mace, club, flail, morningstar, cudgel</td><td>Blunt</td><td>2</td><td>1</td></tr>
+          <tr><td>Greathammer</td><td>warhammer, maul, sledge</td><td>Blunt</td><td>3</td><td>1</td></tr>
+          <tr><td>Thrown</td><td>chakram, boomerang, shuriken, discus</td><td>Ranged</td><td>1</td><td>3</td></tr>
+          <tr><td>Bow</td><td>bow, crossbow, sling, musket, blowgun</td><td>Ranged</td><td>1</td><td>4</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Compound names win over the words inside them, so a <code>greataxe</code> is not an axe and a <code>warglaive</code> is not a glaive. Tools are excluded outright - a modded pickaxe holds "axe" and does not become a battleaxe. Anything whose name reads as no weapon at all, or that carries no attack modifier, is left alone rather than guessed at.
+    </p>
+
+    <h3>Armor</h3>
+    <p>
+      Armor Class comes from the piece's own armor rating and toughness, placed on the ladder for <em>its own slot</em> - slots are not interchangeable, so a chestplate is measured against chestplates. Toughness counts, because diamond and netherite carry identical armor points and differ only in it.
+    </p>
+    <p>
+      An inferred set also gets an <strong>affinity</strong>, chosen from the material's name, because every Craftics armor set grants one and a set granting none reads as broken next to the rest:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Material names like</th><th>Affinity</th><th>Matching vanilla set</th></tr></thead>
+        <tbody>
+          <tr><td>leather, hide, fur, cloth, wool</td><td>Physical</td><td>Leather</td></tr>
+          <tr><td>chainmail, chain, mail, scale, brigandine</td><td>Slashing</td><td>Chainmail</td></tr>
+          <tr><td>iron, steel, titanium, obsidian, plate, mithril</td><td>Cleaving</td><td>Iron</td></tr>
+          <tr><td>gold, brass, bronze, electrum, silver</td><td>Special</td><td>Gold</td></tr>
+          <tr><td>diamond, crystal, ruby, amethyst, quartz</td><td>Blunt</td><td>Diamond</td></tr>
+          <tr><td>turtle, prismarine, nautilus, coral, kelp</td><td>Water</td><td>Turtle</td></tr>
+          <tr><td>anything else</td><td>Physical</td><td>-</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      A modded variant of a vanilla material lands on the affinity the player already associates with it - "reinforced iron" boosts Cleaving exactly like iron does. Inferred sets get the affinity and the Armor Class and nothing else: no flat AP, speed or attack bonuses, since those are what make a vanilla set feel special and handing them to every material would flatten the difference rather than honour it.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>Food needed none of this.</strong> Any edible item has always had its heal value read from its own nutrition and saturation, so modded food has worked since long before this existed.
+      </p>
+      <p>
+        Auto-integration can be turned off entirely with <code>autoIntegrateModdedGear</code> in the config, which restores the old behaviour: unregistered weapons hit for a bare fist, unregistered armor is worth no Armor Class.
+      </p>
+    </div>
+
+    <!-- ================================================================
+         COMBAT PORTRAITS
+         ================================================================ -->
+    <h2 id="combat-portraits">Combat Portraits</h2>
+    <p>
+      Craftics picks a combatant's head icon by <strong>entity type</strong>. That works when a type names a creature and fails completely when one entity type stands in for hundreds: every combatant in the fight shares one registry id, so any icon registered for it would be right for one creature and wrong for all the others. The HUD falls back to a coloured square with a letter in it.
+    </p>
+    <p>
+      It is the icon-side version of what <a href="enemies.html#spawn-customization">AI keys</a> already solve on the server. No texture can fix it, so the hook hands over the drawing instead.
+    </p>
+
+    <pre><code>// From your own ClientModInitializer - this half of the API is client-side.
+CrafticsClientAPI.registerPortraitRenderer(
+    (ctx, entityId, typeId, x, y, size, damageTint) -&gt; {
+        if (!typeId.equals("mymod:creature")) return false;   // not ours
+
+        var world = MinecraftClient.getInstance().world;
+        if (world == null) return false;
+        if (!(world.getEntityById(entityId) instanceof MyCreature creature)) return false;
+
+        MyRenderer.drawPortrait(ctx, creature, x, y, size, damageTint);
+        return true;
+    });</code></pre>
+
+    <h3>Why the entity id</h3>
+    <p>
+      The rosters are keyed by entity id and the creature is standing on the grid in the client world, so <code>world.getEntityById(entityId)</code> gets you the live entity and everything its own mod knows about it. That is usually far better than a flat image - a mod with a real model renderer can draw the same portrait its own screens use.
+    </p>
+    <p>
+      <code>typeId</code> comes with any Craftics stat suffix already stripped, and is cheap to test before doing an entity lookup.
+    </p>
+
+    <h3>Rules</h3>
+    <ul>
+      <li><strong>Return false for anything you do not recognise.</strong> Renderers are asked in registration order and the first to claim a combatant wins, so a renderer that claims everything blanks out the rest of the fight.</li>
+      <li><strong>You get first refusal, you do not replace the fallback.</strong> Craftics still tries its own head texture, then its coloured square, for anything left unclaimed.</li>
+      <li><strong>Honour <code>damageTint</code>.</strong> It runs 0 (untouched) to 1 (nearly dead), and Craftics reddens its own heads by exactly this - the enemy column reads health at a glance because of it. A portrait that ignores it drops information the roster currently carries. It is 0 at the panels that do not tint, so honouring it always matches what Craftics would have drawn.</li>
+      <li><strong>One registration covers every panel.</strong> Both rosters, the turn-order strip and the hover inspect panel. A portrait in one place and a blank square in the next looks more broken than blank squares everywhere.</li>
+      <li><strong>Sizes differ.</strong> The panels do not agree on one - draw to the <code>size</code> you are given rather than assuming.</li>
+      <li><strong>Stay inside your square.</strong> Nothing clips you to <code>x, y, size</code>; drawing outside lands on neighbouring panels.</li>
+      <li><strong>A renderer that throws is reported once and then never asked again</strong> for the rest of the session. It costs your portraits and keeps the fight playable - a render loop is not the place to die.</li>
+    </ul>
+
+    <!-- ================================================================
+         HUD PANELS
+         ================================================================ -->
+    <h2 id="hud-panels">Hiding HUD Panels</h2>
+    <p>
+      If your addon draws its own version of what a Craftics panel shows, turn the Craftics one off. A party screen that already lists the player's creatures does not want the ally roster underneath it: that is two lists of the same thing competing for one corner of the screen, and the one the player is reading is not Craftics'.
+    </p>
+
+    <pre><code>import com.crackedgames.craftics.api.HudPanel;
+
+@Override
+public void onCrafticsInit() {
+    // Our party UI is the ally list.
+    CrafticsAPI.hideHudPanel(HudPanel.ALLY_ROSTER);
+}</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Panel</th><th>What it draws</th></tr></thead>
+        <tbody>
+          <tr><td><code>ALLY_ROSTER</code></td><td>Top-left list of your allies: portrait, name and HP bar each.</td></tr>
+          <tr><td><code>ENEMY_ROSTER</code></td><td>Top-right column of remaining enemies, and the boss HP bar above it.</td></tr>
+          <tr><td><code>TURN_ORDER</code></td><td>Top-center strip showing whose turn it is and who acts next.</td></tr>
+          <tr><td><code>PLAYER_STATUS</code></td><td>Top-left panel with the player's own HP, AP and movement.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>What suppression does and does not do</h3>
+    <ul>
+      <li><strong>Visual only.</strong> Nothing about the fight changes and Craftics keeps tracking and syncing everything the panel would have shown, so <code>showHudPanel</code> mid-fight immediately shows the truth rather than a panel that has to catch up.</li>
+      <li><strong>Hover inspection survives <code>ENEMY_ROSTER</code>.</strong> Hiding the roster hides the column of heads; pointing at an enemy, an ally or a party member still opens its stat panel. Those are a different feature and replacing a list is not a reason to lose them.</li>
+      <li><strong>Layout closes up.</strong> Panels stack against each other, so hiding one moves the ones below it up rather than leaving a gap where it used to be.</li>
+      <li><strong>The player's own config wins.</strong> A panel they turned off in the config stays off, and <code>showHudPanel</code> will not force it back on. Equally, a panel you hid is not restored by a player who never turned it off. Neither side overrules the other.</li>
+      <li><strong>Declare it every start.</strong> Suppression is per-process and not persisted, so it belongs in your initializer alongside your other registrations.</li>
+      <li><strong>Think twice about <code>PLAYER_STATUS</code>.</strong> Unlike the rosters it is the only place AP and movement appear, and a player with no AP readout cannot tell why an action is being refused.</li>
+    </ul>
+
+    <p>
+      Players have their own toggles for the two rosters under the config screen's Visual section, so a player who finds a panel redundant can turn it off without an addon.
+    </p>
+
   </main>
 </div>
 

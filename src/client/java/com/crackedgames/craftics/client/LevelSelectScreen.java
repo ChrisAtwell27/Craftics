@@ -103,7 +103,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             public Builder color(int argb) { this.dimColor = argb; return this; }
 
             public Builder addBiome(String biomeId, String displayName, int order) {
-                Identifier tex = Identifier.of("craftics", "textures/gui/biomes/" + biomeId + ".png");
+                Identifier tex = com.crackedgames.craftics.level.BiomeCoverArt.coverTexture(biomeId);
                 biomes.add(new BiomeEntry(biomeId, displayName, dimColor, tex, order));
                 return this;
             }
@@ -238,8 +238,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
                 CampaignRegion r = CampaignManager.regionOf(node.biomeId());
                 if (r != null && region.id().equals(r.id())) {
                     String label = node.labelOverride() != null ? node.labelOverride() : node.biomeId();
-                    Identifier tex = Identifier.of("craftics",
-                        "textures/gui/biomes/" + node.biomeId() + ".png");
+                    Identifier tex = com.crackedgames.craftics.level.BiomeCoverArt.coverTexture(node.biomeId());
                     entries.add(new BiomeEntry(node.biomeId(), label, color, tex, order++));
                 }
             }
@@ -792,7 +791,9 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
         // Custom-campaign biomes often have no card art. Rather than render the
         // missing-texture (purple/black checkerboard) placeholder, fall back to a
         // solid colored panel tinted with the biome's region color.
-        if (!textureResourceExists(texture)) {
+        // Null means the biome id could not name a texture at all, which for drawing
+        // purposes is the same thing as art that was never shipped.
+        if (texture == null || !textureResourceExists(texture)) {
             int fill = 0xFF000000 | (fallbackColor & 0x00FFFFFF); // force opaque
             context.fill(x, y, x + w, y + h, fill);
             // Subtle inner panel + darker border so the card still reads as a tile.

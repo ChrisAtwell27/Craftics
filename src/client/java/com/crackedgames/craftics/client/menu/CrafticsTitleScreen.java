@@ -372,8 +372,8 @@ public class CrafticsTitleScreen extends Screen {
 
     /** Cover-fit one biome's card art over the whole screen with a slow drift. */
     private void drawBiomeCover(DrawContext context, String biomeId, float alpha, int variant) {
-        Identifier tex = Identifier.of("craftics", "textures/gui/biomes/" + biomeId + ".png");
-        if (!textureResourceExists(tex)) {
+        Identifier tex = com.crackedgames.craftics.level.BiomeCoverArt.coverTexture(biomeId);
+        if (tex == null || !textureResourceExists(tex)) {
             // No card art (custom campaign biome): moody flat backdrop in the
             // run's accent color so the menu still reads as themed.
             int accent = snap != null ? snap.regionColor() : 0xFF223044;
@@ -619,9 +619,8 @@ public class CrafticsTitleScreen extends Screen {
         int tx = x + e.w - thumb - 6;
         int ty = e.y + 5;
         if (snap.hasWorld()) {
-            Identifier art = Identifier.of("craftics",
-                "textures/gui/biomes/" + snap.biomeId() + ".png");
-            if (textureResourceExists(art)) {
+            Identifier art = com.crackedgames.craftics.level.BiomeCoverArt.coverTexture(snap.biomeId());
+            if (art != null && textureResourceExists(art)) {
                 drawTex(context, art, tx, ty, thumb, thumb);
             } else {
                 context.fill(tx, ty, tx + thumb, ty + thumb, snap.regionColor());

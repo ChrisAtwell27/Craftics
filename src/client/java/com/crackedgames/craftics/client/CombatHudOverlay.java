@@ -396,6 +396,12 @@ public class CombatHudOverlay implements HudRenderCallback {
     }
 
     private void renderPlayerStatusPanel(DrawContext ctx, MinecraftClient client, int screenW) {
+        if (!com.crackedgames.craftics.api.registry.HudPanelRegistry.isVisible(com.crackedgames.craftics.api.HudPanel.PLAYER_STATUS)) {
+            // Nothing drawn, so the left column ends at the top of the screen. Without
+            // this the ally roster would keep stacking under a panel that is not there.
+            leftPanelBottomY = 0;
+            return;
+        }
         java.util.List<CombatState.PartyMemberHp> partyList = CombatState.getPartyHpList();
 
         if (!partyList.isEmpty()) {
@@ -562,6 +568,7 @@ public class CombatHudOverlay implements HudRenderCallback {
     }
 
     private void renderAllyRoster(DrawContext ctx, MinecraftClient client, int screenW) {
+        if (!com.crackedgames.craftics.api.registry.HudPanelRegistry.isVisible(com.crackedgames.craftics.api.HudPanel.ALLY_ROSTER)) return;
         Map<Integer, int[]> allies = CombatState.getAllyHpMap();
         Map<Integer, String> allyTypes = CombatState.getAllyTypeMap();
         if (allies.isEmpty()) return;
@@ -601,8 +608,13 @@ public class CombatHudOverlay implements HudRenderCallback {
             String typeIdFull = allyTypes.getOrDefault(entry.getKey(), "minecraft:wolf");
             String typeId = typeIdFull.contains(";") ? typeIdFull.substring(0, typeIdFull.indexOf(';')) : typeIdFull;
 
+            // An addon may own this combatant's portrait, and gets first refusal - a mod
+            // whose one entity type stands in for hundreds of creatures has no head texture
+            // it could register here that would be right for more than one of them.
             Identifier headTex = MobHeadTextures.get(typeId);
-            if (headTex != null) {
+            if (com.crackedgames.craftics.api.client.CrafticsClientAPI.drawPortrait(ctx, entry.getKey(), typeId, startX, y, headSize, 0f)) {
+                // Drawn by the addon.
+            } else if (headTex != null) {
                 MobHeadTextures.drawMobHead(ctx, headTex, startX, y, headSize);
             } else {
                 int squareColor = MobHeadTextures.getMobColor(typeId);
@@ -740,6 +752,7 @@ public class CombatHudOverlay implements HudRenderCallback {
      */
     private void renderTurnOrder(DrawContext ctx, MinecraftClient client, int screenW) {
         turnOrderBottomY = 20; // below the banner; pushed down when the panel draws
+        if (!com.crackedgames.craftics.api.registry.HudPanelRegistry.isVisible(com.crackedgames.craftics.api.HudPanel.TURN_ORDER)) return;
         java.util.List<CombatState.TurnOrderEntry> order = CombatState.getTurnOrderList();
         if (order.isEmpty()) return; // solo play - nothing to show
 
@@ -853,7 +866,9 @@ public class CombatHudOverlay implements HudRenderCallback {
                 ctx.fill(x - 1, y - 1, x + headSz + 1, y + headSz + 4, 0xFF221A00);
             }
             Identifier tex = MobHeadTextures.get(typeId);
-            if (tex != null) {
+            if (com.crackedgames.craftics.api.client.CrafticsClientAPI.drawPortrait(ctx, id, typeId, x, y, headSz, 0f)) {
+                // Drawn by the addon.
+            } else if (tex != null) {
                 MobHeadTextures.drawMobHead(ctx, tex, x, y, headSz);
             } else {
                 ctx.fill(x, y, x + headSz, y + headSz, MobHeadTextures.getMobColor(typeId));
@@ -1177,6 +1192,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         lastInspectKey = null;
 
         if (enemies.isEmpty()) return;
+        if (!com.crackedgames.craftics.api.registry.HudPanelRegistry.isVisible(com.crackedgames.craftics.api.HudPanel.ENEMY_ROSTER)) return;
 
         // ── Vertical head roster ─────────────────────────────────────────────
         // No outlining container: a single column of mob heads down the right
@@ -1285,7 +1301,9 @@ public class CombatHudOverlay implements HudRenderCallback {
             ctx.fill(headX - 1, y - 1, headX + headSize + 1, y + headSize + 1, 0x66000000);
 
             Identifier headTex = MobHeadTextures.get(typeId);
-            if (headTex != null) {
+            if (com.crackedgames.craftics.api.client.CrafticsClientAPI.drawPortrait(ctx, entry.getKey(), typeId, headX, y, headSize, redAmount)) {
+                // Drawn by the addon.
+            } else if (headTex != null) {
                 MobHeadTextures.drawMobHeadTinted(ctx, headTex, headX, y, headSize, redAmount);
             } else {
                 int squareColor = MobHeadTextures.tintTowardRed(MobHeadTextures.getMobColor(typeId), redAmount);
@@ -1432,7 +1450,11 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         int nameColor = bossName != null ? GuideTheme.GOLD : isAlly ? 0xFF66DD66 : 0xFFFFFFFF;
         Identifier inspectHead = MobHeadTextures.get(typeId);
-        if (inspectHead != null) {
+        if (com.crackedgames.craftics.api.client.CrafticsClientAPI.drawPortrait(ctx, entityId, typeId, panelX, panelY, 14, 0f)) {
+            // Addon portrait, with the name laid out as though a head were there.
+            ctx.drawTextWithShadow(client.textRenderer,
+                Text.literal("§l" + displayName), panelX + 16, panelY + 3, nameColor);
+        } else if (inspectHead != null) {
             MobHeadTextures.drawMobHead(ctx, inspectHead, panelX, panelY, 14);
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal("\u00a7l" + displayName), panelX + 16, panelY + 3, nameColor);

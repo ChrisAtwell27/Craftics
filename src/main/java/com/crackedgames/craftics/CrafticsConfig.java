@@ -390,6 +390,18 @@ public class CrafticsConfig {
     public boolean showEmeraldsInCombat = false;
     public boolean fadeTurnBanner = true;
 
+    /**
+     * Work out combat stats for modded weapons and armor nobody registered, from the item's
+     * own attack damage and armor rating. Off means unregistered gear behaves as it did
+     * before: weapons hit for a bare fist, armor is worth no Armor Class.
+     */
+    public boolean autoIntegrateModdedGear = true;
+
+    /** Draw the top-left roster of your allies and their HP. */
+    public boolean showAllyPanel = true;
+    /** Draw the top-right roster of the enemies still standing. */
+    public boolean showEnemyPanel = true;
+
     public boolean showDamageNumbers = true;
     public boolean bossGlowEffect = true;
     public boolean screenShakeOnHit = true;

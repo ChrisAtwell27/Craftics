@@ -62,6 +62,34 @@
       Biomes can be added two ways: through a JSON datapack file (no code required) or programmatically through <code>CrafticsAPI.registerBiome()</code>. The JSON path is simpler for pure content; the code path is needed when you want to share a <code>BiomeTemplate</code> object built entirely in Java.
     </p>
 
+    <h3 id="biome-card-art">Biome card art</h3>
+    <p>
+      The title screen and the level-select screen show a square cover image per biome. Craftics looks for it by biome id, in <strong>your own namespace</strong>:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Biome id</th><th>Texture looked up</th><th>File in your jar</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>mymod:cavern</code></td>
+            <td><code>mymod:textures/gui/biomes/cavern.png</code></td>
+            <td><code>assets/mymod/textures/gui/biomes/cavern.png</code></td>
+          </tr>
+          <tr>
+            <td><code>plains</code> (no namespace)</td>
+            <td><code>craftics:textures/gui/biomes/plains.png</code></td>
+            <td>Craftics' own art</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Your namespace rather than a shared folder under Craftics', so you ship art without coordinating a directory layout with anyone, and two addons that both name a biome <code>route_1</code> cannot overwrite each other's cards.
+    </p>
+    <p>
+      Ship nothing and the screens draw a flat backdrop tinted with the biome's region color instead. That is a supported outcome, not a broken one - art is optional.
+    </p>
+
     <h3>JSON Datapack</h3>
     <p>
       Place a JSON file at <code>data/&lt;namespace&gt;/craftics/biomes/&lt;biome_id&gt;.json</code>. Craftics discovers every file at that path automatically on resource reload. Use <code>/reload</code> to hot-reload biome JSON without restarting the server.

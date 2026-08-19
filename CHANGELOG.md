@@ -68,6 +68,51 @@ Commanded Moves Losing Their Typing
 - Fixed the ally turn clearing the pending attack type and accuracy **before** reading the standing order. An addon sets both when it issues a command and the order is obeyed a turn later, so every commanded move arrived untyped and at default accuracy - leaving the ally AI as the only way to give an ally a typed move, which is the wrong seam for a player-issued order
 - Blindness now **scales** an accuracy the attack already brought instead of replacing it. Overwriting meant a wild haymaker was more likely to land while blinded than while sighted, so the debuff read as a buff on exactly the attacks it should punish hardest. Two sources of blindness now compound, and no stack of them can grind a combatant down to unable-to-act
 
+Modded Weapons and Armor Now Work on Install
+
+- Modded weapons that nothing registered used to hit for a **bare fist**, and modded armor was worth **no Armor Class at all**. Both failed silently: a whole weapon pack equipped normally, showed a tooltip, and left every blade in it identical and useless with nothing on screen to say why. Craftics now works stats out from the item itself, the same way it has always read a modded food's heal value off its own nutrition
+- Damage is not a formula. Craftics' own numbers are hand-tuned and do not track vanilla - a netherite axe hits for 27 where vanilla gives it 10 - so a modded weapon is placed on **Craftics' existing ladder** by interpolation instead. A sword sitting between iron and diamond in vanilla terms gets a Craftics number between iron and diamond
+- The ladder is read from the live vanilla items at runtime rather than hardcoded, so it follows the Minecraft version and the server's own damage config instead of drifting from them. A weapon far above netherite is clamped rather than extrapolated: a joke sword with 400 attack damage does not get 400 damage here
+- Weapon **shape** is read from the item's name and decides damage type, AP cost, reach and signature trick, using the families Craftics already supports: daggers and sai, chakrams and other thrown blades, warglaives, spears, halberds and glaives, scythes, greatswords, greataxes, warhammers, bows. A modded halberd reaches a tile the way a Craftics halberd does
+- Compound names beat the words inside them, so a greataxe is not an axe and a warglaive is not a glaive. Tools are excluded outright - a modded pickaxe contains "axe" and does not become a battleaxe - and anything that reads as no weapon at all is left alone rather than guessed at
+- **Armor gets an affinity too**, chosen from its material's name, because every Craftics set grants one and a set granting none reads as broken next to the rest. A modded variant of a vanilla material lands where the player already expects: "reinforced iron" boosts Cleaving exactly like iron. Armor Class comes from the piece's own rating and toughness, measured against the ladder for its own slot, since a chestplate carries three times a helmet's points and one shared ladder would call every helmet leather
+- Toughness counts on its own, because diamond and netherite carry identical armor points and differ only in it - a score built on points alone would hand every modded end-tier armor diamond's number
+- **An explicit registration always wins.** Inference only ever fills a gap, so a compat module or a datapack correcting a guess is never fighting it. Off entirely with `autoIntegrateModdedGear` in the config
+
+Addon API: Clicking an Ally
+
+- An addon can now handle a player clicking one of their own allies. Craftics did exactly one thing with that click - heal, if the player held the ally's registered heal item - and refused everything else, which is a closed set and the wrong shape for an addon whose allies are the point of the mod
+- There was no way to reach it from outside: grid clicks arrive on Craftics' own packet and go straight into the attack path, so no Fabric event ever sees them. This is the general form of the heal-item hook that was already sitting there
+- Handlers get first refusal, before the heal-item check, and decline by returning false so anything they do not recognise still heals as it always did. Craftics charges no AP for an ally click, so a handler that should cost something spends it itself
+
+Diagnostics: Unclaimed Spawn Keys
+
+- Craftics now says once, per key, when a combatant was given an AI key that no spawn customizer is registered for, and lists the keys that are registered. An undressed combatant looks exactly like a generic one, so the only way to tell "my customizer ran and did nothing" from "my customizer was never called" was to add logging on the addon side and guess between them
+- Only for a combatant whose AI key differs from its entity type, since that difference means somebody set the key deliberately. An ordinary mob nobody intended to customise stays silent, so a vanilla install logs nothing
+
+Addon API: Combat Portraits
+
+- An addon can now draw the combatant icons in the combat HUD itself. Craftics picks a head texture by entity type, which fails completely for a mod whose single entity type stands in for hundreds of creatures: no icon registered for that type could be right for more than one of them, so every combatant fell through to a coloured square with a letter in it
+- The renderer is handed the **entity id**, not just the type, because the roster is already keyed by it and the creature is standing in the client world - so an addon can reach the live entity and draw whatever its own screens draw, rather than being limited to a flat texture it would have had to invent
+- One registration covers all four places a combatant icon appears: both rosters, the turn-order strip and the hover inspect panel. A portrait in one panel and a blank square in the next reads worse than blank squares everywhere
+- Renderers get first refusal and do not replace the fallback, so anything unclaimed still gets its head texture or coloured square. The damage tint is passed through, so a portrait can redden by health the way the enemy column already does
+- A renderer that throws is logged once and then never asked again for the session. This runs once per combatant per frame, and something that fails once fails sixty times a second
+
+Addon API: Hiding HUD Panels
+
+- A combat HUD panel can now be turned off by an addon that draws its own version of the same thing. A compat mod whose party screen already lists your creatures had no way to stop Craftics stacking an ally roster underneath it, which is two lists of the same information competing for one corner of the screen
+- Four panels are addressable rather than one switch for the ally list, because the redundancy argument is never about one panel for long: a mod that replaces the party list usually replaces the opposing side's list too
+- Hiding the enemy roster keeps hover inspection. Pointing at an enemy, an ally or a party member still opens its stat panel - that is a different feature, and replacing a list is not a reason to lose it
+- Suppression is visual only. Craftics keeps tracking and syncing everything the panel would have shown, so a panel turned back on mid-fight shows the truth immediately instead of catching up
+- Players get their own toggles for the ally and enemy rosters in the config's Visual section. Neither side overrules the other: an addon cannot force back a panel the player turned off, and a player who never touched the setting does not undo an addon that replaced it
+
+Title Screen Crash on Addon Biomes
+
+- Fixed the menu crashing every frame once any addon campaign was installed. A biome id was concatenated straight into a texture path, and a resource location rejects the `:` in a namespaced id, so building the path threw instead of returning something that merely fails to resolve. The "no card art, draw a flat backdrop" fallback was on the very next line and could never be reached
+- Craftics' own biomes are all bare - plains, cave, deep_dark - so nothing in the base game ever produced an id that could trip it. The documented convention for addon biomes is `namespace:path`, which the addon template's own example uses, so this hit every code-registered addon campaign immediately and no vanilla install ever
+- The same concatenation existed at five places, not one: the title screen backdrop and its save-card thumbnail, two in level select, and the world-icon writer. All five now go through one resolver that cannot throw whatever the id looks like
+- Addon card art is now looked up in **the addon's own namespace**: `mymod:cavern` reads `assets/mymod/textures/gui/biomes/cavern.png`. Two addons naming a biome the same thing no longer overwrite each other's cards
+
 Addon API: An Event Can Become a Fight
 
 - Fixed a forced event being unable to turn into a level. The non-choice path built its arena from the level it had queued **before** the handler ran, and cleared the pending level first, so a handler that asked to run its own fight was silently overruled and the event could only hand out rewards. That rules out the entire shape a trainer battle, a gym or a scripted ambush needs, and left choice events as the only way to reach it

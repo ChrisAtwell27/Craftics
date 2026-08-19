@@ -958,6 +958,32 @@ CrafticsAPI.switchEnemy(player, leader, fielded, 1);</code></pre>
       </p>
     </div>
 
+    <h3 id="ally-click">Clicking an ally</h3>
+    <p>
+      On its own Craftics does exactly one thing when a player clicks their own ally: if they are holding that ally's registered heal item, it heals. Everything else is refused with a message, and the turn is not spent.
+    </p>
+    <p>
+      That is far too narrow for an addon whose allies <em>are</em> the game. Clicking your own creature to open its moves, use an item on it, or give it an order is the most natural gesture there is, and there was no route in - grid clicks arrive on Craftics' own packet and go straight to the attack path, so no Fabric event sees them.
+    </p>
+
+    <pre><code>CrafticsAPI.registerAllyClickHandler((player, ally, held) -&gt; {
+    if (!"mymod:creature".equals(ally.getEntityTypeId())) return false;   // not ours
+
+    if (held.isOf(MyItems.POTION)) {
+        useItemOn(player, ally, held);
+        return true;
+    }
+    openMoveMenu(player, ally);
+    return true;
+});</code></pre>
+
+    <ul>
+      <li><strong>First refusal, before the heal-item check</strong>, so an addon that owns its allies entirely owns this gesture too.</li>
+      <li><strong>Return false for anything you do not recognise.</strong> Handlers are asked in registration order and the first to claim wins, so one that claims every click removes healing for everyone.</li>
+      <li><strong>Nothing is spent for you.</strong> Craftics charges no AP for an ally click, because until now there was nothing worth charging for. If your action should cost something, spend it yourself.</li>
+      <li><strong>A handler that throws loses the click</strong> and is logged; the built-in behaviour runs instead. One broken addon should not cost everyone the ability to heal a pet.</li>
+    </ul>
+
     <h3>Commanding an ally</h3>
     <p>
       The player's side of the same idea. <code>CrafticsAPI.commandAlly(player, ally, action)</code> leaves a standing order that overrides the ally's own judgement on its next turn, and is consumed as it is read so it is obeyed exactly once. Any <code>EnemyAction</code> works, <a href="#custom-actions">custom actions</a> included.

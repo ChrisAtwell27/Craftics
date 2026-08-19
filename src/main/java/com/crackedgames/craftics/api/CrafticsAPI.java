@@ -266,6 +266,75 @@ public final class CrafticsAPI {
     }
 
     /**
+     * Stop Craftics drawing one of its combat HUD panels.
+     *
+     * <p>For addons that draw their own version of the same information. If your party screen
+     * already lists the player's creatures, Craftics' ally roster underneath it is two lists of
+     * the same thing competing for one corner of the screen.
+     *
+     * <p>Call it from your addon's initializer - suppression is per-process and not persisted,
+     * so it is declared on every start like any other registration.
+     *
+     * <pre>{@code
+     * public void onCrafticsInit() {
+     *     // Our party UI is the ally list.
+     *     CrafticsAPI.hideHudPanel(HudPanel.ALLY_ROSTER);
+     * }
+     * }</pre>
+     *
+     * <p>Visual only: the fight is unchanged and Craftics still tracks and syncs everything the
+     * panel would have shown, so {@link #showHudPanel} mid-fight immediately shows the truth.
+     *
+     * <p>A panel the <em>player</em> has turned off in the config stays off regardless, and
+     * showing a panel again does not override that choice.
+     *
+     * @param panel which panel to stop drawing
+     * @since 0.4.0
+     */
+    /**
+     * Handle a player clicking one of their own allies on the grid.
+     *
+     * <p>Craftics does exactly one thing with that click on its own - heal, if the player holds
+     * the ally's registered heal item - and refuses everything else. This opens the gesture up,
+     * which matters for an addon whose allies are the point of the mod: clicking your creature
+     * to open its moves, use an item on it or give it an order had no route in at all, because
+     * grid clicks arrive on Craftics' own packet rather than through any Fabric event.
+     *
+     * <p>Handlers get first refusal, before the heal-item check. Decline anything you do not
+     * recognise - see {@link AllyClickHandler} for the full contract.
+     *
+     * @since 0.4.0
+     */
+    public static void registerAllyClickHandler(com.crackedgames.craftics.api.AllyClickHandler handler) {
+        com.crackedgames.craftics.api.registry.AllyClickRegistry.register(handler);
+    }
+
+    public static void hideHudPanel(com.crackedgames.craftics.api.HudPanel panel) {
+        com.crackedgames.craftics.api.registry.HudPanelRegistry.hide(panel);
+    }
+
+    /**
+     * Draw a panel again after {@link #hideHudPanel}.
+     *
+     * <p>Does not override the player's own config: a panel they turned off stays off.
+     *
+     * @since 0.4.0
+     */
+    public static void showHudPanel(com.crackedgames.craftics.api.HudPanel panel) {
+        com.crackedgames.craftics.api.registry.HudPanelRegistry.show(panel);
+    }
+
+    /**
+     * Whether a panel is currently drawn, accounting for both addon suppression and the
+     * player's config.
+     *
+     * @since 0.4.0
+     */
+    public static boolean isHudPanelVisible(com.crackedgames.craftics.api.HudPanel panel) {
+        return com.crackedgames.craftics.api.registry.HudPanelRegistry.isVisible(panel);
+    }
+
+    /**
      * Order one of the player's allies to take a specific action on its next turn, instead of
      * letting its AI decide.
      *

@@ -3690,7 +3690,14 @@ public class CrafticsMod implements ModInitializer {
             if (fullPath.isEmpty()) return; // no active campaign, nothing to index
             int idx = Math.max(0, Math.min(pd.highestBiomeUnlocked - 1, fullPath.size() - 1));
             String biomeId = fullPath.get(idx);
-            String resourcePath = "/assets/craftics/textures/gui/biomes/" + biomeId + ".png";
+            String resourcePath =
+                com.crackedgames.craftics.level.BiomeCoverArt.crafticsClasspathPath(biomeId);
+            if (resourcePath == null) {
+                // An addon biome: its art is in the addon's jar, which this reader cannot
+                // reach. A missing world icon, and nothing worse.
+                LOGGER.warn("World icon: biome '{}' is not one of Craftics' own, skipping icon", biomeId);
+                return;
+            }
             try (java.io.InputStream iconStream = CrafticsMod.class.getResourceAsStream(resourcePath)) {
                 if (iconStream == null) {
                     LOGGER.warn("World icon: no biome icon asset found for '{}'", biomeId);

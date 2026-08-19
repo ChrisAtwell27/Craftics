@@ -2,6 +2,7 @@ package com.crackedgames.craftics.api.registry;
 
 import com.crackedgames.craftics.api.RegistrationSource;
 import com.crackedgames.craftics.combat.DamageType;
+import org.jetbrains.annotations.Nullable;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,14 +46,56 @@ public final class ArmorSetRegistry {
         DATAPACK_KEYS.clear();
     }
 
-    /** The entry for {@code armorSetId}, or {@code null} if none is registered. */
+    /**
+     * The entry for {@code armorSetId}: registered if there is one, otherwise inferred from
+     * the material's own armor items, otherwise null.
+     *
+     * <p>Inference means a modded material joins the Armor Class system and gets an affinity
+     * without anyone writing a compat module for it. A registered set always wins, so a mod
+     * that describes its own armor is never overruled by a guess about it.
+     */
+    @Nullable
     public static ArmorSetEntry get(String armorSetId) {
-        return REGISTRY.get(armorSetId);
+        ArmorSetEntry registered = REGISTRY.get(armorSetId);
+        if (registered != null) return registered;
+        return inferred(armorSetId);
+    }
+
+    /**
+     * A set worked out from the material's own armor pieces.
+     *
+     * <p>Cached both ways. Building one scans the item registry for pieces named after the
+     * material, which is far too expensive to repeat on every armor-bonus lookup - and those
+     * happen per damage type, per worn piece, per hit.
+     */
+    @Nullable
+    private static ArmorSetEntry inferred(String armorSetId) {
+        if (armorSetId == null || armorSetId.isBlank()) return null;
+        // Read defensively. CONFIG is null before the mod finishes loading, and this is
+        // reached from tooltip and damage paths that can run either side of that; a hard
+        // read here turns "not loaded yet" into a crash.
+        var config = com.crackedgames.craftics.CrafticsMod.CONFIG;
+        if (config == null || !config.autoIntegrateModdedGear()) return null;
+        Object cached = INFERRED.get(armorSetId);
+        if (cached != null) return cached == NOT_A_SET ? null : (ArmorSetEntry) cached;
+        ArmorSetEntry guess = com.crackedgames.craftics.combat.GearInference.inferArmorSet(armorSetId);
+        INFERRED.put(armorSetId, guess != null ? guess : NOT_A_SET);
+        return guess;
+    }
+
+    /** Sentinel for "no armor of this material exists", so the miss is cached too. */
+    private static final Object NOT_A_SET = new Object();
+    private static final java.util.Map<String, Object> INFERRED =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Drop every inferred set, so a config change or a reload re-decides. */
+    public static void clearInferred() {
+        INFERRED.clear();
     }
 
     /** Affinity bonus per 2 pieces for {@code type} on {@code armorSet}, or {@code 0}. */
     public static int getDamageTypeBonus(String armorSet, DamageType type) {
-        ArmorSetEntry entry = REGISTRY.get(armorSet);
+        ArmorSetEntry entry = get(armorSet);
         return entry != null ? entry.getDamageTypeBonus(type) : 0;
     }
 
@@ -63,7 +106,7 @@ public final class ArmorSetRegistry {
      * system without a hardcoded case.
      */
     public static int getArmorClass(String armorSet) {
-        ArmorSetEntry entry = REGISTRY.get(armorSet);
+        ArmorSetEntry entry = get(armorSet);
         return entry != null ? entry.armorClass() : 0;
     }
 

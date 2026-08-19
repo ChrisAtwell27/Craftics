@@ -6776,6 +6776,13 @@ public class CombatManager {
         // heals it (routed through the use-item path); anything else is rejected
         // without spending the turn.
         if (target.isAlly()) {
+            // An addon gets first refusal on the whole gesture. For a mod whose allies are the
+            // point, clicking your own creature is the most natural thing there is, and the
+            // built-in set below - heal, or a refusal message - is far too narrow for it.
+            if (com.crackedgames.craftics.api.registry.AllyClickRegistry.handle(
+                    player, target, player.getMainHandStack())) {
+                return;
+            }
             com.crackedgames.craftics.api.registry.AllyEntry allyEntry =
                 com.crackedgames.craftics.api.registry.AllyRegistry.getOrNull(target.getEntityTypeId());
             if (allyEntry != null && allyEntry.healItem() != null

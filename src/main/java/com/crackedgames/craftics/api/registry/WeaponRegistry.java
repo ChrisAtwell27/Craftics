@@ -59,7 +59,45 @@ public final class WeaponRegistry {
      * registered. Never {@code null}.
      */
     public static WeaponEntry get(Item item) {
-        return REGISTRY.getOrDefault(item, DEFAULT);
+        WeaponEntry registered = REGISTRY.get(item);
+        if (registered != null) return registered;
+        WeaponEntry inferred = inferred(item);
+        return inferred != null ? inferred : DEFAULT;
+    }
+
+    /**
+     * Stats worked out from the item itself, for a weapon nobody registered.
+     *
+     * <p>Cached because {@link #get} is called on every swing and every tooltip render, while
+     * the answer depends only on the item's own components, which do not change at runtime.
+     * The negative answer is cached too - most items in a modded game are not weapons, and
+     * re-deciding that for a stack of cobblestone on every frame would be the expensive part.
+     *
+     * <p>Never consulted for a registered item, so inference can only ever fill a gap. A
+     * compat module or a datapack correcting a guess is not competing with this.
+     */
+    @Nullable
+    private static WeaponEntry inferred(Item item) {
+        if (item == null) return null;
+        // Read defensively. CONFIG is null before the mod finishes loading, and this is
+        // reached from tooltip and damage paths that can run either side of that; a hard
+        // read here turns "not loaded yet" into a crash.
+        var config = com.crackedgames.craftics.CrafticsMod.CONFIG;
+        if (config == null || !config.autoIntegrateModdedGear()) return null;
+        Object cached = INFERRED.get(item);
+        if (cached != null) return cached == NOT_A_WEAPON ? null : (WeaponEntry) cached;
+        WeaponEntry guess = com.crackedgames.craftics.combat.GearInference.inferWeapon(item);
+        INFERRED.put(item, guess != null ? guess : NOT_A_WEAPON);
+        return guess;
+    }
+
+    /** Sentinel for "this item was examined and is not a weapon", so the miss is cached too. */
+    private static final Object NOT_A_WEAPON = new Object();
+    private static final Map<Item, Object> INFERRED = new ConcurrentHashMap<>();
+
+    /** Drop every inferred entry, so a config change or a reload re-decides. */
+    public static void clearInferred() {
+        INFERRED.clear();
     }
 
     /** The entry for {@code item}, or {@code null} if it is not registered. */
