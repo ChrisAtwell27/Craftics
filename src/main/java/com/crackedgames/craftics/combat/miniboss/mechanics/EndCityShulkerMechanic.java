@@ -48,6 +48,12 @@ public final class EndCityShulkerMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "An elite shulker holding the centre at roughly double an ordinary add's health, "
+            + "deploying two more shulkers every third round.";
+    }
+
+    @Override
     public String introTitle() {
         return "§d§l☠ Shulker Sentinel";
     }

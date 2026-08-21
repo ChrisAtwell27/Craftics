@@ -35,6 +35,11 @@ public final class SandstormEffect implements BiomeEffect {
     }
 
     @Override
+    public String description() {
+        return "A driving sandstorm blinds the entire party every third round.";
+    }
+
+    @Override
     public void onFightStart(MinibossContext ctx) {
         ctx.message("§eA sandstorm rolls in - watch for the blinding gusts.");
     }

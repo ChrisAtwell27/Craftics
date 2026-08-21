@@ -46,6 +46,12 @@ public final class BasaltMagmaSurgeMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "Magma cubes over telegraphed vents. One round marks the tiles about to erupt; the next "
+            + "turns them to lava. Then it marks a fresh set.";
+    }
+
+    @Override
     public String introTitle() {
         return "§6§l☠ Magma Surge";
     }

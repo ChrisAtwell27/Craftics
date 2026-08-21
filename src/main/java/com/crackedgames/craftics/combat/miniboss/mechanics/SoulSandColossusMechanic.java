@@ -41,6 +41,12 @@ public final class SoulSandColossusMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "An elite wither skeleton at roughly double an ordinary add's health, with two more "
+            + "skeleton archers rising from the sand every third round.";
+    }
+
+    @Override
     public String introTitle() {
         return "§f§l☠ Bone Colossus";
     }

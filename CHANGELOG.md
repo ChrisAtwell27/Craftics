@@ -8,6 +8,14 @@ Noteworthy:
 - Biome Atlas in guide book with drop rates
 - Guests can start runs
 
+Biome Pages Explain Their Level 4
+
+- Every biome page in the Biome Atlas now describes its **level-4 encounter**: the graveyard whose graves keep raising zombies, the river's rising flood, the void rift eating the arena a ring at a time, and thirteen more
+- Each encounter writes its own description, next to the code that runs it, so the page describes the fight that exists rather than the one it was designed from. Several of these deliberately dropped flavour the engine could not support, and a page written from the design brief would document a fight nobody is playing
+- Read straight from the mechanic registry on the client rather than synced, since the mechanics register in the mod's main entrypoint and the client already has them. A synced copy would be a second version of the same sentence waiting to disagree
+- The page shows the line under exactly the condition the game uses to run the encounter - a registered mechanic on a biome long enough to have a level 4 - so a biome can never advertise a set piece it does not have
+- An addon's own mechanic simply gets no line unless it writes one
+
 Co-op Pings
 
 - A new **ping** keybind, `Z` by default. Hold it and a wheel opens where the cursor is; flick toward an option and let go. Tap it without moving and it sends a plain "look here", so the common case costs one key press and never makes you read a menu

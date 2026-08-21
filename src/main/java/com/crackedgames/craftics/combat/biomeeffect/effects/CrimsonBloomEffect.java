@@ -30,6 +30,13 @@ public final class CrimsonBloomEffect implements BiomeEffect {
     }
 
     @Override
+    public String description() {
+        return "The level opens strewn with crimson fungus - a cobweb-like obstacle that makes anyone "
+            + "walking through it bleed. It is a fixed field hazard rather than something that spreads, "
+            + "so the opening scatter is what you get for the whole fight.";
+    }
+
+    @Override
     public void onFightStart(MinibossContext ctx) {
         ctx.message("§cCrimson fungus bristles across the ground - mind where you step.");
         ctx.playSound(SoundEvents.AMBIENT_CRIMSON_FOREST_LOOP.value(), 0.4f, 1.0f);

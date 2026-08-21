@@ -48,6 +48,13 @@ public final class PlainsGraveyardMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "Three living graves stand among the zombies. Every third round, each grave still "
+            + "standing raises another zombie beside it. Breaking a grave stops its stream for good - "
+            + "they never block the clear, so they are counterplay rather than a chore.";
+    }
+
+    @Override
     public String introTitle() {
         return "§2§l☠ Graveyard";
     }

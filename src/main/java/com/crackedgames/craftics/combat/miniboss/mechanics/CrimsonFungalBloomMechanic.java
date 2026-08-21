@@ -49,6 +49,12 @@ public final class CrimsonFungalBloomMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "Hoglins, and crimson spores that creep. A few spore tiles are seeded at the start and "
+            + "spread to neighbouring tiles each round, taking the floor a square at a time.";
+    }
+
+    @Override
     public String introTitle() {
         return "§c§l☠ Fungal Bloom";
     }

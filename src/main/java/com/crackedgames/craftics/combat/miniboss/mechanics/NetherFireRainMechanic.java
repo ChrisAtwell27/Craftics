@@ -45,6 +45,12 @@ public final class NetherFireRainMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "Piglin brutes under falling embers. Every round three or four tiles are painted with "
+            + "ember, which burns whoever crosses them - the brutes included.";
+    }
+
+    @Override
     public String introTitle() {
         return "§c§l☠ Fire Rain";
     }

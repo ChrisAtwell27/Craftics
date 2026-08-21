@@ -28,6 +28,14 @@ public final class RiverCurrentEffect implements BiomeEffect {
     }
 
     @Override
+    public String description() {
+        return "The water pulls, and always warns first. One round flow arrows appear on every water "
+            + "tile showing which way that tile runs; the next, anyone still standing in water is swept "
+            + "a couple of tiles toward the nearest edge. Dry ground is untouched, so the warning round "
+            + "is the whole counterplay.";
+    }
+
+    @Override
     public void onFightStart(MinibossContext ctx) {
         ctx.message("§9The river runs fast - the current tugs at the shallows.");
     }

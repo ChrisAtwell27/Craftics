@@ -54,6 +54,12 @@ public final class ChorusGroveBloomMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "Endermen among spreading chorus growth, seeded at the start and creeping outward each "
+            + "round.";
+    }
+
+    @Override
     public String introTitle() {
         return "§d§l☠ Chorus Bloom";
     }

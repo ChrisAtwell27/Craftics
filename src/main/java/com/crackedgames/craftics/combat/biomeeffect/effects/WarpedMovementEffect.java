@@ -23,6 +23,13 @@ public final class WarpedMovementEffect implements BiomeEffect {
         return "warped";
     }
 
+    @Override
+    public String description() {
+        return "The warped air periodically mirrors your movement about your own tile for a turn - "
+            + "attacks are unaffected, only where you end up. The level also opens strewn with warped "
+            + "fungus, a cobweb-like obstacle that inflicts Warped on anyone crossing it.";
+    }
+
     // Continuous warped-forest ambience: a light drift of warped-spore particles across the arena
     // and a soft, low portal-ambient hum, cadenced so the air feels alive without a fog.
     private static final int PARTICLE_CADENCE = 3;   // spores every 3 ticks (~7/sec)

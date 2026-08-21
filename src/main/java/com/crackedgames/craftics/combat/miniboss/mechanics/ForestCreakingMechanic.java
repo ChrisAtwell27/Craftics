@@ -29,6 +29,11 @@ public final class ForestCreakingMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "Two creakings, each tied to its own creaking heart. The heart is what has to die.";
+    }
+
+    @Override
     public String introTitle() {
         return "§8§l☠ The Pale Garden";
     }

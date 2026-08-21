@@ -41,6 +41,12 @@ public final class JungleBroodmotherMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "An elite cave spider with roughly double an ordinary add's health, and two more spiders "
+            + "skittering in every third round unless the floor is already crowded.";
+    }
+
+    @Override
     public String introTitle() {
         return "§2§l☠ Broodmother's Spawn";
     }

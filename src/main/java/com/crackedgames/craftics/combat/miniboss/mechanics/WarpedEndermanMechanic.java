@@ -46,6 +46,12 @@ public final class WarpedEndermanMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "An elite enderman at roughly double an ordinary add's health, with endermites spilling "
+            + "in every third round.";
+    }
+
+    @Override
     public String introTitle() {
         return "§3§l☠ Warped Enderman";
     }

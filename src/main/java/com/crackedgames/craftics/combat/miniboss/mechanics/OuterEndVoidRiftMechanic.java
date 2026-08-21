@@ -51,6 +51,13 @@ public final class OuterEndVoidRiftMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "Endermen on crumbling ground. Every round the outermost ring of tiles falls away into "
+            + "the void, squeezing the fight toward the middle. A safe core and your spawn tile always "
+            + "survive.";
+    }
+
+    @Override
     public String introTitle() {
         return "§5§l☠ Void Rift";
     }

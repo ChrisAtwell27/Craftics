@@ -37,6 +37,12 @@ public final class JungleRainEffect implements BiomeEffect {
         return "jungle_rain";
     }
 
+    @Override
+    public String description() {
+        return "Steady rain churns a few grass and dirt tiles into mud every round, and the mud stays "
+            + "for the rest of the fight. The longer it runs, the less clean ground is left.";
+    }
+
     private static final double MUD_PATCH_CHANCE = 0.5; // chance a level opens with a mud patch
     private static final int MUD_PATCH_DURATION = 999;   // effectively permanent - the standing bog
 

@@ -12,6 +12,19 @@ public interface BiomeEffect {
     /** Stable id the biome JSON references, e.g. "blizzard_winds". */
     String id();
 
+    /**
+     * One or two sentences on what this weather actually does to a fight, for the guide book.
+     *
+     * <p>The book used to print the effect's id and stop - "Sculk Sensors from level 1" tells a
+     * player the name of a thing that is about to blind their party and says nothing about the
+     * boots that prevent it or the pickaxe that removes it. The effect is the only place that
+     * knows, so it is the place that says.
+     *
+     * <p>Defaults to nothing, so an addon's effect is never forced to write one - it simply
+     * keeps the bare name it had before.
+     */
+    default String description() { return ""; }
+
     /** Once when combat starts on a level where this effect is active. */
     default void onFightStart(MinibossContext ctx) {}
 

@@ -48,6 +48,13 @@ public final class BlizzardWindsEffect implements BiomeEffect {
     }
 
     @Override
+    public String description() {
+        return "Wind gusts in two beats: one round telegraphs a random direction, the next drags every "
+            + "player and enemy on the grid that way. It moves both sides, so a gust can just as easily "
+            + "hand you a target as take one away.";
+    }
+
+    @Override
     public void onFightStart(MinibossContext ctx) {
         pendingGust = null;
         ctx.message("§b❄ A blizzard howls across the arena.");

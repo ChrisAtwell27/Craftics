@@ -49,6 +49,12 @@ public final class MountainRockbreakerMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "One elite iron golem and no adds at all. Every third round two or three tiles crash down "
+            + "as rubble, denying ground and crushing anything standing on them.";
+    }
+
+    @Override
     public String introTitle() {
         return "§7§l☠ Rockbreaker Kin";
     }

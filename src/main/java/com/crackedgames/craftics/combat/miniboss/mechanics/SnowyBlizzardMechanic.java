@@ -50,6 +50,12 @@ public final class SnowyBlizzardMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "Creepers, with two more every few rounds while there is room. The biome's blizzard winds "
+            + "drag you around separately.";
+    }
+
+    @Override
     public String introTitle() {
         return "§b§l☠ Blizzard";
     }

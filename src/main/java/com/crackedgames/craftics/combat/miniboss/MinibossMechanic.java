@@ -32,4 +32,21 @@ public interface MinibossMechanic {
 
     /** Banner shown at fight start, e.g. "§c§l☠ Graveyard". */
     String introTitle();
+
+    /**
+     * One or two sentences on what this encounter actually does, for the guide book.
+     *
+     * <p>A player who has not reached level 4 of a biome has no way to find out what waits
+     * there, and a player who has usually could not tell which of the things happening to them
+     * was the encounter and which was the biome's weather. The mechanic is the only place that
+     * knows, so it is the place that says.
+     *
+     * <p>Describe the fight that EXISTS. Several of these deliberately dropped flavour from
+     * their original brief that the engine could not support; a description written from the
+     * brief would document a fight nobody is playing.
+     *
+     * <p>Defaults to nothing, so an addon's mechanic is never forced to write one - it simply
+     * gets no line in the book.
+     */
+    default String description() { return ""; }
 }

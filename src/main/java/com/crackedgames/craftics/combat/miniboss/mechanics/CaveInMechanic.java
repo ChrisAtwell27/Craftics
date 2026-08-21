@@ -41,6 +41,12 @@ public final class CaveInMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "Spiders and silverfish under a failing ceiling. Every other round two or three tiles "
+            + "cave in as rubble, so the floor keeps shrinking while you fight on it.";
+    }
+
+    @Override
     public String introTitle() {
         return "§8§l☠ Cave-In";
     }

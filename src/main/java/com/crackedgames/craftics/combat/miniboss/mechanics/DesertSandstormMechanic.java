@@ -40,6 +40,12 @@ public final class DesertSandstormMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "Husks, with two more marching in every few rounds while the floor has room for them. The "
+            + "desert's own sandstorm blinds you on top of it.";
+    }
+
+    @Override
     public String introTitle() {
         return "§6§l☠ Sandstorm";
     }

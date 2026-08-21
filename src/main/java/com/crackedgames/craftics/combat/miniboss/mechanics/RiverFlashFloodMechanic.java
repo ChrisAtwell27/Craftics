@@ -44,6 +44,12 @@ public final class RiverFlashFloodMechanic implements MinibossMechanic {
     }
 
     @Override
+    public String description() {
+        return "The water rises. Every other round the far row floods, advancing one row closer. It "
+            + "stops short of the spawn rows, but the dry ground runs out long before that.";
+    }
+
+    @Override
     public String introTitle() {
         return "§9§l☠ Flash Flood";
     }

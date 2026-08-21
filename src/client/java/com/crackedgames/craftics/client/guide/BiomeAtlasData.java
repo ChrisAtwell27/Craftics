@@ -119,16 +119,64 @@ public final class BiomeAtlasData {
           .append(" before the biome is cleared.\n");
         sb.append(e.nightLevel() ? "Fought at night.\n" : "Fought in daylight.\n");
         if (!e.effectId().isEmpty()) {
-            sb.append(prettify(e.effectId()));
+            sb.append("\n§6").append(prettify(e.effectId()));
             // startLevel 0 means the effect is not on a timer at all; anything else is the
             // level it begins on, which is worth knowing before committing to the run.
             if (e.effectStartLevel() > 1) sb.append(" from level ").append(e.effectStartLevel());
-            sb.append(".\n");
+            sb.append("§r\n");
+            String weather = effectDescription(e.effectId());
+            sb.append(weather.isEmpty() ? "" : weather + "\n");
         }
+        String special = specialCondition(e);
+        if (!special.isEmpty()) sb.append("\n").append(special);
+
         if (!e.hostileIds().isEmpty() || !e.passiveIds().isEmpty() || !e.bossId().isEmpty()) {
             sb.append("\n§7Click a creature for its stats and drops.");
         }
         return sb.toString().trim();
+    }
+
+    /**
+     * What this biome's persistent weather does, described by the effect itself.
+     *
+     * <p>Same reasoning as {@link #specialCondition}: the effects register in the mod's main
+     * entrypoint, which runs on the client, so the sentence is read rather than synced. The
+     * page used to print the bare id - "Sculk Sensors from level 1" names the thing about to
+     * blind your party and says nothing about the boots that prevent it.
+     *
+     * <p>Empty for an addon effect that has not written one, which leaves it with exactly the
+     * bare name it had before.
+     */
+    private static String effectDescription(String effectId) {
+        var effect = com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.get(effectId);
+        if (effect == null) return "";
+        String text = effect.description();
+        return (text == null || text.isBlank()) ? "" : text;
+    }
+
+    /**
+     * The biome's level-4 encounter, described by the mechanic itself.
+     *
+     * <p>Read straight from {@link MinibossRegistry} rather than sent over the wire, because
+     * the mechanics register in the mod's main entrypoint - which runs on the client too. There
+     * is nothing here the client does not already have, and a synced copy would be a second
+     * version of the same sentence waiting to disagree with the first.
+     *
+     * <p>The gate is the same one {@code LevelGenerator.isMinibossLevel} applies: a registered
+     * mechanic AND a biome long enough to have a level 4 to put it on. Duplicating the
+     * condition is the risk here, so it is written to match that method exactly - a biome that
+     * shows the line but never runs the encounter would be worse than showing nothing.
+     */
+    private static String specialCondition(BiomeAtlasCodec.Entry e) {
+        if (e.levelCount() < 7) return "";
+        var mechanic = com.crackedgames.craftics.combat.miniboss.MinibossRegistry.get(e.biomeId());
+        if (mechanic == null) return "";
+        String text = mechanic.description();
+        if (text == null || text.isBlank()) return "";
+        // The banner carries its own colour codes and a symbol; strip the formatting so it sits
+        // in the page's prose rather than shouting out of it.
+        String name = mechanic.introTitle() == null ? "" : mechanic.introTitle().replaceAll("§.", "").trim();
+        return "\n§6Level 4" + (name.isEmpty() ? "" : " - " + name) + "§r\n" + text;
     }
 
     /**

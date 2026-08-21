@@ -48,6 +48,14 @@ public final class ForestHiveEffect implements BiomeEffect {
     }
 
     @Override
+    public String description() {
+        return "Wild bee hives hang in some forest levels. Every round a standing hive releases another "
+            + "hostile bee, so leaving one up is a growing swarm - but hives never block the clear, and "
+            + "breaking one with Silk Touch keeps it as an item you can place on your own side to spawn "
+            + "allied bees instead.";
+    }
+
+    @Override
     public void onFightStart(MinibossContext ctx) {
         Random rng = ctx.rng();
         if (rng.nextFloat() > HIVE_CHANCE) return; // a quiet forest this time
