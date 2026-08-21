@@ -1,6 +1,12 @@
 ﻿Changelog
 
-0.4.1
+0.4.2
+
+Noteworthy:
+- Ping spots with V
+- Center the camera on your character with X
+- Biome Atlas in guide book with drop rates
+- Guests can start runs
 
 Co-op Pings
 
@@ -74,9 +80,12 @@ Locked Out of Raids With No Way Back
 
 Phantoms Landing On Top Of You
 
-- Fixed a phantom finishing its swoop **on the player's own tile**. A swoop is built to pass over everything, which is the point of a diving attack, but the last tile of that path is where the mob actually stops - and nothing stopped it stopping on a square that was already occupied. The grid has no way to represent two combatants on one square
-- The landing now pulls back to the last free tile. Damage is unchanged: it was already worked out from the full flight path, so the attack still connects exactly as before
-- Applies to every swooping attacker, not just phantoms - the Ender Dragon, the Wither and the Bastion Brute all charge through the same code
+- Fixed a phantom finishing its swoop **on the player's own tile**. The grid has no way to represent two combatants on one square
+- The cause was a snap, not the flight. Before a swoop starts, the mob is moved onto the first tile of its path so the animation begins in the right place - and a phantom standing *next to* its target builds a path whose first tile is the target's tile. It was put there outright, before the dive, before any landing check. Every later guard then read it as already standing there and left it alone, because a mob's own square is the one place it is always allowed to be: the illegal position was created and then protected
+- The snap now refuses an occupied tile. Nothing is lost by skipping it - it exists so a boss diving in from off-stage starts at the arena edge rather than sliding diagonally out of its old tile, and such a path begins nowhere near a player
+- A move may also no longer **end** on an occupied tile, checked once where every move is started rather than per action. There are three swoop dispatch sites alone, and a rule enforced per action is a rule that holds until somebody adds the next one
+- Passing *through* someone is still allowed, since that is what a dive is. Only the landing is pulled back, and damage is unchanged: it is worked out from the full flight path
+- Party members count, not just whoever's turn it is - the previous check consulted only the current player, so a phantom could land on everyone else in the party
 
 Golden Carrots Refused At Full AP
 
@@ -114,6 +123,8 @@ Guests Could Not Start a Run
 - The lobby has always let any party member host. The block was that it judged the pick against the **starter's own** progression while the level select screen shows the **island's**, so a guest who was personally behind was refused every biome they could see. Both now read the same record
 - The refusal was also silent. Being turned down for a locked biome, or for one a datapack removed, now says so
 - Biome discovery is recorded on the island as well as the runner, so a guest-hosted run no longer leaves the island (and therefore everyone's level select and guide book) thinking the biome was never visited
+
+0.4.1
 
 Addon API: Charging for an Attack
 
@@ -368,7 +379,6 @@ Enemies Spawning On Top of Party Members
 
 - Fixed party members being placed onto tiles that were already occupied, which read as enemies spawning inside them. The placement search checked that a tile could be stood on but not whether something was already standing there, and the party's own positions were not refreshed before the search ran
 - Only the island owner was reliably safe, since they were placed first. An occupied tile is still used as a last resort for an arena with genuinely nowhere else to put someone, rather than leaving a fighter out of the fight
-
 
 0.4.0
 

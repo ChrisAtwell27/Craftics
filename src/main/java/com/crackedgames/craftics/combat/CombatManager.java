@@ -16410,9 +16410,23 @@ public class CombatManager {
                     // Snap to the first tile of the path so the lerp starts at the correct
                     // edge position for cross-arena swoops -prevents a diagonal snap from
                     // the dragon's previous tile.
+                    //
+                    // Skipped when that tile belongs to somebody. This snap is why a phantom
+                    // kept ending its swoop inside the player: a phantom standing NEXT to its
+                    // target builds a path whose first tile IS the target's tile, and this
+                    // moved it there outright - before the flight, before any landing check.
+                    // Every later guard then read the mob as already standing there and left
+                    // it alone, because a mob's own square is the one place it is always
+                    // allowed to be. The illegal position was created and then protected.
+                    //
+                    // Nothing is lost by skipping it. The snap only exists so a boss diving
+                    // in from off-stage starts its lerp at the arena edge instead of sliding
+                    // diagonally out of its old tile, and such a path begins nowhere near a
+                    // player. A phantom simply starts its dive from where it actually is.
                     if (!swoopPath.isEmpty()) {
                         GridPos swoopStart = swoopPath.get(0);
-                        if (!currentEnemy.getGridPos().equals(swoopStart)) {
+                        if (!currentEnemy.getGridPos().equals(swoopStart)
+                                && !tileTakenByOther(swoopStart)) {
                             BlockPos snapBlock = arena.gridToBlockPos(swoopStart);
                             swoopMob.requestTeleport(
                                 snapBlock.getX() + currentEnemy.getSizeX() / 2.0,
@@ -16501,27 +16515,9 @@ public class CombatManager {
                     sendSync();
                 }
 
-                // Where it comes to REST is a separate question from what it flew through.
-                // A swoop path is built to pass over everything - that is the point of a diving
-                // attack - but the last tile is where the mob actually stops, and nothing
-                // stopped it stopping on top of the player. A phantom that swooped a player
-                // standing at the end of its run ended the turn sharing their tile, which the
-                // grid has no way to represent: two combatants, one square.
-                //
-                // Damage was already applied above from the FULL path, so trimming here costs
-                // the attack nothing. It only pulls the landing back to the last free square.
-                while (!swoopPath.isEmpty()) {
-                    GridPos landing = swoopPath.get(swoopPath.size() - 1);
-                    // Its own tiles are not an obstacle to itself - a 3x3 dragon overlaps
-                    // several of the squares it is flying along.
-                    if (CombatEntity.minDistanceFromSizedEntity(landing,
-                            currentEnemy.getSizeX(), currentEnemy.getSizeZ(),
-                            currentEnemy.getGridPos()) <= 0) {
-                        break;
-                    }
-                    if (!arena.isOccupied(landing)) break;
-                    swoopPath.remove(swoopPath.size() - 1);
-                }
+                // Damage is worked out from the FULL path above; where the mob comes to rest
+                // is settled by startEnemyMove, which refuses to end a move on an occupied
+                // tile whatever the action was.
 
                 // Start the actual per-tile lerp through the swoop path.
                 // tickEnemyMoving handles the visual interpolation and spawns trail
@@ -18407,7 +18403,11 @@ public class CombatManager {
                     subMob.setInvisible(false);
                     subMob.setSilent(false);
                     GridPos swoopStart = swoop.path().get(0);
-                    if (!currentEnemy.getGridPos().equals(swoopStart)) {
+                    // Same occupancy guard as the top-level case: never snap the mob onto a
+                    // tile somebody is standing on. See there for why this one line was the
+                    // whole phantom-lands-inside-you bug.
+                    if (!currentEnemy.getGridPos().equals(swoopStart)
+                            && !tileTakenByOther(swoopStart)) {
                         BlockPos snapBlock = arena.gridToBlockPos(swoopStart);
                         subMob.requestTeleport(
                             snapBlock.getX() + currentEnemy.getSizeX() / 2.0,
@@ -24429,11 +24429,13 @@ public class CombatManager {
                 break;
             }
         }
-        // Footprint-vs-player safety net: never let a sized mob step so that its
-        // footprint covers the player's tile. A 2x2 mob's anchor can be a tile away
-        // from the player yet still overlap them; size-blind AI planning could route
-        // there. Truncate to the last tile that keeps the mob off the player. This
-        // backstops every AI, including any that didn't use the sized pathfinder.
+        // Footprint-vs-player safety net: never let a sized mob WALK THROUGH the player.
+        // A 2x2 mob's anchor can be a tile away from the player yet still overlap them, and
+        // size-blind AI planning could route there, so the path is cut at the first overlap.
+        //
+        // Deliberately still multi-tile only. A 1x1 mob passing over the player's tile is a
+        // swoop - the whole point of a diving attack - and cutting the path there would stop
+        // phantoms and dragons dead in front of their target instead of through it.
         if (currentEnemy != null && currentEnemy.isMultiTile()) {
             int szX = currentEnemy.getSizeX();
             int szZ = currentEnemy.getSizeZ();
@@ -24445,6 +24447,21 @@ public class CombatManager {
                 }
             }
         }
+
+        // Where it STOPS is a separate question from what it passed over, and it is the one
+        // that has to hold for every mob and every action. The grid cannot represent two
+        // combatants on one square, so a move may not END on an occupied tile.
+        //
+        // This lives here rather than in any single action's handler because a move can be
+        // ordered from several of them - a plain Move, a MoveAndAttack, a Swoop, a boss
+        // sub-action - and a rule enforced per action is a rule that holds until somebody
+        // adds the next one. There are three Swoop dispatch sites alone. Fixing the phantom
+        // in one of them fixed the phantom in one of them.
+        //
+        // Trailing tiles only: cutting at the first occupied tile would forbid flying through
+        // anyone, which is exactly what a swoop is for.
+        path = trimLandingOntoOccupant(path);
+
         enemyMovePath = path;
         enemyMovePathIndex = 0;
         enemyMoveTickCounter = 0;
@@ -24458,6 +24475,63 @@ public class CombatManager {
         sendToAllParty(new CombatEventPayload(
             CombatEventPayload.EVENT_MOVED, currentEnemy.getEntityId(), 0, 0,
             moveDest.x(), moveDest.z()));
+    }
+
+    /**
+     * Drop trailing steps until the move ends somewhere the mob can actually stand.
+     *
+     * <p>"Occupied" is everyone but the mover: the player, every party member, and every other
+     * combatant. Its own current tile is not an obstacle to itself, and neither are the squares
+     * its own footprint already covers - a 3x3 boss overlaps several tiles of its own route.
+     *
+     * @return the path to walk, possibly empty when there is nowhere legal to stop
+     */
+    private List<GridPos> trimLandingOntoOccupant(List<GridPos> path) {
+        if (currentEnemy == null || arena == null || path.isEmpty()) return path;
+        List<GridPos> out = new ArrayList<>(path);
+        while (!out.isEmpty()) {
+            GridPos landing = out.get(out.size() - 1);
+            if (CombatEntity.minDistanceFromSizedEntity(landing,
+                    currentEnemy.getSizeX(), currentEnemy.getSizeZ(),
+                    currentEnemy.getGridPos()) <= 0) {
+                break;   // its own square - staying put is always legal
+            }
+            if (!tileTakenByOther(landing)) break;
+            out.remove(out.size() - 1);
+        }
+        return out;
+    }
+
+    /**
+     * Whether the current enemy, anchored at {@code pos}, would sit on top of anybody else.
+     *
+     * <p>Counts every other combatant and every player, and deliberately not the mover itself:
+     * asking "is this square free" of the mob already standing on it would answer no for the
+     * one position that is always legal.
+     */
+    private boolean tileTakenByOther(GridPos pos) {
+        if (currentEnemy == null || arena == null) return false;
+        CombatEntity occupant = arena.getOccupant(pos);
+        if (occupant != null && occupant != currentEnemy && !occupant.isBackgroundBoss()) {
+            return true;
+        }
+        return landsOnAPlayer(pos);
+    }
+
+    /** Whether a mob of the current enemy's size, anchored at {@code pos}, would cover anyone. */
+    private boolean landsOnAPlayer(GridPos pos) {
+        int szX = currentEnemy.getSizeX();
+        int szZ = currentEnemy.getSizeZ();
+        if (CombatEntity.minDistanceFromSizedEntity(pos, szX, szZ, arena.getPlayerGridPos()) == 0) {
+            return true;
+        }
+        // Party members stand on their own tiles and are tracked separately from the
+        // "current" player, so checking only the latter would let a phantom land on everyone
+        // in the party except whoever's turn it happened to be.
+        for (GridPos other : arena.getAllPlayerGridPositions()) {
+            if (CombatEntity.minDistanceFromSizedEntity(pos, szX, szZ, other) == 0) return true;
+        }
+        return false;
     }
 
     private void tickEnemyMoving() {
