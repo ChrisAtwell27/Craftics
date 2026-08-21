@@ -27,9 +27,24 @@ public final class AuctionCommands {
 
     private AuctionCommands() {}
 
+    /** True when the auction house is not switched off for this world. */
+    private static boolean auctionOpen(ServerCommandSource src) {
+        var server = src.getServer();
+        if (server == null) return true;
+        return com.crackedgames.craftics.world.CrafticsSavedData
+            .get(server.getOverworld()).isAuctionEnabled();
+    }
+
     public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
         for (String name : new String[]{"auction", "shop", "store"}) {
             dispatcher.register(CommandManager.literal(name)
+                // Closed by an admin, or open to everyone. Gating the root closes every
+                // subcommand with it - sell, buy, cancel, collect - rather than leaving a
+                // half-shut market where listings can still be created but never browsed.
+                // Admins keep access so they can inspect and unwind a market they just froze.
+                .requires(src -> auctionOpen(src)
+                    || com.crackedgames.craftics.command.CrafticsPermissions
+                        .check(src, "command.auction.admin"))
                 .executes(ctx -> browse(ctx.getSource()))
                 .then(CommandManager.literal("sell")
                     .then(CommandManager.argument("price", IntegerArgumentType.integer(1, 1_000_000))

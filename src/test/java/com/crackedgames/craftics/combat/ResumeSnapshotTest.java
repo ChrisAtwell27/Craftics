@@ -23,10 +23,12 @@ class ResumeSnapshotTest {
         var alice = new ResumeSnapshot.PlayerState(ALICE, 7.5f, 14, 2.5f, 3, 4,
             List.of(new ResumeSnapshot.EffectState("POISON", 3, 1)));
         var bob = new ResumeSnapshot.PlayerState(BOB, 20f, 20, 5f, 5, 4, List.of());
+        // No identity: a vanilla zombie is its entity type and nothing more.
         var zombie = new ResumeSnapshot.EnemyState("minecraft:zombie", 6, 7, 4, 12, 3, 0, 1, 1, 1,
-            "m", "", List.of(new ResumeSnapshot.EffectState("brn", 2, 0)));
+            "m", "", List.of(new ResumeSnapshot.EffectState("brn", 2, 0)), "", "");
+        // With one, so the round trip covers the identity columns too.
         var wolf = new ResumeSnapshot.EnemyState("minecraft:wolf", 2, 2, 8, 8, 4, 0, 1, 1, 1,
-            "am", ALICE.toString(), List.of());
+            "am", ALICE.toString(), List.of(), "mymod:alpha_wolf", "Fang");
         return new ResumeSnapshot.Snapshot(savedAt, biome, level, turn,
             List.of(alice, bob), List.of(zombie, wolf));
     }
@@ -106,9 +108,37 @@ class ResumeSnapshotTest {
     }
 
     @Test
+    void identityColumnsSurviveARoundTrip() {
+        ResumeSnapshot.Snapshot back = ResumeSnapshot.parse(
+            ResumeSnapshot.serialize(sample(1L, "plains", 2, 5)));
+        ResumeSnapshot.EnemyState wolf = back.enemies().get(1);
+        assertEquals("mymod:alpha_wolf", wolf.aiKey());
+        assertEquals("Fang", wolf.displayName());
+        assertTrue(wolf.hasIdentity());
+        assertFalse(back.enemies().get(0).hasIdentity(), "a plain zombie names no aiKey");
+    }
+
+    @Test
+    void aRecordFromBeforeIdentityWasCapturedStillParses() {
+        // Thirteen columns, the shape the previous build wrote. Appending rather than bumping
+        // FORMAT is what keeps this readable: a version bump would reject every save point that
+        // existed at update time, including the fight a player is standing in.
+        String legacy = "v1,1700000000000,plains,2,5||minecraft:zombie,6,7,4,12,3,0,1,1,1,m,,";
+        ResumeSnapshot.Snapshot back = ResumeSnapshot.parse(legacy);
+        assertNotNull(back, "a 13-column record must still parse");
+        assertEquals(1, back.enemies().size());
+        ResumeSnapshot.EnemyState rec = back.enemies().get(0);
+        assertEquals("minecraft:zombie", rec.typeId());
+        assertEquals(12, rec.maxHp());
+        assertEquals("", rec.aiKey(), "a missing column reads as empty, not null");
+        assertEquals("", rec.displayName());
+        assertFalse(rec.hasIdentity());
+    }
+
+    @Test
     void flagsDecodeIndependently() {
         var rec = new ResumeSnapshot.EnemyState("minecraft:wolf", 1, 1, 5, 5, 2, 0, 1, 1, 1,
-            "atm", "", List.of());
+            "atm", "", List.of(), "", "");
         assertTrue(rec.ally());
         assertTrue(rec.has('t'));
         assertTrue(rec.hasMob());

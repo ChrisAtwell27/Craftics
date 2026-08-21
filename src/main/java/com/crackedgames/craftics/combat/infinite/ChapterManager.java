@@ -64,14 +64,25 @@ public final class ChapterManager {
         return data.nextRotationAt - System.currentTimeMillis();
     }
 
-    /** Player UUIDs with a nonzero chapter score, best first. The chapter board order. */
+    /**
+     * Player UUIDs with a nonzero chapter score, best first. The chapter board order.
+     *
+     * <p>The order is TOTAL: equal scores fall back to UUID so the same save data always
+     * produces the same list. That is not a fairness rule - ties are settled by joint
+     * placement in {@link #rotate} - it is so the list has one order at all. Sorting on
+     * score alone leaves tied players in whatever sequence the backing map happened to
+     * iterate, which can differ between two reads of an unchanged save.
+     */
     public static List<UUID> chapterStandings(CrafticsSavedData data) {
         List<Map.Entry<UUID, CrafticsSavedData.PlayerData>> rows = new ArrayList<>();
         for (var entry : data.getAllPlayerData().entrySet()) {
             if (entry.getValue().highestInfiniteScore > 0) rows.add(entry);
         }
-        rows.sort((a, b) -> Integer.compare(
-            b.getValue().highestInfiniteScore, a.getValue().highestInfiniteScore));
+        rows.sort((a, b) -> {
+            int byScore = Integer.compare(
+                b.getValue().highestInfiniteScore, a.getValue().highestInfiniteScore);
+            return byScore != 0 ? byScore : a.getKey().compareTo(b.getKey());
+        });
         List<UUID> out = new ArrayList<>();
         for (var entry : rows) out.add(entry.getKey());
         return out;
@@ -90,9 +101,24 @@ public final class ChapterManager {
 
         // 1. Freeze the standings and bank career points.
         List<UUID> standings = chapterStandings(data);
+        int[] scores = new int[standings.size()];
+        for (int i = 0; i < scores.length; i++) {
+            scores[i] = data.getPlayerData(standings.get(i)).highestInfiniteScore;
+        }
+        // Ties take the same place and the same points. These points are permanent and
+        // never reset, so settling a tie by list position would hand one player a lasting
+        // reward over an equal player for a reason no viewer of the board could see.
+        int[] places = ChapterPlacement.placesFor(scores);
+
         List<String> podium = new ArrayList<>();
-        for (int i = 0; i < Math.min(ChapterPlacement.BANKED_PLACES, standings.size()); i++) {
-            int place = i + 1;
+        int banked = 0;
+        for (int i = 0; i < standings.size(); i++) {
+            int place = places[i];
+            // Everyone AT a banked place banks, even where a tie pushes the head count past
+            // BANKED_PLACES. Cutting the list at ten entries would reintroduce exactly the
+            // arbitrary ordering this removes.
+            if (place > ChapterPlacement.BANKED_PLACES) break;
+            banked++;
             CrafticsSavedData.PlayerData pd = data.getPlayerData(standings.get(i));
             pd.chapterPlacementPoints += ChapterPlacement.pointsForPlace(place);
             pd.chaptersPlaced++;
@@ -100,8 +126,11 @@ public final class ChapterManager {
                 pd.bestChapterPlacement = place;
             }
             if (place <= 3) {
-                String name = pd.lastKnownName == null || pd.lastKnownName.isEmpty()
-                    ? standings.get(i).toString().substring(0, 8) : pd.lastKnownName;
+                // Unlike the boards, a podium line cannot just drop an entry - that would
+                // misreport who placed. A neutral word beats a UUID fragment, which names
+                // nobody and reads as a bug.
+                String name = pd.knownName();
+                if (name == null) name = "an unknown challenger";
                 podium.add(ChapterPlacement.ordinal(place) + " " + name
                     + " (" + pd.highestInfiniteScore + ")");
             }
@@ -159,7 +188,7 @@ public final class ChapterManager {
         CrafticsMod.LOGGER.info(
             "[chapter] rotated ({}) {} -> {} seed={} banked={} parkedRunsEnded={} nextAt={}",
             reason, closing, data.chapterNumber, data.chapterSeed,
-            Math.min(ChapterPlacement.BANKED_PLACES, standings.size()), ended, data.nextRotationAt);
+            banked, ended, data.nextRotationAt);
     }
 
     /** Set the recurring rule and recompute the next boundary from now. */

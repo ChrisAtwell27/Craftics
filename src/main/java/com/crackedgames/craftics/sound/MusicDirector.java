@@ -73,6 +73,12 @@ public final class MusicDirector {
             case "dragons_nest" -> MusicTracks.BROKEN_HEART_OF_ENDER;
             case "trial_chamber" -> MusicTracks.GALE_SANCTUM;
             case "trial_chamber_ominous" -> MusicTracks.GARRISON;
+            // Event arenas. These are not biomes anyone travels to - they are the ids the
+            // event levels declare through LevelDefinition.getArenaBiomeId(), and they need
+            // an entry here for the same reason a biome does: no entry means silence.
+            case "raidboss" -> MusicTracks.NECROMANCER;
+            case "pillager_camp" -> MusicTracks.EVOKER;
+            case "bastille" -> MusicTracks.GARRISON;
             default -> null;
         };
     }

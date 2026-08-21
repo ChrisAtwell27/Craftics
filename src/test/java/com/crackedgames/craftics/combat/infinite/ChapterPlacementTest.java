@@ -47,6 +47,55 @@ class ChapterPlacementTest {
     }
 
     @Test
+    void placesFollowTheScoresWhenNobodyTies() {
+        assertArrayEquals(new int[]{1, 2, 3, 4},
+            ChapterPlacement.placesFor(new int[]{900, 500, 120, 3}));
+    }
+
+    @Test
+    void tiedScoresShareThePlaceAndTheNextScoreSkips() {
+        // Standard competition ranking. Two players on 100 are both 1st, and the player
+        // on 90 is 3rd - there was no 2nd place to take.
+        assertArrayEquals(new int[]{1, 1, 3},
+            ChapterPlacement.placesFor(new int[]{100, 100, 90}));
+        assertArrayEquals(new int[]{1, 2, 2, 2, 5},
+            ChapterPlacement.placesFor(new int[]{100, 90, 90, 90, 10}));
+    }
+
+    @Test
+    void tiedPlayersEarnIdenticalPoints() {
+        // The whole point: banked points are permanent, so two equal scores must not be
+        // separated by whatever order the standings list happened to be built in.
+        int[] places = ChapterPlacement.placesFor(new int[]{50, 50});
+        assertEquals(ChapterPlacement.pointsForPlace(places[0]),
+                     ChapterPlacement.pointsForPlace(places[1]));
+        assertEquals(25, ChapterPlacement.pointsForPlace(places[0]));
+    }
+
+    @Test
+    void aWholeFieldTiedIsAllFirstPlace() {
+        assertArrayEquals(new int[]{1, 1, 1, 1},
+            ChapterPlacement.placesFor(new int[]{7, 7, 7, 7}));
+    }
+
+    @Test
+    void aTieAtTheCutoffPushesLaterPlayersOutOfTheBankedRange() {
+        // Ten players tied on 5 are all 1st; the eleventh is 11th and banks nothing.
+        int[] scores = new int[11];
+        for (int i = 0; i < 10; i++) scores[i] = 5;
+        scores[10] = 4;
+        int[] places = ChapterPlacement.placesFor(scores);
+        assertEquals(1, places[9]);
+        assertEquals(11, places[10]);
+        assertEquals(0, ChapterPlacement.pointsForPlace(places[10]));
+    }
+
+    @Test
+    void anEmptyFieldPlacesNobody() {
+        assertEquals(0, ChapterPlacement.placesFor(new int[0]).length);
+    }
+
+    @Test
     void ordinalsReadCorrectly() {
         assertEquals("1st", ChapterPlacement.ordinal(1));
         assertEquals("2nd", ChapterPlacement.ordinal(2));

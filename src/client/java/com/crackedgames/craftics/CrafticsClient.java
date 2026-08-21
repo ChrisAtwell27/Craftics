@@ -54,6 +54,25 @@ public class CrafticsClient implements ClientModInitializer {
     private static KeyBinding mountAbilityKey;
     private static KeyBinding threatOverlayKey;
 
+    /**
+     * Every keybind Craftics registers, in one place.
+     *
+     * <p>Kept as a method beside the fields rather than an array literal buried in the conflict
+     * resolver, because the literal there had drifted: it listed eight of the ten, so a mod
+     * bound to M was never resolved and pressing M in combat fired the mount ability AND that
+     * mod's action together - the precise double-fire the resolver exists to prevent. A new
+     * keybind added above and forgotten here is the same bug again, so add it here too.
+     */
+    private static KeyBinding[] allCrafticsKeys() {
+        return new KeyBinding[] {
+            guideBookKey, respecKey, endTurnKey, affinityRespecKey, toggleUiKey,
+            moveSlotLeftKey, moveSlotRightKey, clearPartyKey, mountAbilityKey, threatOverlayKey
+        };
+    }
+
+    /** Bindings the conflict resolver cleared, reported to the player once they are in a world. */
+    private static final java.util.List<String> UNBOUND_BY_US = new java.util.ArrayList<>();
+
     /** The "hide/reveal inventory UI" keybind, read by {@code HandledScreenKeyMixin}. */
     public static KeyBinding getToggleUiKey() { return toggleUiKey; }
 
@@ -184,11 +203,20 @@ public class CrafticsClient implements ClientModInitializer {
                 // Polygon mask updates every level so the cursor tracks each arena's
                 // actual shape (empty = rectangular = whole bbox valid).
                 CombatState.setPolygonMask(payload.polygonMask(), payload.width(), payload.height());
-                previousBobView = context.client().options.getBobView().getValue();
+                // Captured on the FIRST entry only, exactly like the camera yaw above. A run
+                // sends EnterCombatPayload again for every level with no ExitCombatPayload in
+                // between, so re-reading here saved the values combat itself had just written -
+                // and the "restore" at the end of the run then wrote THOSE into the player's
+                // real options. Two levels was enough to turn view bobbing off and chat down to
+                // half scale permanently, persisted to options.txt and surviving a restart,
+                // with nothing in the mod able to put them back.
+                if (!wasInCombat) {
+                    previousBobView = context.client().options.getBobView().getValue();
+                    previousChatScale = context.client().options.getChatScale().getValue();
+                    previousChatWidth = context.client().options.getChatWidth().getValue();
+                }
                 context.client().options.getBobView().setValue(false);
                 // Shrink chat so it doesn't cover the arena
-                previousChatScale = context.client().options.getChatScale().getValue();
-                previousChatWidth = context.client().options.getChatWidth().getValue();
                 context.client().options.getChatScale().setValue(0.5);
                 context.client().options.getChatWidth().setValue(0.39);
                 context.client().options.setPerspective(Perspective.THIRD_PERSON_BACK);
@@ -867,7 +895,34 @@ public class CrafticsClient implements ClientModInitializer {
         // forever on the title screen and in every subsequent world, effectively
         // bricking the client until restart. The server sends ExitCombatPayload
         // on clean end-of-fight, but never gets the chance on abrupt disconnect.
+        // The other end of the same lifecycle. DISCONNECT below is the only thing that clears
+        // this state, and it does not fire when a proxy moves the player between backends on the
+        // same connection - so a client that left a fight or a scene abnormally arrives at the
+        // lobby still holding the flags. AttackSuppressMixin then cancels every right-click
+        // silently: no packet, no log, no message, and it looks like missing permissions.
+        //
+        // Safe to wipe on join because the server re-asserts everything immediately afterwards:
+        // a rejoin into a live fight is restored from its resume snapshot, and a live scene
+        // re-sends SceneStatePayload. Clearing first and being told again beats staying stuck.
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
+            client.execute(() -> {
+                reportClearedKeybinds(client);
+                CombatState.resetAll();
+                // The black curtain is the worst of these to strand: HudTransitionMixin cancels
+                // the whole vanilla HUD while it is up, so a stuck one is a featureless black
+                // screen with no hotbar, no chat and nothing to click. reset() existed for this
+                // and had no callers at all, so it outlived quit-to-title and every rejoin.
+                com.crackedgames.craftics.client.TransitionOverlay.reset();
+            }));
+
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            // Combat is not the only state that takes the camera and the cursor. An event
+            // cinematic sets third-person and unlocks the cursor, and the per-tick unlock runs
+            // for scenes as well - so gating the restore on combat alone dropped a player who
+            // disconnected from a scene back to the menu still in third person, with no message
+            // and no hint that F5 undoes it.
+            boolean wasOverridden = CombatState.isInCombat() || CombatState.isInScene()
+                || CombatState.isCinematicActive();
             boolean wasInCombat = CombatState.isInCombat();
             CombatState.resetAll();
             // Hard-stop the soundtrack so it never bleeds onto the title screen.
@@ -876,6 +931,7 @@ public class CrafticsClient implements ClientModInitializer {
             // Drop the eased arena fog band so the title screen / next world renders at
             // full view distance instead of inheriting the last fight's closed-in fog.
             com.crackedgames.craftics.client.CrafticsFog.reset();
+            com.crackedgames.craftics.client.TransitionOverlay.reset();
             com.crackedgames.craftics.client.guide.GuideBookData.resetToDefaults();
             com.crackedgames.craftics.client.PartyLabelRenderer.clear();
             // Parked barter-stepper context and live bounce offsets are session
@@ -883,10 +939,13 @@ public class CrafticsClient implements ClientModInitializer {
             // the next world (a stale stepper would hijack unrelated dialogues).
             com.crackedgames.craftics.client.DialogueScreen.clearPendingBarterContext();
             com.crackedgames.craftics.client.vfx.EntityBounceState.clear();
-            if (wasInCombat && client != null) {
-                client.options.getBobView().setValue(previousBobView);
-                client.options.getChatScale().setValue(previousChatScale);
-                client.options.getChatWidth().setValue(previousChatWidth);
+            if (wasOverridden && client != null) {
+                // Only combat rewrote these three, so only combat restores them.
+                if (wasInCombat) {
+                    client.options.getBobView().setValue(previousBobView);
+                    client.options.getChatScale().setValue(previousChatScale);
+                    client.options.getChatWidth().setValue(previousChatWidth);
+                }
                 client.options.setPerspective(Perspective.FIRST_PERSON);
                 // DISCONNECT fires on the NETTY thread. Mouse.lockCursor calls setScreen
                 // internally, which is render-thread only - doing it here logged a
@@ -1121,7 +1180,7 @@ public class CrafticsClient implements ClientModInitializer {
      * every mod has registered and options.txt has loaded.
      */
     private static void resolveKeybindConflicts(net.minecraft.client.MinecraftClient client) {
-        KeyBinding[] ours = { guideBookKey, respecKey, endTurnKey, affinityRespecKey, toggleUiKey, moveSlotLeftKey, moveSlotRightKey, threatOverlayKey };
+        KeyBinding[] ours = allCrafticsKeys();
         java.util.Set<KeyBinding> oursSet = new java.util.HashSet<>(java.util.Arrays.asList(ours));
         int cleared = 0;
         for (KeyBinding mine : ours) {
@@ -1135,6 +1194,7 @@ public class CrafticsClient implements ClientModInitializer {
                         other.getTranslationKey(),
                         other.getBoundKeyTranslationKey(),
                         mine.getTranslationKey());
+                    UNBOUND_BY_US.add(other.getTranslationKey());
                     other.setBoundKey(InputUtil.UNKNOWN_KEY);
                     cleared++;
                 }
@@ -1145,6 +1205,23 @@ public class CrafticsClient implements ClientModInitializer {
             client.options.write();
             CrafticsMod.LOGGER.info("Resolved {} keybind conflict(s)", cleared);
         }
+    }
+
+    /**
+     * Tell the player which of their keybinds Craftics unbound, once, in chat.
+     *
+     * <p>The resolver rewrites options.txt and the only record was a log line, so from the
+     * player's side an action they had bound simply stopped existing - and rebinding it just
+     * got it cleared again on the next start. Silently editing someone's controls is worth a
+     * sentence.
+     */
+    private static void reportClearedKeybinds(net.minecraft.client.MinecraftClient client) {
+        if (UNBOUND_BY_US.isEmpty() || client == null || client.player == null) return;
+        String names = String.join(", ", UNBOUND_BY_US);
+        UNBOUND_BY_US.clear();
+        client.player.sendMessage(net.minecraft.text.Text.literal(
+            "§eCraftics unbound conflicting key(s): §7" + names
+            + "§e. Rebind them to a free key in Controls if you need them."), false);
     }
 
     /**

@@ -344,6 +344,18 @@ public final class SceneController {
             ServerPlayerEntity m = world.getServer().getPlayerManager().getPlayer(memberUuid);
             if (m == null) continue;
             if (com.crackedgames.craftics.combat.CombatManager.isEngaged(memberUuid)) continue;
+            // A member has to already be in the scene's world to be pulled into it.
+            // requestTeleport below is same-dimension only, so conscripting someone standing at
+            // the overworld lobby moved them to the hall's coordinates INSIDE THEIR OWN
+            // dimension - arbitrary terrain, nowhere near the hall - while marking them a scene
+            // member, which takes their cursor and silently swallows every right-click. Leaving
+            // them out costs them the shopping trip; taking them along stranded them.
+            if (m.getEntityWorld() != world) {
+                CrafticsMod.LOGGER.info(
+                    "Scene: {} is not in the scene's world; leaving them where they are.",
+                    m.getName().getString());
+                continue;
+            }
             members.add(memberUuid);
             ServerPlayNetworking.send(m, new EnterEventCinematicPayload());
             // Carry the scene floor footprint so the client can seed TileRaycast's grid

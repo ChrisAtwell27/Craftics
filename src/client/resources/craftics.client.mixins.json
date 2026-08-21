@@ -29,7 +29,6 @@
     "InventoryClickMixin",
     "OverlayMessageMixin",
     "PlayerNameTagMixin",
-    "PlayerListHudMixin",
     "RecipeBookAutoCloseMixin",
     "RenderLayerInvoker",
     "RenderPhaseBuilderInvoker",

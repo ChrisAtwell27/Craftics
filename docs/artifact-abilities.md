@@ -96,7 +96,8 @@ A complete reference for every artifact's combat abilities in the Artifacts × C
 - On hit, ignores 50% of the target's effective defense (adds the ignored defense value as bonus damage).
 
 ### Feral Claws
-- Refund 1 AP on kill.
+- 50% chance an attack costs 1 less AP.
+- The attack always costs at least 1 AP, so a 1 AP weapon (sword, bow) is never discounted - the claws pay off on 2 AP weapons such as axes and the mace.
 
 ### Power Glove
 - **Stat Bonus:** +3 Melee Power

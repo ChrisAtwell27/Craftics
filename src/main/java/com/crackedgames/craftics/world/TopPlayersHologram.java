@@ -61,28 +61,49 @@ public final class TopPlayersHologram {
         return removed;
     }
 
-    /** Aggregate-tick hook: refresh every career board in every loaded world. */
+    /**
+     * Aggregate-tick hook: refresh every Craftics board in every loaded world.
+     *
+     * <p>Career and season boards are refreshed in ONE pass. Scanning is the expensive part -
+     * {@code iterateEntities()} walks every entity in every loaded world - so a second board
+     * type with its own tick would double that cost for a feature that is two lines of text.
+     * Both texts are still built lazily and at most once, so a server with no boards placed
+     * does no work beyond the scan itself.
+     */
     public static void tick(MinecraftServer server) {
         if (++clock < REFRESH_TICKS) return;
         clock = 0;
-        Text board = null; // built lazily, once, only if some world actually has a board
+        Text careerBoard = null;
+        Text seasonBoard = null;
         for (ServerWorld world : server.getWorlds()) {
-            for (DisplayEntity.TextDisplayEntity display : boardsIn(world)) {
-                if (board == null) board = buildBoard(world);
-                ((TextDisplayInvoker) display).craftics$setText(board);
+            for (Entity e : world.iterateEntities()) {
+                if (!(e instanceof DisplayEntity.TextDisplayEntity display)) continue;
+                var tags = display.getCommandTags();
+                if (tags.contains(TAG)) {
+                    if (careerBoard == null) careerBoard = buildBoard(world);
+                    ((TextDisplayInvoker) display).craftics$setText(careerBoard);
+                } else if (tags.contains(SeasonLeaderboard.TAG)) {
+                    if (seasonBoard == null) seasonBoard = SeasonLeaderboard.buildBoard(world);
+                    ((TextDisplayInvoker) display).craftics$setText(seasonBoard);
+                }
             }
         }
     }
 
-    private static List<DisplayEntity.TextDisplayEntity> boardsIn(ServerWorld world) {
+    /** Every text display in {@code world} carrying {@code tag}. Shared with the season board. */
+    public static List<DisplayEntity.TextDisplayEntity> taggedBoards(ServerWorld world, String tag) {
         List<DisplayEntity.TextDisplayEntity> out = new ArrayList<>();
         for (Entity e : world.iterateEntities()) {
             if (e instanceof DisplayEntity.TextDisplayEntity display
-                    && display.getCommandTags().contains(TAG)) {
+                    && display.getCommandTags().contains(tag)) {
                 out.add(display);
             }
         }
         return out;
+    }
+
+    private static List<DisplayEntity.TextDisplayEntity> boardsIn(ServerWorld world) {
+        return taggedBoards(world, TAG);
     }
 
     /** The board text: the top ten career point totals. */
@@ -92,10 +113,9 @@ public final class TopPlayersHologram {
         for (Map.Entry<UUID, CrafticsSavedData.PlayerData> entry : data.getAllPlayerData().entrySet()) {
             int points = entry.getValue().chapterPlacementPoints;
             if (points <= 0) continue;
-            String name = entry.getValue().lastKnownName;
-            if (name == null || name.isEmpty()) {
-                name = entry.getKey().toString().substring(0, 8);
-            }
+            // A UUID fragment is not a name - see PlayerData.knownName().
+            String name = entry.getValue().knownName();
+            if (name == null) continue;
             rows.add(new Object[]{name, points, entry.getValue().chaptersPlaced});
         }
         rows.sort((a, b) -> Integer.compare((int) b[1], (int) a[1]));

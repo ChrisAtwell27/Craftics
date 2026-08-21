@@ -70,7 +70,14 @@ public class CombatHudOverlay implements HudRenderCallback {
     @Override
     public void onHudRender(DrawContext ctx, RenderTickCounter tickCounter) {
         // F1 (vanilla "hide HUD") collapses all combat UI together with the rest.
-        if (MinecraftClient.getInstance().options.hudHidden) return;
+        // The rect has to be dropped on the way out, the way SceneHudOverlay drops its own:
+        // tryClickHudButtons hit-tests whatever was last published, so returning while it still
+        // held last frame's End Turn button meant a click in that corner with the HUD hidden
+        // silently ended the player's turn - no button drawn, no confirmation, no way to tell.
+        if (MinecraftClient.getInstance().options.hudHidden) {
+            endTurnBtnRect = null;
+            return;
+        }
         if (!CombatState.isInCombat()) {
             // Drop per-fight animation state so the next battle starts clean
             // (entity ids are reused across levels).

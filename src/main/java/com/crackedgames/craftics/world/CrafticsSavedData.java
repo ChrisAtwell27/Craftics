@@ -23,6 +23,23 @@ public class CrafticsSavedData extends PersistentState {
     public boolean hubBuilt = false;
     public int hubVersion = 0;
 
+    /**
+     * Admin kill switches, stored as DISABLED rather than enabled.
+     *
+     * <p>Deliberately inverted. An absent NBT boolean reads as false, so storing "enabled"
+     * would silently switch both systems off for every world that predates this field - the
+     * upgrade itself would look like the outage. Stored as "disabled", absent means false
+     * means running, which is what every existing world should keep doing.
+     */
+    public boolean auctionDisabled = false;
+    public boolean lootboxesDisabled = false;
+
+    /** True when players may use the auction house. */
+    public boolean isAuctionEnabled() { return !auctionDisabled; }
+
+    /** True when players may open lootbox kiosks. */
+    public boolean areLootboxesEnabled() { return !lootboxesDisabled; }
+
     /** Daily raid-boss schedule + rotation state; see RaidBossState for the format. */
     public String raidBossState = "";
 
@@ -250,6 +267,16 @@ public class CrafticsSavedData extends PersistentState {
         public boolean infiniteStashActive = false;
         /** Pre-run inventory snapshot (PlayerInventory.writeNbt format). */
         public net.minecraft.nbt.NbtList infiniteStashInventory = new net.minecraft.nbt.NbtList();
+        /** Pre-run Accessories-mod slots (AccessoryStash format). Trinkets are part of the
+         *  island loadout, so they stash and return with the rest of it rather than being
+         *  carried into the run. Empty when the Accessories mod isn't installed. */
+        public net.minecraft.nbt.NbtList infiniteStashAccessories = new net.minecraft.nbt.NbtList();
+        /** True once {@link #infiniteStashAccessories} was actually captured for this stash.
+         *  An empty list means two different things without it: "wore nothing when the run
+         *  started" (so run-worn trinkets are run loot and evaporate) and "this run began on
+         *  a build that never stashed accessories at all" (so what is worn now is the
+         *  player's own gear and must NOT be wiped on the way out). */
+        public boolean infiniteStashAccessoriesCaptured = false;
         public int infiniteStashSelectedSlot = 0;
         /** Pre-run PlayerProgression snapshot (PlayerStats.serialize format). */
         public String infiniteStashStats = "";
@@ -264,6 +291,10 @@ public class CrafticsSavedData extends PersistentState {
         public boolean infiniteSuspended = false;
         /** The host's run inventory, parked while the run is suspended. */
         public net.minecraft.nbt.NbtList infiniteParkedInventory = new net.minecraft.nbt.NbtList();
+        /** The host's run accessories, parked while the run is suspended. */
+        public net.minecraft.nbt.NbtList infiniteParkedAccessories = new net.minecraft.nbt.NbtList();
+        /** As {@link #infiniteStashAccessoriesCaptured}, for the parked run snapshot. */
+        public boolean infiniteParkedAccessoriesCaptured = false;
         public int infiniteParkedSelectedSlot = 0;
         /** The host's run progression, parked while the run is suspended. */
         public String infiniteParkedStats = "";
@@ -298,6 +329,17 @@ public class CrafticsSavedData extends PersistentState {
 
         /** Last known player name, for offline leaderboard rows. Refreshed on join. */
         public String lastKnownName = "";
+
+        /**
+         * The player's last seen name, or null when none has ever been recorded.
+         *
+         * <p>Callers must handle null rather than substituting a UUID fragment. A raw UUID on a
+         * leaderboard is not a name - it identifies nobody a reader could recognise, and it
+         * looks like a bug even when the data is perfectly correct.
+         */
+        public String knownName() {
+            return (lastKnownName == null || lastKnownName.isEmpty()) ? null : lastKnownName;
+        }
 
         public int getBossKills(String biomeId) {
             return bossKills.getOrDefault(biomeId, 0);
@@ -612,11 +654,15 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putString("infiniteRunHost", infiniteRunHost);
             nbt.putBoolean("infiniteStashActive", infiniteStashActive);
             nbt.put("infiniteStashInventory", infiniteStashInventory.copy());
+            nbt.put("infiniteStashAccessories", infiniteStashAccessories.copy());
+            nbt.putBoolean("infiniteStashAccessoriesCaptured", infiniteStashAccessoriesCaptured);
             nbt.putInt("infiniteStashSelectedSlot", infiniteStashSelectedSlot);
             nbt.putString("infiniteStashStats", infiniteStashStats);
             nbt.putInt("infiniteStashEmeralds", infiniteStashEmeralds);
             nbt.putBoolean("infiniteSuspended", infiniteSuspended);
             nbt.put("infiniteParkedInventory", infiniteParkedInventory.copy());
+            nbt.put("infiniteParkedAccessories", infiniteParkedAccessories.copy());
+            nbt.putBoolean("infiniteParkedAccessoriesCaptured", infiniteParkedAccessoriesCaptured);
             nbt.putInt("infiniteParkedSelectedSlot", infiniteParkedSelectedSlot);
             nbt.putString("infiniteParkedStats", infiniteParkedStats);
             nbt.putInt("infiniteParkedEmeralds", infiniteParkedEmeralds);
@@ -731,6 +777,12 @@ public class CrafticsSavedData extends PersistentState {
                 pd.infiniteStashInventory = nbt.getList("infiniteStashInventory",
                     net.minecraft.nbt.NbtElement.COMPOUND_TYPE);
             }
+            if (nbt.contains("infiniteStashAccessories")) {
+                pd.infiniteStashAccessories = nbt.getList("infiniteStashAccessories",
+                    net.minecraft.nbt.NbtElement.COMPOUND_TYPE);
+            }
+            pd.infiniteStashAccessoriesCaptured = nbt.contains("infiniteStashAccessoriesCaptured")
+                && nbt.getBoolean("infiniteStashAccessoriesCaptured");
             pd.infiniteStashSelectedSlot = nbt.contains("infiniteStashSelectedSlot") ? nbt.getInt("infiniteStashSelectedSlot") : 0;
             pd.infiniteStashStats = nbt.contains("infiniteStashStats") ? nbt.getString("infiniteStashStats") : "";
             pd.infiniteStashEmeralds = nbt.contains("infiniteStashEmeralds") ? nbt.getInt("infiniteStashEmeralds") : 0;
@@ -739,6 +791,12 @@ public class CrafticsSavedData extends PersistentState {
                 pd.infiniteParkedInventory = nbt.getList("infiniteParkedInventory",
                     net.minecraft.nbt.NbtElement.COMPOUND_TYPE);
             }
+            if (nbt.contains("infiniteParkedAccessories")) {
+                pd.infiniteParkedAccessories = nbt.getList("infiniteParkedAccessories",
+                    net.minecraft.nbt.NbtElement.COMPOUND_TYPE);
+            }
+            pd.infiniteParkedAccessoriesCaptured = nbt.contains("infiniteParkedAccessoriesCaptured")
+                && nbt.getBoolean("infiniteParkedAccessoriesCaptured");
             pd.infiniteParkedSelectedSlot = nbt.contains("infiniteParkedSelectedSlot") ? nbt.getInt("infiniteParkedSelectedSlot") : 0;
             pd.infiniteParkedStats = nbt.contains("infiniteParkedStats") ? nbt.getString("infiniteParkedStats") : "";
             pd.infiniteParkedEmeralds = nbt.contains("infiniteParkedEmeralds") ? nbt.getInt("infiniteParkedEmeralds") : 0;
@@ -834,11 +892,17 @@ public class CrafticsSavedData extends PersistentState {
             pd.infiniteRunHost = nbt.getString("infiniteRunHost", "");
             pd.infiniteStashActive = nbt.getBoolean("infiniteStashActive", false);
             pd.infiniteStashInventory = nbt.getListOrEmpty("infiniteStashInventory");
+            pd.infiniteStashAccessories = nbt.getListOrEmpty("infiniteStashAccessories");
+            pd.infiniteStashAccessoriesCaptured =
+                nbt.getBoolean("infiniteStashAccessoriesCaptured", false);
             pd.infiniteStashSelectedSlot = nbt.getInt("infiniteStashSelectedSlot", 0);
             pd.infiniteStashStats = nbt.getString("infiniteStashStats", "");
             pd.infiniteStashEmeralds = nbt.getInt("infiniteStashEmeralds", 0);
             pd.infiniteSuspended = nbt.getBoolean("infiniteSuspended", false);
             pd.infiniteParkedInventory = nbt.getListOrEmpty("infiniteParkedInventory");
+            pd.infiniteParkedAccessories = nbt.getListOrEmpty("infiniteParkedAccessories");
+            pd.infiniteParkedAccessoriesCaptured =
+                nbt.getBoolean("infiniteParkedAccessoriesCaptured", false);
             pd.infiniteParkedSelectedSlot = nbt.getInt("infiniteParkedSelectedSlot", 0);
             pd.infiniteParkedStats = nbt.getString("infiniteParkedStats", "");
             pd.infiniteParkedEmeralds = nbt.getInt("infiniteParkedEmeralds", 0);
@@ -931,6 +995,8 @@ public class CrafticsSavedData extends PersistentState {
     public static CrafticsSavedData fromNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
         CrafticsSavedData data = new CrafticsSavedData();
         data.hubBuilt = nbt.getBoolean("hubBuilt");
+        data.auctionDisabled = nbt.getBoolean("auctionDisabled");
+        data.lootboxesDisabled = nbt.getBoolean("lootboxesDisabled");
         data.hubVersion = nbt.getInt("hubVersion");
         data.nextWorldSlot = nbt.contains("nextWorldSlot") ? nbt.getInt("nextWorldSlot") : 0;
         data.lobbySpawnX = nbt.contains("lobbySpawnX") ? nbt.getInt("lobbySpawnX") : 0;
@@ -1006,6 +1072,8 @@ public class CrafticsSavedData extends PersistentState {
     @Override
     public NbtCompound writeNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
         nbt.putBoolean("hubBuilt", hubBuilt);
+        nbt.putBoolean("auctionDisabled", auctionDisabled);
+        nbt.putBoolean("lootboxesDisabled", lootboxesDisabled);
         nbt.putInt("hubVersion", hubVersion);
         nbt.putInt("nextWorldSlot", nextWorldSlot);
         nbt.putInt("lobbySpawnX", lobbySpawnX);
@@ -1056,6 +1124,8 @@ public class CrafticsSavedData extends PersistentState {
     /*private static CrafticsSavedData decodeNbt(NbtCompound nbt) {
         CrafticsSavedData data = new CrafticsSavedData();
         data.hubBuilt = nbt.getBoolean("hubBuilt", false);
+        data.auctionDisabled = nbt.getBoolean("auctionDisabled", false);
+        data.lootboxesDisabled = nbt.getBoolean("lootboxesDisabled", false);
         data.hubVersion = nbt.getInt("hubVersion", 0);
         data.nextWorldSlot = nbt.getInt("nextWorldSlot", 0);
         data.lobbySpawnX = nbt.getInt("lobbySpawnX", 0);
@@ -1124,6 +1194,8 @@ public class CrafticsSavedData extends PersistentState {
     private NbtCompound encodeNbt() {
         NbtCompound nbt = new NbtCompound();
         nbt.putBoolean("hubBuilt", hubBuilt);
+        nbt.putBoolean("auctionDisabled", auctionDisabled);
+        nbt.putBoolean("lootboxesDisabled", lootboxesDisabled);
         nbt.putInt("hubVersion", hubVersion);
         nbt.putInt("nextWorldSlot", nextWorldSlot);
         nbt.putInt("lobbySpawnX", lobbySpawnX);

@@ -254,9 +254,31 @@ public class TransitionOverlay {
                 alpha = 1f;
                 holdTimer--;
                 if (holdTimer <= 0) {
-                    // Stay holding until startFadeOut() is called externally
-                    // (the server response triggers it)
+                    // Normally we stay holding until startFadeOut() is called externally, by
+                    // the server's response. But every one of those six calls is a payload, and
+                    // a payload that never arrives - the arena build threw, the party leader
+                    // dropped, a proxy moved the player between backends mid-transition - used
+                    // to leave this holding forever.
+                    //
+                    // That is not a cosmetic stall. HudTransitionMixin cancels InGameHud.render
+                    // outright while this is active, taking the hotbar, health, chat and every
+                    // Craftics HUD layer with it, so the player is left facing an opaque black
+                    // screen with no message and nothing to click. It survived quit-to-title and
+                    // rejoining, because reset() had no callers - only restarting the game
+                    // cleared it.
+                    //
+                    // So the hold gets an outer bound. Fading out on a timeout shows the world
+                    // again, which at worst reveals a transition that did not finish; staying
+                    // black shows nothing and cannot be recovered from at all.
                     holdTimer = 0;
+                    if (++strandedTicks >= MAX_HOLD_TICKS) {
+                        com.crackedgames.craftics.CrafticsMod.LOGGER.warn(
+                            "Transition overlay held for {} ticks with no server response;"
+                            + " fading out so the HUD is not lost.", MAX_HOLD_TICKS);
+                        startFadeOut();
+                    }
+                } else {
+                    strandedTicks = 0;
                 }
             }
             case FADING_OUT -> {
@@ -332,8 +354,21 @@ public class TransitionOverlay {
         }
     }
 
+    /**
+     * Ticks the hold may overrun its timer before the overlay gives up and fades out.
+     *
+     * <p>Generous on purpose - 30 seconds. A slow arena build on a loaded server is normal and
+     * must not be interrupted; this is a backstop against a response that is never coming, not
+     * a deadline for one that is merely late.
+     */
+    private static final int MAX_HOLD_TICKS = 20 * 30;
+
+    /** Ticks spent holding past holdTimer with no server response. */
+    private static int strandedTicks = 0;
+
     /** Force-reset the overlay (e.g. on disconnect). */
     public static void reset() {
+        strandedTicks = 0;
         state = State.IDLE;
         alpha = 0f;
         displayText = "";

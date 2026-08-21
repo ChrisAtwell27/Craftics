@@ -1,5 +1,6 @@
 package com.crackedgames.craftics;
 
+import com.crackedgames.craftics.command.CrafticsPermissions;
 import com.crackedgames.craftics.block.ModBlocks;
 import com.crackedgames.craftics.block.ModScreenHandlers;
 import com.crackedgames.craftics.combat.CombatManager;
@@ -440,6 +441,7 @@ public class CrafticsMod implements ModInitializer {
         });
 
         // Teleport player to hub and set Adventure mode on join
+        // See correctStaleSceneState below for why joining players are told they are not in a scene.
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayerEntity player = handler.getPlayer();
             ServerWorld overworld = server.getOverworld();
@@ -453,6 +455,8 @@ public class CrafticsMod implements ModInitializer {
             // landed get it now. Must run AFTER the infinite stash restore above
             // so restored items don't survive.
             com.crackedgames.craftics.world.HardcoreIslands.checkPendingWipeOnJoin(player);
+            correctStaleSceneState(player);
+            recordPlayerName(player, overworld);
             if (overworld.getChunkManager().getChunkGenerator() instanceof VoidChunkGenerator) {
                 LOGGER.info("Craftics: Teleporting player {} to hub", player.getName().getString());
                 // Land on the HIGHEST solid block at the lobby column, never a hard y=65
@@ -884,6 +888,9 @@ public class CrafticsMod implements ModInitializer {
          */
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
             java.util.UUID respawnedId = newPlayer.getUuid();
+            // A respawn replaces the player entity and is the other moment a client can be
+            // carrying scene state for a scene that is over. Same correction as on join.
+            correctStaleSceneState(newPlayer);
             if (CombatManager.isEngaged(respawnedId)) {
                 LOGGER.warn("Craftics: {} died to something outside the fight while in combat; "
                     + "ending the run so they don't respawn into a dead arena.",
@@ -1602,7 +1609,7 @@ public class CrafticsMod implements ModInitializer {
             root.then(hpPerLevelNode);
 
             // /craftics unlock_all: unlock every biome (op only)
-            root.then(CommandManager.literal("unlock_all").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+            root.then(CommandManager.literal("unlock_all").requires(CrafticsPermissions.require("command.unlock_all")).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
                 ServerWorld overworld = src.getServer().getOverworld();
@@ -1620,7 +1627,7 @@ public class CrafticsMod implements ModInitializer {
             // /craftics merchants ...: testing aid for the Trading Hall / Bartering Station.
             // Booths only fill with merchants the island has MET at a run event, so without this
             // you would have to grind trader events to see a full hall. Admin-only (level 2).
-            root.then(CommandManager.literal("merchants").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("merchants").requires(CrafticsPermissions.require("command.merchants"))
                 // /craftics merchants meet_all - meet every registered trader AND barterer.
                 .then(CommandManager.literal("meet_all").executes(ctx -> {
                     ServerCommandSource src = ctx.getSource();
@@ -1746,6 +1753,10 @@ public class CrafticsMod implements ModInitializer {
                 CombatManager cm = CombatManager.get(targetPlayer);
                 if (cm.isActive()) cm.endCombat();
                 CombatManager.remove(targetPlayer.getUuid());
+                // The whole point of this command is unsticking someone, so clear every client
+                // flag rather than just combat: a player stuck in scene or behind the loading
+                // curtain reaches for this command too, and it used to leave both untouched.
+                clearClientRunState(targetPlayer);
                 // Tell the client to exit combat mode (camera, UI, controls)
                 net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(targetPlayer,
                     new com.crackedgames.craftics.network.ExitCombatPayload(false));
@@ -1756,7 +1767,7 @@ public class CrafticsMod implements ModInitializer {
                     + targetPlayer.getName().getString() + ". Teleported to hub."), true);
                 return 1;
             };
-            root.then(CommandManager.literal("reset_combat").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("reset_combat").requires(CrafticsPermissions.require("command.reset_combat"))
                 .executes(resetCombatExec)
                 .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
                     .executes(resetCombatExec)));
@@ -1764,7 +1775,7 @@ public class CrafticsMod implements ModInitializer {
             // /craftics config reload: re-read craftics-config from disk, so a server owner
             // can tune scaling, timers and toggles live instead of restarting. Every
             // CONFIG.foo() read is live, so changes apply immediately.
-            root.then(CommandManager.literal("config").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("config").requires(CrafticsPermissions.require("command.config"))
                 .then(CommandManager.literal("reload").executes(ctx -> {
                     try {
                         CONFIG.load();
@@ -1823,7 +1834,7 @@ public class CrafticsMod implements ModInitializer {
             // /craftics deleteisland <player> confirm - irreversible, so the confirm literal
             // is mandatory rather than a flag. Op-only: it destroys somebody's save.
             root.then(CommandManager.literal("deleteisland")
-                .requires(src -> src.hasPermissionLevel(2))
+                .requires(CrafticsPermissions.require("command.deleteisland"))
                 .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
                     .executes(ctx -> {
                         ctx.getSource().sendError(net.minecraft.text.Text.literal(
@@ -1846,14 +1857,15 @@ public class CrafticsMod implements ModInitializer {
             root.then(difficultyNode);
 
             var rebuildArenasNode = CommandManager.literal("rebuild_arenas")
-                .requires(src -> !CONFIG.rebuildArenasAdminOnly() || src.hasPermissionLevel(2))
+                .requires(src -> !CONFIG.rebuildArenasAdminOnly()
+                    || CrafticsPermissions.check(src, "command.rebuild_arenas"))
                 .executes(rebuildArenasExec);
 
             // Every island on the server, not just the caller's. Always op-gated regardless of
             // rebuildArenasAdminOnly: that flag exists so a player can rebuild THEIR OWN world,
             // and this rebuilds everybody's.
             rebuildArenasNode.then(CommandManager.literal("all")
-                .requires(src -> src.hasPermissionLevel(2))
+                .requires(CrafticsPermissions.require("command.rebuild_arenas.all"))
                 .executes(ctx -> rebuildAllArenas(ctx.getSource())));
 
             // Register a literal child per biome so tab-completion suggests valid ids.
@@ -1884,7 +1896,7 @@ public class CrafticsMod implements ModInitializer {
             root.then(rebuildArenasNode);
 
             // /craftics reset_biomes: reset current biome level progress back to level 1
-            root.then(CommandManager.literal("reset_biomes").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+            root.then(CommandManager.literal("reset_biomes").requires(CrafticsPermissions.require("command.reset_biomes")).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
                 CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
@@ -1909,7 +1921,7 @@ public class CrafticsMod implements ModInitializer {
                     + "'s emeralds to " + amount + "."), true);
                 return 1;
             };
-            root.then(CommandManager.literal("set_emeralds").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("set_emeralds").requires(CrafticsPermissions.require("command.set_emeralds"))
                 .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
                     .executes(setEmeraldsExec)
                     .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
@@ -1933,14 +1945,14 @@ public class CrafticsMod implements ModInitializer {
                     + " (" + stats.unspentPoints + " unspent stat points)."), true);
                 return 1;
             };
-            root.then(CommandManager.literal("set_level").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("set_level").requires(CrafticsPermissions.require("command.set_level"))
                 .then(CommandManager.argument("level", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
                     .executes(setLevelExec)
                     .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
                         .executes(setLevelExec))));
 
             // /craftics info: display current save state
-            root.then(CommandManager.literal("info").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+            root.then(CommandManager.literal("info").requires(CrafticsPermissions.require("command.info")).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
                 CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
@@ -1967,13 +1979,13 @@ public class CrafticsMod implements ModInitializer {
                     + targetPlayer.getName().getString() + "."), true);
                 return 1;
             };
-            root.then(CommandManager.literal("heal").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("heal").requires(CrafticsPermissions.require("command.heal"))
                 .executes(healExec)
                 .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
                     .executes(healExec)));
 
             // /craftics kill_enemies: kill all enemies in current combat
-            root.then(CommandManager.literal("kill_enemies").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+            root.then(CommandManager.literal("kill_enemies").requires(CrafticsPermissions.require("command.kill_enemies")).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
                 if (!cm.isActive()) {
@@ -1986,7 +1998,7 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             // /craftics skip_level: win current combat instantly
-            root.then(CommandManager.literal("skip_level").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+            root.then(CommandManager.literal("skip_level").requires(CrafticsPermissions.require("command.skip_level")).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
                 if (!cm.isActive()) {
@@ -2014,7 +2026,7 @@ public class CrafticsMod implements ModInitializer {
                     + "'s AP to " + amount + "."), true);
                 return 1;
             };
-            root.then(CommandManager.literal("set_ap").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("set_ap").requires(CrafticsPermissions.require("command.set_ap"))
                 .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
                     .executes(setApExec)
                     .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
@@ -2036,7 +2048,7 @@ public class CrafticsMod implements ModInitializer {
                     + "'s move points to " + amount + "."), true);
                 return 1;
             };
-            root.then(CommandManager.literal("set_speed").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("set_speed").requires(CrafticsPermissions.require("command.set_speed"))
                 .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
                     .executes(setSpeedExec)
                     .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
@@ -2054,14 +2066,14 @@ public class CrafticsMod implements ModInitializer {
                     + "'s NG+ level to " + level + "."), true);
                 return 1;
             };
-            root.then(CommandManager.literal("set_ngplus").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("set_ngplus").requires(CrafticsPermissions.require("command.set_ngplus"))
                 .then(CommandManager.argument("level", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
                     .executes(setNgplusExec)
                     .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
                         .executes(setNgplusExec))));
 
             // /craftics set_stat <stat> <value>: set a specific stat's allocated points
-            root.then(CommandManager.literal("set_stat").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("set_stat").requires(CrafticsPermissions.require("command.set_stat"))
                 .then(CommandManager.argument("stat", com.mojang.brigadier.arguments.StringArgumentType.word())
                     .suggests((ctx, builder) -> {
                         for (com.crackedgames.craftics.combat.PlayerProgression.Stat s :
@@ -2095,7 +2107,7 @@ public class CrafticsMod implements ModInitializer {
                     + "'s stats. " + refunded + " unspent points available."), true);
                 return 1;
             };
-            root.then(CommandManager.literal("reset_stats").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("reset_stats").requires(CrafticsPermissions.require("command.reset_stats"))
                 .executes(resetStatsExec)
                 .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
                     .executes(resetStatsExec)));
@@ -2108,7 +2120,7 @@ public class CrafticsMod implements ModInitializer {
                     .executes(exec)
                     .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
                         .executes(exec));
-            root.then(CommandManager.literal("give").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("give").requires(CrafticsPermissions.require("command.give"))
                 .then(givePreset.apply("wood_gear", ctx -> {
                     ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
                     giveItems(targetPlayer, net.minecraft.item.Items.WOODEN_SWORD, net.minecraft.item.Items.WOODEN_AXE,
@@ -2173,7 +2185,7 @@ public class CrafticsMod implements ModInitializer {
                 })));
 
             // /craftics combat_info: show detailed combat state
-            root.then(CommandManager.literal("combat_info").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+            root.then(CommandManager.literal("combat_info").requires(CrafticsPermissions.require("command.combat_info")).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
                 if (!cm.isActive()) {
@@ -2256,7 +2268,7 @@ public class CrafticsMod implements ModInitializer {
             // polygon up to 6 above floor level so existing terrain doesn't
             // poke into the playspace. Caster's Y becomes the arena floor.
             var buildArenaNode = CommandManager.literal("build_arena")
-                .requires(src -> src.hasPermissionLevel(2));
+                .requires(CrafticsPermissions.require("command.build_arena"));
             for (String preset : com.crackedgames.craftics.level.ArenaShapes.PRESET_NAMES) {
                 var presetNode = CommandManager.literal(preset);
                 presetNode.executes(ctx -> buildArenaCommand(ctx.getSource(), preset, 8));
@@ -2314,7 +2326,7 @@ public class CrafticsMod implements ModInitializer {
                     // run - live or parked - from anywhere, including the server console. The
                     // admin recovery for a hung run whose host can't (or won't) clear it.
                     }).then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
-                        .requires(src -> src.hasPermissionLevel(2))
+                        .requires(CrafticsPermissions.require("command.infinite"))
                         .executes(ctx -> {
                             ServerPlayerEntity targetPlayer =
                                 net.minecraft.command.argument.EntityArgumentType.getPlayer(ctx, "player");
@@ -2349,7 +2361,7 @@ public class CrafticsMod implements ModInitializer {
                 .executes(ctx -> chapterInfo(ctx.getSource()))
                 .then(CommandManager.literal("info").executes(ctx -> chapterInfo(ctx.getSource())))
                 .then(CommandManager.literal("rotate")
-                    .requires(src -> src.hasPermissionLevel(2))
+                    .requires(CrafticsPermissions.require("command.rotate"))
                     .executes(ctx -> {
                         com.crackedgames.craftics.combat.infinite.ChapterManager
                             .rotate(ctx.getSource().getServer(), "manual");
@@ -2358,7 +2370,7 @@ public class CrafticsMod implements ModInitializer {
                         return 1;
                     }))
                 .then(CommandManager.literal("schedule")
-                    .requires(src -> src.hasPermissionLevel(2))
+                    .requires(CrafticsPermissions.require("command.schedule"))
                     .then(CommandManager.literal("off").executes(ctx -> {
                         com.crackedgames.craftics.combat.infinite.ChapterManager.setSchedule(
                             ctx.getSource().getServer(),
@@ -2411,7 +2423,7 @@ public class CrafticsMod implements ModInitializer {
                                 IntegerArgumentType.getInteger(ctx, "hour"),
                                 IntegerArgumentType.getInteger(ctx, "minute")))))))))
                 .then(CommandManager.literal("timezone")
-                    .requires(src -> src.hasPermissionLevel(2))
+                    .requires(CrafticsPermissions.require("command.timezone"))
                     // Greedy, not string(): Brigadier's unquoted string reader stops at
                     // '/', so "America/New_York" and every other region/city zone failed
                     // to parse. This is the last argument of the node, so greedy is safe.
@@ -2454,7 +2466,7 @@ public class CrafticsMod implements ModInitializer {
             // /craftics scoreboard spawn|remove (op): a floating, live-updating top-10
             // board for infinite mode, placed where the admin stands. remove clears any
             // board within 8 blocks.
-            root.then(CommandManager.literal("scoreboard").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("scoreboard").requires(CrafticsPermissions.require("command.scoreboard"))
                 .then(CommandManager.literal("spawn").executes(ctx -> {
                     ServerPlayerEntity admin = ctx.getSource().getPlayerOrThrow();
                     var world = (ServerWorld) admin.getEntityWorld();
@@ -2482,7 +2494,7 @@ public class CrafticsMod implements ModInitializer {
             // /craftics topscoreboard spawn|remove (op): a floating, live-updating career
             // board of banked championship points, placed where the admin stands. remove
             // clears any board within 8 blocks.
-            root.then(CommandManager.literal("topscoreboard").requires(src -> src.hasPermissionLevel(2))
+            root.then(CommandManager.literal("topscoreboard").requires(CrafticsPermissions.require("command.topscoreboard"))
                 .then(CommandManager.literal("spawn").executes(ctx -> {
                     ServerPlayerEntity admin = ctx.getSource().getPlayerOrThrow();
                     var world = (ServerWorld) admin.getEntityWorld();
@@ -2609,14 +2621,66 @@ public class CrafticsMod implements ModInitializer {
                 return builder.buildFuture();
             };
             // odds is deliberately NOT op-gated: every player must be able to read the pool.
+            // Kill switches. Both persist in world data, so a system switched off before a
+            // restart is still off afterwards - an admin closing a market during an exploit
+            // must not have it reopen itself the next time the server comes up.
+            // Season standings board. Same shape as topscoreboard: a tagged text display placed
+            // where the admin is standing, refreshed by the shared hologram pass.
+            root.then(CommandManager.literal("seasonboard")
+                .requires(CrafticsPermissions.require("command.seasonboard"))
+                .then(CommandManager.literal("spawn").executes(ctx -> {
+                    ServerPlayerEntity admin = ctx.getSource().getPlayerOrThrow();
+                    var placed = com.crackedgames.craftics.world.SeasonLeaderboard.spawn(
+                        (ServerWorld) admin.getEntityWorld(), admin.getPos().add(0, 2.2, 0));
+                    if (placed == null) {
+                        ctx.getSource().sendError(Text.literal("§cFailed to spawn the season board."));
+                        return 0;
+                    }
+                    ctx.getSource().sendFeedback(() -> Text.literal(
+                        "§aPlaced a season standings board."), true);
+                    return 1;
+                }))
+                .then(CommandManager.literal("remove").executes(ctx -> {
+                    ServerPlayerEntity admin = ctx.getSource().getPlayerOrThrow();
+                    int removed = com.crackedgames.craftics.world.SeasonLeaderboard.removeNear(
+                        (ServerWorld) admin.getEntityWorld(), admin.getPos(), 8.0);
+                    ctx.getSource().sendFeedback(() -> Text.literal(
+                        removed > 0 ? "§aRemoved " + removed + " season board(s)."
+                                    : "§7No season board within 8 blocks."), true);
+                    return removed > 0 ? 1 : 0;
+                }))
+                .executes(ctx -> {
+                    // No subcommand: show the caller their own standing, which is the question
+                    // a player actually has and does not require walking to a board.
+                    ServerPlayerEntity p = ctx.getSource().getPlayerOrThrow();
+                    ctx.getSource().sendFeedback(() ->
+                        com.crackedgames.craftics.world.SeasonLeaderboard.buildBoard(
+                            (ServerWorld) p.getEntityWorld()), false);
+                    return 1;
+                }));
+
+            root.then(CommandManager.literal("auction")
+                .requires(CrafticsPermissions.require("command.auction.admin"))
+                .then(CommandManager.literal("enable").executes(ctx ->
+                    setSystemEnabled(ctx.getSource(), true, true)))
+                .then(CommandManager.literal("disable").executes(ctx ->
+                    setSystemEnabled(ctx.getSource(), true, false))));
+
+            root.then(CommandManager.literal("lootboxes")
+                .requires(CrafticsPermissions.require("command.lootbox.admin"))
+                .then(CommandManager.literal("enable").executes(ctx ->
+                    setSystemEnabled(ctx.getSource(), false, true)))
+                .then(CommandManager.literal("disable").executes(ctx ->
+                    setSystemEnabled(ctx.getSource(), false, false))));
+
             root.then(CommandManager.literal("lootbox")
-                .then(CommandManager.literal("place").requires(src -> src.hasPermissionLevel(2))
+                .then(CommandManager.literal("place").requires(CrafticsPermissions.require("command.lootbox.place"))
                     .then(CommandManager.argument("type", com.mojang.brigadier.arguments.StringArgumentType.word())
                         .suggests(lootboxTypeSuggester)
                         .executes(lootboxPlaceExec)
                         .then(CommandManager.argument("cost", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, 100000))
                             .executes(lootboxPlaceExec))))
-                .then(CommandManager.literal("remove").requires(src -> src.hasPermissionLevel(2))
+                .then(CommandManager.literal("remove").requires(CrafticsPermissions.require("command.lootbox.remove"))
                     .executes(lootboxRemoveExec))
                 .then(CommandManager.literal("odds")
                     .then(CommandManager.argument("type", com.mojang.brigadier.arguments.StringArgumentType.word())
@@ -2629,7 +2693,7 @@ public class CrafticsMod implements ModInitializer {
                         .then(CommandManager.argument("y", com.mojang.brigadier.arguments.IntegerArgumentType.integer())
                             .then(CommandManager.argument("z", com.mojang.brigadier.arguments.IntegerArgumentType.integer())
                                 .executes(lootboxConfirmOpenExec)))))
-                .then(CommandManager.literal("key").requires(src -> src.hasPermissionLevel(2))
+                .then(CommandManager.literal("key").requires(CrafticsPermissions.require("command.lootbox.key"))
                     .executes(lootboxKeyExec)
                     .then(CommandManager.argument("count", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 27))
                         .executes(lootboxKeyExec)
@@ -2810,7 +2874,7 @@ public class CrafticsMod implements ModInitializer {
 
             // /craftics dev_arena: test arena with every obstacle type
             dispatcher.register(CommandManager.literal("craftics").then(
-                CommandManager.literal("dev_arena").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+                CommandManager.literal("dev_arena").requires(CrafticsPermissions.require("command.dev_arena")).executes(ctx -> {
                     ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
                     ServerWorld world = player.getServerWorld();
 
@@ -2838,7 +2902,7 @@ public class CrafticsMod implements ModInitializer {
             // traders). Fixes existing worlds on demand instead of waiting for the next
             // event to build at the room. Live event rooms are skipped.
             dispatcher.register(CommandManager.literal("craftics").then(
-                CommandManager.literal("cleanup_events").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+                CommandManager.literal("cleanup_events").requires(CrafticsPermissions.require("command.cleanup_events")).executes(ctx -> {
                     ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
                     ServerWorld world = player.getServerWorld();
                     CrafticsSavedData data = CrafticsSavedData.get(world);
@@ -2874,6 +2938,7 @@ public class CrafticsMod implements ModInitializer {
                 ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
                 CombatManager cm = CombatManager.get(player);
                 if (cm.isActive()) cm.endCombat();
+                clearClientRunState(player);
 
                 com.crackedgames.craftics.world.HubTeleports.toLobby(player);
                 player.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
@@ -2948,6 +3013,7 @@ public class CrafticsMod implements ModInitializer {
             }
 
             if (cm.isActive()) cm.endCombat();
+            clearClientRunState(player);
 
             // HubTeleports.toHub resolves the effective owner (party leader when in a
             // party) and the island dim itself, same as the manual lookup this replaced.
@@ -3005,6 +3071,7 @@ public class CrafticsMod implements ModInitializer {
 
             CombatManager cm = CombatManager.get(player);
             if (cm.isActive()) cm.endCombat();
+            clearClientRunState(player);
 
             com.crackedgames.craftics.world.HubTeleports.toLobby(player);
             player.changeGameMode(GameMode.SURVIVAL);
@@ -3573,6 +3640,133 @@ public class CrafticsMod implements ModInitializer {
             if (!world.getBlockState(stand.down(dy)).isAir()) return true;
         }
         return false;
+    }
+
+    /**
+     * Tell a player's client it is not in a merchant scene, unless it actually is.
+     *
+     * <p>The client's scene flag is raised by {@code SceneStatePayload} and lowered only by the
+     * matching payload, by entering combat, or by a full disconnect. So a player who dropped
+     * mid-scene - or who was moved between backends while one was open, which does not tear the
+     * play connection down - comes back with it still raised.
+     *
+     * <p>That flag is not cosmetic. {@code AttackSuppressMixin} cancels
+     * {@code MinecraftClient.doItemUse} whenever it is set, so every right-click dies on the
+     * client: no packet leaves, nothing reaches a use handler, nothing is logged, and no
+     * protection or permission message is shown. The player simply cannot open a door, a chest,
+     * or a lootbox kiosk - and it reads exactly like a permissions problem.
+     *
+     * <p>Sent only to players who are NOT scene members, so a genuine rejoin into a live scene
+     * is left alone.
+     */
+    private static void correctStaleSceneState(ServerPlayerEntity player) {
+        if (player == null) return;
+        try {
+            if (com.crackedgames.craftics.scene.SceneController.isSceneMember(player.getUuid())) {
+                return;
+            }
+            net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
+                new com.crackedgames.craftics.network.SceneStatePayload(false, 0, 0, 0, 0, 0, ""));
+        } catch (Throwable t) {
+            LOGGER.error("Craftics: failed to clear stale scene state for {}",
+                player.getName().getString(), t);
+        }
+    }
+
+    /**
+     * Put a player's client back to plain-world state: not in combat, not in a scene, no
+     * cinematic, no loading curtain.
+     *
+     * <p>Every command that yanks a player out of a run has to call this. The client learns it
+     * is in combat, in a scene, or behind a black curtain from payloads, and unlearns it only
+     * from the matching payload - so a teleport that moves the body without telling the client
+     * leaves all of it set. What the player then experiences is not a visibly broken game: it
+     * is right-clicks that quietly do nothing, because AttackSuppressMixin cancels item use
+     * while either flag is up, sending no packet and logging nothing.
+     *
+     * <p>The bitter part is which commands had the gap. {@code /lobby}, {@code /spawn} and
+     * {@code /craftics world hub} are what a stuck player is told to try, and each of them
+     * stranded the client a little further. Leaving a scene properly matters too - a player
+     * teleported out while still a scene member leaves the scene believing it has an occupant.
+     */
+    public static void clearClientRunState(ServerPlayerEntity player) {
+        if (player == null) return;
+        try {
+            if (com.crackedgames.craftics.scene.SceneController.isSceneMember(player.getUuid())) {
+                // Server-side departure first, so the hall stops counting them.
+                com.crackedgames.craftics.scene.SceneController.handleLeave(player);
+            }
+            var send = (java.util.function.Consumer<net.minecraft.network.packet.CustomPayload>)
+                payload -> net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
+                    .send(player, payload);
+            send.accept(new com.crackedgames.craftics.network.ExitCombatPayload(false));
+            send.accept(new com.crackedgames.craftics.network.SceneStatePayload(
+                false, 0, 0, 0, 0, 0, ""));
+            send.accept(new com.crackedgames.craftics.network.ExitEventCinematicPayload());
+            send.accept(new com.crackedgames.craftics.network.LoadingScreenPayload(
+                false, "", "", ""));
+        } catch (Throwable t) {
+            LOGGER.error("Craftics: failed to clear client run state for {}",
+                player.getName().getString(), t);
+        }
+    }
+
+    /**
+     * Switch the auction house or the lootbox kiosks on or off for the whole world.
+     *
+     * <p>Persisted rather than held in memory: an admin closes one of these during an exploit
+     * or an economy problem, and a restart is exactly when they are least able to notice it
+     * quietly reopened itself.
+     *
+     * @param auction true for the auction house, false for lootboxes
+     */
+    private static int setSystemEnabled(ServerCommandSource source, boolean auction, boolean on) {
+        var server = source.getServer();
+        if (server == null) return 0;
+        CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
+        boolean wasOn = auction ? data.isAuctionEnabled() : data.areLootboxesEnabled();
+        if (auction) data.auctionDisabled = !on; else data.lootboxesDisabled = !on;
+        data.markDirty();
+        String what = auction ? "Auction house" : "Lootboxes";
+        if (wasOn == on) {
+            source.sendFeedback(() -> Text.literal(
+                "§7" + what + " already " + (on ? "enabled" : "disabled") + "."), false);
+            return 0;
+        }
+        source.sendFeedback(() -> Text.literal(
+            (on ? "§a" : "§e") + what + " " + (on ? "enabled" : "disabled")
+            + " for everyone."), true);
+        LOGGER.info("Craftics: {} {} by {}", what, on ? "enabled" : "disabled",
+            source.getName());
+        return 1;
+    }
+
+    /**
+     * Remember what this player is called, so anything that lists them offline can name them.
+     *
+     * <p>The name was previously recorded only by a handful of infinite-run paths, so a player
+     * who had never taken one of them had no stored name at all - and every leaderboard fell
+     * back to printing eight characters of their UUID, which identifies nobody a reader could
+     * recognise. Recording it on join means the only players a board can fail to name are ones
+     * who have not logged in since this shipped, and each of them fixes themselves by
+     * connecting once.
+     */
+    private static void recordPlayerName(ServerPlayerEntity player, ServerWorld overworld) {
+        if (player == null || overworld == null) return;
+        try {
+            CrafticsSavedData data = CrafticsSavedData.get(overworld);
+            CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
+            String current = player.getName().getString();
+            // Only write on a change: this runs for every join, and markDirty on every one of
+            // them would rewrite the whole saved state for nothing.
+            if (!current.equals(pd.lastKnownName)) {
+                pd.lastKnownName = current;
+                data.markDirty();
+            }
+        } catch (Throwable t) {
+            LOGGER.error("Craftics: failed to record the name of {}",
+                player.getName().getString(), t);
+        }
     }
 
     public static int hubLandingY(ServerWorld world, int x, int z, int fallbackY) {

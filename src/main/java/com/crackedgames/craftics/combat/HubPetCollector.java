@@ -180,12 +180,34 @@ public class HubPetCollector {
      */
     private static void appendProvidedAllies(ServerWorld world, ServerPlayerEntity player,
                                              List<TamedPetSnapshot> results, int cap) {
-        if (com.crackedgames.craftics.api.registry.FieldAllyProviderRegistry.isEmpty()) return;
-        int freeSlots = cap - results.size();
+        results.addAll(providedAlliesFor(world, player, cap - results.size()));
+    }
+
+    /**
+     * Every provider ally for {@code player}, fielded ones first and benched ones after.
+     *
+     * <p>Public because providers are asked at the start of EVERY level, not once per run. Their
+     * allies are temporary, so the level boundary drops them along with every other temporary
+     * ally - and without a re-ask a mod's whole party simply stops existing from level two on.
+     * Re-asking is also the more honest model: the provider owns that party and may have changed
+     * it between levels, which a snapshot taken at run start could never reflect.
+     *
+     * @param freeSlots slots left under the player's party cap, passed through as advisory.
+     *                  Results are deliberately NOT truncated to it - see
+     *                  {@link com.crackedgames.craftics.api.FieldAllyProvider#provide}
+     */
+    public static List<TamedPetSnapshot> providedAlliesFor(ServerWorld world,
+                                                           ServerPlayerEntity player,
+                                                           int freeSlots) {
+        if (com.crackedgames.craftics.api.registry.FieldAllyProviderRegistry.isEmpty()
+                || world == null || player == null) {
+            return List.of();
+        }
+        List<TamedPetSnapshot> out = new ArrayList<>();
         var provided = com.crackedgames.craftics.api.registry.FieldAllyProviderRegistry
             .collect(world, player, freeSlots);
         for (var fa : provided) {
-            results.add(providedSnapshot(fa, player, false));
+            out.add(providedSnapshot(fa, player, false));
         }
         // Reserves are appended AFTER the field allies so they can never displace one. The
         // bench is asked for separately rather than being carved off the front of `provided`:
@@ -193,12 +215,13 @@ public class HubPetCollector {
         var benched = com.crackedgames.craftics.api.registry.FieldAllyProviderRegistry
             .collectReserves(world, player);
         for (var fa : benched) {
-            results.add(providedSnapshot(fa, player, true));
+            out.add(providedSnapshot(fa, player, true));
         }
         if (!provided.isEmpty() || !benched.isEmpty()) {
             CrafticsMod.LOGGER.info("{} provided ally/allies joining for {} ({} benched)",
                 provided.size(), player.getName().getString(), benched.size());
         }
+        return out;
     }
 
     /** One provider ally as a snapshot, fielded or benched. */
@@ -441,21 +464,31 @@ public class HubPetCollector {
      */
     public record PetData(String entityType, int hp, int maxHp, int atk, int def, int speed, int range,
                           @org.jetbrains.annotations.Nullable NbtCompound originalNbt, boolean mounted,
-                          @org.jetbrains.annotations.Nullable UUID owner) {
+                          @org.jetbrains.annotations.Nullable UUID owner,
+                          /** AI and typing key, or null to use the entity type id. */
+                          @org.jetbrains.annotations.Nullable String aiKey,
+                          /** Name shown in combat, or null for the entity's own. */
+                          @org.jetbrains.annotations.Nullable String displayName) {
 
         /** Create from a TamedPetSnapshot (first level entry). */
         public static PetData fromSnapshot(TamedPetSnapshot snapshot) {
             var a = snapshot.allyEntry();
             return new PetData(snapshot.entityTypeId(), a.hp(), a.hp(), a.attack(), a.defense(),
                 a.speed(), a.range(), snapshot.fullEntityNbt(), snapshot.saddledMount(),
-                snapshot.playerUuid());
+                snapshot.playerUuid(), snapshot.aiKey(), snapshot.displayName());
         }
 
-        /** Create from a surviving combat entity (between levels). */
+        /**
+         * Create from a surviving combat entity (between levels).
+         *
+         * <p>Identity travels with it. Without these two columns a pet that crossed a level
+         * boundary came back as its raw entity type - unnamed, and running the AI its type
+         * resolves to rather than the one it was fielded with.
+         */
         public static PetData fromCombatEntity(CombatEntity e, @org.jetbrains.annotations.Nullable NbtCompound originalNbt) {
             return new PetData(e.getEntityTypeId(), e.getCurrentHp(), e.getMaxHp(),
                 e.getAttackPower(), e.getDefense(), e.getMoveSpeed(), e.getRange(), originalNbt,
-                e.isMounted(), e.getOwnerUuid());
+                e.isMounted(), e.getOwnerUuid(), e.getAiOverrideKey(), e.getNameOverride());
         }
     }
 }

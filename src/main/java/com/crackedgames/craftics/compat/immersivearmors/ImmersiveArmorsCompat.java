@@ -76,8 +76,9 @@ public final class ImmersiveArmorsCompat {
             + " less damage from Ranged and Blunt hits; each piece has a "
             + pct(ArmorSetEffects.FRAGILE_BREAK_CHANCE) + " chance to shatter when you are hit");
 
-        // Bone - light, and the quiver never seems to empty.
-        set(ArmorSetEffects.BONE, DamageType.BLUNT, 2,
+        // Bone - light, and the quiver never seems to empty. An archer's set, so the
+        // affinity follows the quiver rather than the material it is cut from.
+        set(ArmorSetEffects.BONE, DamageType.RANGED, 2,
             "Bone: " + pct(ArmorSetEffects.BONE_AMMO_SAVE)
             + " chance to fire without spending an arrow; each piece has a "
             + pct(ArmorSetEffects.FRAGILE_BREAK_CHANCE) + " chance to shatter when you are hit");
@@ -88,7 +89,8 @@ public final class ImmersiveArmorsCompat {
             + ArmorSetEffects.ROBE_SHERD_AP_DISCOUNT + " less AP (min 1)");
 
         // Wither - the nether-tier bone set. Better quiver, and the decay bites back.
-        set(ArmorSetEffects.WITHER, DamageType.SPECIAL, 4,
+        // Ranged for the same reason Bone is: the set exists to keep arrows flying.
+        set(ArmorSetEffects.WITHER, DamageType.RANGED, 4,
             "Wither: " + pct(ArmorSetEffects.WITHER_AMMO_SAVE)
             + " chance to fire without spending an arrow; melee attackers wither for "
             + ArmorSetEffects.WITHER_RETALIATION_TURNS + " turns");

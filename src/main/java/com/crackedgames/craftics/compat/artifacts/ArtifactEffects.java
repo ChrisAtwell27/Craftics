@@ -463,23 +463,27 @@ public final class ArtifactEffects {
         }
     }
 
-    /** Refund 1 AP on kill. */
+    /**
+     * Half the time, an attack costs 1 AP less - but never less than 1 AP in total, so the
+     * claws speed your swings up rather than handing you free ones.
+     *
+     * <p>The refund is taken off the price of the attack itself rather than pushed back into
+     * the AP pool afterwards. The old version did the latter through
+     * {@code CombatManager.get(player)}, which returns a fresh idle manager for anyone who
+     * is not the party's combat leader - so in a party the AP landed on an instance nobody
+     * was playing, and the claws did nothing at all.
+     */
     public static final class FeralClaws implements CombatEffectHandler {
+        /** Chance an attack is discounted. */
+        private static final float REFUND_CHANCE = 0.5f;
+
         @Override
-        public void onDealKillingBlow(CombatEffectContext ctx, CombatEntity killed) {
-            var cm = com.crackedgames.craftics.combat.CombatManager.get(ctx.getPlayer());
-            if (cm == null) {
-                com.crackedgames.craftics.CrafticsMod.LOGGER.warn(
-                    "[Craftics × Artifacts] Feral Claws: no CombatManager for {}",
-                    ctx.getPlayer().getName().getString());
-                return;
+        public CombatResult onAttackApCost(CombatEffectContext ctx, int cost) {
+            // A 1 AP attack has nothing to give back: the minimum spend is 1.
+            if (cost <= 1 || RNG.nextFloat() >= REFUND_CHANCE) {
+                return CombatResult.unchanged(cost);
             }
-            int before = cm.getApRemaining();
-            cm.setApRemaining(before + 1);
-            com.crackedgames.craftics.CrafticsMod.LOGGER.info(
-                "[Craftics × Artifacts] Feral Claws fired - AP {} -> {}", before, before + 1);
-            ctx.getPlayer().sendMessage(
-                net.minecraft.text.Text.literal("§6Feral Claws: §e+1 AP refunded"), false);
+            return CombatResult.modify(cost - 1, "§6Feral Claws: §e-1 AP");
         }
     }
 

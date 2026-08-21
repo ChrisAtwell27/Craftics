@@ -212,8 +212,10 @@ public class CombatManager {
     }
 
     public static GridPos findNearestWalkableUnreserved(GridArena arena, GridPos desiredPos, java.util.Set<GridPos> reserved) {
-        GridPos bestPos = null;
-        int bestDistance = Integer.MAX_VALUE;
+        GridPos bestFree = null;
+        int bestFreeDistance = Integer.MAX_VALUE;
+        GridPos bestOccupied = null;
+        int bestOccupiedDistance = Integer.MAX_VALUE;
 
         for (int x = 0; x < arena.getWidth(); x++) {
             for (int z = 0; z < arena.getHeight(); z++) {
@@ -223,14 +225,29 @@ public class CombatManager {
                 if (tile == null || !tile.isWalkable()) continue;
 
                 int distance = candidate.manhattanDistance(desiredPos);
-                if (distance < bestDistance) {
-                    bestDistance = distance;
-                    bestPos = candidate;
+                // Whoever already stands here counts. The party is positioned AFTER
+                // startCombat has spawned the level's enemies, so a search that only asked
+                // whether a tile was walkable handed non-leader members a tile a mob was
+                // already standing on - the reported "enemies spawn inside me", which only
+                // ever happened to the members, never to the leader whose start tile the
+                // enemy placement had reserved.
+                if (arena.isOccupied(candidate)) {
+                    if (distance < bestOccupiedDistance) {
+                        bestOccupiedDistance = distance;
+                        bestOccupied = candidate;
+                    }
+                    continue;
+                }
+                if (distance < bestFreeDistance) {
+                    bestFreeDistance = distance;
+                    bestFree = candidate;
                 }
             }
         }
 
-        return bestPos;
+        // An occupied tile only when the arena has no free one at all: standing on a mob
+        // beats being left off the grid entirely.
+        return bestFree != null ? bestFree : bestOccupied;
     }
 
     /** True if there's a non-air block within 3 blocks below {@code standPos} -- i.e. the
@@ -255,6 +272,10 @@ public class CombatManager {
                                                GridPos desired, java.util.Set<GridPos> reserved) {
         GridPos bestFloored = null; int bestFlDist = Integer.MAX_VALUE;
         GridPos bestWalkable = null; int bestWkDist = Integer.MAX_VALUE;
+        // Same tiles, but a mob is standing on them. Kept only as a last resort, for the
+        // degenerate arena where every free tile is a pit or does not exist.
+        GridPos takenFloored = null; int takenFlDist = Integer.MAX_VALUE;
+        GridPos takenWalkable = null; int takenWkDist = Integer.MAX_VALUE;
         for (int x = 0; x < arena.getWidth(); x++) {
             for (int z = 0; z < arena.getHeight(); z++) {
                 GridPos c = new GridPos(x, z);
@@ -262,13 +283,22 @@ public class CombatManager {
                 GridTile tile = arena.getTile(c);
                 if (tile == null || !tile.isWalkable()) continue;
                 int dist = c.manhattanDistance(desired);
-                if (dist < bestWkDist) { bestWkDist = dist; bestWalkable = c; }
-                if (dist < bestFlDist && hasSolidFloorBelow(world, arena.gridToBlockPos(c))) {
-                    bestFlDist = dist; bestFloored = c;
+                boolean floored = hasSolidFloorBelow(world, arena.gridToBlockPos(c));
+                // Enemies are already on the grid by the time the party is positioned, so
+                // an occupied tile must lose to any free one - otherwise a member is dropped
+                // inside a mob.
+                if (arena.isOccupied(c)) {
+                    if (dist < takenWkDist) { takenWkDist = dist; takenWalkable = c; }
+                    if (floored && dist < takenFlDist) { takenFlDist = dist; takenFloored = c; }
+                    continue;
                 }
+                if (dist < bestWkDist) { bestWkDist = dist; bestWalkable = c; }
+                if (floored && dist < bestFlDist) { bestFlDist = dist; bestFloored = c; }
             }
         }
-        return bestFloored != null ? bestFloored : bestWalkable;
+        if (bestFloored != null) return bestFloored;
+        if (bestWalkable != null) return bestWalkable;
+        return takenFloored != null ? takenFloored : takenWalkable;
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -886,6 +916,10 @@ public class CombatManager {
      */
     public void finishPartyJoin() {
         if (!active || partyPlayers.size() <= 1) return;
+        // Register where the members actually landed. Until this runs the arena knows only
+        // the leader's tile, so anything asking "is that square taken?" - a wave spawn, a
+        // summon, an enemy step - was free to walk onto a member.
+        refreshAllPlayerGridPositions();
         rebuildTurnQueue();
         // Keep the leader as the current turn-holder; rebuildTurnQueue resets the
         // cursor to 0 and this.player is still the leader from startCombat.
@@ -1325,6 +1359,14 @@ public class CombatManager {
                 && gld.getBiomeTemplate() != null) {
             biomeId = gld.getBiomeTemplate().biomeId;
             bossLevel = gld.getBiomeTemplate().isBossLevel(gld.getLevelNumber());
+        }
+        // Event levels - trial chambers, raids, ambushes, raid bosses, pillager camps - do
+        // NOT extend GeneratedLevelDefinition, so the branch above leaves biomeId null and
+        // the whole fight used to play in silence. They carry their theme on the level
+        // definition instead, exactly as ArenaBuilder reads it when it builds the room.
+        if (biomeId == null && levelDef != null) {
+            biomeId = com.crackedgames.craftics.level.ArenaBuilder.resolvedBiomeId(levelDef);
+            bossLevel = false;
         }
         TraderCategory traderType =
             activeTraderOffer != null ? activeTraderOffer.type() : null;
@@ -2667,6 +2709,25 @@ public class CombatManager {
 
     private CombatEntity spawnRaidReinforcement(String typeId, GridPos tile,
                                                 int hp, int atk, int def, int range) {
+        return spawnRaidReinforcement(typeId, tile, hp, atk, def, range, null, null, null);
+    }
+
+    /**
+     * As above, for a reinforcement whose identity is not its entity type.
+     *
+     * <p>The six-argument form spawns a mob and nothing more, which is right for a vanilla
+     * pillager and wrong for anything whose mod ships one entity type for a whole roster: every
+     * such arrival lands blank, unnamed, and running the entity type's AI rather than its own.
+     * This is the same treatment {@code spawnBenchedEnemy} already gives a benched enemy.
+     *
+     * @param aiKey       AI and typing key, or null to use the entity type
+     * @param displayName name shown in combat, or null to derive one from the entity type
+     * @param spawnNbt    NBT merged onto the mob at spawn, or null
+     */
+    private CombatEntity spawnRaidReinforcement(String typeId, GridPos tile,
+                                                int hp, int atk, int def, int range,
+                                                String aiKey, String displayName,
+                                                net.minecraft.nbt.NbtCompound spawnNbt) {
         if (player == null || arena == null) return null;
         // Multi-tile bodies (the finale RAVAGER is 2x3) must have their WHOLE footprint
         // validated, not just the anchor: the old single-tile check let an edge anchor
@@ -2705,6 +2766,15 @@ public class CombatManager {
         CombatEntity ce = new CombatEntity(mob.getId(), typeId, tile, hp, atk, def, range);
         ce.setFootprint(fp[0], fp[1]);
         ce.setMobEntity(mob);
+        // Identity BEFORE resolveAi below, which looks the AI up by getAiKey(): an override
+        // applied afterwards would leave the entity running one AI while claiming another, and
+        // the invisibility question would already have been asked of the wrong one.
+        if (aiKey != null && !aiKey.equals(typeId)) ce.setAiOverrideKey(aiKey);
+        if (displayName != null) ce.setNameOverride(displayName);
+        // Same order and reasoning as every other spawn path: NBT first, so a code hook sees
+        // the tagged entity rather than a bare one.
+        applySpawnNbt(mob, spawnNbt);
+        com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry.apply(world, mob, ce);
         // Ambush mobs (Shriek Worm) spawn already invisible so there's no one-turn
         // window where they're visible before their first decideAction hides them.
         // The AI owns the reveal; this just sets the initial hidden state.
@@ -3172,6 +3242,14 @@ public class CombatManager {
      * Curated pool of spawn eggs awarded as rare end-of-battle loot. Using one
      * during combat summons a temporary in-combat ally on the target tile.
      */
+    /**
+     * Extra spawn-egg drop chance per point of Pet affinity, on top of the flat base and
+     * whatever Luck adds. The eggs ARE the pet pipeline - the void hub has no wild spawns,
+     * so an egg is the only way a new species reaches an island - which makes widening that
+     * pipeline the natural thing for Pet investment to do.
+     */
+    private static final float PET_AFFINITY_EGG_CHANCE_PER_POINT = 0.01f;
+
     private static final Item[] SPAWN_EGG_DROP_POOL = {
         Items.WOLF_SPAWN_EGG, Items.CAT_SPAWN_EGG, Items.PARROT_SPAWN_EGG,
         Items.FOX_SPAWN_EGG, Items.OCELOT_SPAWN_EGG, Items.POLAR_BEAR_SPAWN_EGG,
@@ -3724,6 +3802,19 @@ public class CombatManager {
      * Reading the impairments here instead would mean every future one has to be taught to
      * every damage path, and any that also wrote the slot would apply itself twice.
      */
+    /**
+     * A name safe to put in the roster blob, whose entries are split on {@code |} and whose
+     * pairs are split on {@code ;}.
+     *
+     * <p>Display names are author-supplied and can hold anything. One semicolon in a creature's
+     * name would read on the client as the start of another key/value pair, and one pipe would
+     * split its entry in two - shifting every entity after it onto the wrong row.
+     */
+    private static String syncSafe(String raw) {
+        if (raw == null) return "";
+        return raw.replace("|", "").replace(";", "");
+    }
+
     private static double accuracyOf(CombatEntity attacker) {
         if (attacker == null) return AccuracyRoll.DEFAULT;
         double pending = attacker.getPendingAccuracy();
@@ -4998,6 +5089,7 @@ public class CombatManager {
         // no-collision team is built and the first sync/highlights are sent, so
         // allies are immediately visible, hoverable, and collision-exempt on the
         // player's very first turn instead of only appearing after their first move.
+        refieldProvidedAllies();
         spawnHubPets();
         spawnSavedPets();
 
@@ -7105,7 +7197,7 @@ public class CombatManager {
             int atkCut = CombatEnchantHelpers.apReduction(weaponEff, Math::random);
             int reducedCost = Math.max(0, attackCost - atkCut);
             if (atkCut > 0) sendMessage("§bEfficient strike! -" + Math.min(atkCut, attackCost) + " AP.");
-            apRemaining -= reducedCost;
+            apRemaining -= hookedAttackApCost(reducedCost);
         }
         // The attack is committed: if it's thrown from tall grass, the grass gives you away
         // (unless Phantom Edge preserves it).
@@ -13456,13 +13548,15 @@ public class CombatManager {
         for (ResumeSnapshot.EnemyState rec : pending) {
             // A record left over here found no counterpart in the fresh build. For most mobs that
             // is exactly the case worth rebuilding (a mid-fight arrival), but not for these two:
-            //  - a boss is more than its stats. Its AI key, phase setup, footprint and display
-            //    name are established by the spawn path, and a bare mob wearing a boss's HP would
-            //    stand there doing nothing.
+            //  - a boss WITHOUT a recorded identity is more than its stats. Its AI key, phase
+            //    setup, footprint and display name were established by the spawn path, and a bare
+            //    mob wearing a boss's HP would stand there doing nothing. A boss whose aiKey WAS
+            //    recorded is a different matter: that key is the whole of what the spawn path
+            //    would have looked it up by, so rebuilding from it produces the same boss.
             //  - a Creaking dies only with its heart, and that link is minted by the level build.
             //    Spawning one from a record puts an unkillable mob in the room.
             // Dropping the record leaves the fight slightly easier, which beats either failure.
-            if (rec.boss() || !isRestoreRespawnable(rec.typeId())) {
+            if ((rec.boss() && !rec.hasIdentity()) || !isRestoreRespawnable(rec.typeId())) {
                 CrafticsMod.LOGGER.info(
                     "Resume: not rebuilding '{}' from a save point (boss or level-wired entity)",
                     rec.typeId());
@@ -13472,7 +13566,10 @@ public class CombatManager {
             // already registered tiles for that shape, and widening it afterwards would leave the
             // grid and the entity disagreeing about which tiles are occupied.
             CombatEntity ce = spawnRaidReinforcement(rec.typeId(), rec.gridPos(),
-                Math.max(1, rec.maxHp()), rec.atk(), rec.def(), rec.range());
+                Math.max(1, rec.maxHp()), rec.atk(), rec.def(), rec.range(),
+                rec.hasIdentity() ? rec.aiKey() : null,
+                rec.displayName().isEmpty() ? null : rec.displayName(),
+                null);   // spawn NBT is not recorded; the customizer keyed on aiKey is
             if (ce == null) continue; // nowhere it fits any more; the room is that much easier
             if (rec.ally()) {
                 ce.setAlly(true);
@@ -13566,11 +13663,37 @@ public class CombatManager {
      */
     private ResumeSnapshot.EnemyState takeResumeMatch(List<ResumeSnapshot.EnemyState> pending,
                                                       CombatEntity e) {
+        // Identity first. Type plus side is enough to tell two zombies apart because two zombies
+        // ARE interchangeable, but it is not enough for a mod that fields a whole roster under a
+        // single entity type: every one of its creatures reads as the same typeId, so a gym
+        // leader's Onix record would land on their Geodude and quietly restore the wrong HP and
+        // the wrong status onto it. Where both sides name an aiKey, that key decides.
+        ResumeSnapshot.EnemyState strict = takeResumeMatch(pending, e, true);
+        return strict != null ? strict : takeResumeMatch(pending, e, false);
+    }
+
+    /**
+     * @param requireIdentity when true, only a record whose {@code aiKey} equals the entity's own
+     *                        matches - so an exact identity match is always preferred over a
+     *                        record that merely shares an entity type
+     */
+    private ResumeSnapshot.EnemyState takeResumeMatch(List<ResumeSnapshot.EnemyState> pending,
+                                                      CombatEntity e, boolean requireIdentity) {
+        String liveKey = e.getAiOverrideKey();
+        boolean liveHasKey = liveKey != null && !liveKey.isEmpty();
         for (int i = 0; i < pending.size(); i++) {
             ResumeSnapshot.EnemyState rec = pending.get(i);
             if (!rec.typeId().equals(e.getEntityTypeId())) continue;
             if (rec.ally() != e.isAlly()) continue;
             if (rec.boss() != e.isBoss()) continue;
+            if (requireIdentity) {
+                if (!liveHasKey || !rec.hasIdentity()) continue;
+                if (!rec.aiKey().equals(liveKey)) continue;
+            } else if (liveHasKey && rec.hasIdentity() && !rec.aiKey().equals(liveKey)) {
+                // Both sides know who they are and they disagree. Falling back to a type match
+                // here is exactly the collision this guards against.
+                continue;
+            }
             return pending.remove(i);
         }
         return null;
@@ -21741,7 +21864,7 @@ public class CombatManager {
             return false;
         }
 
-        apRemaining -= attackCost;
+        apRemaining -= hookedAttackApCost(attackCost);
         ItemStack weaponStack = player.getMainHandStack();
         if (weaponStack.isDamageable()) {
             weaponStack.damage(7, player, net.minecraft.entity.EquipmentSlot.MAINHAND);
@@ -27641,6 +27764,8 @@ public class CombatManager {
         // (restoreParticipant refills inventories, but the wipe below clears them
         // again; offline members are caught by the pending-wipe join hook, which
         // runs AFTER the join-time stash restore).
+        // Bare infiniteActive on purpose: the island is being wiped, so a PARKED run must
+        // die with it too - this is the one place that means "any run", not "the live one".
         if (ld.infiniteActive) {
             InfiniteRunManager.endRun(srv, owner, "hardcore defeat");
         }
@@ -28161,8 +28286,12 @@ public class CombatManager {
             sendMessage("§d§l✦ RARE DROP: " + sherdStack.getName().getString() + "!");
         }
 
-        // Rare spawn egg drop (Luck boosts chance) -summons a temporary ally in combat.
-        float eggChance = 0.04f + luckBonusItems * 0.01f;
+        // Rare spawn egg drop (Luck and Pet affinity boost the chance) -summons a temporary
+        // ally in combat. The roll is one shared roll for the whole party, so it reads the
+        // party's best beastmaster rather than the leader alone: whoever invested in Pet
+        // widens the pipeline for everyone standing with them.
+        float eggChance = 0.04f + luckBonusItems * 0.01f
+            + bestPetAffinity(rewardRecipients) * PET_AFFINITY_EGG_CHANCE_PER_POINT;
         if (eggChance > 0 && Math.random() < eggChance) {
             Item eggItem = SPAWN_EGG_DROP_POOL[new java.util.Random().nextInt(SPAWN_EGG_DROP_POOL.length)];
             ItemStack eggStack = new ItemStack(eggItem);
@@ -29170,8 +29299,13 @@ public class CombatManager {
                 sendMessage("§aYour surviving pets returned to the hub.");
                 savedPets.clear();
             }
-            boolean wasInfinite = ld.infiniteActive;
-            // An infinite run keeps its biome/level cursor - that IS the save point.
+            // Read through the live predicate, not the raw flag: a parked run also has
+            // infiniteActive set, and for a solo parked host progressionOwner IS that
+            // host - so the bare read made Go Home from a normal campaign level skip the
+            // biome reset the button explicitly promises, and left every party member's
+            // mirrored cursor pointing at a run that had ended.
+            boolean wasInfinite = InfiniteRunManager.isInLiveRun(data, progressionOwner);
+            // A live infinite run keeps its biome/level cursor - that IS the save point.
             if (!wasInfinite) {
                 ld.endBiomeRun();
                 clearMirroredBiomeRun(data, biomeId, savedPlayer, savedMembers, progressionOwner);
@@ -34655,12 +34789,12 @@ public class CombatManager {
                 savedPets.add(new HubPetCollector.PetData(
                     n.getString("type"), n.getInt("hp"), n.getInt("maxHp"),
                     n.getInt("atk"), n.getInt("def"), n.getInt("speed"), n.getInt("range"), null, false,
-                    player.getUuid()));
+                    player.getUuid(), null, null));
                 //?} else {
                 /*savedPets.add(new HubPetCollector.PetData(
                     n.getString("type", ""), n.getInt("hp", 0), n.getInt("maxHp", 0),
                     n.getInt("atk", 0), n.getInt("def", 0), n.getInt("speed", 0), n.getInt("range", 0), null, false,
-                    player.getUuid()));
+                    player.getUuid(), null, null));
                 *///?}
             }
             if (!savedPets.isEmpty()) saveData.markDirty();
@@ -34737,16 +34871,30 @@ public class CombatManager {
             // Restore saved HP (constructor sets to max, so damage down to saved value).
             // Measured against the resolved max, not the saved one - a pet that just gained
             // max HP keeps the damage it was carrying rather than being healed by the raise.
+            // Set directly rather than dealt as damage. takeDamage runs the full mitigation
+            // chain - resistance, absorption, flat reduction, then a defense percentage - so a
+            // DEF-4 pet saved at 10/30 came back around 14/30, healed a little by every level
+            // boundary it crossed. restoreHp writes current HP without pretending it was hit.
             if (pet.hp() < maxHp) {
-                ce.takeDamage(maxHp - pet.hp());
+                ce.restoreHp(pet.hp());
             }
             ce.setAlly(true);
-            ce.setOwnerUuid(player.getUuid());
+            // The pet's own owner, not whoever holds the turn. In a party fight this manager
+            // belongs to the leader, so reading the turn holder handed every member's pets to
+            // the leader after the first level boundary.
+            ce.setOwnerUuid(pet.owner() != null ? pet.owner() : player.getUuid());
             ce.setMobEntity(mob);
             // Carry the hub snapshot forward so end-of-run restoration keeps the
             // mob's variant/collar/saddle and \u2014 crucially \u2014 its battle-party UUID.
             ce.setOriginalHubNbt(pet.originalNbt());
-            ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(pet.entityType()));
+            // Identity, exactly as the fight-start path applies it. Without this a carried-over
+            // pet loses its name and runs its entity type's AI - so for a mod fielding a roster
+            // under one entity type, every survivor comes back as the same blank creature.
+            if (pet.aiKey() != null) ce.setAiOverrideKey(pet.aiKey());
+            if (pet.displayName() != null) ce.setNameOverride(pet.displayName());
+            com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry.apply(world, mob, ce);
+            ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(
+                pet.aiKey() != null ? pet.aiKey() : pet.entityType()));
             enemies.add(ce);
             arena.placeEntity(ce);
 
@@ -34769,6 +34917,44 @@ public class CombatManager {
      * Called once at the start of level 1 (hubPetSnapshots populated by ModNetworking).
      * Converts TamedPetSnapshot → CombatEntity allies on the arena grid.
      */
+    /**
+     * Ask every {@code FieldAllyProvider} for this level's allies, unless the party collector
+     * already did it for this one.
+     *
+     * <p>Providers were asked exactly once per RUN, by the party collector at run start. Their
+     * allies are temporary, and {@code savePets} drops every temporary ally at the level
+     * boundary - so a provider's whole party fought level one and then quietly stopped existing.
+     * Hub pets never had this problem because they carry across in {@code savedPets}.
+     *
+     * <p>Re-asking rather than carrying a snapshot forward is also the more truthful model: the
+     * provider owns that party, and it may have changed between levels in ways a snapshot taken
+     * at run start could not know about.
+     *
+     * <p>Guarded on {@code hubPetSnapshots} being empty, which is exactly "the collector has not
+     * just handed us a fresh batch". It is non-empty only on the level the party was collected
+     * for, and {@link #spawnHubPets} clears it on the way out - so this fires on every level
+     * except the first, and the first is the one already covered.
+     */
+    private void refieldProvidedAllies() {
+        if (!hubPetSnapshots.isEmpty()) return;
+        if (com.crackedgames.craftics.api.registry.FieldAllyProviderRegistry.isEmpty()) return;
+        if (player == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        // Every participant, not just the turn holder: in a party fight this manager belongs to
+        // the leader, and asking only for them would field one member's creatures and no one
+        // else's from level two on.
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p == null || p.isRemoved()) continue;
+            int cap = com.crackedgames.craftics.combat.PartyMobs.partyCap(p);
+            int alreadyFielded = 0;
+            for (HubPetCollector.PetData pet : savedPets) {
+                if (p.getUuid().equals(pet.owner())) alreadyFielded++;
+            }
+            hubPetSnapshots.addAll(
+                HubPetCollector.providedAlliesFor(world, p, cap - alreadyFielded));
+        }
+    }
+
     private void spawnHubPets() {
         if (hubPetSnapshots.isEmpty() || arena == null || player == null) return;
         GridPos playerStart = arena.getPlayerGridPos();
@@ -34897,6 +35083,13 @@ public class CombatManager {
             // An ally may declare an AI key distinct from its entity type, which is what
             // lets one entity type field many different creatures.
             if (snapshot.aiKey() != null) ce.setAiOverrideKey(snapshot.aiKey());
+            // An ally that arrives already hurt. Applied after construction because max HP is
+            // constructor-only: expressing the wound by lowering allyEntry.hp() would field a
+            // permanently smaller creature at full health rather than a wounded one at its
+            // proper size. restoreHp clamps, so an over-large value just means full.
+            if (allyEntry.currentHp() > 0 && allyEntry.currentHp() < hp) {
+                ce.restoreHp(allyEntry.currentHp());
+            }
         }
         // Spawn customisation, same order and reasoning as the enemy path: NBT first so a
         // code hook sees the tagged entity. This is the path a data-driven party arrives
@@ -35973,7 +36166,7 @@ public class CombatManager {
 
         int luckPoints = attackerStats.getPoints(PlayerProgression.Stat.LUCK);
 
-        apRemaining -= apCost;
+        apRemaining -= hookedAttackApCost(apCost);
         if (isBow && !PlayerCombatStats.hasInfinity(player)) {
             double ammoSave = ArmorSetEffects.ammoSaveChance(
                 PlayerCombatStats.getArmorSet(player), luckPoints);
@@ -36197,6 +36390,43 @@ public class CombatManager {
         }
         checkAndHandleDeath(enemy);
         return stopsMovement;
+    }
+
+    /**
+     * Turn a summoned ally into a real, permanent party pet belonging to {@code owner}.
+     *
+     * <p>{@link #spawnSummonedAlly} marks everything it makes temporary, and a temporary ally
+     * is dropped by {@code savePets} at the level boundary and never returned to the hub - it
+     * fights one battle and is gone. That is right for a weapon proc and wrong for a granted
+     * reward such as Infinite Mode's Pet class wolf, which used to evaporate the moment level
+     * 1 ended as though it had been a spawn egg.
+     *
+     * <p>Promotion does three things: clears the temporary flag so the ally is carried between
+     * levels, tames the live mob to its owner, and captures its NBT as the hub snapshot so the
+     * end-of-run restore rebuilds it - keeping the entity UUID, which is what the player's
+     * battle-party list is keyed on. From here only dying removes it.
+     *
+     * @return true when the ally was promoted; false when it has no live mob to promote
+     */
+    public boolean adoptSummonAsPartyPet(CombatEntity ally, ServerPlayerEntity owner) {
+        if (ally == null || owner == null) return false;
+        net.minecraft.entity.mob.MobEntity mob = ally.getMobEntity();
+        if (mob == null) return false;
+
+        ally.setTemporaryAlly(false);
+        ally.setOwnerUuid(owner.getUuid());
+        if (mob instanceof net.minecraft.entity.passive.TameableEntity tameable) {
+            //? if <=1.21.4 {
+            tameable.setOwnerUuid(owner.getUuid());
+            //?} else
+            /*tameable.setOwner(owner);*/
+            tameable.setTamed(true, false);
+            tameable.setSitting(false);
+        }
+        net.minecraft.nbt.NbtCompound nbt = new net.minecraft.nbt.NbtCompound();
+        mob.writeNbt(nbt);
+        ally.setOriginalHubNbt(nbt);
+        return true;
     }
 
     public CombatEntity summonWeaponProcAlly(String typeId, ServerPlayerEntity owner, int lifespanRounds) {
@@ -36483,6 +36713,24 @@ public class CombatManager {
     }
 
     /**
+     * Highest Pet affinity among a set of players, or 0 for an empty/offline set.
+     *
+     * <p>Used for rewards the whole party shares: a single roll cannot be made once per
+     * player, so it is made at the level of the party member who invested the most.
+     */
+    private int bestPetAffinity(java.util.List<ServerPlayerEntity> players) {
+        if (players == null || players.isEmpty()) return 0;
+        int best = 0;
+        for (ServerPlayerEntity p : players) {
+            if (p == null || p.isRemoved()) continue;
+            PlayerProgression.PlayerStats stats =
+                PlayerProgression.get((ServerWorld) p.getEntityWorld()).getStats(p);
+            best = Math.max(best, stats.getAffinityPoints(PlayerProgression.Affinity.PET));
+        }
+        return best;
+    }
+
+    /**
      * Bonus max HP an owner's Pet affinity grants one of their allies:
      * {@code Pet affinity level × }{@link DamageType#ALLY_HP_PER_PET_AFFINITY_LEVEL}.
      * Folded into the ally's max HP at spawn time (max HP is constructor-only on
@@ -36590,16 +36838,26 @@ public class CombatManager {
             typeIds.append(e.getEntityTypeId());
             // Append boss metadata if this is a boss enemy
             if (e.isBoss()) {
-                typeIds.append(";boss=").append(e.getDisplayName());
+                typeIds.append(";boss=").append(syncSafe(e.getDisplayName()));
                 // Phase badge for the boss bar -phase 2 is the visible escalation.
                 if (resolveAi(e) instanceof BossAI bba && bba.isInPhaseTwo()) {
                     typeIds.append(";phase=2");
                 }
-            } else if (e.getStackDisplayName() != null) {
-                // Stack mobs (Zombie Stack, Slime Tower etc.) override the
-                // species name in the hover panel using the same "name=" pair
-                // the client already parses for bosses.
-                typeIds.append(";name=").append(e.getStackDisplayName());
+            } else {
+                // Stack mobs (Zombie Stack, Slime Tower etc.) override the species name in the
+                // hover panel using the same "name=" pair the client already parses for bosses.
+                //
+                // nameOverride falls in behind them, and until it did, a creator-supplied name
+                // never left the server for anything that was not a boss: bosses got one only
+                // because getDisplayName() happens to resolve it, so a mod fielding a roster
+                // under one entity type had every non-boss member hover as the raw species.
+                // Same precedence getDisplayName uses - a stack label is something Craftics
+                // decided about this fight and outranks a creator's name.
+                String custom = e.getStackDisplayName() != null
+                    ? e.getStackDisplayName() : e.getNameOverride();
+                if (custom != null && !custom.isEmpty()) {
+                    typeIds.append(";name=").append(syncSafe(custom));
+                }
             }
             // Always send actual stats so client hover panel is accurate. Roll
             // runtime gear bonuses into ATK so the inspect number matches what
@@ -37336,6 +37594,21 @@ public class CombatManager {
                 + " | SPD: " + movePointsRemaining);
             sendSync();
         }
+    }
+
+    /**
+     * Run the addon AP-cost hooks over an attack's price.
+     *
+     * <p>The result is clamped to {@code [1, cost]}: no handler can make a swing free (that
+     * would let a stacked loadout attack forever), and none can charge more than the weapon
+     * asked for. A cost that was already zero - a Magic Surge proc - is returned untouched,
+     * since there is nothing left to discount.
+     */
+    private int hookedAttackApCost(int cost) {
+        if (cost <= 0) return cost;
+        int hooked = fireEffectHookChained(cost,
+            (h, c) -> h.onAttackApCost(effectContext, c));
+        return Math.max(1, Math.min(cost, hooked));
     }
 
     private void fireEffectHook(java.util.function.Consumer<com.crackedgames.craftics.api.CombatEffectHandler> hook) {

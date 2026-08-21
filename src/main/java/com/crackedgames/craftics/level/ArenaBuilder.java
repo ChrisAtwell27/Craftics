@@ -460,6 +460,38 @@ public class ArenaBuilder {
         }
     }
 
+    /**
+     * The biome id an arena is actually built under, for callers that need it without
+     * building anything - the soundtrack, above all.
+     *
+     * <p>Mirrors the resolution {@code buildAt} does below: a generated level's own biome
+     * template, overridden by {@link LevelDefinition#getArenaBiomeId()}, and finally by the
+     * trial-chamber name rule that gives trials their own schematic folder. Returns null
+     * when the level declares none of the three (a synthetic level with no theme at all).
+     *
+     * <p>Keep this in step with the block in {@code buildAt}: a level whose arena and
+     * soundtrack disagree is exactly the bug this exists to prevent.
+     */
+    @org.jetbrains.annotations.Nullable
+    public static String resolvedBiomeId(LevelDefinition levelDef) {
+        if (levelDef == null) return null;
+        String biomeId = null;
+        if (levelDef instanceof GeneratedLevelDefinition gld && gld.getBiomeTemplate() != null) {
+            biomeId = gld.getBiomeTemplate().biomeId;
+        }
+        String override = levelDef.getArenaBiomeId();
+        if (override != null && !override.isBlank()) {
+            biomeId = override;
+        }
+        String levelName = levelDef.getName();
+        if (levelName != null && levelName.toLowerCase(java.util.Locale.ROOT).contains("trial chamber")) {
+            biomeId = levelName.toLowerCase(java.util.Locale.ROOT).contains("ominous")
+                ? "trial_chamber_ominous"
+                : "trial_chamber";
+        }
+        return biomeId;
+    }
+
     public static GridArena buildAt(ServerWorld world, LevelDefinition levelDef, BlockPos origin) {
         int level = levelDef.getLevelNumber();
         int w = levelDef.getWidth();
@@ -501,7 +533,9 @@ public class ArenaBuilder {
                 arenaSpec.virtualOrdinal(), level)
             : new Random(System.nanoTime() ^ (level * 31L + ox + oz * 17L));
 
-        // Resolve biome for schematic lookup + environment theming
+        // Resolve biome for schematic lookup + environment theming.
+        // The same three-step resolution is exposed as resolvedBiomeId() above for callers
+        // that need the id without a build - change one, change the other.
         String biomeId = "plains";
         boolean isBoss = false;
         int biomeLevelIndex = 0;

@@ -107,6 +107,13 @@ dependencies {
 	// Fantasy — runtime dimension management (per-island persistent worlds)
 	include modImplementation("xyz.nucleoid:fantasy:${project.fantasy_version}")
 
+	// fabric-permissions-api — lets LuckPerms (or any provider) answer Craftics' command
+	// checks. Bundled because it is a thin shim rather than a mod anyone installs, and it is
+	// MC-version independent, so it is pinned here instead of in four shard property files.
+	// With no provider present every check falls through to the vanilla op level, which is
+	// exactly the behaviour these commands had before.
+	include modImplementation("me.lucko:fabric-permissions-api:0.3.1")
+
 	// JUnit 5 — pure-logic unit tests (VFX descriptor builder, codecs, anchor resolver)
 	testImplementation platform('org.junit:junit-bom:5.10.2')
 	testImplementation 'org.junit.jupiter:junit-jupiter'

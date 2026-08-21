@@ -35,6 +35,28 @@ public final class ChapterPlacement {
         return POINTS[place - 1];
     }
 
+    /**
+     * Places for scores already sorted best-first, by standard competition ranking:
+     * equal scores share the higher place, and the next distinct score skips the places
+     * they used up, so {@code 100, 100, 90} places as {@code 1, 1, 3}.
+     *
+     * <p>Ranking by list index instead would split a tie by whatever order the caller's
+     * list happened to be in, and a chapter placement is banked permanently - there is no
+     * later chapter that undoes it.
+     *
+     * @param descendingScores chapter scores, highest first
+     * @return one 1-indexed place per score, same length and order
+     */
+    public static int[] placesFor(int[] descendingScores) {
+        int[] places = new int[descendingScores.length];
+        for (int i = 0; i < descendingScores.length; i++) {
+            places[i] = i > 0 && descendingScores[i] == descendingScores[i - 1]
+                ? places[i - 1]
+                : i + 1;
+        }
+        return places;
+    }
+
     /** "1st", "2nd", "3rd", "11th". For chat and the personal-best line. */
     public static String ordinal(int place) {
         int lastTwo = place % 100;

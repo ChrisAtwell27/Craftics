@@ -24,12 +24,16 @@ public final class CrafticsServerCommands {
                     ctx.getSource().sendError(Text.literal("§cYou cannot leave mid-combat."));
                     return 0;
                 }
+                // Leaving a scene the same way combat is guarded above: the client learns it is
+                // in a scene from a payload and unlearns it only from one, so teleporting the
+                // body out without telling it leaves every right-click silently swallowed.
+                com.crackedgames.craftics.CrafticsMod.clearClientRunState(p);
                 HubTeleports.toLobby(p);
                 ctx.getSource().sendFeedback(() -> Text.literal("§aTeleported to lobby."), false);
                 return 1;
             })
             .then(CommandManager.literal("setspawn")
-                .requires(src -> src.hasPermissionLevel(2))
+                .requires(CrafticsPermissions.require("command.lobby.setspawn"))
                 .executes(ctx -> {
                     ServerPlayerEntity p = ctx.getSource().getPlayerOrThrow();
                     CrafticsSavedData data = CrafticsSavedData.get(p.getServerWorld());
@@ -43,7 +47,7 @@ public final class CrafticsServerCommands {
                     return 1;
                 }))
             .then(CommandManager.literal("rebuild")
-                .requires(src -> src.hasPermissionLevel(2))
+                .requires(CrafticsPermissions.require("command.lobby.rebuild"))
                 .executes(ctx -> {
                     // Re-paste the central hub from the bundled schematic in place.
                     // Anything placed inside its footprint since (lootbox chests,
@@ -60,7 +64,7 @@ public final class CrafticsServerCommands {
                 }));
 
         var rescue = CommandManager.literal("rescue")
-            .requires(src -> src.hasPermissionLevel(2))
+            .requires(CrafticsPermissions.require("command.rescue"))
             .then(CommandManager.argument("player", EntityArgumentType.player())
                 .executes(ctx -> {
                     ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
@@ -71,7 +75,7 @@ public final class CrafticsServerCommands {
                 }));
 
         var status = CommandManager.literal("status")
-            .requires(src -> src.hasPermissionLevel(2))
+            .requires(CrafticsPermissions.require("command.status"))
             .executes(ctx -> {
                 var server = ctx.getSource().getServer();
                 StringBuilder sb = new StringBuilder("§6== Craftics status ==");
@@ -101,7 +105,7 @@ public final class CrafticsServerCommands {
                 return 1;
             });
 
-        var island = CommandManager.literal("island").requires(src -> src.hasPermissionLevel(2));
+        var island = CommandManager.literal("island").requires(CrafticsPermissions.require("command.island"));
         // Both take a raw name-or-UUID string rather than an online-player argument. A
         // moderator investigating an island is very often doing it precisely BECAUSE the
         // owner is not connected, and an argument type that can only name online players

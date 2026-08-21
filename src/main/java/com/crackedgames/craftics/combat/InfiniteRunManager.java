@@ -134,9 +134,27 @@ public final class InfiniteRunManager {
 
     // ─── Queries ───────────────────────────────────────────────────────────────
 
-    /** True when {@code uuid}'s PlayerData hosts an active infinite run. */
+    /**
+     * True when {@code uuid} hosts an infinite run that is being PLAYED right now.
+     *
+     * <p>This is the predicate every "is this fight part of an infinite run" question
+     * wants. {@code infiniteActive} alone is not it: a parked run keeps that flag set
+     * (only {@code infiniteSuspended} flips) precisely so the run survives, and a host
+     * with a parked run is free to walk into an ordinary campaign biome. Asking the bare
+     * flag there answered yes and dragged campaign fights onto the infinite path -
+     * mislabelled Go Home button, campaign clears banking infinite score, campaign boss
+     * kills routed into the rest room, and a campaign wipe ending the parked run.
+     * {@link #specFor} has always asked it this way; the rest of the file now agrees.
+     */
+    public static boolean isInLiveRun(CrafticsSavedData data, UUID uuid) {
+        if (uuid == null) return false;
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(uuid);
+        return pd.infiniteActive && !pd.infiniteSuspended;
+    }
+
+    /** True when {@code uuid}'s PlayerData hosts an infinite run that is live, not parked. */
     public static boolean isHostOfActiveRun(CrafticsSavedData data, UUID uuid) {
-        return uuid != null && data.getPlayerData(uuid).infiniteActive;
+        return isInLiveRun(data, uuid);
     }
 
     /** True when {@code uuid} has an infinite run parked at a save point. */
@@ -153,15 +171,21 @@ public final class InfiniteRunManager {
      * island owner, infiniteRunHost on each participant); the victory/rest-room flow
      * used to assume host == party leader, which is only true solo. This checks, in
      * order: the candidate itself, the candidate's infiniteRunHost pointer, then the
-     * participant's own record + pointer. Returns the host UUID whose record has
-     * infiniteActive == true, or null if none of them point at an active run.
+     * participant's own record + pointer. Returns the host UUID whose run is LIVE, or
+     * null if none of them point at one. A PARKED run must not resolve here: its host is
+     * standing in a normal campaign run, and every caller uses this answer to decide
+     * whether the fight in front of them is an infinite one.
      */
     public static UUID resolveActiveHost(CrafticsSavedData data, UUID candidate, UUID participant) {
-        if (candidate != null && data.getPlayerData(candidate).infiniteActive) return candidate;
-        UUID viaCandidate = parseHostRef(data.getPlayerData(candidate).infiniteRunHost, data);
-        if (viaCandidate != null) return viaCandidate;
+        if (candidate != null) {
+            if (isInLiveRun(data, candidate)) return candidate;
+            // getPlayerData interns a record for whatever key it is handed, so a null
+            // candidate would quietly create a junk null-keyed one instead of throwing.
+            UUID viaCandidate = parseHostRef(data.getPlayerData(candidate).infiniteRunHost, data);
+            if (viaCandidate != null) return viaCandidate;
+        }
         if (participant != null) {
-            if (data.getPlayerData(participant).infiniteActive) return participant;
+            if (isInLiveRun(data, participant)) return participant;
             UUID viaParticipant = parseHostRef(data.getPlayerData(participant).infiniteRunHost, data);
             if (viaParticipant != null) return viaParticipant;
         }
@@ -206,12 +230,17 @@ public final class InfiniteRunManager {
         return total;
     }
 
-    /** Parse an infiniteRunHost string and return it only if it names an ACTIVE host. */
+    /**
+     * Parse an infiniteRunHost string and return it only if it names a LIVE host.
+     * parkAndRestore re-stamps a parked host's pointer at itself so the run stays
+     * findable, so without the suspended check a parked host resolves right back
+     * through here even once the direct reads above are strict.
+     */
     private static UUID parseHostRef(String hostRef, CrafticsSavedData data) {
         if (hostRef == null || hostRef.isEmpty()) return null;
         try {
             UUID parsed = UUID.fromString(hostRef);
-            return data.getPlayerData(parsed).infiniteActive ? parsed : null;
+            return isInLiveRun(data, parsed) ? parsed : null;
         } catch (IllegalArgumentException e) {
             return null;
         }
@@ -263,6 +292,10 @@ public final class InfiniteRunManager {
 
         CrafticsSavedData.PlayerData host = data.getPlayerData(hostUuid);
         host.infiniteActive = true;
+        // Belt and braces now that "live" means active AND not suspended: a record that
+        // somehow reached here with a stale suspended flag would start a run that every
+        // call site treats as campaign, which is far harder to spot than the old bug.
+        host.infiniteSuspended = false;
         host.infiniteBiomesCleared = 0;
         host.infiniteScore = 0;
         host.infiniteParticipants = joinUuids(participants);
@@ -304,6 +337,12 @@ public final class InfiniteRunManager {
                                       PlayerProgression progression) {
         if (!pd.infiniteStashActive) {
             pd.infiniteStashInventory = player.getInventory().writeNbt(new NbtList());
+            // Accessories live in the mod's own containers, not PlayerInventory, so the
+            // line above never saw them: worn trinkets used to walk straight into the run
+            // while the island loadout came back short of them.
+            pd.infiniteStashAccessories =
+                com.crackedgames.craftics.compat.artifacts.AccessoryStash.save(player);
+            pd.infiniteStashAccessoriesCaptured = true;
             //? if <=1.21.4 {
             pd.infiniteStashSelectedSlot = player.getInventory().selectedSlot;
             //?} else
@@ -317,6 +356,7 @@ public final class InfiniteRunManager {
         pd.emeralds = START_EMERALDS;
         player.getInventory().clear();
         player.getInventory().markDirty();
+        com.crackedgames.craftics.compat.artifacts.AccessoryStash.clear(player);
         // The Move item is a core control, not loot - hand it straight back.
         com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
         // Infinite runs always begin with a tiny wood bootstrap for crafting.
@@ -360,14 +400,19 @@ public final class InfiniteRunManager {
         if (combat != null) {
             CombatEntity summoned = combat.summonWeaponProcAlly("minecraft:wolf", player, -1);
             if (summoned != null) {
-                // A proc summon is a per-fight ally and nothing else - it is not in the
-                // player's battle party, and the battle party is the ONLY thing carried from
-                // one level to the next (HubPetCollector collects from it; savePets restores
-                // it). So the class wolf used to vanish the moment the opening level ended,
-                // which is the whole reward for picking Pet.
+                // A proc summon is a per-fight ally and nothing else: savePets drops every
+                // temporary ally at the level boundary, so the class wolf used to vanish the
+                // moment the opening level ended - behaving exactly like a spawn-egg summon
+                // when it is supposed to be the whole reward for picking Pet.
                 //
+                // Promotion clears that flag, tames the mob to the player and captures its
+                // hub snapshot (UUID included), so it now crosses every level boundary and
+                // goes home to the island afterwards. Only dying takes it off the field.
+                combat.adoptSummonAsPartyPet(summoned, player);
                 // Enrolling its live mob makes it a real party member, on the same footing as
-                // a wolf tamed in the hub and added by hand.
+                // a wolf tamed in the hub and added by hand. The snapshot above is what keeps
+                // this UUID valid: the end-of-run restore rebuilds the same entity rather
+                // than a fresh wolf the party list would then prune as dangling.
                 enrolAsPartyMob(player, world, summoned.getMobEntity());
                 player.sendMessage(Text.literal("§aA wolf ally joins your side."), false);
                 return;
@@ -661,7 +706,12 @@ public final class InfiniteRunManager {
         }
 
         // Everyone but the host steps out (their run items evaporate, stash returns).
-        // A member still mid-fight is left alone - their own exit path restores them.
+        // A member still mid-fight, or offline, is left alone - their own exit path or the
+        // join hook restores them - but they must STAY on the roster. Wiping the roster
+        // outright meant endRun could no longer see them, so their real inventory sat in
+        // the stash holding run loot until they happened to relog. resumeRun rebuilds this
+        // list from the fresh party, so carrying them here cannot leak into a resumed run.
+        List<UUID> stillHolding = new java.util.ArrayList<>();
         for (UUID uuid : parseUuids(host.infiniteParticipants)) {
             if (uuid.equals(hostUuid)) continue;
             ServerPlayerEntity member = server.getPlayerManager().getPlayer(uuid);
@@ -669,9 +719,11 @@ public final class InfiniteRunManager {
                 member.sendMessage(Text.literal(
                     "§5§l∞ §7The host parked the run - your stashed items return."), false);
                 restoreParticipant(member, data, progression);
+                continue;
             }
+            stillHolding.add(uuid);
         }
-        host.infiniteParticipants = "";
+        host.infiniteParticipants = joinUuids(stillHolding);
 
         ServerPlayerEntity hostPlayer = server.getPlayerManager().getPlayer(hostUuid);
         if (hostPlayer != null) {
@@ -692,6 +744,9 @@ public final class InfiniteRunManager {
                                        CrafticsSavedData data, PlayerProgression progression) {
         if (!pd.infiniteStashActive) return;
         pd.infiniteParkedInventory = player.getInventory().writeNbt(new NbtList());
+        pd.infiniteParkedAccessories =
+            com.crackedgames.craftics.compat.artifacts.AccessoryStash.save(player);
+        pd.infiniteParkedAccessoriesCaptured = true;
         //? if <=1.21.4 {
         pd.infiniteParkedSelectedSlot = player.getInventory().selectedSlot;
         //?} else
@@ -781,6 +836,9 @@ public final class InfiniteRunManager {
     private static void unparkHost(ServerPlayerEntity player, CrafticsSavedData.PlayerData pd,
                                    PlayerProgression progression) {
         pd.infiniteStashInventory = player.getInventory().writeNbt(new NbtList());
+        pd.infiniteStashAccessories =
+            com.crackedgames.craftics.compat.artifacts.AccessoryStash.save(player);
+        pd.infiniteStashAccessoriesCaptured = true;
         //? if <=1.21.4 {
         pd.infiniteStashSelectedSlot = player.getInventory().selectedSlot;
         //?} else
@@ -797,11 +855,17 @@ public final class InfiniteRunManager {
         //?} else
         /*inventory.setSelectedSlot(Math.max(0, Math.min(pd.infiniteParkedSelectedSlot, 8)));*/
         inventory.markDirty();
+        if (pd.infiniteParkedAccessoriesCaptured) {
+            com.crackedgames.craftics.compat.artifacts.AccessoryStash.restore(
+                player, pd.infiniteParkedAccessories);
+        }
         com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
         progression.restoreSnapshot(player.getUuid(), pd.infiniteParkedStats);
         pd.emeralds = pd.infiniteParkedEmeralds;
 
         pd.infiniteParkedInventory = new NbtList();
+        pd.infiniteParkedAccessories = new NbtList();
+        pd.infiniteParkedAccessoriesCaptured = false;
         pd.infiniteParkedSelectedSlot = 0;
         pd.infiniteParkedStats = "";
         pd.infiniteParkedEmeralds = 0;
@@ -840,6 +904,8 @@ public final class InfiniteRunManager {
         // Any parked save point dies with the run - its items were run loot.
         host.infiniteSuspended = false;
         host.infiniteParkedInventory = new NbtList();
+        host.infiniteParkedAccessories = new NbtList();
+        host.infiniteParkedAccessoriesCaptured = false;
         host.infiniteParkedSelectedSlot = 0;
         host.infiniteParkedStats = "";
         host.infiniteParkedBiomeId = "";
@@ -881,6 +947,15 @@ public final class InfiniteRunManager {
         var inventory = player.getInventory();
         inventory.clear(); // run loot (and the run wallet) stays behind
         inventory.readNbt(pd.infiniteStashInventory);
+        // Same for the trinket slots: whatever the run put there is run loot, and the
+        // island loadout's accessories come back in its place. A run that STARTED before
+        // accessories were stashed at all captured nothing, and what is worn now is the
+        // player's own gear - wiping it on the way out would destroy it, so that case is
+        // left alone and the run simply keeps whatever it walked in with.
+        if (pd.infiniteStashAccessoriesCaptured) {
+            com.crackedgames.craftics.compat.artifacts.AccessoryStash.restore(
+                player, pd.infiniteStashAccessories);
+        }
         //? if <=1.21.4 {
         inventory.selectedSlot = Math.max(0, Math.min(pd.infiniteStashSelectedSlot, 8));
         //?} else
@@ -894,6 +969,8 @@ public final class InfiniteRunManager {
 
         pd.infiniteStashActive = false;
         pd.infiniteStashInventory = new NbtList();
+        pd.infiniteStashAccessories = new NbtList();
+        pd.infiniteStashAccessoriesCaptured = false;
         pd.infiniteStashSelectedSlot = 0;
         pd.infiniteStashStats = "";
         pd.infiniteStashEmeralds = 0;
@@ -956,7 +1033,11 @@ public final class InfiniteRunManager {
         if (pd.infiniteRunHost == null || pd.infiniteRunHost.isEmpty()) return;
 
         if (pd.infiniteRunHost.equals(player.getUuid().toString())) {
-            suspendRun(server, player.getUuid(), "returned home");
+            // parkAndRestore re-stamps this pointer at itself so the run stays findable,
+            // which means an already-parked host passes the gate above on every later
+            // /home. Suspending twice is harmless (the cursor block and parkAndRestore
+            // both self-guard) but it logs a suspend that never happened.
+            if (!pd.infiniteSuspended) suspendRun(server, player.getUuid(), "returned home");
             return;
         }
         try {

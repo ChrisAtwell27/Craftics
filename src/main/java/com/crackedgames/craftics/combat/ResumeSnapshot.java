@@ -80,7 +80,12 @@ public final class ResumeSnapshot {
      */
     public record EnemyState(String typeId, int gx, int gz, int curHp, int maxHp,
                              int atk, int def, int range, int sizeX, int sizeZ,
-                             String flags, String ownerUuid, List<EffectState> status) {
+                             String flags, String ownerUuid, List<EffectState> status,
+                             String aiKey, String displayName) {
+
+        /** A record from before identity was captured, or one whose entity had none. */
+        public boolean hasIdentity() { return aiKey != null && !aiKey.isEmpty(); }
+
         public GridPos gridPos() { return new GridPos(gx, gz); }
         public boolean has(char flag) { return flags.indexOf(flag) >= 0; }
         public boolean ally() { return has('a'); }
@@ -150,6 +155,20 @@ public final class ResumeSnapshot {
 
     // ── Live state -> record ─────────────────────────────────────────────────
 
+    /**
+     * A value safe to put in a delimited field: every separator this format uses is stripped.
+     *
+     * <p>Names are author-supplied and can hold anything. One comma in a display name would
+     * split its record into two malformed halves, and the whole snapshot with it.
+     */
+    private static String sanitize(String raw) {
+        if (raw == null) return "";
+        return raw.replace(FIELD_SEP, "")
+                  .replace(RECORD_SEP, "")
+                  .replace(SECTION_SEP, "")
+                  .replace(SNAPSHOT_SEP, "");
+    }
+
     /** Snapshot one combatant. */
     public static EnemyState capture(CombatEntity e) {
         StringBuilder flags = new StringBuilder();
@@ -165,7 +184,11 @@ public final class ResumeSnapshot {
             e.getCurrentHp(), e.getMaxHp(), e.getAttackPower(), e.getDefense(), e.getRange(),
             e.getSizeX(), e.getSizeZ(), flags.toString(),
             e.getOwnerUuid() != null ? e.getOwnerUuid().toString() : "",
-            captureStatus(e));
+            captureStatus(e),
+            // What the entity type cannot say. A mod fielding a whole roster under one type has
+            // nothing else to tell two of its creatures apart, so without these a record can only
+            // be matched back to "some mob of that type" - and matched to the wrong one.
+            sanitize(e.getAiOverrideKey()), sanitize(e.getNameOverride()));
     }
 
     /**
@@ -290,7 +313,9 @@ public final class ResumeSnapshot {
               .append(e.sizeZ()).append(FIELD_SEP)
               .append(e.flags()).append(FIELD_SEP)
               .append(e.ownerUuid()).append(FIELD_SEP)
-              .append(serializeStatus(e.status()));
+              .append(serializeStatus(e.status())).append(FIELD_SEP)
+              .append(e.aiKey()).append(FIELD_SEP)
+              .append(e.displayName());
         }
         return sb.toString();
     }
@@ -328,10 +353,16 @@ public final class ResumeSnapshot {
             String[] f = rec.split(FIELD_SEP, -1);
             if (f.length < 13) continue;
             if (f[0].isEmpty()) continue;
+            // Appended, not versioned. The identity columns are read when present and default to
+            // empty when they are not, so a snapshot written by the previous build still resumes.
+            // Bumping FORMAT instead would have every in-flight save point rejected on update -
+            // the fight a player is standing in right now, dropped because a column moved.
+            String aiKey = f.length > 13 ? f[13] : "";
+            String displayName = f.length > 14 ? f[14] : "";
             enemies.add(new EnemyState(f[0], parseInt(f[1]), parseInt(f[2]), parseInt(f[3]),
                 parseInt(f[4]), parseInt(f[5]), parseInt(f[6]), parseInt(f[7]),
                 Math.max(1, parseInt(f[8])), Math.max(1, parseInt(f[9])),
-                f[10], f[11], parseStatus(f[12])));
+                f[10], f[11], parseStatus(f[12]), aiKey, displayName));
         }
         return new Snapshot(savedAt, biomeId, levelIndex, turnNumber, players, enemies);
     }

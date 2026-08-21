@@ -48,6 +48,21 @@ public interface CombatEffectHandler {
     /** Fires when the player's attack kills an enemy. */
     default void onDealKillingBlow(CombatEffectContext ctx, CombatEntity killed) {}
 
+    /**
+     * Fires when the player is about to pay for an attack, with the AP the attack costs
+     * after the engine's own discounts (Quick Charge, Rogue, Efficiency). Return a smaller
+     * value to discount it further, or a larger one to make the swing dearer.
+     *
+     * <p>The engine clamps the result to {@code [1, cost]}: a handler can never hand out a
+     * free attack, and never charge more than the weapon asked for. Attacks that were
+     * already free (a Magic Surge proc) skip the hook entirely.
+     *
+     * @since 0.4.1
+     */
+    default CombatResult onAttackApCost(CombatEffectContext ctx, int cost) {
+        return CombatResult.unchanged(cost);
+    }
+
     /** Fires when the player lands a critical hit. */
     default void onCrit(CombatEffectContext ctx, CombatEntity target, int damage) {}
 

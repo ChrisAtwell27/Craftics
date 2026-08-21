@@ -1,6 +1,92 @@
 ﻿Changelog
 
-0.4.0
+0.4.1
+
+Addon API: Charging for an Attack
+
+- A new `onAttackApCost` hook, handed the AP an attack costs after the engine's own discounts. Return less to make the swing cheaper, more to make it dearer
+- Clamped to `[1, cost]`: a handler can never hand out a free attack, and never charge more than the weapon asked for. Attacks that were already free skip the hook entirely
+- This is the shape an AP discount has to take. Adding AP back to the pool after the fact only works for the player the engine happens to be resolving, which is why the Feral Claws bug below existed
+
+Feral Claws Doing Nothing in a Party
+
+- Fixed Feral Claws having no effect for anybody but the party's combat leader. It refunded AP by fetching a combat manager for the wearer, and that lookup returns a fresh idle manager for a player who is not the leader - so the AP was added to an instance nobody was playing and quietly discarded
+- Reworked while fixing it: a **50% chance an attack costs 1 AP less**, taken off the price rather than refunded afterwards, instead of a refund on kill. Never below 1 AP total, so a sword or bow is not discounted and the claws pay off on 2 AP weapons - axes and the mace
+- Refunding on kill also meant the artifact did nothing at all in the fights where AP is tightest, since a swing that fails to kill is exactly when the AP was needed
+
+Silent Event Arenas
+
+- Fixed raid boss, pillager camp and bastille arenas playing **no music at all**. The soundtrack is chosen by arena biome id, and these three are event arenas whose ids are declared by the level rather than by a biome anyone travels to, so none of them had an entry - and no entry means silence rather than a fallback
+- Arena biome resolution now lives in one place the soundtrack can ask, instead of being re-derived. A level whose arena and music disagree was the failure mode
+
+Bone and Wither Armor Affinity
+
+- The Immersive Armors Bone and Wither sets now carry the **Ranged** affinity rather than Blunt and Special. Both sets exist to keep arrows flying - their whole bonus is firing without spending one - so an archer wearing them was levelling the wrong stat to improve what the armor does
+
+Accessories Lost to Infinite Mode
+
+- Fixed Accessories-mod trinkets not coming back after an infinite run. A run stashes your whole island loadout and returns it at the end, and accessories were the one part it never touched: they walked into the run and the loadout came back without them
+- Stored as NBT so they survive a server restart mid-run, and a no-op when the Accessories mod is absent
+
+Tab List Power Scores
+
+- Removed the power score drawn beside names in the tab list. The standings boards are where a score belongs
+
+Smaller Things
+
+- The Pet affinity's description now mentions the **+1% spawn egg drop chance** it has always granted. The bonus was real and applied; only the tooltip omitted it
+- Two more playtesters credited
+
+LuckPerms and Craftics Commands
+
+- Every Craftics command is now behind a **named permission node** instead of a bare operator check. `hasPermissionLevel(2)` is answered by the vanilla op list before any permission mod is consulted, so LuckPerms could not grant, deny or track a single Craftics command no matter how it was configured - the only way to let someone run one was to make them a full server operator
+- Nodes read `craftics.command.<name>`. Grant `craftics.command.*` for the old all-or-nothing shape, or hand out individual nodes so a build-team member can move the lobby spawn without also being able to wipe an island
+- `craftics.lobby.bypass` covers editing inside protected lobby areas
+- Operator status still works and nothing needs configuring: each check falls back to level 2 when no permission mod is installed, so a server without LuckPerms behaves exactly as it did
+
+Turning the Auction and Lootboxes Off
+
+- `/craftics auction enable|disable` and `/craftics lootbox enable|disable` take either system offline without stopping the server. For an economy exploit found mid-event, the choice used to be leaving it open or kicking everybody
+- Stored as **disabled** rather than enabled, so an existing world that has never seen the setting reads as on. A flag that defaulted to off would silently close the auction house on every server that updated
+- A closed lootbox reports that it is closed and consumes the click, rather than passing it along to whatever else was listening on that block
+
+Lobby Lootboxes That Could Not Be Clicked
+
+- Fixed lobby lootboxes, and every other right-click interaction, dying silently for players who had been in a cutscene. The client suppresses use and attack while a scene is playing, and five commands that teleport you out of one - `/lobby`, `/spawn`, `/craftics world lobby`, `/craftics world hub` and `/craftics lobby` - moved the player without ever telling their client the scene had ended. The flag stayed set for the rest of the session
+- `/craftics reset_combat`, the documented fix for being stuck, cleared combat state only and left the scene flag exactly where it was
+- The flag is now cleared on join and on every path that leaves a scene. It reads as a permissions problem from the player's side, which is why it went unreported for so long: nothing is denied, nothing is logged, the click simply does not happen
+
+Black Screen After a Transition
+
+- Fixed the fade-to-black transition holding forever when the packet that should end it never arrived, leaving a player staring at a black screen with no HUD. The hold had no timeout and its reset was never called from anywhere, so the state survived quitting to the title screen and rejoining
+- It now fades out after 30 seconds and logs why. A transition that finishes late is a stutter; one that never finishes ends the session
+
+Season Standings
+
+- A new **season board** showing one score per player: chapter placements plus how far they have taken their own island. `/craftics seasonboard spawn` places one, `/craftics seasonboard remove` clears nearby ones
+- The score is **derived on every refresh**, never stored. There is no season total in a save file to drift out of step with the values it came from, and no migration to get wrong
+- Every part of it only goes up. Emeralds and stat points are deliberately excluded - spending or respeccing would drop a player's rank without them doing anything, which reads as a bug
+- Built on the lifetime infinite score rather than the chapter one, because chapter rotation zeroes the chapter score for everyone. A season board that reset itself on every rotation would be measuring the wrong thing
+- Offline players are included, which is the point of a season board and the reason it cannot be the tab list
+- Each row shows the split as well as the total, so a player can see whether the person above them got there through chapters or through their island
+- All seven weights are configurable, so a server can retune what a season rewards without a rebuild
+
+Tied Chapter Placements
+
+- Fixed tied chapter scores banking **different permanent point totals** depending on the order the standings happened to be built in. Placement points never reset, so an arbitrary ordering handed one player a lasting reward over an equal player for a reason nobody could see, and two reads of an unchanged save could disagree about who won
+- Ties now share the place and the points, and the next distinct score skips the places they used up: 1st, 1st, 3rd. Everyone at a banked place banks, even where a tie pushes the count past ten
+
+Names on Boards
+
+- Boards show names instead of UUID fragments. A player's name is now recorded on **every join** rather than only by a few infinite-mode paths, so someone who had never taken a run had no name recorded anywhere and appeared on the career board as eight hex characters
+- Where a name still cannot be found, the board skips the row rather than printing a UUID - there is no UUID-to-name lookup in the mod, and a UUID names nobody a reader could recognise. A chapter podium line keeps a neutral placeholder instead, since dropping one would misreport who placed
+
+Enemies Arriving Without an Identity
+
+- Fixed raid reinforcements spawning **blank**: a summoned wave arrived with no AI key, no name and no spawn NBT, so a modded creature turned up as an empty instance of its entity type while the creature beside it, spawned by the normal path, was correct
+- A saved fight now stores each enemy's AI key and name alongside its stats. Without them, resuming a fight rebuilt every enemy from its entity type, which is fine for a zombie and wrong for any mod that ships one entity type for hundreds of creatures - all of them came back identical
+- Resuming now matches saved enemies by **identity first** and position second. Matching on type alone meant a party of six creatures sharing an entity type could each take any other's saved state
+- A combatant's display name now reaches the client, so hover text, name plates and capture prompts show what the creature is rather than what its entity type is called
 
 Addon API: A Bench, and Switching Off It
 
@@ -28,33 +114,6 @@ Blinded Pets
 Stale Per-Action Overrides
 
 - Fixed an attack-type override outliving the action it was set for. The clear sat inside the branch that consults the AI, while the two branches that return an action without consulting it - a burning mob running for water, one that has lost sight of its target - skipped it, leaving the override to silently retype every later attack that never asked for one
-
-
-Addon API: Spawning What You Are, Not What Your Entity Type Says
-
-- Enemy and ally entries can now carry **spawn NBT**, merged onto the mob the moment it appears. A datapack can author it as an SNBT string, the same syntax /summon takes, so variant mobs need no Java at all
-- For what NBT cannot express - an entity that has to be initialised through its own mod's API - there is a **spawn customizer** hook that runs on the live mob before its first turn
-- Both are looked up by the combatant's AI key first and its entity type second. That ordering is the point: a mod that ships ONE entity type for hundreds of creatures can give each its own initialisation while they all share a type. Without it, every one of them spawns blank and identical
-- The arena's own flags are re-applied after any NBT merge. Loading NBT onto a live entity restores its whole serialized state, so an authored tag would happily switch AI and gravity back on and let a mob wander off its tile. Your NBT decides what the mob IS; the arena decides how it is held
-
-Addon API: Attack Types
-
-- A new third idea alongside damage types and affinities. An **attack type** is a trait of the attack itself - nobody levels it - and it exists only to be compared against what the defender is, producing a multiplier
-- All three are orthogonal. A weapon can be Slashing damage, so it scales from the Slashing affinity, while being typed Fire, so it lands hard on a grass defender and poorly on a water one. Retyping it changes nothing about what the player levels to improve it
-- Effectiveness is authored as a **chart per attacking type** - what it is strong and weak against - and defenders simply declare what they ARE. That is the only shape that scales: a thousand creatures across eighteen types needs eighteen chart entries and one line per creature, where per-creature resistance tables would need eighteen thousand cells
-- Dual types multiply through, so strong against one and weak against the other cancels out. Immunity is absorbing - nothing later brings it back above zero
-- Typing applies in **every direction**: player on enemy, enemy on ally, ally on enemy, and enemy on player. A mob types its own attacks once, or an AI overrides it per action for a creature with a movepool. The player's defending types come from a provider, since a player's typing usually derives from something that changes mid-run
-- A mount that intercepts a hit aimed at its rider is judged as the mount, because the animal is the thing being hit
-- Players are told what happened - "It's super effective!", "It's not very effective...", "It has no effect..." - so matchups are legible without a wiki
-- Inert until something opts in. An untyped weapon, an unregistered type or an untyped defender all return a plain 1x, so nothing about existing combat changes
-
-Addon API: Custom Enemy Actions
-
-- An addon can define an enemy action whose resolution is genuinely new, rather than composing the forty shapes Craftics already has
-- Deliberately one extra member of a sealed set rather than an open interface. The turn machine dispatches with pattern-matching switches the compiler checks for exhaustiveness; unsealing would surrender that across dozens of sites, and an unhandled action would look like an enemy that just stands there
-- Handlers are given a context whose damage and movement methods route through Craftics' own pipeline, so an addon action cannot accidentally skip resistances, typings, shields, death handling or the pit-fall check
-- Wrap one in a boss ability and it inherits the whole telegraph system: warning tiles, the wind-up VFX and the one-turn delay, with the handler firing when it resolves
-- An unregistered action id costs that enemy its turn and logs once. An addon can be uninstalled while a save still holds an AI that names its actions, and a missing handler should not wedge the fight waiting for something that will never resolve
 
 Addon API: Custom Actions in a Player's Hands
 
@@ -148,6 +207,84 @@ Addon API: Sending Out From an Empty Field
 - The reserve is removed from the bench rather than swapped, since nothing is coming back to take its place. Swapping would leave the same creature sittable twice
 - It is fielded through the same path a switch uses, so its NBT, spawn customizer, AI key and typing land exactly as if it had started the fight on the grid. Refused, with the bench untouched, when the tile is out of bounds, occupied, not standable, or too small for the creature's footprint
 
+Infinite Mode Bleeding Into Normal Play
+
+- Fixed a parked Infinite Mode run being treated as the run you are currently playing. Parking a run deliberately keeps it marked active - that is how it survives to be resumed - and only raises a separate "suspended" flag, but three of the checks that ask "is this fight an infinite one?" read the active mark alone. With a run parked, every normal campaign level answered yes
+- The visible symptom was the smallest part of it: the victory screen's Go Home button still read **Pause Infinite Mode Run and Go Home** after you had gone back to normal mode
+- Underneath, the same check meant a **party wipe in an ordinary campaign level ended the parked run** - zeroing its score and clearing its saved inventory, accessories and stats, the entire save point - and then returned early, skipping every normal death penalty on the way out
+- Campaign boss kills were routed into the infinite-mode boss flow, which counts a biome cleared and overwrites the shared biome cursor with a freshly rolled infinite biome. Campaign clears banked points into the infinite score, the all-time score and the best-ever score
+- Going home from a campaign level also **skipped the biome reset the button promises**, because that one reads the flag directly rather than through the shared check. Left alone, the fix would have corrected the label while leaving the behaviour wrong, so both landed together
+- There is now a single named check for "a run that is being played right now", and the three predicates route through it, including the one that follows a player's stored host pointer - parking re-stamps that pointer at the host itself, so without it a parked run walked straight back in through the side door
+- The places that legitimately mean **any run, parked included** are unchanged and now say so: stopping a run, resuming one, and the hardcore island wipe, where a parked run must die with the island it was saved on
+- Parking a run no longer drops members who were mid-fight or offline from its roster. They were left holding run loot in place of their real inventory until they happened to relog, because the only path that could give it back could no longer see them
+- Note for existing worlds: this stops the damage, it does not undo it. A run already clobbered by the old behaviour stays clobbered
+
+Feral Claws
+
+- Fixed Feral Claws doing nothing at all. It was also the wrong shape - free attacks scale badly - so it is now a **50% chance for an attack to cost 1 less AP**, with attacks never dropping below 1 AP
+- The floor means 1 AP attacks, which includes swords and bows, are never discounted. The artifact is worth carrying on heavier weapons and honest about it
+
+Silent Trial Chambers and Raids
+
+- Fixed the music cutting out entirely on entering an event: trial chambers and their ominous variant, raids, raid bosses, ambushes, pillager camps and bastilles. Event arenas are not biomes anyone travels to, and the soundtrack is chosen by biome, so an arena whose id had no entry played nothing rather than falling back
+- The arena and the soundtrack now resolve the biome the same way, so a built arena and its music cannot disagree
+
+Bone Armor Fighting the Wrong Way
+
+- Skeleton bone and wither bone armor now grant **Ranged** affinity instead of Blunt. Both sets exist to keep a quiver full, and typing them off the material they are cut from put them at odds with the only reason to wear them
+
+Accessories Following You Into Infinite Mode
+
+- Accessory slot items now stay with your island loadout instead of being carried into an Infinite Mode run. Every other slot was already stashed on entry and handed back on exit; trinkets were not, so a run inherited them and the island lost them for its duration
+- They are stashed and restored across all four transitions - starting a run, parking one, resuming it, and ending it - so a trinket cannot be stranded on the wrong side of any of them
+- A run that was already in progress before this update is left alone. Restoring an empty stash for one would have wiped the trinkets the player is actually wearing, so those runs finish on the old behaviour rather than being migrated
+
+Stars in the Tab List
+
+- The score numbers Craftics drew beside player names in the tab list are gone
+
+The Infinite Mode Wolf That Did Not Last
+
+- Fixed the wolf handed to a Pet class run behaving like a wild spawn rather than a tamed pet, so it did not carry past the first level. It is now adopted as a proper party pet, owned and tamed, with its state captured the way every other pet's is. Dying is the only thing that takes it off your party now
+
+Pet Affinity and Spawn Eggs
+
+- Each point of Pet affinity now adds **+1% to the chance a fight drops a spawn egg**, on top of the base chance and any luck items. In a party the highest Pet affinity among everyone being rewarded is the one that counts, so bringing a pet specialist helps the whole party rather than only themselves
+
+Enemies Spawning On Top of Party Members
+
+- Fixed party members being placed onto tiles that were already occupied, which read as enemies spawning inside them. The placement search checked that a tile could be stood on but not whether something was already standing there, and the party's own positions were not refreshed before the search ran
+- Only the island owner was reliably safe, since they were placed first. An occupied tile is still used as a last resort for an arena with genuinely nowhere else to put someone, rather than leaving a fighter out of the fight
+
+
+0.4.0
+
+Addon API: Spawning What You Are, Not What Your Entity Type Says
+
+- Enemy and ally entries can now carry **spawn NBT**, merged onto the mob the moment it appears. A datapack can author it as an SNBT string, the same syntax /summon takes, so variant mobs need no Java at all
+- For what NBT cannot express - an entity that has to be initialised through its own mod's API - there is a **spawn customizer** hook that runs on the live mob before its first turn
+- Both are looked up by the combatant's AI key first and its entity type second. That ordering is the point: a mod that ships ONE entity type for hundreds of creatures can give each its own initialisation while they all share a type. Without it, every one of them spawns blank and identical
+- The arena's own flags are re-applied after any NBT merge. Loading NBT onto a live entity restores its whole serialized state, so an authored tag would happily switch AI and gravity back on and let a mob wander off its tile. Your NBT decides what the mob IS; the arena decides how it is held
+
+Addon API: Attack Types
+
+- A new third idea alongside damage types and affinities. An **attack type** is a trait of the attack itself - nobody levels it - and it exists only to be compared against what the defender is, producing a multiplier
+- All three are orthogonal. A weapon can be Slashing damage, so it scales from the Slashing affinity, while being typed Fire, so it lands hard on a grass defender and poorly on a water one. Retyping it changes nothing about what the player levels to improve it
+- Effectiveness is authored as a **chart per attacking type** - what it is strong and weak against - and defenders simply declare what they ARE. That is the only shape that scales: a thousand creatures across eighteen types needs eighteen chart entries and one line per creature, where per-creature resistance tables would need eighteen thousand cells
+- Dual types multiply through, so strong against one and weak against the other cancels out. Immunity is absorbing - nothing later brings it back above zero
+- Typing applies in **every direction**: player on enemy, enemy on ally, ally on enemy, and enemy on player. A mob types its own attacks once, or an AI overrides it per action for a creature with a movepool. The player's defending types come from a provider, since a player's typing usually derives from something that changes mid-run
+- A mount that intercepts a hit aimed at its rider is judged as the mount, because the animal is the thing being hit
+- Players are told what happened - "It's super effective!", "It's not very effective...", "It has no effect..." - so matchups are legible without a wiki
+- Inert until something opts in. An untyped weapon, an unregistered type or an untyped defender all return a plain 1x, so nothing about existing combat changes
+
+Addon API: Custom Enemy Actions
+
+- An addon can define an enemy action whose resolution is genuinely new, rather than composing the forty shapes Craftics already has
+- Deliberately one extra member of a sealed set rather than an open interface. The turn machine dispatches with pattern-matching switches the compiler checks for exhaustiveness; unsealing would surrender that across dozens of sites, and an unhandled action would look like an enemy that just stands there
+- Handlers are given a context whose damage and movement methods route through Craftics' own pipeline, so an addon action cannot accidentally skip resistances, typings, shields, death handling or the pit-fall check
+- Wrap one in a boss ability and it inherits the whole telegraph system: warning tiles, the wind-up VFX and the one-turn delay, with the handler firing when it resolves
+- An unregistered action id costs that enemy its turn and logs once. An addon can be uninstalled while a save still holds an AI that names its actions, and a missing handler should not wedge the fight waiting for something that will never resolve
+
 Addon API: Allies From Outside the Hub
 
 - Craftics' battle party is built from real mobs standing in the hub: you tag a wolf, it is snapshotted and put back afterwards. A mod whose party is DATA ON THE PLAYER has no wolf to tag, so there is now a **field ally provider** hook for it
@@ -166,6 +303,7 @@ Allies Leaking Into the Hub
 
 - Fixed temporary allies - spawn-egg summons, and now provider-supplied party creatures - being materialised into the hub world as real mobs when combat ended abnormally
 - The normal end-of-fight path already excluded them correctly. The abnormal-exit rescue path, which recovers allies when a fight is torn down unexpectedly, rescued every living ally without checking, so a summon that should have evaporated turned into a permanent animal standing in your hub
+
 
 0.3.9
 

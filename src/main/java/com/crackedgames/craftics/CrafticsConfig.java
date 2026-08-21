@@ -172,6 +172,41 @@ public class CrafticsConfig {
     @RangeConstraint(min = 1, max = 20)
     public int maxCombatEffectDuration = 10;
 
+    // ===== Season leaderboard =====
+    // What each thing a player has done is worth on the season board. The score is derived from
+    // these every time the board refreshes, so a retune shows up on the next refresh with no
+    // restart and no stored totals to migrate. All inputs are monotonic on purpose - emeralds
+    // and respeccable stat points are deliberately NOT scored, because a rank that falls when
+    // you spend or respec reads as a bug.
+
+    /** Per point of a player's BEST single infinite run ever (not a running total). */
+    @RangeConstraint(min = 0, max = 1000)
+    public int seasonWeightInfinitePoint = 1;
+
+    /** Per chapter placement point earned. */
+    @RangeConstraint(min = 0, max = 1000)
+    public int seasonWeightPlacementPoint = 10;
+
+    /** Per chapter finished ranked. */
+    @RangeConstraint(min = 0, max = 1000)
+    public int seasonWeightChapterPlaced = 5;
+
+    /** Per biome of campaign depth beyond the first. */
+    @RangeConstraint(min = 0, max = 1000)
+    public int seasonWeightBiomeDepth = 100;
+
+    /** Per distinct biome discovered. */
+    @RangeConstraint(min = 0, max = 1000)
+    public int seasonWeightBiomeDiscovered = 25;
+
+    /** Per NG+ level. */
+    @RangeConstraint(min = 0, max = 5000)
+    public int seasonWeightNgPlusLevel = 250;
+
+    /** One-off bonus for having beaten a raid boss. */
+    @RangeConstraint(min = 0, max = 5000)
+    public int seasonWeightRaidBonus = 100;
+
     // ===== Enemy Behavior =====
 
     @SectionHeader("enemyBehavior")

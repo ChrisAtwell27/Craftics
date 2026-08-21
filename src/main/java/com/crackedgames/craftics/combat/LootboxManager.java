@@ -186,6 +186,15 @@ public final class LootboxManager {
             }
             ChestConfig config = resolveChestConfig(entry);
             if (config == null) return ActionResult.PASS;
+            if (!CrafticsSavedData.get(sw).areLootboxesEnabled()) {
+                // SUCCESS, not PASS. Passing would drop the click through to the next use
+                // handler - in the lobby that is the spawn protection, which would answer a
+                // temporarily closed kiosk with "the lobby is protected" and tell the player
+                // the wrong thing entirely.
+                sp.sendMessage(net.minecraft.text.Text.literal(
+                    "§eThis lootbox is closed right now."), true);
+                return ActionResult.SUCCESS;
+            }
             if (config.cost() > 0 && findKey(sp) != null) {
                 // Holding a valid Key: skip the confirm stop entirely and open right away -
                 // openChest() is the one place that actually consumes it.

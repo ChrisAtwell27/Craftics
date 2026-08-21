@@ -72,7 +72,12 @@ public final class LobbyProtection {
         if (!(world instanceof ServerWorld sw)) return false;
         if (!(player instanceof ServerPlayerEntity sp)) return false;
         // Operators build the lobby; protecting it from its own builders would be perverse.
-        if (sp.hasPermissionLevel(2) || sp.isCreative()) return false;
+        // The node lets a build team be trusted with the lobby without being opped, which
+        // otherwise hands them every admin command in the game as the price of placing a block.
+        if (sp.isCreative()
+            || com.crackedgames.craftics.command.CrafticsPermissions.check(sp, "lobby.bypass")) {
+            return false;
+        }
         // Lobby only ever exists in the overworld - islands have their own protection.
         if (sw.getServer() == null || sw != sw.getServer().getOverworld()) return false;
 

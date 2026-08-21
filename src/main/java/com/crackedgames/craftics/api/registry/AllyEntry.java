@@ -46,7 +46,21 @@ public record AllyEntry(
     boolean rideable,
     /** Entity NBT merged onto the ally at spawn, or null. Same purpose as the enemy
      *  equivalent: an ally whose identity is not its entity type. */
-    @Nullable net.minecraft.nbt.NbtCompound spawnNbt
+    @Nullable net.minecraft.nbt.NbtCompound spawnNbt,
+    /**
+     * Health this ally takes the field on, or {@code -1} for full.
+     *
+     * <p>Separate from {@link #hp()} because {@code hp} is the MAXIMUM, and a combatant's max
+     * HP is fixed at construction. Lowering {@code hp} to represent a wounded creature does not
+     * field a wounded one - it fields a smaller one, at full health, that a single potion tops
+     * up to a permanently reduced ceiling.
+     *
+     * <p>Exists for a {@link com.crackedgames.craftics.api.FieldAllyProvider} whose mod tracks
+     * its creatures' damage between fights. Without it every provider ally arrives at full
+     * health however the last level went, and nothing a mod does on its own side can express
+     * otherwise.
+     */
+    int currentHp
 ) {
     /** How a hub mob qualifies to be recruited into combat. */
     public enum RecruitMode {
@@ -78,6 +92,7 @@ public record AllyEntry(
     public static class Builder {
         private final String entityTypeId;
         private int hp = 6;
+        private int currentHp = -1;
         private int attack = 1;
         private int defense = 0;
         private int range = 1;
@@ -97,6 +112,12 @@ public record AllyEntry(
 
         /** Base health. Default {@code 6}. */
         public Builder hp(int hp) { this.hp = hp; return this; }
+
+        /**
+         * Health this ally takes the field on, for a creature that is already hurt. Defaults to
+         * full. Clamped to the ally's maximum, so a value above {@code hp} simply means full.
+         */
+        public Builder currentHp(int currentHp) { this.currentHp = currentHp; return this; }
 
         /** Base attack. Default {@code 1}. */
         public Builder attack(int attack) { this.attack = attack; return this; }
@@ -146,7 +167,7 @@ public record AllyEntry(
             }
             return new AllyEntry(entityTypeId, hp, attack, defense, range, speed,
                 recruitMode, ai, scalesWithOwnerGear, roundHook, healItem, healAmount, rideable,
-                spawnNbt);
+                spawnNbt, currentHp);
         }
     }
 }
