@@ -106,5 +106,17 @@ public class LootPool {
         return result;
     }
 
-    private record Entry(Item item, int weight) {}
+    /** One weighted item in the pool. Public so a pool can be displayed, not just rolled. */
+    public record Entry(Item item, int weight) {}
+
+    /**
+     * The pool's contents, for anything that needs to show what <em>can</em> drop rather than
+     * roll what does - the guide book's biome atlas being the reason this exists.
+     *
+     * <p>Unmodifiable: a caller that could add to a live pool could change what a mob drops
+     * from a rendering path.
+     */
+    public java.util.List<Entry> getEntries() {
+        return java.util.Collections.unmodifiableList(entries);
+    }
 }

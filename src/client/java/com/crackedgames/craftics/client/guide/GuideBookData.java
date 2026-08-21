@@ -30,10 +30,34 @@ public class GuideBookData {
      */
     public record Box(String iconItem, String name, String tag, String text) {}
 
-    public record Page(String title, String text, List<Box> boxes) {
+    public record Page(String title, String text, List<Box> boxes, List<String> mobGrid,
+                       String bossId) {
         /** Plain prose page - the common case. */
-        public Page(String title, String text) { this(title, text, null); }
+        public Page(String title, String text) { this(title, text, null, null, null); }
+        /** Card-list page. */
+        public Page(String title, String text, List<Box> boxes) { this(title, text, boxes, null, null); }
+
+        /**
+         * Prose, a named boss, then a clickable grid of mob heads - each linking to that
+         * creature's bestiary entry.
+         *
+         * <p>A grid rather than a list of cards: a biome's roster is a set of creatures to
+         * recognise, not a set of paragraphs to read, and one card per mob pushed a six-mob
+         * biome onto three pages before it had said anything about loot. The bestiary already
+         * proves the shape works, and the link means each creature's detail - drops included -
+         * lives in exactly one place.
+         *
+         * <p>{@code bossId} is called out on its own line above the grid rather than left to be
+         * found among the heads. Which creature ends the biome is the single most useful thing
+         * on the page, and a face in a row of faces does not say it.
+         */
+        public static Page withMobs(String title, String text, List<String> mobIds, String bossId) {
+            return new Page(title, text, null, mobIds, bossId);
+        }
+
         public boolean boxed() { return boxes != null && !boxes.isEmpty(); }
+        public boolean hasMobGrid() { return mobGrid != null && !mobGrid.isEmpty(); }
+        public boolean hasBoss() { return bossId != null && !bossId.isEmpty(); }
     }
     /** Structured bestiary stats. Any field may be null/empty -> badge hidden. */
     public record MobStats(String role, String hp, String atk, String def, String spd,
@@ -48,9 +72,23 @@ public class GuideBookData {
     /** Default entries that are always unlocked (everything except Bestiary and Armor Trims). */
     private static final java.util.Set<String> defaultUnlocks = new java.util.HashSet<>();
 
+    /**
+     * Biome atlas pages the island has explored.
+     *
+     * <p>A separate set rather than more entries in {@code unlockedEntries}, for two reasons.
+     * It arrives on its own packet, so folding it in would make the two syncs order-dependent -
+     * {@link #applySyncFromServer} resets to defaults, and whichever packet landed second would
+     * win. And atlas pages are named by their biome's display name, which a datapack chooses;
+     * keeping the sets apart means a pack that names a biome after a mob cannot unlock that
+     * mob's bestiary entry.
+     */
+    private static final java.util.Set<String> atlasUnlocks = new java.util.HashSet<>();
+
     static {
         buildContent();
-        // All categories unlocked except Bestiary and Armor Trims
+        // All categories unlocked except Bestiary and Armor Trims. The Biome Atlas needs no
+        // exclusion here: it is not in CATEGORIES at all, so this loop cannot reach it and its
+        // pages start locked without anyone having to remember to list it.
         for (int i = 0; i < CATEGORIES.size(); i++) {
             String catName = CATEGORIES.get(i).name();
             if (catName.equals("Enemy Bestiary") || catName.equals("Armor Trims")) continue;
@@ -61,10 +99,38 @@ public class GuideBookData {
         }
     }
 
-    public static List<Category> getCategories() { return CATEGORIES; }
+    /**
+     * Every category in the book, with the biome atlas slotted in directly after the bestiary.
+     *
+     * <p>Position is not cosmetic. The two are the same kind of thing - a reference that fills
+     * in as you play, one for creatures and one for places - and a reader who has just looked
+     * up what a Warden does is one step from looking up where Wardens live. Parked at the end
+     * of the book, after the static how-to-play chapters, it read as an appendix.
+     */
+    public static List<Category> getCategories() {
+        Category atlas = BiomeAtlasData.category();
+        if (atlas == null) return CATEGORIES;
+        List<Category> all = new ArrayList<>(CATEGORIES.size() + 1);
+        all.addAll(CATEGORIES);
+        int after = -1;
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i).name().equals("Enemy Bestiary")) { after = i + 1; break; }
+        }
+        // No bestiary at all should be impossible, but appending beats throwing from a
+        // method the render path calls every frame.
+        if (after < 0) all.add(atlas);
+        else all.add(after, atlas);
+        return all;
+    }
 
     public static boolean isUnlocked(String entryName) {
-        return unlockedEntries.contains(entryName);
+        return unlockedEntries.contains(entryName) || atlasUnlocks.contains(entryName);
+    }
+
+    /** Replace the set of explored biome atlas pages. Called by {@link BiomeAtlasData}. */
+    public static void setAtlasUnlocks(java.util.List<String> names) {
+        atlasUnlocks.clear();
+        if (names != null) atlasUnlocks.addAll(names);
     }
 
     /**
@@ -100,6 +166,7 @@ public class GuideBookData {
     public static void resetToDefaults() {
         unlockedEntries.clear();
         unlockedEntries.addAll(defaultUnlocks);
+        BiomeAtlasData.clear();
     }
 
     /** Unlock a bestiary entry locally by mob type ID (for immediate UI feedback during combat). */
@@ -193,6 +260,8 @@ public class GuideBookData {
                 "H - Respec stat points\n" +
                 "J - Respec affinity points\n" +
                 "M - Mount ability (e.g. Netherite Golem)\n" +
+                "X - Centre the camera on your character\n" +
+                "Z - Hold to ping a tile for your party\n" +
                 "Left/Right arrows - Rotate move slots\n\n" +
                 "Craftics combat keys win over conflicting mod binds; rebind in vanilla Controls if needed.")
         )));

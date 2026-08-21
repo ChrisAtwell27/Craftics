@@ -2,6 +2,119 @@
 
 0.4.1
 
+Co-op Pings
+
+- A new **ping** keybind, `Z` by default. Hold it and a wheel opens where the cursor is; flick toward an option and let go. Tap it without moving and it sends a plain "look here", so the common case costs one key press and never makes you read a menu
+- Not on the middle mouse button, where a ping wheel would normally live: that already drags the tactical camera, and the two cannot share it, since opening a radial menu and panning are the same gesture
+- Six options: Look Here, Enemy, Loot, On It, You Take It, Careful. Fixed positions clockwise from straight up, so the gesture becomes muscle memory
+- A ping stands as a **2 second beacon pillar** on its tile, in its own colour, with a ring marking the tile itself. A flat ground marker was the obvious choice and the wrong one: the tactical camera looks down at a shallow angle, so a ground highlight is hidden behind the first obstacle or mob between it and you, which is exactly what you would be pinging about
+- The tile is captured when the key goes **down**, not when it comes up. Choosing an option means moving the mouse, and a wheel that read the tile on release would mark wherever the flick left the cursor rather than the thing you were pointing at
+- Pings go to your party, and back to you, so the marker you see is the one everyone else sees. Incoming pings also print a line in the combat log, since a ping off the edge of the screen would otherwise be silent
+- Rate limited server-side, and one live ping per player: pinging again moves your marker rather than adding a second one, so nobody can wallpaper the arena
+- Clicking is suppressed while the wheel is open, so a flick can never also spend AP on whatever the cursor passed over
+- Fixed a crash (`BufferBuilder was empty`) on the frame a ping expired. The renderer opened a vertex buffer and then found nothing to put in it, which is fatal rather than a no-op; geometry is now collected before any buffer is opened, so the window cannot be hit rather than merely being narrow
+
+Center Camera on Your Character
+
+- A new keybind, `X` by default, that recenters the camera on your character and pulls the zoom in. Works in merchant scenes as well as fights
+- Moves the saved view rather than taking a temporary focus, so the camera stays where it was put instead of drifting back a couple of seconds later
+
+Biome Atlas
+
+- The guide book has a new **Biome Atlas** category, sitting directly after the Enemy Bestiary: one page per biome, filling in as your island explores. A bestiary, but for places
+- The first page shows the biome's whole roster as a **grid of mob heads**, the same shape the bestiary uses. Click any creature to jump straight to its bestiary entry
+- The biome's **boss is named on its own line** above the grid, with its head beside it, and links to its bestiary entry once you have met it. Which creature ends a biome is the most useful thing on the page, and a face in a row of faces does not say it
+- **Drops now live on the creature, in the bestiary**, listed with each item's share. The drop table is keyed on entity type, so a zombie drops the same things wherever it is met; putting that list on every biome page containing a zombie would be several copies of one fact, and the first balance change would leave them disagreeing
+- **Both loot sources are now covered.** A biome's own pool is rolled once when you clear a level; every enemy also has its own table rolled per kill, and that second source is where most of what you carry out actually comes from. The guide showed only the first, which is why items kept dropping that nothing mentioned. They stay separate, since a share of a biome pool and a share of a zombie's drops are not comparable numbers and merging them would invent a statistic
+- Each biome page also carries its level count, day or night, environmental effect and when it starts, and the boss
+- Undiscovered biomes are listed but empty. The contents are not merely hidden on the client, they are never sent: a client holding the answer is a client that can show it
+- Pages are derived from the live biome definitions and the live drop tables at send time, never authored. Retuning a loot weight, changing what a mob drops, swapping a mob into a pool or adding a whole biome changes the book with it, and a `/reload` re-pushes it to everyone already online
+- Long item lists split across as many pages as they need instead of being clipped at the bottom of the page. The creature roster never splits at all - it is a grid
+- Discovery is recorded against the island, so party members share one atlas
+
+Clicking the Invisible Wall in a Village Threw You Off the Map
+
+- Fixed clicking near the edge of a merchant scene walking the player through the wall and dropping them out of the world
+- The "invisible block" is the barrier that walls a village in so nobody falls off it. The click-to-walk check only asked whether the clicked tile was inside the scene's footprint **rectangle**, and a village is not a rectangle - so a click that landed on a barrier passed the check with nothing behind it to stand on. The walk is a straight-line lerp, so it went through the wall, and the terrain follower fell back to "keep the height you had", leaving the player hovering over the void
+- A walk destination is now checked for somewhere to actually stand before the walk starts. Clicking a wall does nothing, which is what clicking a wall should do
+
+Being Moved to a Level Nobody Chose
+
+- Fixed a queued event transition surviving the run that queued it. When a between-level event finishes it starts a 2 second countdown that ends by pulling the whole party into the next level, and **nothing ever cancelled that countdown** - not the end of combat, not a boss win, not going home. It kept ticking, and if anything refilled the pending-level slot before it expired, the party got moved into a level nobody picked
+- That matches the report of being sent to another biome after a boss with no Continue pressed. It also explains why the level granted no progress: a transition fired outside the victory path never advances the biome cursor, so clearing that level counted for nothing
+- The countdown is now cancelled with the rest of the interlude state, and refuses to fire at all for a player whose run has already ended
+- Fixed both abort paths leaving the party behind a permanent "Loading Battle..." curtain. Only a successful transition ever took it down, so being spared an unwanted transition meant being stuck on a loading screen instead
+
+Homing Projectiles Stalling Behind Blocks
+
+- Fixed Grave Skulls, shulker bullets and scarabs **stopping dead** when a block came between them and the player, and never moving again. A seeker re-aims from scratch every turn, so an obstacle that does not move produced a projectile that does not move either
+- One case guaranteed it: a seeker lined up on the player's own row or column has a zero-length sidestep, so a single block left it with exactly one candidate and no legal move
+- They now follow the shortest clear route instead of stepping greedily toward the player. A greedy step cannot be patched into working here - after one sideways step the toward-the-player move points straight back where it came from, so it rocks between two squares - and a search cannot oscillate, because it follows one path instead of re-deciding every step
+- Walled in on every side, a seeker still holds position. That was always the right answer for that case; it was just also being given for cases that had a way through
+
+Arena Floors Being Permanently Edited
+
+- Fixed the shovel (and axe, and hoe) reshaping the arena floor mid-fight. These are vanilla right-click interactions that never went near Craftics' item handling, so nothing refused them - and the arena restore only puts back blocks **Craftics** placed, so a player-made block outlived the fight and was still there on every future run in that arena slot
+- Breaking arena blocks is refused for the same reason. Outside a fight your island is still yours to dig up; this applies only inside the arena you are currently fighting in
+- Matched on the tool rather than blanket-refusing right-clicks, so every Craftics combat item that places something still works
+
+Locked Out of Raids With No Way Back
+
+- Fixed a player being permanently refused from raids with "finish your run" and no way to finish it. The raid lobby treated the persisted mid-run flag as busy, and that flag stays set for a run merely **paused** in the hub between levels. `/home` deliberately leaves it set so runs stay resumable, so a run left in a bad state locked the player out of every raid until an operator ran `/craftics reset_combat` on them
+- Being parked in your own hub is not being busy, and a raid teleports you out and back without touching a paused run. This is the same call `RunInviteManager` already made for starting runs, so the two now agree instead of contradicting each other
+- Still refused mid-fight, and still refused at the between-level gates - trader, shrine, intro, dig site, loot - which is what "busy" actually means
+
+/home Yields to Other Mods Instead of Fighting Them
+
+- **`/home` still works.** Craftics keeps it whenever it can, and gives it up automatically the moment another mod wants it - falling back to **`/island`** rather than overwriting a command the player is already using. Both names are configurable (`homeCommandAlias`, `homeCommandFallback`), and `/craftics home` is unchanged and always works
+- `/home` is one of the most contested command names there is: FTB Essentials, EssentialsX ports and most teleport mods all claim it. Brigadier does not arbitrate - it merges same-named commands and lets the one registered **last** win - so ownership of `/home` came down to mod load order, which a server owner can neither see nor change
+- Detecting that needs two checks, because the conflict can land on either side of us. Before registering, Craftics skips a name something already holds. After every mod has registered, it checks whether the command behind its own name is still the one it handed over - which is the only way to catch a mod that loaded later and merged over the top
+- Losing the race costs the familiar name and nothing else: the shortcut moves to the fallback, players already online get the updated command list, and the log says which name went where. Rechecked after `/reload`, which rebuilds the command tree and re-runs the whole race
+- Every message that told you to type `/home` now asks what the command is actually called, including the rest-room sign, so nothing instructs players to type a command that does not exist
+
+Phantoms Landing On Top Of You
+
+- Fixed a phantom finishing its swoop **on the player's own tile**. A swoop is built to pass over everything, which is the point of a diving attack, but the last tile of that path is where the mob actually stops - and nothing stopped it stopping on a square that was already occupied. The grid has no way to represent two combatants on one square
+- The landing now pulls back to the last free tile. Damage is unchanged: it was already worked out from the full flight path, so the attack still connects exactly as before
+- Applies to every swooping attacker, not just phantoms - the Ender Dragon, the Wither and the Bastion Brute all charge through the same code
+
+Golden Carrots Refused At Full AP
+
+- Fixed a golden carrot being refused outright whenever AP was full. It is **both** a heal and an AP restore, so a capped AP bar was denying the larger half of the item: a wounded player at full AP could not eat one at all
+- It now heals, and simply says AP was already full. Only a player at full HP **and** full AP gets the carrot handed back, which is the one case where eating it really would do nothing
+
+Lootbox Emeralds Not Leaving Your Balance
+
+- Fixed a lootbox purchase not updating the emerald balance on screen. The emeralds were genuinely spent server-side, but nothing told the client the number had changed, so the player watched their balance sit still - which reads as the purchase never having gone through
+
+Lootboxes Blocked By Lobby Protection
+
+- Fixed lobby spawn protection denying right-clicks on lootbox kiosks. Protection now exempts a registered kiosk where the denial is decided, rather than relying on the lootbox handler being registered first and consuming the event
+- The old arrangement worked, but only for as long as nobody reordered two `init()` calls in a file neither class lives in, and it was invisible from the protection code. Everything else in the lobby stays protected exactly as before
+
+Material Crates Giving Enchanted Materials
+
+- Fixed the Material Crate rolling the enchant pass. The polish roll is published in the odds screen for **weapons and armor only**, but it ran on every box type - so a material crate produced enchanted items its own stated odds said nothing about
+- Undisclosed odds are the one thing in a loot box worse than a bad drop table, so the rule is now pinned by a test that fails if the roll and the odds display ever disagree again
+
+Pets Deleted Instead of Returned
+
+- Fixed hub pets being **permanently destroyed** when they could not be placed on the arena. A pet is removed from the hub world the moment it is collected for a fight, and the end-of-fight restore is built from the creatures on the field - so one that never got a tile existed nowhere and was gone for good. The game even said it "stayed behind", which was the opposite of what happened
+- They are now carried instead: offered a tile again on the next level, and returned to the hub when the run ends
+- Fixed the same loss for a pet **benched mid-fight**. Withdrawing an ally takes it off the grid and discards its mob, and the bench was cleared wholesale at each level boundary - correct for the temporary allies an addon fields, fatal for a real animal. Swapping your wolf out for one turn cost you the wolf
+
+One Broken Compat No Longer Silences the Rest
+
+- Compat registrations now run independently. They resolve items out of other mods' registries, so a renamed id turns a lookup into a throw, and one throw took out every compat listed after it - unrelated mods' weapons lost their Craftics stats with no clue why. Because this also runs from the tooltip render, it repeated on every frame
+- A failure is logged once, names the compat, and leaves the others working
+
+Guests Could Not Start a Run
+
+- Fixed a party member being unable to start a biome run that the level select block showed as unlocked. Pressing Enter did nothing at all: no message, no error, just a screen that closed
+- The lobby has always let any party member host. The block was that it judged the pick against the **starter's own** progression while the level select screen shows the **island's**, so a guest who was personally behind was refused every biome they could see. Both now read the same record
+- The refusal was also silent. Being turned down for a locked biome, or for one a datapack removed, now says so
+- Biome discovery is recorded on the island as well as the runner, so a guest-hosted run no longer leaves the island (and therefore everyone's level select and guide book) thinking the biome was never visited
+
 Addon API: Charging for an Attack
 
 - A new `onAttackApCost` hook, handed the AP an attack costs after the engine's own discounts. Return less to make the swing cheaper, more to make it dearer

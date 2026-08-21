@@ -106,7 +106,8 @@ public final class RunInviteManager {
                 InfiniteRunManager.suspendRun(world.getServer(), parkedHost, "host offline");
             } else {
                 starter.sendMessage(Text.literal(
-                    "§cAn infinite run is in progress on this island. Ring its bell to continue, or have the host use §e/home§c to end it."), false);
+                    "§cAn infinite run is in progress on this island. Ring its bell to continue, or have the host use §e"
+                        + CrafticsMod.homeCommandLabel() + "§c to end it."), false);
                 ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
                 return;
             }
@@ -142,15 +143,33 @@ public final class RunInviteManager {
             BiomeTemplate biome = findBiome(biomeId);
             if (biome == null) {
                 CrafticsMod.LOGGER.warn("RunInviteManager: no biome for ID '{}'", biomeId);
+                starter.sendMessage(Text.literal(
+                    "§cThat biome no longer exists. Reopen the level select."), false);
                 ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
                 return;
             }
-            // Unlock check uses the starter's own progression (it's their run).
+            // The unlock check reads the ISLAND's progression, not the starter's own.
+            //
+            // It used to read the starter's, and that single mismatch was what made a run look
+            // like something only the island's owner could begin. The level select block shows
+            // whatever getEffectiveWorldOwner resolves to - the shared island record - so a
+            // guest sees the island's unlocked biomes and its branch. Validating their pick
+            // against their personal record then refused every biome they were personally
+            // behind on, and refused it silently: a bounced UI, a line in the server log, and
+            // no explanation. Pressing start simply did nothing, which reads exactly like
+            // "only the leader may start a run".
+            //
+            // Judging a pick by the same data the player was shown is the rule; whose data the
+            // run then advances is a separate question, and is still the starter's.
+            CrafticsSavedData.PlayerData islandPd = data.getPlayerData(island);
+            islandPd.initBranchIfNeeded();
             pd.initBranchIfNeeded();
-            int biomeOrder = CampaignManager.ordinalOf(biomeId, Math.max(0, pd.branchChoice)) + 1;
-            if (biomeOrder <= 0 || biomeOrder > pd.highestBiomeUnlocked) {
-                CrafticsMod.LOGGER.warn("{} tried to start locked biome {} (unlocked={}, needed={})",
-                    starter.getName().getString(), biomeId, pd.highestBiomeUnlocked, biomeOrder);
+            int biomeOrder = CampaignManager.ordinalOf(biomeId, Math.max(0, islandPd.branchChoice)) + 1;
+            if (biomeOrder <= 0 || biomeOrder > islandPd.highestBiomeUnlocked) {
+                CrafticsMod.LOGGER.warn("{} tried to start locked biome {} (island unlocked={}, needed={})",
+                    starter.getName().getString(), biomeId, islandPd.highestBiomeUnlocked, biomeOrder);
+                starter.sendMessage(Text.literal(
+                    "§cThat biome isn't unlocked on this island yet."), false);
                 ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
                 return;
             }
@@ -343,6 +362,13 @@ public final class RunInviteManager {
         } else {
             pd.startBiomeRun(biome.biomeId);
             pd.discoverBiome(biome.biomeId);
+            // Record the discovery on the ISLAND's record as well as the starter's. The level
+            // select screen and the guide book's biome atlas both read the island's
+            // discoveredBiomes, so a guest-hosted run that only wrote to the guest's own record
+            // left the island - and therefore everyone's screen, the guest's included - still
+            // showing the biome as never visited.
+            data.getPlayerData(data.getEffectiveWorldOwner(starter.getUuid()))
+                .discoverBiome(biome.biomeId);
             // A brand new run starts at level 1 with nothing carried in. Any mid-fight save point
             // still on file is from a run that was abandoned, and its biome/level key would match
             // this one, so it has to go or the first level opens mid-fight.
@@ -434,6 +460,12 @@ public final class RunInviteManager {
         }
 
         hostCm.finishPartyJoin();
+
+        // The island may have just learned a new biome. Re-push the atlas so its guide book
+        // page fills in now rather than on next login.
+        for (ServerPlayerEntity member : castMembers) {
+            com.crackedgames.craftics.level.BiomeAtlasSync.send(member);
+        }
 
         // Mid-fight resume, last so it runs with the whole party attached and positioned: this is
         // the entry path a player comes back through after leaving a level, and a no-op on every

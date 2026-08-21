@@ -176,6 +176,56 @@ CrafticsAPI.registerBiome(myBiomeTemplate);
 // Query total level count
 int totalLevels = CrafticsAPI.getTotalLevels();</code></pre>
 
+    <h3>The Biome Atlas page</h3>
+    <p>
+      Every registered biome gets a guide book page automatically, under the <strong>Biome Atlas</strong> category. You do not register it, and there is nothing to keep in sync: the page is built from your <code>BiomeTemplate</code> at the moment the server sends it, so retuning a loot weight or swapping a mob into a pool changes the page with it.
+    </p>
+    <p>
+      Each page shows the biome's level count, whether it is fought at night, its environmental effect and the level that effect starts on, the boss, and both sources of loot. Item names and icons are resolved on the client, so an item your addon adds shows its own name and texture.
+    </p>
+    <p>
+      An <strong>Enemies &amp; Drops</strong> page lists every creature in the biome by its <em>mob head</em>, with its role and its own drop table. A creature with no drop table still appears, saying so, rather than being left out.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>There are two separate loot sources, and the atlas shows both.</strong> A biome's <code>loot</code> pool is rolled once when a level is cleared. Every enemy also has its own drop table, rolled once per kill, and that is where most of what a player carries out of a run actually comes from. A page listing only the biome pool describes a minority of a run's rewards, so the two are listed separately: <strong>Level Reward</strong> for the biome pool, <strong>Enemies &amp; Drops</strong> for the per-mob tables.
+      </p>
+      <p>
+        Their weights are not comparable and are never merged into one percentage. A share of the biome pool and a share of a zombie's drop table answer different questions.
+      </p>
+    </div>
+    <p>
+      Pages are gated on <strong>discovery</strong>. Until the island has run the biome, its page exists but is empty, and the contents are not merely hidden on the client - the server does not send them. Discovery is recorded against the island (the party leader's record), so party members share one atlas.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Shown on the page</th><th>Read from</th></tr></thead>
+        <tbody>
+          <tr><td>Title, sidebar icon</td><td><code>display_name</code>, matched on <code>biome_id</code></td></tr>
+          <tr><td>Level count</td><td><code>level_count</code></td></tr>
+          <tr><td>Day or night</td><td><code>night</code></td></tr>
+          <tr><td>Environmental effect</td><td><code>biome_effect</code> and its start level</td></tr>
+          <tr><td>Boss</td><td><code>boss</code></td></tr>
+          <tr><td>Enemies &amp; Drops</td><td><code>hostile</code>, <code>passive</code>, <code>boss</code> (each type once), each with its live per-mob drop table</td></tr>
+          <tr><td>Level Reward, Enchantments</td><td><code>loot</code>, <code>enchantment_loot</code>, heaviest first</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <p>
+        <strong>The atlas is synced, not shipped.</strong> Biomes live in a server-side registry loaded from datapacks, so a multiplayer client has never seen a loot pool. The atlas arrives on join and again after every <code>/reload</code>, which is what lets a live datapack edit show up in the book without a reconnect.
+      </p>
+      <p>
+        Long pools are capped at 24 entries, keeping the heaviest. A pool longer than that is summarised rather than listed in full. Lists longer than a page split across as many pages as they need, so nothing is silently clipped.
+      </p>
+      <p>
+        Mob heads come from <code>MobHeadTextures</code>, which probes <code>craftics:textures/mob_heads/&lt;namespace&gt;/&lt;path&gt;.png</code> and then <code>&lt;namespace&gt;:textures/mob_heads/&lt;path&gt;.png</code>. Ship either and your mobs get real portraits; ship neither and they fall back to a coloured swatch with the creature's initial.
+      </p>
+    </div>
+
     <!-- ================================================================
          2. ENVIRONMENTS
          ================================================================ -->

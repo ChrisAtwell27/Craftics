@@ -1792,10 +1792,35 @@ public class CombatManager {
                 + "{} saved pet(s) at risk -rescuing to hub so they aren't lost",
                 leader, pendingNextLevelDef, pendingBiome, savedPets.size());
             rescueSavedPetsToHubFallback(leader);
+            clearEventLoadingCurtain(leader);
             pendingNextLevelDef = null;
             pendingBiome = null;
             pendingEventBiomeOrdinal = 0;
             return;
+        }
+
+        // Second guard, on the state that actually decides whether a next level is a
+        // meaningful thing to enter: is this run still going? A queued transition can outlive
+        // the run that queued it - a boss win two seconds after an event ends the run while
+        // the countdown is still going - and firing then drops a party that is standing in
+        // their hub, finished, back into a level. It reads as being teleported into a random
+        // biome for no reason, and because it never goes through the victory path it advances
+        // nothing, so the level it drops them in grants no progress either.
+        try {
+            ServerWorld guardWorld = (ServerWorld) leader.getEntityWorld();
+            CrafticsSavedData guardData = CrafticsSavedData.get(guardWorld);
+            java.util.UUID runOwner = leaderUuid != null ? leaderUuid : leader.getUuid();
+            if (!guardData.getPlayerData(runOwner).isInBiomeRun()) {
+                CrafticsMod.LOGGER.warn(
+                    "Discarding a queued event transition for {}: their run has already ended.",
+                    leader.getName().getString());
+                clearEventInterludeState();
+                rescueSavedPetsToHubFallback(leader);
+                clearEventLoadingCurtain(leader);
+                return;
+            }
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.error("Could not verify the run state before an event transition", t);
         }
         try {
             ServerWorld world = (ServerWorld) leader.getEntityWorld();
@@ -1816,6 +1841,23 @@ public class CombatManager {
             pendingNextLevelDef = null;
             pendingBiome = null;
             pendingEventBiomeOrdinal = 0;
+        }
+    }
+
+    /**
+     * Take down the "Loading Battle..." overlay {@link #scheduleEventReturnTransition} raised.
+     *
+     * <p>Only a successful transition used to remove it - the next arena's own payload does -
+     * so every abort path left the party behind a full-screen curtain with nothing coming to
+     * lift it. Being spared a transition you did not ask for is no good if the screen never
+     * comes back.
+     */
+    private void clearEventLoadingCurtain(ServerPlayerEntity reference) {
+        for (ServerPlayerEntity p : getOnlinePartyMembers(reference)) {
+            try {
+                ServerPlayNetworking.send(p,
+                    new com.crackedgames.craftics.network.LoadingScreenPayload(false, "", ""));
+            } catch (Throwable ignored) { /* a disconnecting player is not worth failing over */ }
         }
     }
 
@@ -16343,7 +16385,9 @@ public class CombatManager {
                 // Truncate the swoop path at the first obstacle that appeared
                 // after the boss planned its charge (player placed a barrier
                 // on the line). FIRE is walkable for swoops by design.
-                List<GridPos> swoopPath = swoop.path();
+                // Copied, not aliased: the trim below mutates this list, and the action's own
+                // path belongs to the AI that planned it.
+                List<GridPos> swoopPath = new ArrayList<>(swoop.path());
                 int swoopBlockedAt = -1;
                 for (int i = 0; i < swoopPath.size(); i++) {
                     var stile = arena.getTile(swoopPath.get(i));
@@ -16455,6 +16499,28 @@ public class CombatManager {
                         }
                     }
                     sendSync();
+                }
+
+                // Where it comes to REST is a separate question from what it flew through.
+                // A swoop path is built to pass over everything - that is the point of a diving
+                // attack - but the last tile is where the mob actually stops, and nothing
+                // stopped it stopping on top of the player. A phantom that swooped a player
+                // standing at the end of its run ended the turn sharing their tile, which the
+                // grid has no way to represent: two combatants, one square.
+                //
+                // Damage was already applied above from the FULL path, so trimming here costs
+                // the attack nothing. It only pulls the landing back to the last free square.
+                while (!swoopPath.isEmpty()) {
+                    GridPos landing = swoopPath.get(swoopPath.size() - 1);
+                    // Its own tiles are not an obstacle to itself - a 3x3 dragon overlaps
+                    // several of the squares it is flying along.
+                    if (CombatEntity.minDistanceFromSizedEntity(landing,
+                            currentEnemy.getSizeX(), currentEnemy.getSizeZ(),
+                            currentEnemy.getGridPos()) <= 0) {
+                        break;
+                    }
+                    if (!arena.isOccupied(landing)) break;
+                    swoopPath.remove(swoopPath.size() - 1);
                 }
 
                 // Start the actual per-tile lerp through the swoop path.
@@ -29814,6 +29880,25 @@ public class CombatManager {
      * pendingNextLevelDef + lastFightWasTrial pair would reroute the next run's first
      * Continue into the OLD biome's stashed level - the "wrong biome, then ping-pong" bug.
      */
+    /**
+     * Drop everything an interlude was holding, including any transition it had queued.
+     *
+     * <p>The queued transition is the part that used to be missed. {@code eventReturnTicks} is
+     * a countdown in {@link #tick()} that ends by pulling the whole party into
+     * {@code pendingNextLevelDef}, and it ran outside the active-combat guard on purpose -
+     * events live between levels. Nothing cancelled it. Not this method, not
+     * {@code endCombat()}, not a boss win, not going home: an armed transition outlived the
+     * run that armed it and kept counting.
+     *
+     * <p>Nulling the level definition alone is not enough, because it is not the only thing
+     * that writes one. The victory path sets it for the next level, an addon can set it
+     * through {@code setPendingNextLevel}, and starting a fresh run on this same per-leader
+     * instance sets it again. Any of those refills the slot the stale timer is about to read,
+     * and the party gets moved into a level nobody chose - which is exactly what "we did not
+     * press continue" looks like from the floor.
+     *
+     * <p>So the countdown is cancelled with the state it belongs to.
+     */
     private void clearEventInterludeState() {
         pendingNextLevelDef = null;
         pendingBiome = null;
@@ -29821,6 +29906,8 @@ public class CombatManager {
         lastFightWasTrial = false;
         trialChamberPending = false;
         trialChamberLevelDef = null;
+        eventReturnTicks = 0;
+        eventReturnLeader = null;
     }
 
     // ---- Addon-event public hooks ----
@@ -33749,8 +33836,16 @@ public class CombatManager {
         return out;
     }
 
-    private static List<ItemStack> getMobDrops(String entityTypeId) {
-        LootPool pool = switch (entityTypeId) {
+    /**
+     * The drop table for one enemy type, or null for a mob that drops nothing.
+     *
+     * <p>Split out from {@link #getMobDrops} so the table can be <em>read</em> as well as
+     * rolled. These drops are a completely separate source from a biome's own loot pool - the
+     * biome pool is rolled once when a level is cleared, this is rolled per kill - and the guide
+     * book has to show both or it is describing only half of what a run actually hands you.
+     */
+    public static LootPool mobLootPool(String entityTypeId) {
+        return switch (entityTypeId) {
             // === Passive mobs ===
             case "minecraft:cow" -> new LootPool()
                 .add(Items.LEATHER, 5).add(Items.BEEF, 5);
@@ -33952,6 +34047,10 @@ public class CombatManager {
             default -> com.crackedgames.craftics.compat.deeperanddarker
                 .DeeperAndDarkerCompat.mobDrops(entityTypeId);
         };
+    }
+
+    private static List<ItemStack> getMobDrops(String entityTypeId) {
+        LootPool pool = mobLootPool(entityTypeId);
         return pool != null ? pool.roll(1, 2, 1, 3) : List.of();
     }
 
@@ -34400,9 +34499,20 @@ public class CombatManager {
         if (!savedPets.isEmpty()) {
             CrafticsMod.LOGGER.info("Saved {} pet(s) for next level.", savedPets.size());
         }
-        // The bench goes where the temporary allies above go: nowhere. This runs at the level
-        // boundary, which is exactly where a provider ally's battle ends, and a bench that
-        // outlived it would let the player swap creatures onto the next level's field after
+        // A benched HUB pet is still the player's animal, and it is not in `enemies` - it was
+        // taken off the grid and its mob discarded when it was withdrawn. Without this it went
+        // the way of the temporary allies below: cleared, never restored, gone from the hub it
+        // was collected from. Swapping a wolf out for one turn cost you the wolf.
+        for (ReserveSlot slot : reserveAllies) {
+            if (slot.snapshot() != null && slot.snapshot().temporary()) continue;
+            CombatEntity benched = slot.withdrawn();
+            if (benched == null || !benched.isAlive()) continue;
+            savedPets.add(HubPetCollector.PetData.fromCombatEntity(
+                benched, benched.getOriginalHubNbt()));
+        }
+        // The rest of the bench goes where the temporary allies above go: nowhere. This runs at
+        // the level boundary, which is exactly where a provider ally's battle ends, and a bench
+        // that outlived it would let the player swap creatures onto the next level's field after
         // their fielded siblings had already evaporated - resurrecting a party the run was
         // finished with, one AP at a time.
         reserveAllies.clear();
@@ -34977,11 +35087,17 @@ public class CombatManager {
             if (spawnPos == null) {
                 CrafticsMod.LOGGER.warn("No valid spawn tile for hub pet {}", snapshot.entityTypeId());
                 unplacedAllies++;
+                keepForLater(snapshot);
                 continue;
             }
 
             CombatEntity ce = spawnAllyFromSnapshot(snapshot, spawnPos);
-            if (ce == null) continue;
+            if (ce == null) {
+                CrafticsMod.LOGGER.warn("Hub pet {} produced no mob - carrying it rather than losing it",
+                    snapshot.entityTypeId());
+                keepForLater(snapshot);
+                continue;
+            }
 
             if (snapshot.saddledMount() && !playerMounted) {
                 // A saddled rideable party mob auto-mounts the player for the run.
@@ -34997,9 +35113,28 @@ public class CombatManager {
         // and a creature that silently never appears reads as the game losing it.
         if (unplacedAllies > 0) {
             sendMessage("§e" + unplacedAllies + (unplacedAllies == 1 ? " ally" : " allies")
-                + " could not find room on this arena and stayed behind.");
+                + " could not find room on this arena and sat this level out.");
         }
         hubPetSnapshots.clear();
+    }
+
+    /**
+     * Hold a hub pet that could not be fielded, so it survives the run.
+     *
+     * <p>These used to be dropped on the floor of this method. A hub pet is already
+     * {@code discard()}ed from the hub world the moment it is collected for combat, so its only
+     * remaining existence is its snapshot - and {@code savePets} builds the return list from
+     * {@code enemies}, which an unfielded pet is not in. The animal was deleted, and the player
+     * was told it "stayed behind", which was worse than saying nothing.
+     *
+     * <p>Parking it in {@code savedPets} puts it on exactly the path a surviving ally takes: it
+     * is offered a tile again on the next level, and returned to the hub when the run ends.
+     */
+    private void keepForLater(HubPetCollector.TamedPetSnapshot snapshot) {
+        // A provider ally has no hub to go back to - returning one would spawn a real creature
+        // that the owning mod is still tracking in its own party.
+        if (snapshot.temporary()) return;
+        savedPets.add(HubPetCollector.PetData.fromSnapshot(snapshot));
     }
 
     /**

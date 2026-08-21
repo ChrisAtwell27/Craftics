@@ -84,27 +84,36 @@ public final class RaidBossLobby {
      * The "is this player free to raid" predicate, shared by {@link #join} and
      * {@link RaidBossInstance#start} so the two checks can never drift into two
      * different definitions of "busy": not mid-combat/mid-event
-     * ({@link CombatManager#isEngaged}), not mid-biome-run (the persisted
-     * {@code PlayerData.isInBiomeRun()} - called out separately by both the design
-     * spec and {@code docs/modding/raid-bosses.md} because a player parked at the
-     * victory or level-select screen between levels has an INACTIVE CombatManager and
-     * would otherwise slip through isEngaged alone), and not a foreign visitor on
-     * someone else's island.
+     * ({@link CombatManager#isEngaged}) and not a foreign visitor on someone else's island.
+     *
+     * <h2>Why a paused run is not busy</h2>
+     *
+     * <p>This also refused anyone whose persisted {@code PlayerData.isInBiomeRun()} was set,
+     * on the reasoning that a player parked between levels has an inactive CombatManager and
+     * would slip past {@code isEngaged} alone. That is true, and it is the wrong call, for the
+     * same reason {@link com.crackedgames.craftics.combat.RunInviteManager} already stopped
+     * doing it: {@code isInBiomeRun()} stays set for a run merely PAUSED in the hub, and
+     * nothing a player can do from there clears it. {@code /home} deliberately leaves it set so
+     * the run stays resumable, and the run only ends by being finished.
+     *
+     * <p>So a player whose run got left in a bad state - the whole reason this turned up - was
+     * told to "finish your run" with no way to finish it and no way to abandon it, and stayed
+     * locked out of every raid until an operator ran {@code /craftics reset_combat} on them.
+     * Being parked in your own hub between levels is not being busy, and a raid teleports you
+     * out and back ({@link RaidBossOrigins} remembers where you were) without touching the
+     * paused run's state.
+     *
+     * <p>{@code isEngaged} still covers what actually conflicts: a live fight, and the
+     * between-level gates (trader, shrine, intro, dig site, loot) that hold a player inside a
+     * run even while their CombatManager is inactive.
      *
      * @return the reason they are ineligible, or {@code null} when they are free to raid.
      */
     public static JoinResult checkEligibility(ServerPlayerEntity p) {
         UUID id = p.getUuid();
         if (CombatManager.isEngaged(id)) return JoinResult.BUSY;
-        if (isMidBiomeRun(p)) return JoinResult.BUSY;
         if (VisitProtection.isForeignVisitor(p)) return JoinResult.VISITING;
         return null;
-    }
-
-    private static boolean isMidBiomeRun(ServerPlayerEntity p) {
-        com.crackedgames.craftics.world.CrafticsSavedData data = com.crackedgames.craftics.world.CrafticsSavedData
-            .get((net.minecraft.server.world.ServerWorld) p.getEntityWorld());
-        return data.getPlayerData(p.getUuid()).isInBiomeRun();
     }
 
     /**

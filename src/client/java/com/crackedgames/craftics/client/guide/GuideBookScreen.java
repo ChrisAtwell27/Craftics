@@ -70,7 +70,10 @@ public class GuideBookScreen extends Screen {
 
     // ── Click zones (rebuilt every frame) ────────────────────────────────────
     private static final int Z_CAT = 0, Z_ENTRY = 1, Z_CELL = 2, Z_PREV = 3, Z_NEXT = 4, Z_BACK = 5,
-                             Z_BPREV = 6, Z_BNEXT = 7, Z_TPREV = 8, Z_TNEXT = 9;
+                             Z_BPREV = 6, Z_BNEXT = 7, Z_TPREV = 8, Z_TNEXT = 9, Z_ATLAS_MOB = 10;
+
+    /** Mob ids behind this frame's biome-page grid cells, indexed by {@link Zone#a}. */
+    private final List<String> atlasMobZones = new ArrayList<>();
     private record Zone(int kind, int a, int x, int y, int w, int h) {
         boolean contains(double mx, double my) {
             return mx >= x && mx < x + w && my >= y && my < y + h;
@@ -156,6 +159,7 @@ public class GuideBookScreen extends Screen {
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
         zones.clear();
+        atlasMobZones.clear();
 
         // Dim the world
         ctx.fill(0, 0, width, height, 0xB0000000);
@@ -337,9 +341,19 @@ public class GuideBookScreen extends Screen {
         drawRule(ctx, pageX, y, pageW);
         y += 7;
 
-        // Body: boxed card layout for list pages, plain prose otherwise.
+        // Body: boxed card layout for list pages, prose (optionally with a mob grid)
+        // otherwise.
         if (page.boxed()) {
             drawBoxedPage(ctx, page, pageX, y, pageW, pageY + pageH - 16);
+        } else if (page.hasMobGrid() || page.hasBoss()) {
+            y = drawBodyReturningY(ctx, page.text(), pageX, y, pageW, pageY + pageH - 16);
+            if (page.hasBoss()) {
+                y = drawBossLine(ctx, page.bossId(), pageX, y + 4, mouseX, mouseY);
+            }
+            if (page.hasMobGrid()) {
+                drawMobGrid(ctx, page.mobGrid(), pageX, y + 4, pageW, pageY + pageH - 16,
+                    mouseX, mouseY);
+            }
         } else {
             drawBody(ctx, page.text(), pageX, y, pageW, pageY + pageH - 16);
         }
@@ -553,6 +567,138 @@ public class GuideBookScreen extends Screen {
         }
     }
 
+    /**
+     * The biome's boss, named on its own line with its head beside it.
+     *
+     * <p>Clickable only once the creature is in the player's bestiary. Linking to a locked
+     * entry would land them on a page that just says "locked", which is a worse answer than
+     * not offering the link - and the name alone is still worth printing, because knowing what
+     * waits at the end of a biome is the point of reading the page at all.
+     *
+     * @return the Y to continue drawing from
+     */
+    private int drawBossLine(DrawContext ctx, String bossId, int x, int y, int mouseX, int mouseY) {
+        String name = com.crackedgames.craftics.client.guide.BiomeAtlasData.prettify(bossId);
+        int bestiaryIndex = bestiaryIndexOf(bossId);
+        boolean linked = bestiaryIndex >= 0;
+
+        drawMobHeadOrFallback(ctx, bossId, x, y - 4);
+        String text = "§lBoss: §r" + name;
+        int textX = x + 20;
+        int w = textRenderer.getWidth(text);
+        boolean hover = linked && mouseX >= textX && mouseX < textX + w
+            && mouseY >= y - 2 && mouseY < y + 10;
+
+        ctx.drawText(textRenderer, Text.literal(text), textX, y, linked && hover ? GOLD : INK, false);
+        if (linked) {
+            // Underline the link so it reads as one without needing to be hovered first.
+            ctx.fill(textX, y + 9, textX + w, y + 10, hover ? GOLD : RULE);
+            atlasMobZones.add(bossId);
+            zones.add(new Zone(Z_ATLAS_MOB, atlasMobZones.size() - 1, textX, y - 2, w, 12));
+        }
+        return y + LINE_HEIGHT + 3;
+    }
+
+    /**
+     * A grid of mob heads, each cell linking to that creature's bestiary entry.
+     *
+     * <p>Cells match the bestiary's own grid so the two read as the same control. A creature
+     * with no bestiary entry, or one not yet encountered, still shows - the roster is what the
+     * biome contains, not what you have caught up with - but gets no click zone, and its
+     * tooltip says why.
+     */
+    private void drawMobGrid(DrawContext ctx, List<String> mobIds, int x, int y, int w, int maxY,
+                             int mouseX, int mouseY) {
+        int cols = Math.max(4, (w + 2) / (CELL + 2));
+        String hoverName = null;
+
+        for (int i = 0; i < mobIds.size(); i++) {
+            int cx = x + (i % cols) * (CELL + 2);
+            int cy = y + (i / cols) * (CELL + 2);
+            if (cy + CELL > maxY) break; // out of page - the roster is short enough in practice
+
+            String mobId = mobIds.get(i);
+            int bestiaryIndex = bestiaryIndexOf(mobId);
+            boolean linked = bestiaryIndex >= 0;
+            boolean hover = mouseX >= cx && mouseX < cx + CELL && mouseY >= cy && mouseY < cy + CELL;
+
+            ctx.fill(cx, cy, cx + CELL, cy + CELL, hover && linked ? 0xFFDcc68f : PARCH_EDGE);
+            int border = linked ? (hover ? GOLD : RULE) : 0xFF453A26;
+            ctx.fill(cx, cy, cx + CELL, cy + 1, border);
+            ctx.fill(cx, cy + CELL - 1, cx + CELL, cy + CELL, border);
+            ctx.fill(cx, cy, cx + 1, cy + CELL, border);
+            ctx.fill(cx + CELL - 1, cy, cx + CELL, cy + CELL, border);
+
+            drawMobHeadOrFallback(ctx, mobId, cx + (CELL - 16) / 2, cy + (CELL - 16) / 2);
+
+            String name = com.crackedgames.craftics.client.guide.BiomeAtlasData.prettify(mobId);
+            if (linked) {
+                atlasMobZones.add(mobId);
+                zones.add(new Zone(Z_ATLAS_MOB, atlasMobZones.size() - 1, cx, cy, CELL, CELL));
+                if (hover) hoverName = name + " §7(click for details)";
+            } else if (hover) {
+                hoverName = "§7" + name + " §8- not yet in your bestiary";
+            }
+        }
+        if (hoverName != null) {
+            ctx.drawTooltip(textRenderer, Text.literal(hoverName), mouseX, mouseY);
+        }
+    }
+
+    /**
+     * A mob's head, or its colour swatch and initial when no head texture exists.
+     *
+     * <p>Modded creatures mostly ship no head texture, and drawing nothing would leave holes
+     * in the grid that read as missing content rather than as a missing picture.
+     */
+    private void drawMobHeadOrFallback(DrawContext ctx, String mobId, int x, int y) {
+        net.minecraft.util.Identifier head =
+            com.crackedgames.craftics.client.MobHeadTextures.get(mobId);
+        if (head != null) {
+            com.crackedgames.craftics.client.MobHeadTextures.drawMobHead(ctx, head, x, y, 16);
+            return;
+        }
+        int color = com.crackedgames.craftics.client.MobHeadTextures.getMobColor(mobId);
+        ctx.fill(x, y, x + 16, y + 16, 0xFF000000 | color);
+        ctx.drawCenteredTextWithShadow(textRenderer,
+            Text.literal(com.crackedgames.craftics.client.MobHeadTextures.getDisplayInitial(mobId)),
+            x + 8, y + 4, 0xFFFFFFFF);
+    }
+
+    /**
+     * Index of {@code mobId}'s entry in the bestiary, or -1 when it has none or is still
+     * locked.
+     *
+     * <p>Matched by display name, which is the contract {@code GuideBookData} already documents
+     * for bestiary entry names and the same one its unlock path uses.
+     */
+    private int bestiaryIndexOf(String mobId) {
+        String name = com.crackedgames.craftics.client.guide.BiomeAtlasData.prettify(mobId);
+        for (GuideBookData.Category cat : GuideBookData.getCategories()) {
+            if (!cat.name().equals("Enemy Bestiary")) continue;
+            for (int i = 0; i < cat.entries().size(); i++) {
+                if (cat.entries().get(i).name().equals(name)) {
+                    return GuideBookData.isUnlocked(name) ? i : -1;
+                }
+            }
+            return -1;
+        }
+        return -1;
+    }
+
+    /** {@link #drawBody}, reporting the Y it stopped at so something can follow it. */
+    private int drawBodyReturningY(DrawContext ctx, String text, int x, int y, int w, int maxY) {
+        for (String raw : text.split("\n")) {
+            if (raw.isEmpty()) { y += LINE_HEIGHT / 2; continue; }
+            for (String line : wrapText(raw, w)) {
+                if (y + LINE_HEIGHT > maxY) return y;
+                ctx.drawText(textRenderer, Text.literal(line), x, y, INK, false);
+                y += LINE_HEIGHT;
+            }
+        }
+        return y;
+    }
+
     /** Word-wrapped body text in ink on parchment. Carries §-codes across wraps. */
     private void drawBody(DrawContext ctx, String text, int x, int y, int w, int maxY) {
         for (String raw : text.split("\n")) {
@@ -747,7 +893,25 @@ public class GuideBookScreen extends Screen {
         // Description (current page of possibly several)
         if (currentPage >= entry.pages().size()) currentPage = 0;
         GuideBookData.Page page = entry.pages().get(currentPage);
-        drawBody(ctx, page.text(), pageX, y, pageW, pageY + pageH - 24);
+        y = drawBodyReturningY(ctx, page.text(), pageX, y, pageW, pageY + pageH - 24);
+
+        // What it drops. This lives on the creature rather than on every biome that contains
+        // it: the table is keyed on entity type, so a zombie drops the same things wherever it
+        // is met, and repeating that list on six biome pages would be six copies of one fact.
+        List<String> dropLines = com.crackedgames.craftics.client.guide.BiomeAtlasData
+            .dropLinesFor(entry.name());
+        if (!dropLines.isEmpty()) {
+            y += 4;
+            if (y + LINE_HEIGHT <= pageY + pageH - 24) {
+                ctx.drawText(textRenderer, Text.literal("§lDrops"), pageX, y, INK, false);
+                y += LINE_HEIGHT;
+            }
+            for (String line : dropLines) {
+                if (y + LINE_HEIGHT > pageY + pageH - 24) break;
+                ctx.drawText(textRenderer, Text.literal(line), pageX, y, INK, false);
+                y += LINE_HEIGHT;
+            }
+        }
 
         // Scaling reminder
         if (stats != null && stats.hp() != null) {
@@ -839,6 +1003,18 @@ public class GuideBookScreen extends Screen {
                         return true;
                     }
                     case Z_CELL -> { selectedEntry = z.a(); currentPage = 0; return true; }
+                    case Z_ATLAS_MOB -> {
+                        if (z.a() >= atlasMobZones.size()) return true;
+                        int idx = bestiaryIndexOf(atlasMobZones.get(z.a()));
+                        if (idx < 0) return true;
+                        List<GuideBookData.Category> all = GuideBookData.getCategories();
+                        for (int i = 0; i < all.size(); i++) {
+                            if (all.get(i).name().equals("Enemy Bestiary")) { selectedCategory = i; break; }
+                        }
+                        selectedEntry = idx;
+                        currentPage = 0;
+                        return true;
+                    }
                     case Z_PREV -> { currentPage--; return true; }
                     case Z_NEXT -> { currentPage++; return true; }
                     case Z_BACK -> { selectedEntry = -1; currentPage = 0; return true; }

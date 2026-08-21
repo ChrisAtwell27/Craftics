@@ -655,7 +655,8 @@ public class ItemUseHandler {
 
         int healAmount = FoodValues.healFor(food);
         float maxHealth = player.getMaxHealth();
-        float newHealth = Math.min(maxHealth, player.getHealth() + healAmount);
+        float healthBefore = player.getHealth();
+        float newHealth = Math.min(maxHealth, healthBefore + healAmount);
         player.setHealth(newHealth);
         stack.decrement(1);
 
@@ -705,17 +706,30 @@ public class ItemUseHandler {
             // gives the combat-only version, which heals a little at the START of each turn.
         }
 
-        // Golden carrot restores 1 AP (capped at max AP)
+        // Golden carrot is BOTH a heal and an AP restore, so a full AP bar is not a reason
+        // to refuse it. It used to refund the whole thing whenever AP was capped, which meant
+        // a wounded player at full AP could not eat a carrot at all - the item's larger half,
+        // the heal, was denied because its smaller half had nowhere to go.
+        //
+        // It is only genuinely wasted when BOTH pools are full, and that is the only case
+        // still refunded.
         if (food == Items.GOLDEN_CARROT) {
             PlayerProgression.PlayerStats gcStats = PlayerProgression.get(
                 (net.minecraft.server.world.ServerWorld) player.getEntityWorld()).getStats(player);
             int maxAp = gcStats.getEffective(PlayerProgression.Stat.AP)
                 + PlayerCombatStats.getSetApBonus(player);
-            if (cm.getApRemaining() >= maxAp) {
-                // Refund the food - AP is already full, undo the heal + consumption
-                player.setHealth(player.getHealth() - healAmount);
+            boolean apFull = cm.getApRemaining() >= maxAp;
+            boolean healedNothing = newHealth <= healthBefore;
+
+            if (apFull && healedNothing) {
+                // Nothing to give: hand the carrot back rather than eat it for no effect.
+                player.setHealth(healthBefore);
                 stack.increment(1);
-                return "§cAP is already full!";
+                return "§cAlready at full HP and AP!";
+            }
+            if (apFull) {
+                return "§aAte " + stack.getName().getString() + "! Healed " + healAmount
+                    + " HP §7(AP already full) §a(HP: " + (int) newHealth + "/" + (int) maxHealth + ")";
             }
             cm.setApRemaining(Math.min(maxAp, cm.getApRemaining() + 1));
             return "§aAte " + stack.getName().getString() + "! Healed " + healAmount + " HP, §b+1 AP §a(HP: "

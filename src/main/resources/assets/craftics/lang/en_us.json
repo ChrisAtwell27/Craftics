@@ -67,9 +67,16 @@
   "key.craftics.clear_party": "Clear Battle Party (hub)",
   "key.craftics.mount_ability": "Mount Ability (in combat)",
   "key.craftics.threat_overlay": "Toggle Enemy Threat Ranges",
+  "key.craftics.focus_self": "Center Camera on Your Character",
+  "key.craftics.ping": "Ping (hold for wheel)",
 
   "text.config.craftics-config.title": "Craftics",
 
+  "text.config.craftics-config.section.commands": "Commands",
+  "text.config.craftics-config.option.homeCommandAlias": "Go-Home Command",
+  "text.config.craftics-config.option.homeCommandAlias.tooltip": "Top-level command that takes you back to your island, on top of the always-present /craftics home. If another mod already owns this name, Craftics gives it up and uses the fallback below rather than overwriting it. Leave blank for no shortcut.",
+  "text.config.craftics-config.option.homeCommandFallback": "Go-Home Fallback",
+  "text.config.craftics-config.option.homeCommandFallback.tooltip": "Used when the command above is taken by another mod - /home is claimed by FTB Essentials and most teleport mods. Blank means no shortcut at all in that case; /craftics home always works either way.",
   "text.config.craftics-config.section.playerStats": "Player Stats",
   "text.config.craftics-config.section.enemyScaling": "Enemy Scaling",
   "text.config.craftics-config.section.bossScaling": "Boss Scaling",

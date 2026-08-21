@@ -469,6 +469,31 @@ public class CrafticsConfig {
      * (the screen will say so); reports that fail to send are always saved
      * to the craftics-bugreports/ folder instead.
      */
+    /**
+     * Top-level command that takes a player back to their island, on top of the always-present
+     * {@code /craftics home}.
+     *
+     * <p>{@code /home} is what players expect, so that is what Craftics asks for - but it is
+     * also one of the most contested names there is, claimed by FTB Essentials, EssentialsX
+     * ports and most teleport mods. Craftics gives it up rather than fight over it: if anything
+     * else owns {@code /home}, the shortcut moves to {@link #homeCommandFallback} instead of
+     * overwriting a command the player is already using.
+     *
+     * <p>Blank registers no top-level shortcut at all.
+     */
+    @SectionHeader("commands")
+    public String homeCommandAlias = "home";
+
+    /**
+     * Name to use when {@link #homeCommandAlias} is already taken by another mod.
+     *
+     * <p>Losing the shortcut entirely would be the wrong answer to a conflict - the player
+     * still needs a way home - so the conflict costs them the familiar name and nothing more.
+     * Blank means "no shortcut when the preferred name is taken"; {@code /craftics home} is
+     * namespaced and keeps working regardless.
+     */
+    public String homeCommandFallback = "island";
+
     @SectionHeader("bugReports")
     public String bugReportEndpoint = "https://crackedgames.co/api/bugreport";
 

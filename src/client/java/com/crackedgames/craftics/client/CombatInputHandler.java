@@ -114,6 +114,16 @@ public class CombatInputHandler {
             return;
         }
 
+        // The ping wheel is aimed with the mouse, so while it is open the mouse is not aiming
+        // the fight. Without this, flicking to pick a ping and clicking would also spend AP on
+        // whatever the flick left the cursor over. Same shape as the intro guard above,
+        // including consuming the button state so the click that closed the wheel doesn't fire
+        // on the following frame.
+        if (com.crackedgames.craftics.client.ping.PingWheel.isOpen()) {
+            lastLeftClick = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+            return;
+        }
+
         handleCameraDrag(window);
 
         // Detect left click (rising edge) - only when NOT panning

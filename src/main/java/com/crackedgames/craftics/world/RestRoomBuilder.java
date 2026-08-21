@@ -105,8 +105,10 @@ public final class RestRoomBuilder {
         placeSign(world, bell.add(0, 0, 2), new String[]{
             "§0Rest up, then",
             "§0ring the bell.",
-            "§0§o/home banks",
-            "§0§oyour run."
+            // Split across two lines rather than one: the command name is configurable, and
+            // "/craftics home banks" does not fit on a sign.
+            "§0§o" + com.crackedgames.craftics.CrafticsMod.homeCommandLabel(),
+            "§0§obanks your run."
         });
 
         // ── Lighting ──

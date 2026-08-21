@@ -679,6 +679,11 @@ public final class LootboxManager {
         } else if (pd.emeralds >= cost) {
             pd.emeralds -= cost;
             data.markDirty();
+            // The client keeps its own copy of the balance for the HUD and the respec screens,
+            // and nothing here told it the number had changed. The emeralds were really spent
+            // server-side, but the player watched their balance sit still - which reads as the
+            // purchase not having gone through at all.
+            com.crackedgames.craftics.network.ModNetworking.syncPlayerStats(player);
             paidWith = "Paid " + cost + " emeralds (" + pd.emeralds + " left)";
         } else {
             player.sendMessage(Text.literal("§cYou need " + cost
@@ -1299,6 +1304,22 @@ public final class LootboxManager {
         return null;
     }
 
+    /**
+     * Whether this box type rolls the enchant/trim polish pass.
+     *
+     * <p>Tied to what the box actually advertises. {@code addPolishIcon} and {@code oddsLines}
+     * both disclose the polish roll for weapons and armor and for nothing else, but the roll
+     * itself used to run on every type - so a Material Crate handed out enchanted materials
+     * that its own published odds said nothing about. Undisclosed odds are the one bug in a
+     * loot box that is worse than a wrong item.
+     *
+     * <p>Adding a type here means adding it to both odds displays too, or the same gap opens
+     * again facing the other way.
+     */
+    static boolean polishes(Type type) {
+        return type == Type.WEAPONS || type == Type.ARMOR;
+    }
+
     private static void polish(ItemStack stack, ServerWorld world) {
         if (stack.isEmpty()) return;
         net.minecraft.entity.EquipmentSlot slot = armorSlotOf(stack);
@@ -1329,7 +1350,7 @@ public final class LootboxManager {
             for (int i = 0; i < section.picks(); i++) {
                 ItemStack rolled = section.prototypes()
                     .get(RNG.nextInt(section.prototypes().size())).copy();
-                polish(rolled, world);
+                if (polishes(type)) polish(rolled, world);
                 if (section.hasCountRange()) {
                     int want = section.minCount()
                         + RNG.nextInt(section.maxCount() - section.minCount() + 1);

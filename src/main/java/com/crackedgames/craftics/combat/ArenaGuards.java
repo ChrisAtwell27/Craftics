@@ -2,6 +2,10 @@ package com.crackedgames.craftics.combat;
 
 import com.crackedgames.craftics.CrafticsMod;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.minecraft.util.ActionResult;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.mob.MobEntity;
@@ -55,6 +59,33 @@ public final class ArenaGuards {
             return !(attacker instanceof MobEntity);
         });
 
+        // ── The arena is not a build surface ─────────────────────────────────────
+        //
+        // Nothing stopped a player editing the floor they were fighting on. A shovel turns
+        // grass into a dirt path with a right-click, an axe strips a log, a hoe tills - all
+        // vanilla interactions that never touch Craftics' own item handling, so none of them
+        // were refused. And the arena restore only reverts blocks CRAFTICS placed, so a
+        // player-made block was never put back: it survived the fight, and it was still there
+        // the next time that arena slot was built, on every future run.
+        //
+        // Only right-clicks that TRANSFORM a block are refused, matched on the tool doing it.
+        // A blanket refusal would be wrong: Craftics' own combat items (TNT, beds, blue ice,
+        // an end crystal) are placed through the mod's action packets and a player also
+        // physically right-clicks to use them.
+        UseBlockCallback.EVENT.register((player, world, hand, hit) -> {
+            if (world.isClient() || !(player instanceof ServerPlayerEntity sp)) return ActionResult.PASS;
+            if (!transformsBlocks(sp.getStackInHand(hand).getItem())) return ActionResult.PASS;
+            return insideOwnArena(sp, hit.getBlockPos()) ? ActionResult.FAIL : ActionResult.PASS;
+        });
+
+        // Breaking it is the same problem arriving the other way round.
+        PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, be) ->
+            !(player instanceof ServerPlayerEntity sp) || !insideOwnArena(sp, pos));
+
+        AttackBlockCallback.EVENT.register((player, world, hand, pos, direction) ->
+            player instanceof ServerPlayerEntity sp && insideOwnArena(sp, pos)
+                ? ActionResult.FAIL : ActionResult.PASS);
+
         // NO entity-removal guard here, deliberately.
         //
         // There was one: it discarded any mob that appeared inside a live arena without the
@@ -66,5 +97,40 @@ public final class ArenaGuards {
         // Anything attempting this again has to key off something true at spawn time - the
         // grid's own occupant list, for instance - rather than a tag that may not be attached
         // yet. The damage guard above already removes the harm without touching entities.
+    }
+
+    /**
+     * Vanilla tools whose right-click changes the block underneath.
+     *
+     * <p>Shovel makes a dirt path, axe strips and scrapes, hoe tills. These are the whole of
+     * the "a player permanently altered the arena floor" problem, and matching on them keeps
+     * every other right-click - including every Craftics combat item - untouched.
+     */
+    private static boolean transformsBlocks(net.minecraft.item.Item item) {
+        return item instanceof net.minecraft.item.ShovelItem
+            || item instanceof net.minecraft.item.AxeItem
+            || item instanceof net.minecraft.item.HoeItem;
+    }
+
+    /**
+     * True when {@code pos} lies inside the arena of the fight this player is currently in.
+     *
+     * <p>Scoped to their OWN live arena rather than to "anywhere in an island dimension":
+     * outside a fight the island is theirs to dig up, and that should stay true.
+     */
+    private static boolean insideOwnArena(ServerPlayerEntity player, net.minecraft.util.math.BlockPos pos) {
+        CombatManager cm = CombatManager.getActiveCombat(player.getUuid());
+        if (cm == null || !cm.isActive()) return false;
+        com.crackedgames.craftics.core.GridArena arena = cm.getArena();
+        if (arena == null) return false;
+
+        net.minecraft.util.math.BlockPos origin = arena.getOrigin();
+        int dx = pos.getX() - origin.getX();
+        int dz = pos.getZ() - origin.getZ();
+        if (dx < 0 || dz < 0 || dx >= arena.getWidth() || dz >= arena.getHeight()) return false;
+        // A generous vertical band: schematic arenas carve below the floor and build well
+        // above it, and the point is to protect the whole structure, not one layer of it.
+        int dy = pos.getY() - origin.getY();
+        return dy >= -8 && dy <= 32;
     }
 }

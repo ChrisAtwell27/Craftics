@@ -187,6 +187,41 @@ public class CombatState {
         releaseFocus();
     }
 
+    /**
+     * Re-centre the camera on the local player and zoom in one step.
+     *
+     * <p>Written as a pan rather than as a {@link #focusOn} call on purpose. Focus is a
+     * temporary lease - it expires after a couple of seconds and lerps back to wherever the
+     * camera was - which is right for "an enemy is acting over there" and wrong for a key the
+     * player pressed because they had lost track of themselves. This moves the saved view, so
+     * the camera stays where it was put.
+     *
+     * <p>The pan is clamped exactly like {@link #pan} is, so this can never reach somewhere
+     * dragging could not. In practice arenas top out around twenty tiles across and the clamp
+     * covers every corner; it exists so that an unusually large modded arena degrades to
+     * "as close as the camera goes" instead of flying off the map.
+     *
+     * @return false if there was nothing to centre on, so the caller can say so
+     */
+    public static boolean centerOnSelf() {
+        net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+        if (mc.player == null) return false;
+        if (!isInCombat() && !isInScene()) return false;
+
+        double wantX = mc.player.getX() - arenaBaseCenterX;
+        double wantZ = mc.player.getZ() - arenaBaseCenterZ;
+        cameraPanX = Math.max(-MAX_PAN, Math.min(MAX_PAN, wantX));
+        cameraPanZ = Math.max(-MAX_PAN, Math.min(MAX_PAN, wantZ));
+        arenaCenterX = arenaBaseCenterX + cameraPanX;
+        arenaCenterZ = arenaBaseCenterZ + cameraPanZ;
+
+        // Pull in to the closest framing. Half the point of "where am I" is seeing what is
+        // next to you, and the answer is unreadable at the far end of the zoom range.
+        combatCameraDistance = MIN_CAMERA_DISTANCE;
+        releaseFocus();
+        return true;
+    }
+
     public static float getCombatPitch() {
         return combatPitch;
     }

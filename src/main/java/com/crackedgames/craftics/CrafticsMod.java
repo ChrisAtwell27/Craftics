@@ -586,6 +586,11 @@ public class CrafticsMod implements ModInitializer {
                         String.join("|", pd.getUnlockedGuideEntries())
                     ));
 
+                // ...and the biome atlas, which the client cannot build for itself: biomes
+                // live in a server-side registry loaded from datapacks, so a multiplayer
+                // client has never seen a loot pool.
+                com.crackedgames.craftics.level.BiomeAtlasSync.send(player);
+
                 // Sync battle-party membership so the client can label party mobs
                 com.crackedgames.craftics.network.PartyMobSync.sync(player);
 
@@ -1216,6 +1221,10 @@ public class CrafticsMod implements ModInitializer {
             // authored boss definitions.
             com.crackedgames.craftics.raid.RaidBossDimensions.deleteOrphans(server);
             com.crackedgames.craftics.raid.RaidBossRegistry.reload(server);
+
+            // Every mod has registered its commands by now, so this is the first moment it is
+            // possible to tell whether one of them merged over our go-home shortcut.
+            verifyHomeAlias(server);
         });
 
         // Also reload on /reload command
@@ -1234,7 +1243,15 @@ public class CrafticsMod implements ModInitializer {
                     // whose entity is absent from the live registry, so this is a no-op without the mod.
                     com.crackedgames.craftics.compat.takesapillage.TakesAPillageCompat.applyBiomeOverrides();
                     com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.applyBiomeOverrides();
+                    // The guide book's biome pages were built from the pools that just got
+                    // replaced. Re-push them, or every client keeps showing the previous
+                    // pack's loot tables until it reconnects - a guide that is confidently
+                    // wrong, which is worse than one that is missing.
+                    com.crackedgames.craftics.level.BiomeAtlasSync.sendToAll(server);
                 }
+                // /reload rebuilds the command dispatcher from scratch, so every mod races for
+                // /home again and the previous verdict says nothing about the new tree.
+                verifyHomeAlias(server);
             }
         );
 
@@ -1260,6 +1277,147 @@ public class CrafticsMod implements ModInitializer {
      * from under someone standing in it is undefined behaviour in Fantasy, not a clean error.
      * Only then is the dimension deleted from disk, and only then is the bookkeeping dropped.
      */
+    // ── The go-home shortcut ─────────────────────────────────────────────────
+    //
+    // /home is what players expect and what half the server mods on the market also want.
+    // Brigadier does not arbitrate: CommandNode.addChild MERGES same-named literals and lets
+    // the later registration replace the command, so ownership of /home is decided by mod load
+    // order - invisible to a server owner and unfixable from a config file.
+    //
+    // Craftics asks for /home and gives it up the moment anything else wants it. That needs
+    // two checks, because a registration order we cannot control means the conflict can appear
+    // on either side of ours:
+    //
+    //   1. Before registering - something already holds the name, so we never touch it.
+    //   2. After every mod has registered - something replaced us, which is only visible
+    //      afterwards. The node's Command is compared by IDENTITY against the one we handed
+    //      Brigadier; if it is no longer ours, we lost the merge.
+    //
+    // Either way the shortcut moves to the fallback name rather than vanishing, because the
+    // player still needs a way home.
+
+    /** The Command instance we registered, kept for the identity check in {@link #verifyHomeAlias}. */
+    private static volatile com.mojang.brigadier.Command<net.minecraft.server.command.ServerCommandSource> homeCommandRef;
+
+    /** The name the shortcut actually ended up under, or "" when it has none. */
+    private static volatile String activeHomeAlias = "";
+
+    /**
+     * What to CALL the go-home command in a message to the player.
+     *
+     * <p>Reads the name that was actually claimed rather than the one that was configured.
+     * Those differ exactly when another mod took the preferred name, which is precisely the
+     * situation where telling the player the wrong command would be most confusing.
+     *
+     * <p>Falls back to {@code /craftics home}, which is namespaced and therefore always real.
+     */
+    public static String homeCommandLabel() {
+        String active = activeHomeAlias;
+        return active.isEmpty() ? "/craftics home" : "/" + active;
+    }
+
+    /**
+     * Clean a configured command name, or return "" when it cannot be one.
+     *
+     * <p>Brigadier matches literals verbatim against what the player typed, so a name carrying
+     * a space or a slash registers a command nobody can ever run.
+     */
+    static String sanitizeAlias(String raw) {
+        if (raw == null) return "";
+        String alias = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        return alias.matches("[a-z0-9_-]+") ? alias : "";
+    }
+
+    /**
+     * Pick which name the shortcut should claim: the preferred one, the fallback, or none.
+     *
+     * <p>Split out as a pure function over "is this name taken" so the decision can be tested
+     * without a server, a dispatcher or another mod installed. The decision is the part with
+     * the branches; the registration around it is one method call.
+     *
+     * @param taken answers whether a command name is already registered
+     * @return the name to claim, or "" to claim nothing
+     */
+    static String resolveHomeAlias(String preferred, String fallback,
+                                   java.util.function.Predicate<String> taken) {
+        String first = sanitizeAlias(preferred);
+        if (!first.isEmpty() && !taken.test(first)) return first;
+        String second = sanitizeAlias(fallback);
+        // A fallback equal to the preferred name is not a fallback; without this it would be
+        // re-tested and re-refused, which reads as the fallback being broken.
+        if (!second.isEmpty() && !second.equals(first) && !taken.test(second)) return second;
+        return "";
+    }
+
+    private static String configuredAlias() {
+        try { return CONFIG.homeCommandAlias(); } catch (Exception e) { return "home"; }
+    }
+
+    private static String configuredFallback() {
+        try { return CONFIG.homeCommandFallback(); } catch (Exception e) { return "island"; }
+    }
+
+    /** Phase one: claim a name, unless everything we would claim is already spoken for. */
+    private static void registerHomeAlias(
+            com.mojang.brigadier.CommandDispatcher<net.minecraft.server.command.ServerCommandSource> dispatcher,
+            com.mojang.brigadier.Command<net.minecraft.server.command.ServerCommandSource> homeCommand) {
+        homeCommandRef = homeCommand;
+        activeHomeAlias = "";
+
+        String chosen = resolveHomeAlias(configuredAlias(), configuredFallback(),
+            name -> dispatcher.getRoot().getChild(name) != null);
+        if (chosen.isEmpty()) {
+            LOGGER.info("No go-home shortcut registered - every configured name is taken or blank. "
+                + "/craftics home still works.");
+            return;
+        }
+        if (!chosen.equals(sanitizeAlias(configuredAlias()))) {
+            LOGGER.info("/{} is already registered by another mod - using /{} for going home instead.",
+                sanitizeAlias(configuredAlias()), chosen);
+        }
+        dispatcher.register(CommandManager.literal(chosen).executes(homeCommand));
+        activeHomeAlias = chosen;
+    }
+
+    /**
+     * Phase two: confirm we still own the name, now that every mod has registered.
+     *
+     * <p>A mod loading after Craftics merges its own literal over ours and silently takes the
+     * command. Nothing in the API reports that, but it is plainly visible afterwards: the
+     * node is still there, and its Command is no longer the object we handed over.
+     *
+     * <p>Runs on server start and again after {@code /reload}, which rebuilds the dispatcher
+     * from scratch and so re-runs the whole race.
+     */
+    public static void verifyHomeAlias(net.minecraft.server.MinecraftServer server) {
+        if (server == null || homeCommandRef == null) return;
+        var dispatcher = server.getCommandManager().getDispatcher();
+        String claimed = activeHomeAlias;
+        if (claimed.isEmpty()) return;
+
+        var node = dispatcher.getRoot().getChild(claimed);
+        if (node != null && node.getCommand() == homeCommandRef) return;   // still ours
+
+        // Another mod merged over us. Leave theirs alone and take the fallback if it is free.
+        LOGGER.warn("/{} was taken over by another mod after Craftics registered it.", claimed);
+        activeHomeAlias = "";
+
+        String fallback = sanitizeAlias(configuredFallback());
+        if (fallback.isEmpty() || fallback.equals(claimed)
+                || dispatcher.getRoot().getChild(fallback) != null) {
+            LOGGER.warn("No free fallback name - use /craftics home, or set homeCommandFallback.");
+            return;
+        }
+        dispatcher.register(CommandManager.literal(fallback).executes(homeCommandRef));
+        activeHomeAlias = fallback;
+        LOGGER.info("Go-home shortcut moved to /{}.", fallback);
+
+        // Anyone already online is holding the command tree from before this node existed.
+        for (ServerPlayerEntity online : server.getPlayerManager().getPlayerList()) {
+            server.getCommandManager().sendCommandTree(online);
+        }
+    }
+
     private static int deleteIsland(net.minecraft.server.command.ServerCommandSource source,
                                     ServerPlayerEntity target) {
         var server = source.getServer();
@@ -2821,7 +2979,7 @@ public class CrafticsMod implements ModInitializer {
                      || fightCm.getPhase() == com.crackedgames.craftics.combat.CombatPhase.GAME_OVER);
                 if (inCombat && !alreadyDecided && !ctx.getSource().hasPermissionLevel(2)) {
                     ctx.getSource().sendError(Text.literal(
-                        "§cYou can't use §e/home§c during combat."));
+                        "§cYou can't use §e" + homeCommandLabel() + "§c during combat."));
                     return 0;
                 }
 
@@ -2868,9 +3026,10 @@ public class CrafticsMod implements ModInitializer {
                 });
                 return 1;
             });
-            dispatcher.register(CommandManager.literal("home").executes(shortcutHomeCmd));
+            // /craftics home always exists: it is namespaced, so nothing can take it.
             dispatcher.register(CommandManager.literal("craftics").then(
                 CommandManager.literal("home").executes(shortcutHomeCmd)));
+            registerHomeAlias(dispatcher, shortcutHomeCmd);
 
             // /craftics dev_arena: test arena with every obstacle type
             dispatcher.register(CommandManager.literal("craftics").then(

@@ -41,13 +41,42 @@ public final class CompatRegistrations {
      * "already registered" flag and on whether the mod it targets is present at all.
      */
     public static void registerAllDeferred() {
-        com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
-        com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
-        com.crackedgames.craftics.compat.instruments.InstrumentsCompat.registerDeferred();
-        com.crackedgames.craftics.compat.paladins.PaladinsCompat.registerDeferred();
-        com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.registerDeferred();
-        com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.registerDeferred();
-        com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.registerDeferred();
-        com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.registerDeferred();
+        run("copper age", com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat::registerDeferred);
+        run("basic weapons", com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat::registerDeferred);
+        run("instruments", com.crackedgames.craftics.compat.instruments.InstrumentsCompat::registerDeferred);
+        run("paladins", com.crackedgames.craftics.compat.paladins.PaladinsCompat::registerDeferred);
+        run("simply swords", com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat::registerDeferred);
+        run("immersive armors", com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat::registerDeferred);
+        run("simply bows", com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat::registerDeferred);
+        run("deeper and darker", com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat::registerDeferred);
     }
+
+    /**
+     * Run one compat's registration, and let the others run whatever it does.
+     *
+     * <p>Without this the list is only as good as its unluckiest member: these resolve items
+     * out of another mod's registry, and a mod that renamed an id between versions turns a
+     * lookup into a throw. One throw here used to take out every compat listed after it, so a
+     * bad id in an early module made unrelated mods' weapons lose their stats - and because
+     * this also runs from the tooltip render, it would keep doing so on every frame the player
+     * hovered anything.
+     *
+     * <p>Logged once per compat rather than per attempt: this is called from a render path, and
+     * a per-frame stack trace is its own kind of broken.
+     */
+    private static void run(String name, Runnable registration) {
+        if (FAILED.contains(name)) return;
+        try {
+            registration.run();
+        } catch (Throwable t) {
+            FAILED.add(name);
+            com.crackedgames.craftics.CrafticsMod.LOGGER.error(
+                "[Craftics] compat registration for {} failed - its items will have no Craftics "
+                + "stats, but every other compat is unaffected", name, t);
+        }
+    }
+
+    /** Compats whose registration threw. Kept so the failure is reported once, not per frame. */
+    private static final java.util.Set<String> FAILED =
+        java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 }

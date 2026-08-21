@@ -26,8 +26,14 @@ import net.minecraft.world.World;
  * are exempt so the lobby can still be built and edited in place.
  *
  * <p>Lootbox kiosks are the one interaction that must still work here - they live in the lobby
- * and are the whole point of the room - so their own use handler runs first and returns
- * SUCCESS, which stops the event before this ever sees it.
+ * and are the whole point of the room - so {@link #isProtected} exempts a registered kiosk
+ * outright.
+ *
+ * <p>That exemption used to be implicit: the lootbox handler registers first, returns SUCCESS,
+ * and the event never reaches this class. True, but only as long as nobody reorders two
+ * {@code init()} calls in a file neither of them lives in, and invisible from here. Naming the
+ * exemption where the denial is decided makes it survive that, and makes the intent readable
+ * without having to know the registration order of a Fabric event.
  */
 public final class LobbyProtection {
 
@@ -81,6 +87,10 @@ public final class LobbyProtection {
         // Lobby only ever exists in the overworld - islands have their own protection.
         if (sw.getServer() == null || sw != sw.getServer().getOverworld()) return false;
 
+        // A lootbox kiosk is the room's whole purpose. Never deny a click on one, whatever
+        // order the use handlers happen to run in.
+        if (CrafticsSavedData.get(sw).getLootboxChestType(sw, pos) != null) return false;
+
         BlockPos spawn = CrafticsSavedData.get(sw).getLobbySpawn();
         if (spawn == null) return false;   // no lobby configured: nothing to protect
         if (Math.abs(pos.getY() - spawn.getY()) > HEIGHT) return false;
@@ -96,7 +106,8 @@ public final class LobbyProtection {
             Long last = LAST_TOLD.get(sp.getUuid());
             if (last == null || now - last > TELL_COOLDOWN_MS) {
                 LAST_TOLD.put(sp.getUuid(), now);
-                sp.sendMessage(Text.literal("§cThe lobby is protected. §7Use §e/home§7 for your own island."), true);
+                sp.sendMessage(Text.literal("§cThe lobby is protected. §7Use §e"
+                    + CrafticsMod.homeCommandLabel() + "§7 for your own island."), true);
             }
         }
         return true;

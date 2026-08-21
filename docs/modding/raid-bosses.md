@@ -228,7 +228,7 @@ Registered both as its own root (`/raidboss ...`) and under `/craftics raidboss 
 | `/raidboss info` | Reports the open window and its countdown, or that a boss has been announced and is on its way, or the next scheduled slot and countdown to it. |
 | `/raidboss list` | Lists every loaded raid boss's id and name. |
 
-Join can be refused: already joined, mid-biome-run or mid-combat ("finish your run"), visiting another island's dimension, or every raid arena being full (`raidBossMaxInstances` x 8 total joiners across all open instances).
+Join can be refused: already joined, mid-combat or mid-event ("finish your run" - a run merely PAUSED in the hub between levels does not count, since nothing a player can do from there would clear it), visiting another island's dimension, or every raid arena being full (`raidBossMaxInstances` x 8 total joiners across all open instances).
 
 ### Admin (permission level 2)
 

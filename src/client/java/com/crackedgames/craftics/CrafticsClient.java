@@ -53,6 +53,8 @@ public class CrafticsClient implements ClientModInitializer {
     private static KeyBinding clearPartyKey;
     private static KeyBinding mountAbilityKey;
     private static KeyBinding threatOverlayKey;
+    private static KeyBinding focusSelfKey;
+    private static KeyBinding pingKey;
 
     /**
      * Every keybind Craftics registers, in one place.
@@ -66,7 +68,8 @@ public class CrafticsClient implements ClientModInitializer {
     private static KeyBinding[] allCrafticsKeys() {
         return new KeyBinding[] {
             guideBookKey, respecKey, endTurnKey, affinityRespecKey, toggleUiKey,
-            moveSlotLeftKey, moveSlotRightKey, clearPartyKey, mountAbilityKey, threatOverlayKey
+            moveSlotLeftKey, moveSlotRightKey, clearPartyKey, mountAbilityKey, threatOverlayKey,
+            focusSelfKey, pingKey
         };
     }
 
@@ -424,6 +427,8 @@ public class CrafticsClient implements ClientModInitializer {
                 com.crackedgames.craftics.client.ArenaFxRenderer.reset();
                 com.crackedgames.craftics.client.ArenaAmbientFx.reset();
                 com.crackedgames.craftics.client.vfx.EntityBounceState.clear();
+                com.crackedgames.craftics.client.ping.PingState.clear();
+                com.crackedgames.craftics.client.ping.PingWheel.close();
                 context.client().options.getBobView().setValue(previousBobView);
                 context.client().options.getChatScale().setValue(previousChatScale);
                 context.client().options.getChatWidth().setValue(previousChatWidth);
@@ -720,6 +725,24 @@ public class CrafticsClient implements ClientModInitializer {
                 });
             });
 
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.TeammatePingPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    com.crackedgames.craftics.core.PingType type =
+                        com.crackedgames.craftics.core.PingType.byId(payload.type());
+                    com.crackedgames.craftics.client.ping.PingState.put(
+                        payload.playerUuid(), payload.playerName(),
+                        payload.gridX(), payload.gridZ(), type);
+                    // Skip the log line for your own ping: you know what you just sent, and
+                    // reading it back is noise in the one place combat text is scarce.
+                    if (context.client().player == null
+                            || !payload.playerUuid().equals(context.client().player.getUuid())) {
+                        com.crackedgames.craftics.client.ping.PingWheel.logIncoming(
+                            payload.playerName(), type);
+                    }
+                });
+            });
+
         guideBookKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key.craftics.guide_book",
             InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_G,
@@ -780,6 +803,29 @@ public class CrafticsClient implements ClientModInitializer {
             KEYBIND_CATEGORY
         ));
 
+        // X rather than the more obvious C. The conflict resolver below unbinds any other mod
+        // that shares a Craftics key, and C is what most zoom mods bind by default - taking a
+        // popular mod's zoom key away on first launch is a poor greeting for a convenience
+        // keybind. X is free in vanilla, and sits next to the ping key so the two camera and
+        // comms actions are one finger apart.
+        focusSelfKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.focus_self",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_X,
+            KEYBIND_CATEGORY
+        ));
+
+        // Held, not tapped: the wheel is open for as long as the key is down.
+        //
+        // Deliberately NOT the middle mouse button, which would be the natural home for a ping
+        // wheel in most games. Here it already drags the tactical camera, and the two cannot
+        // share it: opening a radial menu and panning are both "hold and move", so binding the
+        // ping there does not add a control, it replaces one.
+        pingKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.ping",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_Z,
+            KEYBIND_CATEGORY
+        ));
+
         CombatAnimations.register();
 
         ClientPlayNetworking.registerGlobalReceiver(
@@ -800,6 +846,15 @@ public class CrafticsClient implements ClientModInitializer {
             com.crackedgames.craftics.network.GuideBookSyncPayload.ID, (payload, context) -> {
                 context.client().execute(() ->
                     com.crackedgames.craftics.client.guide.GuideBookData.applySyncFromServer(payload.unlockedEntries()));
+            }
+        );
+
+        // The biome atlas: the guide book's Biome Atlas category is built entirely from this,
+        // so a server that never sends it simply has no such category rather than an empty one.
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.BiomeAtlasPayload.ID, (payload, context) -> {
+                context.client().execute(() ->
+                    com.crackedgames.craftics.client.guide.BiomeAtlasData.apply(payload.encoded()));
             }
         );
 
@@ -848,6 +903,7 @@ public class CrafticsClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register(new RaidBossToast());
         HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.music.MusicToast());
         HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.hints.HintHudRenderer());
+        HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.ping.PingWheel());
         CombatTooltips.register();
         TileOverlayRenderer.register();
         // Stylized cloud sea around arenas/scenes. Registered after the tile overlay so its
@@ -862,6 +918,7 @@ public class CrafticsClient implements ClientModInitializer {
         com.crackedgames.craftics.client.InfiniteClassScreen.register();
         com.crackedgames.craftics.client.vfx.EntityFloatTracker.register();
         com.crackedgames.craftics.client.HoverTargetArrowRenderer.register();
+        com.crackedgames.craftics.client.ping.PingBeaconRenderer.register();
 
         // Client-side deferred compat registration. A multiplayer client never sees
         // ServerLifecycleEvents, but its tooltips still need WeaponRegistry populated -
@@ -934,6 +991,8 @@ public class CrafticsClient implements ClientModInitializer {
             com.crackedgames.craftics.client.TransitionOverlay.reset();
             com.crackedgames.craftics.client.guide.GuideBookData.resetToDefaults();
             com.crackedgames.craftics.client.PartyLabelRenderer.clear();
+            com.crackedgames.craftics.client.ping.PingState.clear();
+            com.crackedgames.craftics.client.ping.PingWheel.close();
             // Parked barter-stepper context and live bounce offsets are session
             // state: a disconnect mid-barter/mid-fight must not carry them into
             // the next world (a stale stepper would hijack unrelated dialogues).
@@ -1085,6 +1144,27 @@ public class CrafticsClient implements ClientModInitializer {
                         : "§7Enemy threat ranges hidden");
                 }
             }
+
+            while (focusSelfKey.wasPressed()) {
+                // Works in scenes as well as fights - a merchant hall is exactly the place to
+                // lose your own character behind a booth.
+                if (client.currentScreen == null) {
+                    if (CombatState.centerOnSelf()) {
+                        com.crackedgames.craftics.client.CombatLog.addMessage("§7Camera centered");
+                    }
+                }
+            }
+
+            // The ping wheel is held rather than tapped, so it is driven by the live key state
+            // instead of the press queue. The queue still has to be drained or its press count
+            // climbs for the whole session.
+            while (pingKey.wasPressed()) { /* consumed by the hold handling below */ }
+            if (pingKey.isPressed()) {
+                com.crackedgames.craftics.client.ping.PingWheel.tryOpen();
+            } else if (com.crackedgames.craftics.client.ping.PingWheel.isOpen()) {
+                com.crackedgames.craftics.client.ping.PingWheel.closeAndSend();
+            }
+            com.crackedgames.craftics.client.ping.PingWheel.tick();
 
             while (clearPartyKey.wasPressed()) {
                 // Hub-only: clear the whole battle party. Server re-checks the

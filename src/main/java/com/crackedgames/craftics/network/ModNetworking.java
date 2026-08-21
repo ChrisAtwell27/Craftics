@@ -49,6 +49,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(TileSetPayload.ID, TileSetPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TileFlashPayload.ID, TileFlashPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TeammateHoverPayload.ID, TeammateHoverPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(TeammatePingPayload.ID, TeammatePingPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(DialoguePayload.ID, DialoguePayload.CODEC);
         PayloadTypeRegistry.playS2C().register(EnterEventCinematicPayload.ID, EnterEventCinematicPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(ExitEventCinematicPayload.ID, ExitEventCinematicPayload.CODEC);
@@ -56,6 +57,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(AchievementUnlockPayload.ID, AchievementUnlockPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(RaidBossToastPayload.ID, RaidBossToastPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(GuideBookSyncPayload.ID, GuideBookSyncPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(BiomeAtlasPayload.ID, BiomeAtlasPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(AddonBonusSyncPayload.ID, AddonBonusSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(LoadingScreenPayload.ID, LoadingScreenPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(CombatIntroPayload.ID, CombatIntroPayload.CODEC);
@@ -70,6 +72,7 @@ public class ModNetworking {
 
         // Register C2S hover update
         PayloadTypeRegistry.playC2S().register(HoverUpdatePayload.ID, HoverUpdatePayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(PingPayload.ID, PingPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(RunInviteResponsePayload.ID, RunInviteResponsePayload.CODEC);
 
         // Handle "start level" - starts a biome run by biome ID
@@ -475,6 +478,14 @@ public class ModNetworking {
                     ));
                 }
             }
+        });
+
+        // Co-op pings. Unlike hover - which is a passive "my cursor is here" and so is only
+        // worth relaying to a real party - a ping is a deliberate act and always comes back to
+        // its sender, so a solo player pressing the key still sees something happen.
+        ServerPlayNetworking.registerGlobalReceiver(PingPayload.ID, (payload, context) -> {
+            com.crackedgames.craftics.combat.PingRelay.handle(
+                context.player(), payload.gridX(), payload.gridZ(), payload.type());
         });
     }
 

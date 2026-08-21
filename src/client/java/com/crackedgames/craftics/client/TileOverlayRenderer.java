@@ -85,8 +85,12 @@ public class TileOverlayRenderer {
      * (solid) block gives a Y+1 platform (ELEVATED), anything else is the
      * flat floor. Without this, highlights drawn at a flat originY+1.01 sink
      * inside ELEVATED blocks and slip under STAIR slopes.
+     *
+     * <p>Public because the ping beacon has to start its pillar on the same surface these
+     * highlights sit on. Duplicating the rule there would mean two answers for one question,
+     * and the next stair/slab/snow case would be fixed in only one of them.
      */
-    private static float tileRenderY(net.minecraft.client.world.ClientWorld world,
+    public static float tileRenderY(net.minecraft.client.world.ClientWorld world,
                                       int originX, int originY, int originZ,
                                       int tileX, int tileZ) {
         if (world == null) return originY + 1.01f;

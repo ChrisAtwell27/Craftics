@@ -510,8 +510,49 @@ public final class SceneController {
                 openBooth(player, fBooth);
             });
         } else {
+            // Refuse a walk to a column with no floor in it.
+            //
+            // The bounds check above only says the tile is inside the scene's footprint
+            // RECTANGLE, and a village is not a rectangle: its edges are walled with barriers
+            // so nobody falls off (see buildScene), and the cursor raycast happily hits those.
+            // Clicking one produced a tile that passed the bounds check and had nothing to
+            // stand on - so the walk lerped the player through the wall, terrainStandY found
+            // no floor and fell back to "keep the Y you had", and they arrived hovering over
+            // the void and dropped out of the world. That is the invisible block that throws
+            // you off the map; it is a barrier doing its job, being clicked through.
+            //
+            // Silence is the right response to clicking a wall. There is nothing to say.
+            if (standableYNear(wx, wz) == NOT_STANDABLE) return;
             walkTo(player, wx + 0.5, wz + 0.5, null);
         }
+    }
+
+    /** Returned by {@link #standableYNear} when a column holds nowhere to put a player. */
+    private static final int NOT_STANDABLE = Integer.MIN_VALUE;
+
+    /**
+     * The Y a player would stand at in this column, or {@link #NOT_STANDABLE}.
+     *
+     * <p>Searched around the scene's own floor level rather than around the player, because
+     * this answers "is that place real" before any walk starts - unlike {@link #terrainStandY},
+     * which smooths a walk already in progress and is right to fall back to the current Y
+     * mid-stride.
+     */
+    private int standableYNear(int bx, int bz) {
+        int base = (int) Math.floor(layout.spawnY());
+        // A village has steps and cellars but is not a tower: a few blocks either way covers
+        // every real floor and refuses anything that is only reachable by falling.
+        for (int dy = 3; dy >= -4; dy--) {
+            BlockPos feet = new BlockPos(bx, base + dy, bz);
+            boolean groundBelow = !world.getBlockState(feet.down())
+                .getCollisionShape(world, feet.down()).isEmpty();
+            boolean feetFree = world.getBlockState(feet)
+                .getCollisionShape(world, feet).isEmpty();
+            boolean headFree = world.getBlockState(feet.up())
+                .getCollisionShape(world, feet.up()).isEmpty();
+            if (groundBelow && feetFree && headFree) return base + dy;
+        }
+        return NOT_STANDABLE;
     }
 
     private void walkTo(ServerPlayerEntity player, double ex, double ez, Runnable onArrive) {
