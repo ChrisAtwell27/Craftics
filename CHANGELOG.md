@@ -15,6 +15,8 @@ Biome Pages Explain Their Level 4
 - Read straight from the mechanic registry on the client rather than synced, since the mechanics register in the mod's main entrypoint and the client already has them. A synced copy would be a second version of the same sentence waiting to disagree
 - The page shows the line under exactly the condition the game uses to run the encounter - a registered mechanic on a biome long enough to have a level 4 - so a biome can never advertise a set piece it does not have
 - An addon's own mechanic simply gets no line unless it writes one
+- **The biome's weather is explained too**, not just named. "Sculk Sensors from level 1" named the thing about to blind your party and said nothing about the Swift Sneak boots that prevent it or the pickaxe that removes it. All eight weather layers now describe themselves the same way the encounters do
+- That also gives the Deep Dark a special condition to show. It is the one biome with no level-4 encounter, so its sensors are the whole of what makes it different
 
 Co-op Pings
 
