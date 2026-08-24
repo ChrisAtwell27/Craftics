@@ -566,6 +566,8 @@ public class CrafticsClient implements ClientModInitializer {
                         com.crackedgames.craftics.network.DialoguePayload.decodeChoiceLabels(payload.choices());
                     java.util.List<String> actions =
                         com.crackedgames.craftics.network.DialoguePayload.decodeChoiceActions(payload.choices());
+                    java.util.List<String> tooltips =
+                        com.crackedgames.craftics.network.DialoguePayload.decodeChoiceTooltips(payload.choices());
                     // If a transition fade is still holding from the last screen
                     // (e.g. the Continue button on the post-battle screen), reveal
                     // the dialogue. Otherwise events like the trial intro sit
@@ -577,7 +579,7 @@ public class CrafticsClient implements ClientModInitializer {
                     if (prev instanceof com.crackedgames.craftics.client.DialogueScreen ds) ds.markSuperseded();
                     else if (prev instanceof com.crackedgames.craftics.client.RewardRevealScreen rr) rr.markSuperseded();
                     context.client().setScreen(new com.crackedgames.craftics.client.DialogueScreen(
-                        payload.speaker(), lines, labels, actions, payload.background()));
+                        payload.speaker(), lines, labels, actions, payload.background(), tooltips));
                 });
             }
         );

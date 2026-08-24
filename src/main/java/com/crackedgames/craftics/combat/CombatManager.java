@@ -30288,6 +30288,21 @@ public class CombatManager {
     // Per-player event tracking. Each player gets their own chance to participate.
     private final java.util.Set<java.util.UUID> eventPendingPlayers = new java.util.HashSet<>();
     private final java.util.Map<java.util.UUID, java.util.List<int[]>> perPlayerEnchanterSlots = new java.util.HashMap<>();
+
+    /**
+     * A decided enchanter outcome, plus the shortlist the player was shown for it.
+     *
+     * <p>The roll happens when the offer is made, not when it is accepted. That ordering is the
+     * whole feature: the shortlist has to be able to promise that the real result is on it, and a
+     * list built before the dice are thrown can only guess.
+     */
+    private record EnchanterRoll(boolean trim, String key, String material, int level,
+                                 java.util.List<String> shortlist) {}
+
+    /** Player to slotId to the outcome waiting for them there. */
+    private final java.util.Map<java.util.UUID, java.util.Map<Integer, EnchanterRoll>>
+        perPlayerEnchanterRolls = new java.util.HashMap<>();
+
     private final java.util.Set<java.util.UUID> traderPendingPlayers = new java.util.HashSet<>();
 
     // ---- Event cinematic (dialogue intro walk-up) ----
@@ -31449,6 +31464,7 @@ public class CombatManager {
 
         eventPendingPlayers.clear();
         perPlayerEnchanterSlots.clear();
+        perPlayerEnchanterRolls.clear();
         for (ServerPlayerEntity p : members) {
             eventPendingPlayers.add(p.getUuid());
         }
@@ -31502,7 +31518,11 @@ public class CombatManager {
         // this list (filtered by category) so the player sees current names.
         java.util.Random rng = new java.util.Random();
         for (ServerPlayerEntity p : members) {
-            perPlayerEnchanterSlots.put(p.getUuid(), buildEnchanterSlotsFor(p, rng));
+            java.util.List<int[]> offered = buildEnchanterSlotsFor(p, rng);
+            perPlayerEnchanterSlots.put(p.getUuid(), offered);
+            // Decide every outcome now, while the offer is being built, so the shortlist shown on
+            // hover can contain the truth rather than a guess at it.
+            perPlayerEnchanterRolls.put(p.getUuid(), rollEnchanterOutcomes(p, offered, rng));
         }
 
         java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
@@ -31629,6 +31649,116 @@ public class CombatManager {
         return playerSlots;
     }
 
+    /**
+     * Decide, up front, what each offered slot will turn into, and build the shortlist shown for
+     * it.
+     *
+     * <p>Decoys come from the same pool the real roll came from, so they are all outcomes that
+     * genuinely could have happened. A shortlist padded with impossible entries would be worse
+     * than none: the player would learn to spot the real one by elimination, and the warning that
+     * Dull is on the table would stop landing.
+     */
+    private java.util.Map<Integer, EnchanterRoll> rollEnchanterOutcomes(
+            ServerPlayerEntity p, java.util.List<int[]> slots, java.util.Random rng) {
+        java.util.Map<Integer, EnchanterRoll> out = new java.util.HashMap<>();
+        ServerWorld world = (ServerWorld) p.getEntityWorld();
+        for (int[] slot : slots) {
+            int slotId = slot[0];
+            boolean isArmor = slot[1] == 1;
+            int mode = slot.length > 2 ? slot[2] : 0;
+            ItemStack stack = lookupEnchanterStack(p, slotId);
+            if (stack.isEmpty()) continue;
+            out.put(slotId, isArmor && mode == 1
+                ? rollTrim(rng)
+                : rollEnchant(world, stack, isArmor, slotId, rng));
+        }
+        return out;
+    }
+
+    private EnchanterRoll rollTrim(java.util.Random rng) {
+        String pattern = TRIM_PATTERNS[rng.nextInt(TRIM_PATTERNS.length)];
+        String material = TRIM_MATERIALS[rng.nextInt(TRIM_MATERIALS.length)];
+        String real = com.crackedgames.craftics.combat.EnchanterPreview.trimLabel(pattern, material);
+        java.util.List<String> pool = new java.util.ArrayList<>();
+        // A handful of other pattern/material pairs, drawn the same way the real one was.
+        for (int i = 0; i < 8; i++) {
+            pool.add(com.crackedgames.craftics.combat.EnchanterPreview.trimLabel(
+                TRIM_PATTERNS[rng.nextInt(TRIM_PATTERNS.length)],
+                TRIM_MATERIALS[rng.nextInt(TRIM_MATERIALS.length)]));
+        }
+        return new EnchanterRoll(true, pattern, material, 0,
+            com.crackedgames.craftics.combat.EnchanterPreview.shortlist(real, pool, rng.nextLong()));
+    }
+
+    private EnchanterRoll rollEnchant(ServerWorld world, ItemStack stack, boolean isArmor,
+                                      int slotId, java.util.Random rng) {
+        String[] keys = isArmor
+            ? getValidArmorEnchants(armorSlotFor(slotId))
+            : getValidWeaponEnchants(stack);
+        if (keys.length == 0) keys = new String[]{"unbreaking"};
+
+        String chosenKey = keys[rng.nextInt(keys.length)];
+        int level = clampEnchantLevel(world, chosenKey, 1 + rng.nextInt(3));
+        String real = com.crackedgames.craftics.combat.EnchanterPreview.label(chosenKey, level);
+
+        // Every other enchant this item could have received, each at a level it could have rolled.
+        java.util.List<String> pool = new java.util.ArrayList<>();
+        for (String key : keys) {
+            if (key.equals(chosenKey)) continue;
+            pool.add(com.crackedgames.craftics.combat.EnchanterPreview.label(
+                key, clampEnchantLevel(world, key, 1 + rng.nextInt(3))));
+        }
+        return new EnchanterRoll(false, chosenKey, null, level,
+            com.crackedgames.craftics.combat.EnchanterPreview.shortlist(real, pool, rng.nextLong()));
+    }
+
+    /** Armor inventory index to slot: 0=feet, 1=legs, 2=chest, 3=head. */
+    private static net.minecraft.entity.EquipmentSlot armorSlotFor(int slotId) {
+        return switch (slotId - 100) {
+            case 0 -> net.minecraft.entity.EquipmentSlot.FEET;
+            case 1 -> net.minecraft.entity.EquipmentSlot.LEGS;
+            case 2 -> net.minecraft.entity.EquipmentSlot.CHEST;
+            case 3 -> net.minecraft.entity.EquipmentSlot.HEAD;
+            default -> net.minecraft.entity.EquipmentSlot.CHEST;
+        };
+    }
+
+    /** Hold a 1-3 roll to the enchantment's real maximum, so no shortlist advertises Mending II. */
+    private static int clampEnchantLevel(ServerWorld world, String key, int level) {
+        var entry = lookupEnchantEntry(world, key);
+        return entry == null ? level : Math.min(level, entry.value().getMaxLevel());
+    }
+
+    private static net.minecraft.registry.entry.RegistryEntry<net.minecraft.enchantment.Enchantment>
+            lookupEnchantEntry(ServerWorld world, String key) {
+        //? if <=1.21.1 {
+        var registry = world.getRegistryManager()
+            .get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        //?} else {
+        /*var registry = world.getRegistryManager()
+            .getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        *///?}
+        return registry.streamEntries()
+            .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(key))
+            .findFirst().map(e -> (net.minecraft.registry.entry.RegistryEntry<net.minecraft.enchantment.Enchantment>) e)
+            .orElse(null);
+    }
+
+    /** The hover text for one offered slot: what it might turn out to be, one of them true. */
+    private String enchanterShortlistTooltip(ServerPlayerEntity p, int slotId) {
+        java.util.Map<Integer, EnchanterRoll> rolls = perPlayerEnchanterRolls.get(p.getUuid());
+        EnchanterRoll roll = rolls == null ? null : rolls.get(slotId);
+        if (roll == null || roll.shortlist().isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("\u00a77Possible outcomes:");
+        for (String option : roll.shortlist()) {
+            sb.append(com.crackedgames.craftics.network.DialoguePayload.TOOLTIP_LINE)
+              .append("\u00a7f  ").append(option);
+        }
+        sb.append(com.crackedgames.craftics.network.DialoguePayload.TOOLTIP_LINE)
+          .append("\u00a78Only one of these is real.");
+        return sb.toString();
+    }
+
     /** Step-2 weapon-select dialogue: one choice per eligible weapon the player
      *  is carrying, plus a Back choice. Falls back to a "no weapons" line with
      *  only Back when the player has nothing valid. */
@@ -31641,13 +31771,15 @@ public class CombatManager {
             ItemStack stack = lookupEnchanterStack(p, slot[0]);
             if (stack.isEmpty()) continue;
             choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
-                stack.getName().getString(), "enchanter:pick:" + slot[0]));
+                stack.getName().getString(), "enchanter:pick:" + slot[0],
+                enchanterShortlistTooltip(p, slot[0])));
             if (++added >= 5) break; // soft cap to avoid wrapping into too many rows
         }
         choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice("Back", "enchanter:back"));
         java.util.List<String> lines = added == 0
             ? java.util.List.of("\"You carry no weapon I can enchant.\"")
-            : java.util.List.of("\"Which weapon shall I enchant?\"");
+            : java.util.List.of("\"Which weapon shall I enchant?\"",
+                                "\"Hover, and I will tell you what the runes might hold.\"");
         return new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
             "craftics:enchanter_weapons", "minecraft:villager", "enchanter_weapons",
             lines, choices);
@@ -31667,13 +31799,14 @@ public class CombatManager {
             String hint = mode == 1 ? "\u00a7b+Trim" : "\u00a7d+Enchant";
             String label = stack.getName().getString() + " " + hint;
             choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
-                label, "enchanter:pick:" + slot[0]));
+                label, "enchanter:pick:" + slot[0], enchanterShortlistTooltip(p, slot[0])));
             added++;
         }
         choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice("Back", "enchanter:back"));
         java.util.List<String> lines = added == 0
             ? java.util.List.of("\"You wear no armor I can touch.\"")
-            : java.util.List.of("\"Which piece shall I enhance?\"");
+            : java.util.List.of("\"Which piece shall I enhance?\"",
+                                "\"Hover, and I will tell you what the runes might hold.\"");
         return new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
             "craftics:enchanter_armor", "minecraft:villager", "enchanter_armor",
             lines, choices);
@@ -31701,7 +31834,16 @@ public class CombatManager {
     }
 
     /** Apply a random enhancement based on offer type (armor can be trim or enchant). */
-    private void applyRandomEnhancement(ServerPlayerEntity player, int slotId, boolean isArmor, int armorEnhancementMode) {
+    /**
+     * Apply the outcome decided when the offer was made.
+     *
+     * <p>{@code decided} may be null - a slot that appeared after the roll, or an item swapped
+     * mid-dialogue - in which case this rolls fresh. That path shows no shortlist either, so the
+     * two never disagree: the player is never promised a set of outcomes and then handed one that
+     * was not in it.
+     */
+    private void applyRandomEnhancement(ServerPlayerEntity player, int slotId, boolean isArmor,
+                                        int armorEnhancementMode, EnchanterRoll decided) {
         java.util.Random rng = new java.util.Random();
         ItemStack stack;
         if (slotId >= 100) {
@@ -31723,12 +31865,10 @@ public class CombatManager {
         boolean applyTrim = isArmor && armorEnhancementMode == 1;
         if (applyTrim) {
             // Add a random trim (pattern + material)
-            String[] patterns = {"sentry", "dune", "coast", "wild", "ward", "eye", "vex", "tide",
-                "snout", "rib", "spire", "wayfinder", "shaper", "silence", "raiser", "host", "flow", "bolt"};
-            String[] materials = {"iron", "copper", "gold", "lapis", "emerald", "diamond", "netherite",
-                "redstone", "amethyst", "quartz", "resin"};
-            String pattern = patterns[rng.nextInt(patterns.length)];
-            String material = materials[rng.nextInt(materials.length)];
+            String pattern = decided != null && decided.trim()
+                ? decided.key() : TRIM_PATTERNS[rng.nextInt(TRIM_PATTERNS.length)];
+            String material = decided != null && decided.trim()
+                ? decided.material() : TRIM_MATERIALS[rng.nextInt(TRIM_MATERIALS.length)];
 
             // Apply trim via ArmorTrim component
             //? if <=1.21.1 {
@@ -31787,8 +31927,10 @@ public class CombatManager {
                 enchantKeys = getValidWeaponEnchants(stack);
             }
             if (enchantKeys.length == 0) enchantKeys = new String[]{"unbreaking"};
-            String chosenKey = enchantKeys[rng.nextInt(enchantKeys.length)];
-            int level = 1 + rng.nextInt(3); // level 1-3
+            boolean usePreRolled = decided != null && !decided.trim();
+            String chosenKey = usePreRolled
+                ? decided.key() : enchantKeys[rng.nextInt(enchantKeys.length)];
+            int level = usePreRolled ? decided.level() : 1 + rng.nextInt(3); // level 1-3
 
             //? if <=1.21.1 {
             var enchantRegistry = world.getRegistryManager()
@@ -32582,11 +32724,16 @@ public class CombatManager {
         if (def == null) return;
         java.util.List<String> labels = new java.util.ArrayList<>();
         java.util.List<String> actions = new java.util.ArrayList<>();
-        for (var ch : def.choices()) { labels.add(ch.label()); actions.add(ch.action()); }
+        java.util.List<String> tooltips = new java.util.ArrayList<>();
+        for (var ch : def.choices()) {
+            labels.add(ch.label());
+            actions.add(ch.action());
+            tooltips.add(ch.tooltip());
+        }
         ServerPlayNetworking.send(player, new com.crackedgames.craftics.network.DialoguePayload(
             def.speaker(),
             com.crackedgames.craftics.network.DialoguePayload.encodeLines(def.lines()),
-            com.crackedgames.craftics.network.DialoguePayload.encodeChoices(labels, actions),
+            com.crackedgames.craftics.network.DialoguePayload.encodeChoices(labels, actions, tooltips),
             background));
     }
 
@@ -33569,7 +33716,10 @@ public class CombatManager {
         }
         boolean isArmor = chosen[1] == 1;
         int armorEnhancementMode = chosen.length > 2 ? chosen[2] : 1;
-        applyRandomEnhancement(player, chosen[0], isArmor, armorEnhancementMode);
+        java.util.Map<Integer, EnchanterRoll> playerRolls =
+            perPlayerEnchanterRolls.get(player.getUuid());
+        applyRandomEnhancement(player, chosen[0], isArmor, armorEnhancementMode,
+            playerRolls == null ? null : playerRolls.get(chosen[0]));
 
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         BlockPos enchanterOrigin = getEventRoomOrigin(player);

@@ -19,6 +19,13 @@ Backpacked Compatibility
 - Unstackable rewards go in too - a sword that will not fit is exactly what a backpack is for
 - Reached entirely by reflection with no compile-time dependency, so Craftics builds and runs with Backpacked absent, and every failure path degrades to "no backpack" rather than breaking loot delivery
 
+The Enchanter Tells You What Might Happen
+
+- Hovering a weapon or armor piece at the enchanter now lists a few things the enhancement could turn out to be. One of them is what you will actually get
+- The enchanter was a blind roll, so getting Dull or Hilt back on a good weapon felt like the game had cheated rather than like a gamble that went badly. Nothing had ever told you a bad outcome was on the table. Seeing Dull sitting among the possibilities before you commit makes the same result read as a bet you took
+- The decoys are drawn from the same pool the real result came from, so every option shown is something that genuinely could have happened. Padding the list with impossible entries would let you find the real one by elimination
+- The roll is decided when the offer is made rather than when you accept, so the list can promise the truth is on it instead of guessing at a roll that has not happened yet. Where the position of the real entry is concerned, it lands anywhere in the list, since always-first or always-last would spoil the roll rather than warn about it
+
 Infinite Arrows on Aimed Shots
 
 - Fixed a bow never running out of ammunition for a player carrying only tipped or spectral arrows. Every "you need arrows" check in the mod counts all three arrow types, but the routine that actually spends one could only find plain arrows, so on any shot that does not resolve tipped and spectral arrows itself the check passed and nothing was paid

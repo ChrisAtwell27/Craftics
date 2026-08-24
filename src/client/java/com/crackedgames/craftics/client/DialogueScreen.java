@@ -33,6 +33,11 @@ public class DialogueScreen extends Screen {
     private final List<String> lines;
     private final List<String> choiceLabels;
     private final List<String> choiceActions;
+    /** Optional hover text per choice, newline-separated. Empty entries render nothing. */
+    private final List<String> choiceTooltips;
+    /** Screen rects of the choice buttons, parallel to choiceLabels, rebuilt with them.
+     *  Kept because a tooltip has to be drawn AFTER every widget, not by the button itself. */
+    private final List<int[]> choiceRects = new java.util.ArrayList<>();
     /** Server-declared backdrop mode (DialoguePayload.BG_*). */
     private final int background;
 
@@ -82,11 +87,18 @@ public class DialogueScreen extends Screen {
     public DialogueScreen(String speakerId, List<String> lines,
                           List<String> choiceLabels, List<String> choiceActions,
                           int background) {
+        this(speakerId, lines, choiceLabels, choiceActions, background, List.of());
+    }
+
+    public DialogueScreen(String speakerId, List<String> lines,
+                          List<String> choiceLabels, List<String> choiceActions,
+                          int background, List<String> choiceTooltips) {
         super(Text.literal("Dialogue"));
         this.speakerId = speakerId;
         this.lines = lines;
         this.choiceLabels = choiceLabels;
         this.choiceActions = choiceActions;
+        this.choiceTooltips = choiceTooltips == null ? List.of() : choiceTooltips;
         this.background = background;
         // A dialogue with no lines is still "complete" so choices show immediately.
         if (lines.isEmpty()) {
@@ -242,6 +254,7 @@ public class DialogueScreen extends Screen {
 
     private void rebuildChoices() {
         this.clearChildren();
+        choiceRects.clear();
         // The barter stepper is independent of the typewriter/choice state: it must
         // survive every children rebuild (typewriter skip, line advance, last-line
         // completion), so re-add it on each rebuild while a barter is active.
@@ -271,6 +284,7 @@ public class DialogueScreen extends Screen {
             this.addDrawableChild(GuideButton.of(x, y, btnW, 20,
                 Text.literal(choiceLabels.get(i)),
                 b -> choose(action)));
+            choiceRects.add(new int[]{x, y, btnW, 20});
         }
     }
 
@@ -495,6 +509,33 @@ public class DialogueScreen extends Screen {
 
         if (barterActive) {
             renderBarterStepper(ctx);
+        }
+
+        renderChoiceTooltip(ctx, mouseX, mouseY);
+    }
+
+    /**
+     * Hover text for the choice under the cursor.
+     *
+     * <p>Drawn last, from the screen rather than the button, because a tooltip has to sit above
+     * every other widget - a button drawing its own would be painted over by the next button in
+     * the row.
+     */
+    private void renderChoiceTooltip(DrawContext ctx, int mouseX, int mouseY) {
+        if (choiceTooltips.isEmpty() || choiceRects.isEmpty()) return;
+        for (int i = 0; i < choiceRects.size() && i < choiceTooltips.size(); i++) {
+            String tip = choiceTooltips.get(i);
+            if (tip == null || tip.isEmpty()) continue;
+            int[] r = choiceRects.get(i);
+            if (mouseX < r[0] || mouseX >= r[0] + r[2]) continue;
+            if (mouseY < r[1] || mouseY >= r[1] + r[3]) continue;
+            java.util.List<Text> lines = new java.util.ArrayList<>();
+            for (String line : tip.split(
+                    com.crackedgames.craftics.network.DialoguePayload.TOOLTIP_LINE, -1)) {
+                lines.add(Text.literal(line));
+            }
+            ctx.drawTooltip(this.textRenderer, lines, mouseX, mouseY);
+            return;
         }
     }
 

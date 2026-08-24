@@ -36,6 +36,8 @@ public record DialoguePayload(String speaker, String lines, String choices, int 
     private static final String UNIT = "\u001F";
     /** U+001E record separator: between choice entries. */
     private static final String RECORD = "\u001E";
+    /** U+001D group separator: between the lines of a single choice's hover text. */
+    public static final String TOOLTIP_LINE = "\u001D";
 
     public static final CustomPayload.Id<DialoguePayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "dialogue"));
@@ -66,13 +68,30 @@ public record DialoguePayload(String speaker, String lines, String choices, int 
     }
 
     public static String encodeChoices(List<String> labels, List<String> actions) {
+        return encodeChoices(labels, actions, null);
+    }
+
+    /**
+     * Encode choices with optional per-choice hover text as a third field.
+     *
+     * <p>Appending rather than inserting keeps this readable by the existing decoder: it splits on
+     * UNIT and indexes, so a record with two fields and a record with three both parse, and a
+     * choice with no tooltip decodes to the empty string it started as.
+     */
+    public static String encodeChoices(List<String> labels, List<String> actions,
+                                       List<String> tooltips) {
         List<String> parts = new ArrayList<>();
-        for (int i = 0; i < labels.size(); i++) parts.add(labels.get(i) + UNIT + actions.get(i));
+        for (int i = 0; i < labels.size(); i++) {
+            String tip = (tooltips != null && i < tooltips.size() && tooltips.get(i) != null)
+                ? tooltips.get(i) : "";
+            parts.add(labels.get(i) + UNIT + actions.get(i) + UNIT + tip);
+        }
         return String.join(RECORD, parts);
     }
 
     public static List<String> decodeChoiceLabels(String encoded) { return decodeChoicePart(encoded, 0); }
     public static List<String> decodeChoiceActions(String encoded) { return decodeChoicePart(encoded, 1); }
+    public static List<String> decodeChoiceTooltips(String encoded) { return decodeChoicePart(encoded, 2); }
 
     private static List<String> decodeChoicePart(String encoded, int index) {
         List<String> out = new ArrayList<>();

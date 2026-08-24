@@ -14,6 +14,25 @@ class DialoguePayloadCodecTest {
     }
 
     @Test
+    void encodeDecodeChoicesWithTooltips() {
+        List<String> labels = List.of("Iron Sword", "Bow");
+        List<String> actions = List.of("enchanter:pick:3", "enchanter:pick:5");
+        List<String> tooltips = List.of("Sharpness III" + DialoguePayload.TOOLTIP_LINE + "Dull", "");
+        String encoded = DialoguePayload.encodeChoices(labels, actions, tooltips);
+        assertEquals(labels, DialoguePayload.decodeChoiceLabels(encoded));
+        assertEquals(actions, DialoguePayload.decodeChoiceActions(encoded));
+        assertEquals(tooltips, DialoguePayload.decodeChoiceTooltips(encoded));
+    }
+
+    @Test
+    void choicesWithoutTooltipsDecodeToEmptyStrings() {
+        // The two-argument form is what every dialogue but the enchanter uses; it must keep
+        // producing something the tooltip-aware decoder reads as "no tooltip".
+        String encoded = DialoguePayload.encodeChoices(List.of("Yes"), List.of("finish"));
+        assertEquals(List.of(""), DialoguePayload.decodeChoiceTooltips(encoded));
+    }
+
+    @Test
     void encodeDecodeChoices() {
         List<String> labels = List.of("Yes", "No");
         List<String> actions = List.of("finish", "reopen_shop");
