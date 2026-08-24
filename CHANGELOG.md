@@ -1,5 +1,80 @@
 ﻿Changelog
 
+0.4.3
+
+Everyone Shown the Host's Emeralds
+
+- Fixed the emerald counter in a party showing the host's balance instead of your own. It corrected itself only when you next bought something
+- The victory screen, the waiting screen, the event prompt and the defeat screen's remaining-emeralds line now each send the player their own total
+
+A Teammate's Open Container No Longer Stalls the Party
+
+- Fixed an open screen swallowing the end of a fight. One player standing in a chest, a shulker or a backpack when somebody else landed the killing blow never saw the victory screen, the level transition or the next arena - the packets arrived behind whatever they had open, and from their seat the run simply stopped
+- Nothing anywhere closed a player's screen at a combat boundary; the only hint the problem was known is that the loot overflow chest refuses to open when another screen already is
+- Craftics' own screens are spared, because some of them are the thing being waited on: the post-battle loot screen is what advances the victory flow, so closing it from here would either skip the loot or deadlock the sequence this exists to unblock. Same for a trader mid-event
+
+Backpacked Compatibility
+
+- Battle loot now fills a **worn backpack** instead of stopping at the "Inventory Full" screen. Backpacks sit after the normal inventory and before the overflow chest, so they act as the extra capacity they are rather than filing away the potion you wanted on your hotbar
+- Unstackable rewards go in too - a sword that will not fit is exactly what a backpack is for
+- Reached entirely by reflection with no compile-time dependency, so Craftics builds and runs with Backpacked absent, and every failure path degrades to "no backpack" rather than breaking loot delivery
+
+Infinite Arrows on Aimed Shots
+
+- Fixed a bow never running out of ammunition for a player carrying only tipped or spectral arrows. Every "you need arrows" check in the mod counts all three arrow types, but the routine that actually spends one could only find plain arrows, so on any shot that does not resolve tipped and spectral arrows itself the check passed and nothing was paid
+- Plain arrows are still spent first, so a tipped arrow is never quietly burned as ordinary ammunition while plain ones are sitting in the bag
+
+Backpacked Augments
+
+Most of Backpacked's augments hook events a turn-based arena never fires, so in Craftics they were dead weight the player had paid for. Seven now do something.
+
+- **Quiverlink** - a bow finds arrows stored in the backpack. Before this, a player carrying a full quiver of them was silently dropped to melee range. Which store empties first follows the augment's own Priority setting, which defaults to the backpack
+- **Funnelling** - battle loot goes into the pack *before* your inventory rather than after it, which is what the augment is for. Its item filter is honoured, so only the loot you asked for is diverted
+- **Lootbound** - combat rewards are mob drops that never got to be entities, so they are pulled in the same way, following Funnelling's filter. Turning its "mobs" toggle off keeps battle loot out of the pack entirely
+- **Immortal** - a Totem of Undying stored in the backpack now saves you in a fight. Hand and offhand totems are still spent first, matching the augment's own rule
+- **Reforge** - Mending items inside the backpack repair from combat XP. Craftics awards XP directly rather than dropping orbs, which is the same reason ordinary Mending needed its own implementation here, so the backpack's items simply join that pool
+- **Recall** - your backpack's contents survive the defeat coin-flip, provided the augment is linked to a Backpack Shelf. Without a shelf linked it protects nothing, exactly as the augment behaves on a normal death
+- **Giant** - the extra space costs one tile of movement per turn. The penalty is dropped rather than leaving a player unable to move at all, so a low Speed stat cannot strand you
+
+Backpacks Are No Longer a Death-Proof Vault
+
+- Backpack contents now take the same defeat coin-flip as your main inventory, at the same rate. They sat outside it entirely before, so a worn backpack was a safe deposit box that a run's defeat could not touch, and battle loot filling one automatically would have made stuffing a backpack the obviously correct way to play
+- Recall is the way to buy them back out of it
+
+Standing in the Wrong Square
+
+- Fixed the player's body drifting away from the tile the game is actually playing them on - the move highlights, your reach and enemy pathing all read one square while your character was drawn on another
+- The grid is what the rules use and the body is only the picture. They are allowed to disagree for a moment - a dash commits the grid immediately and slides the body over several ticks, which is the point of the animation - but once nothing is animating, a disagreement is drift
+- Nothing was correcting it in a solo fight. The turn switch re-derives the grid from the body, which would have papered over it, but that returns early when there is only one player in the queue, so a single player could drift and stay drifted for the whole level
+- The body is snapped back to the grid, not the other way round. Moving the grid to meet a drifted body would silently relocate you in the fight; moving the body is only a cosmetic correction
+- Skipped entirely while a dash, a scripted walk or a mount is moving you, so nothing fights an animation that is doing its job
+
+Hay Bales Building Walls Instead of Feeding Animals
+
+- Fixed the hay bale being treated as a building block rather than an item with a use. Clicking your own pet with one answered "Something's standing there" and clicking bare ground built a hay wall - so it could neither heal an ally nor tame a llama, both of which it is sold for
+- Any block-shaped item that has a real combat use is now that thing rather than a wall. The exclusion list this used to rely on was hand-written, and the hay bale was simply missing from it; asking the item handler instead means an item gains a use and stops being a wall in one edit
+- Blue ice and the respawn anchor were quietly in the same position and are fixed by the same change
+
+Feeding Your Animals
+
+- Fixed being unable to heal an animal ally with the food it eats. Raw or cooked meat and rotten flesh now heal a wolf, raw fish a cat, seeds a parrot, wheat and apples a horse, and so on down the list
+- Only constructed allies could be healed before - an iron ingot on an iron golem, a snowball on a snow golem - because the registration binds exactly one item to one ally. That shape does not fit an animal, which eats any of a dozen things, so animals had no heal item at all and clicking one answered "you can't attack it"
+- Feeding beats eating: raw beef held over your wolf is dinner for the wolf, and the same beef anywhere else is still dinner for you
+
+Tamed Animals Go Home
+
+- Animals tamed **during** a fight now return to your island at the end of that level instead of being carried through the rest of the run. Taming a wolf on level 3 is acquiring a wolf, not drafting one
+- Pets you deliberately brought from the hub are unaffected and continue with you as before
+- In a party each animal goes to its own tamer's island, not the run host's
+
+Trial Chamber Enemies Hitting Far Too Hard
+
+- **Halved the damage scaling in trial chambers.** Deep into a run a Breeze was swinging for roughly eight hearts
+- Health and damage were scaled by the same multiplier, and they are not the same problem: triple health makes a fight longer, triple damage makes it shorter and the player is the one it ends. Health keeps the full surcharge; attack now gets half of it
+- Trial spawns also skip the per-biome damage cap that restrains every campaign enemy. That is deliberate, so a trial can be a genuine step up, but it removed the one thing that would otherwise have caught the number growing out of range
+- Floored at each mob's own base damage, so early trials are not softened into being easier than an ordinary level, and the Warden still out-hits everything around it
+- The formula moved into its own class with no Minecraft types in it, so it can be executed in a test. It previously could not be: touching the trial chamber class at all needs a running game, which is how a number this far out survived
+
 0.4.2.1
 
 Auction Sellers Not Getting Paid

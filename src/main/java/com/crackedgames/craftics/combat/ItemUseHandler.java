@@ -2654,24 +2654,37 @@ public class ItemUseHandler {
     }
 
     /**
-     * Per-ally heal item: if {@code targetTile} holds an ally whose registered
-     * {@code AllyEntry.healItem} is the held item, heal it for {@code healAmount}
-     * HP (e.g. iron ingot on an iron golem, snowball on a snow golem). Returns
-     * {@code null} when this isn't a heal interaction, so the item falls through
-     * to its normal combat use.
+     * Heal an ally by giving it what it eats.
+     *
+     * <p>Two sources, checked in that order. A registered {@code AllyEntry.healItem} binds one
+     * item to one ally, which suits the constructed pets it was written for - an iron ingot on
+     * an iron golem, a snowball on a snow golem. Animals need the other source: a wolf is fed
+     * by any meat at all, and {@link AllyFoods} is the table of what each one takes.
+     *
+     * <p>Feeding beats eating, which is why this runs before the food branch in
+     * {@code useItem}. Raw beef held over your wolf is dinner for the wolf; the same beef held
+     * over anything else is still dinner for you.
+     *
+     * <p>Returns {@code null} when this isn't a feed at all, so the item falls through to its
+     * normal combat use.
      */
     private static String tryHealAlly(GridArena arena, GridPos targetTile, Item item, ItemStack held) {
         if (targetTile == null) return null;
         CombatEntity ally = arena.getOccupant(targetTile);
         if (ally == null || !ally.isAlive() || !ally.isAlly()) return null;
+
         com.crackedgames.craftics.api.registry.AllyEntry entry =
             com.crackedgames.craftics.api.registry.AllyRegistry.getOrNull(ally.getEntityTypeId());
-        if (entry == null || entry.healItem() == null || entry.healItem() != item) return null;
+        boolean boundHealItem = entry != null && entry.healItem() != null && entry.healItem() == item;
+        boolean animalFeed = AllyFoods.heals(ally.getEntityTypeId(), item);
+        if (!boundHealItem && !animalFeed) return null;
+
         if (ally.getCurrentHp() >= ally.getMaxHp()) {
             return "§c" + ally.getDisplayName() + " is already at full health!";
         }
+        int amount = boundHealItem ? entry.healAmount() : AllyFoods.FEED_HEAL;
         held.decrement(1);
-        int healed = Math.min(entry.healAmount(), ally.getMaxHp() - ally.getCurrentHp());
+        int healed = Math.min(amount, ally.getMaxHp() - ally.getCurrentHp());
         return ALLY_BUFF_PREFIX + "heal:" + ally.getEntityId() + ":" + healed
             + "|§a" + ally.getDisplayName() + " heals for " + healed + " HP!";
     }

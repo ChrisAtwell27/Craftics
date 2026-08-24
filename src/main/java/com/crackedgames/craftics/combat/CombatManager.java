@@ -1654,6 +1654,10 @@ public class CombatManager {
             if (!m.getUuid().equals(leader.getUuid())) orderedMembers.add(m);
         }
 
+        // A member who opened something during the interlude would otherwise walk into the
+        // next fight looking at it, unable to see the arena they are standing in.
+        closeForeignScreens();
+
         ServerWorld spawnWorld = (ServerWorld) leader.getEntityWorld();
         GridPos startGrid = newArena.getPlayerStart();
         // Floor-aware search so nobody lands over a pit/void: schematic arenas (trial
@@ -6952,8 +6956,14 @@ public class CombatManager {
             }
             com.crackedgames.craftics.api.registry.AllyEntry allyEntry =
                 com.crackedgames.craftics.api.registry.AllyRegistry.getOrNull(target.getEntityTypeId());
-            if (allyEntry != null && allyEntry.healItem() != null
-                    && player.getMainHandStack().isOf(allyEntry.healItem())) {
+            net.minecraft.item.ItemStack allyHeld = player.getMainHandStack();
+            boolean boundHealItem = allyEntry != null && allyEntry.healItem() != null
+                && allyHeld.isOf(allyEntry.healItem());
+            // Animals are fed rather than repaired, and what they eat is a table rather than a
+            // single registered item. Without this the click never reached the heal path at
+            // all: holding raw beef over your own wolf answered "you can't attack it".
+            boolean animalFeed = AllyFoods.heals(target.getEntityTypeId(), allyHeld.getItem());
+            if (boundHealItem || animalFeed) {
                 handleUseItem(target.getGridPos());
             } else {
                 sendMessage("§c" + target.getDisplayName() + " is your ally -you can't attack it!");
@@ -12004,6 +12014,9 @@ public class CombatManager {
                     }
                     e.setAlly(true);
                     e.setOwnerUuid(player.getUuid());
+                    // Tamed here, not brought here: it fights out this level and then goes
+                    // home, rather than being carried through the rest of the run.
+                    e.setTamedInCombat(true);
                     // Apply per-species minimum stats for combat pets
                     AllyEntry petMin = AllyRegistry.getOrNull(e.getEntityTypeId());
                     if (petMin != null) {
@@ -14191,6 +14204,25 @@ public class CombatManager {
         }
 
         if (!active) return;
+
+        // Keep the player's body where the grid says they are.
+        //
+        // The grid is what the game plays on: attacks, reach, enemy pathing and the move
+        // highlights all read from it, and a commanded move writes it. The entity is only the
+        // picture. They are allowed to disagree briefly - a dash commits the grid immediately
+        // and lerps the body over several ticks, which is the whole point of the animation -
+        // but once nothing is animating, a disagreement is drift, and the player is left
+        // standing visibly on one tile while the game plays them on another.
+        //
+        // Nothing was correcting that in a solo fight. The turn switch re-derives the grid FROM
+        // the body, which would paper over it, but it returns early when there is only one
+        // player in the queue - so a single player could drift and stay drifted for the rest of
+        // the level.
+        //
+        // The body follows the grid rather than the other way round because the grid is the
+        // half the rules use. Snapping the picture is a cosmetic correction; moving the grid to
+        // meet a drifted body would silently relocate the player in the fight.
+        reconcilePlayerToGrid();
 
         if (player == null || player.isRemoved() || player.isDisconnected()) {
             endCombat();
@@ -27015,7 +27047,12 @@ public class CombatManager {
                 return stack;
             }
         }
-        return null;
+        // A backpack carrying Backpacked's Immortal augment is the last place to look, which
+        // matches the augment's own rule that totems in the hands are spent before stored ones.
+        // Callers decrement what they get back, and a backpack does not persist that by itself,
+        // so every totem-spending path flushes afterwards.
+        return com.crackedgames.craftics.compat.backpacked.BackpackedCompat
+            .findTotem(who, stack -> isAnyTotem(stack.getItem()));
     }
 
     /**
@@ -27031,6 +27068,7 @@ public class CombatManager {
         net.minecraft.item.ItemStack totem = findTotemStack(member);
         if (totem == null) return false;
         totem.decrement(1);
+        com.crackedgames.craftics.compat.backpacked.BackpackedCompat.flush(member);
         member.setHealth(8.0f); // four hearts, as a vanilla totem leaves you
         member.clearStatusEffects();
         member.setFireTicks(0);
@@ -27113,6 +27151,7 @@ public class CombatManager {
         }
 
         totem.decrement(1);
+        com.crackedgames.craftics.compat.backpacked.BackpackedCompat.flush(player);
 
         // Vanilla parity: clear all status effects, then re-apply totem buffs.
         player.clearStatusEffects();
@@ -27161,6 +27200,7 @@ public class CombatManager {
      */
     private boolean consumeModdedTotem(net.minecraft.item.ItemStack totem, String path) {
         totem.decrement(1);
+        com.crackedgames.craftics.compat.backpacked.BackpackedCompat.flush(player);
 
         // Bare revive: clear effects + zero absorption + 50% HP. No vanilla buff baseline.
         player.clearStatusEffects();
@@ -27621,6 +27661,22 @@ public class CombatManager {
             raw.add(new RawSlotRoll(3, 0, snap.container(), snap.kind(), snap.slot(),
                 snap.stack().copy(), rollUnitsLost(snap.stack().getCount(), gearEff)));
         }
+        // Backpack contents (Backpacked) at the main-inventory rate - the same rate the vanilla
+        // storage rows pay, because that is what a backpack is. They sat outside the flip
+        // entirely before, which made a worn backpack a death-proof vault and would have made
+        // stuffing one the obviously correct way to survive a run.
+        //
+        // A pack whose Recall augment is linked to a shelf is left out: Recall's promise is that
+        // the backpack comes home when you die, and this screen is where a run's belongings are
+        // actually at risk. losableSlots applies that rule per pack.
+        for (com.crackedgames.craftics.compat.backpacked.BackpackedCompat.LosableSlot bs :
+                com.crackedgames.craftics.compat.backpacked.BackpackedCompat.losableSlots(p)) {
+            Item bagItem = bs.stack().getItem();
+            if (bagItem == com.crackedgames.craftics.item.ModItems.MOVE_ITEM
+                    || bagItem instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
+            raw.add(new RawSlotRoll(4, bs.pack(), null, 0, bs.slot(), bs.stack().copy(),
+                rollUnitsLost(bs.stack().getCount(), mainEff)));
+        }
 
         // Group identical item-types (same item + components) across all slots into
         // one display entry: total quantity, summed lost quantity, and the per-slot
@@ -27958,7 +28014,12 @@ public class CombatManager {
         data.markDirty();
 
         sendMessage("§7Returning to hub... Your biome run has ended.");
-        sendMessage("§7Remaining emeralds: " + ld.emeralds);
+        // Per-player wallets: every survivor sees their OWN remaining balance, not the
+        // leader's.
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            sendMessageTo(p, "§7Remaining emeralds: "
+                + data.getPlayerData(p.getUuid()).emeralds);
+        }
 
         // Death = the run failed; the party mobs (and the mount) brought into it are
         // lost along with the dropped items -they do NOT return to the hub. Mark
@@ -28094,6 +28155,9 @@ public class CombatManager {
             case 2 -> p.setStackInHand(net.minecraft.util.Hand.OFF_HAND, ItemStack.EMPTY);
             case 3 -> com.crackedgames.craftics.compat.artifacts.AccessoriesReflect
                 .clearAccessoryAt(p, sl.accContainer(), sl.accKind(), sl.accSlot());
+            // Backpack: index is the bay it is worn in, accSlot the slot inside it.
+            case 4 -> com.crackedgames.craftics.compat.backpacked.BackpackedCompat
+                .removeUnits(p, sl.index(), sl.accSlot(), lose);
         }
     }
 
@@ -28297,6 +28361,9 @@ public class CombatManager {
         // brand new token. The duplicate has to be rejected at the entry point, and phase is
         // the state that says the level is already won.
         if (phase == CombatPhase.LEVEL_COMPLETE) return;
+        // Before anything else: take back the screen. Loot delivery below can open a screen of
+        // its own, so this has to happen first or it would close the one it just opened.
+        closeForeignScreens();
         // Recorded at the entry point, before anything downstream can reset the fight state:
         // by the time the feat check runs, suddenDeath has to still be true, and the re-entry
         // gate above guarantees this line runs exactly once per win.
@@ -29255,8 +29322,14 @@ public class CombatManager {
                 CrafticsMod.LOGGER.error("handleVictoryNonBoss: no leader found to send victory screen -aborting");
                 return;
             }
+            // The emerald total on this screen is the RECIPIENT's own balance, never the
+            // progression owner's. Emeralds are earned per player (the award loop credits
+            // every recipient's PlayerData) and spent per player, so the two drift apart as
+            // soon as anyone buys anything - sending ld.emeralds made each member's HUD
+            // adopt the island owner's number until their next purchase resynced it.
             ServerPlayNetworking.send(decisionPlayer, new VictoryChoicePayload(
-                emeraldsEarned, ld.emeralds, false, biomeName, displayIndex, nextIsBoss,
+                emeraldsEarned, data.getPlayerData(decisionPlayer.getUuid()).emeralds,
+                false, biomeName, displayIndex, nextIsBoss,
                 true, inInfiniteRun, LootRecorder.drain(decisionPlayer.getUuid())
             ));
             // Non-leaders get a persistent "waiting" loading screen. It fades out
@@ -29269,7 +29342,8 @@ public class CombatManager {
                     // Non-leaders see their OWN collected rewards; isLeader=false makes
                     // the screen show a "waiting for the leader" note instead of buttons.
                     ServerPlayNetworking.send(member, new VictoryChoicePayload(
-                        emeraldsEarned, ld.emeralds, false, biomeName, displayIndex, nextIsBoss,
+                        emeraldsEarned, data.getPlayerData(member.getUuid()).emeralds,
+                        false, biomeName, displayIndex, nextIsBoss,
                         false, inInfiniteRun, LootRecorder.drain(member.getUuid())
                     ));
                 }
@@ -29957,7 +30031,8 @@ public class CombatManager {
                                     pendingAddonEventMembers = savedMembers;
                                     pendingAddonEventManager = savedEventManager;
                                     final ServerPlayerEntity addonLeader = savedPlayer;
-                                    final int addonLeaderEmeralds = ld.emeralds;
+                                    final int addonLeaderEmeralds =
+                                        data.getPlayerData(addonLeader.getUuid()).emeralds;
                                     final String addonLabel = addonEvent.displayName();
                                     Runnable addonPrompt = leaderPromptOrAutoDecline(addonLeader,
                                         // levelIndex -1 marks this an event prompt, which renders
@@ -32199,6 +32274,70 @@ public class CombatManager {
 
     /** Translate a party member's current world block pos into an arena grid pos.
      *  Returns {@code arena.getPlayerGridPos()} when the lookup can't run. */
+    /**
+     * Put the acting player's body back on their grid tile when the two have drifted apart.
+     *
+     * <p>Deliberately narrow. It runs only on the player whose turn it is, only while that turn
+     * is actually theirs to act in, and never while something is animating them - a dash, a
+     * walk or a ride all move the body on purpose and would be fought by a snap.
+     *
+     * <p>A mounted player is skipped outright: they are carried by the mount, and their block
+     * position is the mount's business.
+     */
+    private void reconcilePlayerToGrid() {
+        if (arena == null || player == null) return;
+        if (phase != CombatPhase.PLAYER_TURN) return;
+        if (riptideAnimActive) return;
+        if (!activeWalkers.isEmpty()) return;      // a scripted walk owns the body
+        if (player.hasVehicle()) return;           // the mount owns the body
+        if (player.isRemoved() || player.isDisconnected()) return;
+
+        GridPos grid = arena.getPlayerGridPos();
+        if (grid == null || grid.equals(gridPosOf(player))) return;
+
+        BlockPos target = arena.gridToBlockPos(grid);
+        player.setVelocity(0, 0, 0);
+        player.velocityModified = true;
+        player.requestTeleport(target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
+    }
+
+    /**
+     * Shut any container a party member left open, so a Craftics screen can take the floor.
+     *
+     * <p>The fight does not wait for you to finish rummaging. One player can be standing in a
+     * chest, a shulker or a backpack when somebody else lands the killing blow, and the victory
+     * screen, the level transition and the next arena's payload all arrive behind whatever they
+     * had open. From their seat the run simply stops.
+     *
+     * <p><b>Craftics' own screens are spared</b>, because some of them are the thing being
+     * waited ON. The post-battle loot screen drives {@code handleLootScreenClosed}, which is
+     * what advances the victory flow in the first place - closing it from here would either
+     * skip the loot or deadlock the very sequence this exists to unblock. Same for a trader
+     * mid-event. Those are tracked explicitly, so the test is a lookup rather than a guess.
+     */
+    private void closeForeignScreens() {
+        for (ServerPlayerEntity member : getAllParticipants()) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (member.currentScreenHandler == member.playerScreenHandler) continue;  // nothing open
+            if (isCrafticsOwnedScreen(member)) continue;
+            member.closeHandledScreen();
+        }
+    }
+
+    /** Whether the screen this player has open is one Craftics put there and may be waiting on. */
+    private boolean isCrafticsOwnedScreen(ServerPlayerEntity member) {
+        java.util.UUID id = member.getUuid();
+        if (lootPendingPlayers.contains(id) || traderPendingPlayers.contains(id)
+                || eventPendingPlayers.contains(id)) {
+            return true;
+        }
+        net.minecraft.screen.ScreenHandler open = member.currentScreenHandler;
+        return open instanceof com.crackedgames.craftics.screen.LootManagementScreenHandler
+            || open instanceof com.crackedgames.craftics.screen.ReadOnlyMenuScreenHandler
+            || open instanceof com.crackedgames.craftics.block.LevelSelectScreenHandler
+            || open instanceof net.minecraft.screen.MerchantScreenHandler;
+    }
+
     private GridPos gridPosOf(ServerPlayerEntity member) {
         if (arena == null) return new GridPos(0, 0);
         if (member == null) return arena.getPlayerGridPos();
@@ -34664,18 +34803,30 @@ public class CombatManager {
         CrafticsMod.LOGGER.info("Combat ended.");
     }
 
-    /** Save alive allied pets so they persist into the next level. */
+    /**
+     * Save alive allied pets so they persist into the next level.
+     *
+     * <p>Animals tamed during THIS level are the exception: they go straight home instead.
+     * Taming a wolf on level 3 is acquiring a wolf, not drafting one - it should be waiting on
+     * your island afterwards, not walking into the boss fight with you. Pets you deliberately
+     * brought from the hub carry on as before.
+     */
     private void savePets() {
         if (enemies == null) return;
+        java.util.List<HubPetCollector.PetData> tamedThisLevel = new ArrayList<>();
         for (CombatEntity e : enemies) {
             // Mounts are saved too (PetData carries the mounted flag) so the
             // rideable mob persists for the whole run, not just one level.
             // Temporary allies (spawn-egg summons) fight only this battle and are
             // never carried over or returned to the hub -skip them.
             if (e.isAlive() && e.isAlly() && !e.isTemporaryAlly()) {
-                savedPets.add(HubPetCollector.PetData.fromCombatEntity(e, e.getOriginalHubNbt()));
+                HubPetCollector.PetData data = HubPetCollector.PetData.fromCombatEntity(
+                    e, e.getOriginalHubNbt());
+                if (e.isTamedInCombat()) tamedThisLevel.add(data);
+                else savedPets.add(data);
             }
         }
+        sendTamedAnimalsHome(tamedThisLevel);
         if (!savedPets.isEmpty()) {
             CrafticsMod.LOGGER.info("Saved {} pet(s) for next level.", savedPets.size());
         }
@@ -35063,6 +35214,32 @@ public class CombatManager {
         mountOwnerUuid = null;
         refreshAllPlayerGridPositions();
         sendSync();
+    }
+
+    /**
+     * Put animals tamed this level back on their owner's island, now, rather than carrying
+     * them into the next fight.
+     *
+     * <p>Each goes to ITS OWN owner's hub - {@code restorePetsToHub} routes by the owner
+     * recorded on each snapshot - so in a party the wolf you tamed lands on your island and not
+     * on the run host's.
+     *
+     * <p>Failures are logged rather than thrown. This runs inside the level-transition path,
+     * and losing the transition would cost the party their whole run to save one animal.
+     */
+    private void sendTamedAnimalsHome(java.util.List<HubPetCollector.PetData> tamed) {
+        if (tamed.isEmpty() || player == null) return;
+        try {
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+            com.crackedgames.craftics.world.CrafticsSavedData data =
+                com.crackedgames.craftics.world.CrafticsSavedData.get(world);
+            HubPetCollector.restorePetsToHub(world, player, tamed, data);
+            sendMessage("§a" + tamed.size() + (tamed.size() == 1 ? " tamed animal has" : " tamed animals have")
+                + " been sent home to your island.");
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.error("Could not send tamed animals home; carrying them instead", t);
+            savedPets.addAll(tamed);
+        }
     }
 
     /** Spawn previously saved pets into the current arena near the player start. */

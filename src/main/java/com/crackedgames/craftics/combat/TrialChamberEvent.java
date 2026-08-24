@@ -53,7 +53,30 @@ public class TrialChamberEvent {
     static int ominousWardenAttack(int biomeOrdinal, float diffMultiplier) {
         int base = OMINOUS_WARDEN_BASE_ATTACK
             + Math.max(0, biomeOrdinal - OMINOUS_TRIAL_START_BIOME);
-        return Math.min(CombatManager.MAX_ENEMY_ATTACK, (int) (base * diffMultiplier));
+        // Halved with everything else in the encounter, and floored at its own base so the
+        // scariest thing in the game still hits like a Warden.
+        return trialAttack(base, 0, diffMultiplier);
+    }
+
+    /**
+     * How much of the trial's difficulty scaling reaches ATTACK.
+     *
+     * <p>Health and damage were scaled by the same numbers, and they should not be. A trial mob
+     * with triple health makes a fight longer; a trial mob with triple damage makes it shorter,
+     * and the player is the one it ends. Trial spawns also skip the per-biome damage cap that
+     * restrains every campaign enemy - deliberately, so the encounter can be a step up - which
+     * removed the one thing that would otherwise have caught this. By the Nether a Breeze was
+     * swinging for roughly eight hearts.
+     *
+     * <p>Health keeps the full surcharge. Attack gets half of it.
+     */
+    /**
+     * A trial mob's attack. The arithmetic lives in {@link TrialScaling} so it can be executed
+     * outside Minecraft - this class cannot be loaded without a running game, and a balance
+     * formula nobody can test is one that gets checked by playing.
+     */
+    static int trialAttack(int base, int atkBonus, float diffMultiplier) {
+        return TrialScaling.attack(base, atkBonus, diffMultiplier, CombatManager.MAX_ENEMY_ATTACK);
     }
 
     /** Generate a trial chamber level definition scaled to difficulty. */
@@ -90,7 +113,7 @@ public class TrialChamberEvent {
             usedPositions.add(pos);
 
             int hp  = (int)((Integer.parseInt(mob[1]) + hpBonus) * diffMultiplier);
-            int atk = (int)((Integer.parseInt(mob[2]) + atkBonus) * diffMultiplier);
+            int atk = trialAttack(Integer.parseInt(mob[2]), atkBonus, diffMultiplier);
             int def = Integer.parseInt(mob[3]);
             int range = Integer.parseInt(mob[4]);
 
@@ -101,7 +124,7 @@ public class TrialChamberEvent {
         GridPos breezePos = findSpawnPos(width, height, usedPositions, rng);
         if (breezePos != null) {
             int breezeHp  = (int)((Integer.parseInt(BREEZE[1]) + hpBonus) * diffMultiplier);
-            int breezeAtk = (int)((Integer.parseInt(BREEZE[2]) + atkBonus) * diffMultiplier);
+            int breezeAtk = trialAttack(Integer.parseInt(BREEZE[2]), atkBonus, diffMultiplier);
             spawnList.add(new LevelDefinition.EnemySpawn(BREEZE[0], breezePos,
                 breezeHp, breezeAtk, Integer.parseInt(BREEZE[3]), Integer.parseInt(BREEZE[4])));
         }
@@ -373,7 +396,7 @@ public class TrialChamberEvent {
             if (pos == null) continue;
             used.add(pos);
             int hp = (int)((Integer.parseInt(mob[1]) + hpBonus) * diffMultiplier);
-            int atk = (int)((Integer.parseInt(mob[2]) + atkBonus) * diffMultiplier);
+            int atk = trialAttack(Integer.parseInt(mob[2]), atkBonus, diffMultiplier);
             spawns.add(new LevelDefinition.EnemySpawn(mob[0], pos, hp, atk,
                 Integer.parseInt(mob[3]), Integer.parseInt(mob[4])));
         }

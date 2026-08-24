@@ -152,6 +152,7 @@ public class CrafticsMod implements ModInitializer {
             com.crackedgames.craftics.combat.miniboss.MinibossRegistry.register(m);
         }
         // Mid-biome weather effects (biome JSON "biomeEffect" block picks them up by id).
+        com.crackedgames.craftics.compat.backpacked.BackpackedCompat.init();
         com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.BlizzardWindsEffect());
         com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.JungleRainEffect());
         com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.SandstormEffect());

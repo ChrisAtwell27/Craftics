@@ -32,6 +32,17 @@ import java.util.Random;
  * <p>Unstackable items ({@code stack.getMaxCount() == 1} - swords, armor,
  * totems, goat horns, music discs, shulker boxes, etc.) always bypass bundles
  * and go straight to the inventory.
+ *
+ * <p>A worn backpack is the last shelf before the overflow chest. It sits AFTER the normal
+ * inventory on purpose: a backpack is extra capacity, not a filter, and a player who wanted the
+ * potion they just won on their hotbar would not thank us for filing it away. What it does stop
+ * is the "Inventory Full" screen appearing while they are wearing a half-empty backpack.
+ *
+ * <p>The exception is a backpack carrying Backpacked's Funnelling or Lootbound augment, which
+ * gets first refusal instead - those augments exist to say "put harvested things in the pack
+ * rather than my inventory", and a player who fitted one has already answered the question this
+ * class would otherwise be guessing at. Their item filter is honoured, so only the loot they
+ * asked for is diverted.
  */
 public final class LootDelivery {
     private LootDelivery() {}
@@ -123,9 +134,21 @@ public final class LootDelivery {
 
         PlayerInventory inv = player.getInventory();
 
+        // Funnelling and Lootbound claim loot BEFORE the inventory sees it - that is the whole
+        // point of both augments, and their filter decides what they actually take. Everything
+        // they decline carries on down the normal path untouched.
+        com.crackedgames.craftics.compat.backpacked.BackpackedCompat.funnelLoot(player, stack);
+        if (stack.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+
         // Unstackable items (max count 1) must never go into bundles.
         if (stack.getMaxCount() == 1) {
             inv.insertStack(stack);
+            // A sword that will not fit is exactly what a backpack is for.
+            if (!stack.isEmpty()) {
+                com.crackedgames.craftics.compat.backpacked.BackpackedCompat.storeLoot(player, stack);
+            }
             return stack;
         }
 
@@ -153,6 +176,10 @@ public final class LootDelivery {
         // Anything bundles could not absorb falls back to normal insertion.
         if (!stack.isEmpty()) {
             inv.insertStack(stack);
+        }
+        // Then the backpack, before resorting to a screen in the player's face.
+        if (!stack.isEmpty()) {
+            com.crackedgames.craftics.compat.backpacked.BackpackedCompat.storeLoot(player, stack);
         }
         if (!stack.isEmpty() && player.currentScreenHandler == player.playerScreenHandler) {
             openOverflowChest(player, stack);

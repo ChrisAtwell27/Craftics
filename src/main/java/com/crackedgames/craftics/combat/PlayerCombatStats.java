@@ -197,7 +197,13 @@ public class PlayerCombatStats {
         return isBowItem(player.getMainHandStack().getItem()) && hasArrows(player);
     }
 
-    /** Any arrow that a bow or crossbow can fire: plain, tipped, or spectral. */
+    /**
+     * Any arrow that a bow or crossbow can fire: plain, tipped, or spectral.
+     *
+     * <p>A Quiverlink backpack counts. That augment exists precisely so ammunition can live in
+     * the pack instead of the hotbar, and a player who has fitted one would otherwise find
+     * their bow reduced to melee range inside Craftics for arrows they are visibly carrying.
+     */
     public static boolean hasArrows(ServerPlayerEntity player) {
         for (int i = 0; i < player.getInventory().size(); i++) {
             Item item = player.getInventory().getStack(i).getItem();
@@ -206,17 +212,60 @@ public class PlayerCombatStats {
                 return true;
             }
         }
+        return com.crackedgames.craftics.compat.backpacked.BackpackedCompat
+            .drawArrow(player, false) != null;
+    }
+
+    /**
+     * Take one arrow out of the player's own inventory, plain ones first.
+     *
+     * <p>The fallback to tipped and spectral arrows is not a nicety. {@link #hasArrows} counts all
+     * three, and it is what gates every "you need arrows" check in the mod, so a search that could
+     * only spend plain arrows meant a player carrying nothing but tipped ones passed the gate and
+     * then paid nothing - an infinite quiver, on any shot that does not route through the
+     * tipped/spectral handling in handleAttack.
+     *
+     * <p>Plain arrows still go first, so a tipped arrow is never quietly burned as ordinary
+     * ammunition while plain ones are sitting in the bag.
+     */
+    private static boolean consumeInventoryArrow(ServerPlayerEntity player) {
+        if (consumeInventoryArrowOfType(player, Items.ARROW)) return true;
+        return consumeInventoryArrowOfType(player, Items.TIPPED_ARROW)
+            || consumeInventoryArrowOfType(player, Items.SPECTRAL_ARROW);
+    }
+
+    private static boolean consumeInventoryArrowOfType(ServerPlayerEntity player, Item type) {
+        for (int i = 0; i < player.getInventory().size(); i++) {
+            var stack = player.getInventory().getStack(i);
+            if (stack.getItem() == type) {
+                stack.decrement(1);
+                return true;
+            }
+        }
         return false;
     }
 
+    /**
+     * Spend one arrow.
+     *
+     * <p>Which store is emptied first is Quiverlink's Priority setting, not ours to assume - and
+     * its default is BACKPACK, so hardcoding "inventory first" would be wrong for a player who
+     * never opened its settings screen as well as for one who set it deliberately. With no
+     * Quiverlink fitted there is no backpack to draw from and this is the plain inventory search
+     * it always was.
+     */
     public static void consumeArrow(ServerPlayerEntity player) {
-        for (int i = 0; i < player.getInventory().size(); i++) {
-            var stack = player.getInventory().getStack(i);
-            if (stack.getItem() == Items.ARROW) {
-                stack.decrement(1);
+        if (com.crackedgames.craftics.compat.backpacked.BackpackedCompat
+                .preferBackpackArrows(player)) {
+            if (com.crackedgames.craftics.compat.backpacked.BackpackedCompat
+                    .drawArrow(player, true) != null) {
                 return;
             }
+            consumeInventoryArrow(player);
+            return;
         }
+        if (consumeInventoryArrow(player)) return;
+        com.crackedgames.craftics.compat.backpacked.BackpackedCompat.drawArrow(player, true);
     }
 
     /** Detect which armor set the player is wearing. Returns the set name or "mixed". */
@@ -287,8 +336,41 @@ public class PlayerCombatStats {
         return ArmorSetRegistry.getDescription(armorSet);
     }
 
+    /**
+     * Flat movement modifier from worn equipment, added to the SPEED stat by every caller that
+     * builds a turn's move points.
+     *
+     * <p>Named for the armor set because that is where it started, but it is the one place every
+     * move-point calculation in the mod passes through, so equipment-based movement changes
+     * belong here rather than sprinkled across a dozen call sites that would drift apart.
+     */
     public static int getSetSpeedBonus(ServerPlayerEntity player) {
-        return ArmorSetRegistry.getSpeedBonus(getArmorSet(player));
+        int bonus = ArmorSetRegistry.getSpeedBonus(getArmorSet(player));
+        return bonus - giantPenalty(player, bonus);
+    }
+
+    /**
+     * The movement a Giant backpack costs, or zero when charging it would strand the player.
+     *
+     * <p>Giant trades weight for space. Backpacked can only express that as flavour text; on a
+     * grid it can mean something, so it costs a tile of movement.
+     *
+     * <p>The floor is not politeness. A player at zero movement cannot reach an enemy, cannot
+     * step out of a hazard and cannot finish the level, so a configuration with a low base SPEED
+     * would turn a trade-off into a dead run. Below the floor the penalty simply does not apply.
+     */
+    private static int giantPenalty(ServerPlayerEntity player, int setBonus) {
+        if (player == null) return 0;
+        int penalty = com.crackedgames.craftics.compat.backpacked.BackpackedCompat
+            .giantSpeedPenalty(player);
+        if (penalty <= 0) return 0;
+        if (!(player.getEntityWorld() instanceof net.minecraft.server.world.ServerWorld sw)) {
+            return 0;
+        }
+        int base = PlayerProgression.get(sw).getStats(player)
+            .getEffective(PlayerProgression.Stat.SPEED);
+        return com.crackedgames.craftics.compat.backpacked.AugmentRules
+            .giantPenalty(base, setBonus, penalty);
     }
 
     public static int getSetApBonus(ServerPlayerEntity player) {
@@ -443,14 +525,20 @@ public class PlayerCombatStats {
      */
     public static int applyMending(ServerPlayerEntity player, int xp) {
         if (player == null || xp <= 0) return xp;
-        ItemStack[] gear = {
+        java.util.List<ItemStack> gear = new java.util.ArrayList<>(java.util.List.of(
             player.getMainHandStack(),
             player.getOffHandStack(),
             player.getEquippedStack(EquipmentSlot.HEAD),
             player.getEquippedStack(EquipmentSlot.CHEST),
             player.getEquippedStack(EquipmentSlot.LEGS),
-            player.getEquippedStack(EquipmentSlot.FEET),
-        };
+            player.getEquippedStack(EquipmentSlot.FEET)
+        ));
+        // Backpacked's Reforge augment repairs Mending items stored in the pack, and it hooks the
+        // same XP orb pickup vanilla Mending does - the one this method exists because Craftics
+        // never fires. Its items join the same pool rather than getting a second, separate budget.
+        java.util.List<ItemStack> reforge = com.crackedgames.craftics.compat.backpacked
+            .BackpackedCompat.reforgeCandidates(player);
+        gear.addAll(reforge);
         java.util.Random rng = new java.util.Random();
         while (xp > 0) {
             java.util.List<ItemStack> repairable = new java.util.ArrayList<>();
@@ -465,6 +553,11 @@ public class PlayerCombatStats {
             if (repair <= 0) break;
             target.setDamage(target.getDamage() - repair);
             xp -= (repair + 1) / 2; // XP spent (rounded up)
+        }
+        // Repairs to backpack contents are edits to a live stack the pack has not written back
+        // to its item yet; without this they vanish on the next reload.
+        if (!reforge.isEmpty()) {
+            com.crackedgames.craftics.compat.backpacked.BackpackedCompat.flush(player);
         }
         return xp;
     }

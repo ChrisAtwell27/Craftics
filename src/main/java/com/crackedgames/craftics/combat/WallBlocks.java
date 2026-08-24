@@ -53,6 +53,15 @@ public final class WallBlocks {
         // saplings, sugar cane, etc. all fail this check. The full-cube check
         // signature differs between MC versions, so route through stonecutter.
         if (!isOpaqueFullCube(state)) return false;
+        // Anything with a real combat use is that thing, not a wall. This supersedes the
+        // hand-written block list below for the "already has a use" half of its job, because a
+        // hand-written list of every usable full-cube block is a list that drifts: the hay bale
+        // heals an ally and tames a llama, and it was missing, so clicking your own pet with one
+        // answered "Something's standing there" and clicking bare ground built a hay wall.
+        // Asking ItemUseHandler means an item gains a use and stops being a wall in one edit.
+        if (ItemUseHandler.isUsableItem(item)) return false;
+        // Still kept for the OTHER half: blocks with no combat use that are excluded on balance
+        // grounds alone (a beacon, a spawner, a crafting bench).
         if (BLOCK_LIST_ITEMS.contains(item)) return false;
         return true;
     }

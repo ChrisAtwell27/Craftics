@@ -753,6 +753,18 @@ public class CombatEntity {
      */
     private boolean temporaryAlly = false;
     public boolean isTemporaryAlly() { return temporaryAlly; }
+
+    /**
+     * True for an animal tamed during THIS level, as opposed to one brought from the hub.
+     *
+     * <p>The two are treated differently at the level boundary. A pet you chose to bring is
+     * part of the run and travels on with you; an animal you happened to tame on the way is a
+     * creature you have just acquired, and it goes home to your island rather than being
+     * conscripted into the rest of a run it never volunteered for.
+     */
+    private boolean tamedInCombat = false;
+    public boolean isTamedInCombat() { return tamedInCombat; }
+    public void setTamedInCombat(boolean v) { this.tamedInCombat = v; }
     public void setTemporaryAlly(boolean v) { this.temporaryAlly = v; }
 
     /**
