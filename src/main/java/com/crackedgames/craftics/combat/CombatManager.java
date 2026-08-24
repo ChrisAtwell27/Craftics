@@ -31519,10 +31519,14 @@ public class CombatManager {
         java.util.Random rng = new java.util.Random();
         for (ServerPlayerEntity p : members) {
             java.util.List<int[]> offered = buildEnchanterSlotsFor(p, rng);
-            perPlayerEnchanterSlots.put(p.getUuid(), offered);
             // Decide every outcome now, while the offer is being built, so the shortlist shown on
             // hover can contain the truth rather than a guess at it.
-            perPlayerEnchanterRolls.put(p.getUuid(), rollEnchanterOutcomes(p, offered, rng));
+            java.util.Map<Integer, EnchanterRoll> rolls = rollEnchanterOutcomes(p, offered, rng);
+            // A weapon the enchanter has nothing left to add to is not offered at all. Listing it
+            // would spend the player's one pick on an item that cannot change.
+            offered.removeIf(slot -> !rolls.containsKey(slot[0]));
+            perPlayerEnchanterSlots.put(p.getUuid(), offered);
+            perPlayerEnchanterRolls.put(p.getUuid(), rolls);
         }
 
         java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
@@ -31668,9 +31672,21 @@ public class CombatManager {
             int mode = slot.length > 2 ? slot[2] : 0;
             ItemStack stack = lookupEnchanterStack(p, slotId);
             if (stack.isEmpty()) continue;
-            out.put(slotId, isArmor && mode == 1
-                ? rollTrim(rng)
-                : rollEnchant(world, stack, isArmor, slotId, rng));
+            if (isArmor && mode == 1) {
+                out.put(slotId, rollTrim(rng));
+                continue;
+            }
+            EnchanterRoll roll = rollEnchant(world, stack, isArmor, slotId, rng);
+            if (roll == null && isArmor) {
+                // Fully enchanted armor can still take a trim, so switch this piece over rather
+                // than dropping a worn piece off the list. slot[] is the same array the dialogue
+                // reads from, so the label follows.
+                slot[2] = 1;
+                out.put(slotId, rollTrim(rng));
+                continue;
+            }
+            if (roll == null) continue;   // nothing left to give this weapon
+            out.put(slotId, roll);
         }
         return out;
     }
@@ -31697,19 +31713,63 @@ public class CombatManager {
             : getValidWeaponEnchants(stack);
         if (keys.length == 0) keys = new String[]{"unbreaking"};
 
-        String chosenKey = keys[rng.nextInt(keys.length)];
-        int level = clampEnchantLevel(world, chosenKey, 1 + rng.nextInt(3));
+        // Only enchantments that would actually change the item. An enchantment it already
+        // carries survives this filter while there is headroom above it, and when it does, the
+        // level it lands at is forced past what is already there - a re-roll of the same level is
+        // not a bad outcome the player gambled on, it is the event doing nothing.
+        java.util.List<String> eligible = new java.util.ArrayList<>();
+        for (String key : keys) {
+            if (com.crackedgames.craftics.combat.EnchanterOffer.canImprove(
+                    existingEnchantLevel(stack, key), maxEnchantLevel(world, key))) {
+                eligible.add(key);
+            }
+        }
+        // Everything this item can hold, it already holds at full strength. The caller drops the
+        // item from the offer rather than showing the player a choice that cannot pay out.
+        if (eligible.isEmpty()) return null;
+
+        String chosenKey = eligible.get(rng.nextInt(eligible.size()));
+        int level = improvedRoll(world, stack, chosenKey, rng);
         String real = com.crackedgames.craftics.combat.EnchanterPreview.label(chosenKey, level);
 
-        // Every other enchant this item could have received, each at a level it could have rolled.
+        // Every other enchant this item could have received, each at a level it could have
+        // rolled. Drawn from the same filtered set, so the shortlist never advertises an
+        // upgrade the item is no longer able to take.
         java.util.List<String> pool = new java.util.ArrayList<>();
-        for (String key : keys) {
+        for (String key : eligible) {
             if (key.equals(chosenKey)) continue;
             pool.add(com.crackedgames.craftics.combat.EnchanterPreview.label(
-                key, clampEnchantLevel(world, key, 1 + rng.nextInt(3))));
+                key, improvedRoll(world, stack, key, rng)));
         }
         return new EnchanterRoll(false, chosenKey, null, level,
             com.crackedgames.craftics.combat.EnchanterPreview.shortlist(real, pool, rng.nextLong()));
+    }
+
+    /** A 1-3 roll, raised past whatever the item already has and held to the enchant's maximum. */
+    private int improvedRoll(ServerWorld world, ItemStack stack, String key, java.util.Random rng) {
+        return com.crackedgames.craftics.combat.EnchanterOffer.improvedLevel(
+            existingEnchantLevel(stack, key), 1 + rng.nextInt(3), maxEnchantLevel(world, key));
+    }
+
+    /** What level of {@code path} this item already carries, or 0. */
+    private static int existingEnchantLevel(ItemStack stack, String path) {
+        ItemEnchantmentsComponent enchants =
+            stack.getOrDefault(DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT);
+        for (var entry : enchants.getEnchantments()) {
+            var key = entry.getKey();
+            // Matched on the bare path, the same way the enchanter resolves what to apply, so the
+            // two halves cannot disagree about what counts as "the same enchantment".
+            if (key.isPresent() && key.get().getValue().getPath().equals(path)) {
+                return enchants.getLevel(entry);
+            }
+        }
+        return 0;
+    }
+
+    /** The enchantment's own ceiling, or 0 when the registry cannot resolve it. */
+    private static int maxEnchantLevel(ServerWorld world, String key) {
+        var entry = lookupEnchantEntry(world, key);
+        return entry == null ? 0 : entry.value().getMaxLevel();
     }
 
     /** Armor inventory index to slot: 0=feet, 1=legs, 2=chest, 3=head. */
@@ -31909,28 +31969,20 @@ public class CombatManager {
                 sendMessage("\u00a7d\u2728 " + stack.getName().getString() + " shimmers with new power!");
             }
         } else {
-            // Add a random enchantment, branching by the actual item so we don't
-            // slap looting on a bow or feather_falling on a chestplate.
-            String[] enchantKeys;
-            if (isArmor) {
-                // Armor inventory index: 0=feet, 1=legs, 2=chest, 3=head
-                int armorIdx = slotId - 100;
-                net.minecraft.entity.EquipmentSlot armorSlot = switch (armorIdx) {
-                    case 0 -> net.minecraft.entity.EquipmentSlot.FEET;
-                    case 1 -> net.minecraft.entity.EquipmentSlot.LEGS;
-                    case 2 -> net.minecraft.entity.EquipmentSlot.CHEST;
-                    case 3 -> net.minecraft.entity.EquipmentSlot.HEAD;
-                    default -> net.minecraft.entity.EquipmentSlot.CHEST;
-                };
-                enchantKeys = getValidArmorEnchants(armorSlot);
-            } else {
-                enchantKeys = getValidWeaponEnchants(stack);
+            // The enchantment was chosen when the offer was made, filtered to things that
+            // would actually improve this item and levelled past whatever it already carried.
+            // A null roll means the item changed hands since - re-roll it the same way rather
+            // than reaching for an unfiltered pool that could hand back what is already there.
+            EnchanterRoll enchantRoll = decided != null && !decided.trim()
+                ? decided : rollEnchant(world, stack, isArmor, slotId, rng);
+            if (enchantRoll == null) {
+                stack.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                sendMessage("\u00a7d\u2728 " + stack.getName().getString()
+                    + " is already as strong as I can make it.");
+                return;
             }
-            if (enchantKeys.length == 0) enchantKeys = new String[]{"unbreaking"};
-            boolean usePreRolled = decided != null && !decided.trim();
-            String chosenKey = usePreRolled
-                ? decided.key() : enchantKeys[rng.nextInt(enchantKeys.length)];
-            int level = usePreRolled ? decided.level() : 1 + rng.nextInt(3); // level 1-3
+            String chosenKey = enchantRoll.key();
+            int level = enchantRoll.level();
 
             //? if <=1.21.1 {
             var enchantRegistry = world.getRegistryManager()

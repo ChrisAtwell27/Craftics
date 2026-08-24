@@ -24,6 +24,8 @@ The Enchanter Tells You What Might Happen
 - Hovering a weapon or armor piece at the enchanter now lists a few things the enhancement could turn out to be. One of them is what you will actually get
 - The enchanter was a blind roll, so getting Dull or Hilt back on a good weapon felt like the game had cheated rather than like a gamble that went badly. Nothing had ever told you a bad outcome was on the table. Seeing Dull sitting among the possibilities before you commit makes the same result read as a bet you took
 - The decoys are drawn from the same pool the real result came from, so every option shown is something that genuinely could have happened. Padding the list with impossible entries would let you find the real one by elimination
+- The enchanter only offers enchantments that would actually change the item. One it already carries stays on the table only while there is headroom above it, and when it comes up the level is forced past what is already there, so Sharpness III can become Sharpness IV but never Sharpness III again or, worse, a Sharpness II that reads as a downgrade
+- A weapon it has nothing left to add to is no longer listed at all, rather than spending your one pick on an item that cannot change. Fully enchanted armor is offered a trim instead
 - The roll is decided when the offer is made rather than when you accept, so the list can promise the truth is on it instead of guessing at a roll that has not happened yet. Where the position of the real entry is concerned, it lands anywhere in the list, since always-first or always-last would spoil the roll rather than warn about it
 
 Infinite Arrows on Aimed Shots
