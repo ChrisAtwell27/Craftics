@@ -37,15 +37,20 @@ public final class SeasonLeaderboard {
     /** How many players the board lists. */
     private static final int ROWS = 10;
 
-    /** Spawn a season board at {@code pos}, or null when the world refuses the entity. */
+    /**
+     * Spawn a season board whose BOTTOM edge sits at {@code pos}, or null when the world
+     * refuses the entity. The entity goes half a board higher than that, because the board is
+     * centred on its own pivot - see {@link BoardLayout}.
+     */
     public static DisplayEntity.TextDisplayEntity spawn(ServerWorld world, Vec3d pos) {
         DisplayEntity.TextDisplayEntity board =
             new DisplayEntity.TextDisplayEntity(EntityType.TEXT_DISPLAY, world);
-        board.refreshPositionAndAngles(pos.x, pos.y, pos.z, 0f, 0f);
+        Text text = buildBoard(world);
+        board.refreshPositionAndAngles(pos.x, pos.y + BoardLayout.halfHeight(text), pos.z, 0f, 0f);
         board.addCommandTag(TAG);
         ((DisplayEntityInvoker) board).craftics$setBillboardMode(DisplayEntity.BillboardMode.CENTER);
         ((TextDisplayInvoker) board).craftics$setLineWidth(260);
-        ((TextDisplayInvoker) board).craftics$setText(buildBoard(world));
+        BoardLayout.applyText(board, text);
         return world.spawnEntity(board) ? board : null;
     }
 

@@ -1,5 +1,25 @@
 ﻿Changelog
 
+0.4.2.1
+
+Auction Sellers Not Getting Paid
+
+- Fixed a sale never appearing to pay out. The seller was credited server-side, but nothing told either client the number had changed, so both sides watched their balance sit still - the seller saw the item go and no emeralds arrive. The balance was really there, and showed up the next time something else refreshed it
+- Fixed the money genuinely vanishing when the seller was inside an Infinite Mode run. A run spends its own wallet and the real balance is parked until it ends, so paying into the run wallet handed them emeralds that leaving the run overwrote. Sales now land in the parked balance, and say so
+
+Party Members Falling Out of Arenas
+
+- Fixed a party member who ended up below the arena floor being killed outright with a totem still in their hand. Only the turn holder was ever offered theirs, and that path skips whoever is acting - so it could only ever kill a non-leader
+- Fixed its rescue threshold missing a dug pit entirely: a member who fell in was neither rescued nor killed, and stood in the hole while enemies attacked the tile above
+- Spawn placement no longer puts anyone on a tile with nothing under it. It preferred a free hole over an occupied solid tile, and counted the block you stand IN as floor, so a torch over a shaft read as ground
+- With no safe tile anywhere it now refuses and logs it, instead of quietly picking the least-bad hole
+
+Two Version Crashes
+
+- Fixed the server dying whenever a non-creative player left-clicked a block, on 1.21.3, 1.21.4 and 1.21.5. A bundled library calls a Minecraft method that gained a parameter in 1.21.3
+- Fixed the client dying on world join on 1.21.3, from a mixin guard that said 1.21.2 where it meant 1.21.4
+- Neither could fail at build time, so the search is now mechanical: every mixin selector, and every Minecraft method the bundled libraries reference, is checked against each version's real mappings
+
 0.4.2
 
 Noteworthy:
@@ -133,6 +153,20 @@ Guests Could Not Start a Run
 - The lobby has always let any party member host. The block was that it judged the pick against the **starter's own** progression while the level select screen shows the **island's**, so a guest who was personally behind was refused every biome they could see. Both now read the same record
 - The refusal was also silent. Being turned down for a locked biome, or for one a datapack removed, now says so
 - Biome discovery is recorded on the island as well as the runner, so a guest-hosted run no longer leaves the island (and therefore everyone's level select and guide book) thinking the biome was never visited
+Hives and Graves Over Pits
+
+- Fixed hives, graves, sculk sensors and the Deeper and Darker props being placed on VOID tiles - a solid block hanging in a hole, which reads as ground, and which turns a death pit into walkable floor the moment someone mines it. Mob spawns were never affected
+
+Command Permissions
+
+- `/craftics force_event` is now gated behind a permission node. It had no check of any kind, so any player could line up a vault or a trader before every level
+- `/lobby`, `/spawn` and `/craftics world lobby` no longer teleport you out of a live fight, which skipped every death penalty. `/home` always blocked it; the other three each had their own copy without the check
+- `/craftics difficulty` is owner-only. It writes to the island, so a guest could retune it for everyone
+
+Boards and Lootboxes
+
+- The season, career and infinite boards turn on their own centre instead of their bottom edge, and the season board is placed at your feet. Boards already placed render half their height lower until re-placed
+- Punching a lootbox opens it, the same as right-clicking. The `(Punch: Odds)` hint is gone from the label; the odds are a button inside
 
 0.4.1
 

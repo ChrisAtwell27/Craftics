@@ -23,9 +23,9 @@ import java.util.Map;
  * cycling, and a steady drift of themed particles around it.
  *
  * <p>A lootbox is an admin-placed chest sitting in a hub full of other chests. Without a
- * label it is indistinguishable from storage, and a player has no way to know it exists, what
- * it costs, or that punching it shows the full odds before they ever spend anything. The
- * hologram carries both, so the kiosk explains itself from across the room.
+ * label it is indistinguishable from storage, and a player has no way to know it exists or
+ * what it costs. The hologram carries both, so the kiosk explains itself from across the
+ * room; the odds live one button inside it, where a price has already been quoted.
  *
  * <p>Everything here is rebuilt from the registration in {@link CrafticsSavedData}, never
  * persisted: the label entities are spawned as needed and re-derived on restart. Display
@@ -145,12 +145,13 @@ public final class LootboxPresentation {
     /**
      * Write the label: title in the cycling colour, then a price line with a short hint.
      *
-     * <p>Two lines only. A third line naming the odds command used to sit here, but between
-     * the colour cycle, the price and a command string it read as noise - and the command is
-     * redundant now that punching the chest opens the odds menu directly. Every colour used is
-     * a bright, saturated one (never §7/§8): dark grey reads fine against a bright sky but
-     * disappears against stone, caves and night, which is exactly where a lot of these kiosks
-     * end up standing.
+     * <p>Two lines only, and neither of them explains a control. A third line naming the odds
+     * command used to sit here, and a "(Punch: Odds)" hint after the price replaced it; both
+     * read as noise next to a cycling colour and a price, and both described a route that no
+     * longer exists - either click opens the box now, and the odds are a button inside. Every
+     * colour used is a bright, saturated one (never §7/§8): dark grey reads fine against a
+     * bright sky but disappears against stone, caves and night, which is exactly where a lot
+     * of these kiosks end up standing.
      *
      * <p>The whole text is rewritten each pulse rather than patched, because the vanilla text
      * getter is protected and only the setter is exposed through the invoker mixin. Rebuilding
@@ -161,8 +162,8 @@ public final class LootboxPresentation {
         int[] cycle = cycleFor(type);
         int colour = lerpColor(cycle[0], cycle[1], blend);
         String priceLine = cost <= 0
-            ? "§a§lFree to open §f- §b(Punch: Odds)"
-            : "§f" + cost + " §aEmeralds §f- §b(Punch: Odds)";
+            ? "§a§lFree to open"
+            : "§f" + cost + " §aEmeralds";
         var text = Text.literal("§l" + type.display).styled(s -> s.withColor(colour))
             .append(Text.literal("\n" + priceLine));
         ((TextDisplayInvoker) label).craftics$setText(text);

@@ -205,11 +205,19 @@ public final class AuctionCommands {
         // Credit the seller. Barter goes to their mailbox as items; emeralds go to the bank,
         // which works whether or not they are online.
         CrafticsSavedData.PlayerData sellerData = data.getPlayerData(listing.seller());
+        boolean paidIntoParkedWallet = false;
         if (listing.isBarter()) {
             NbtCompound paidStack = new NbtCompound();
             paidStack.putString("id", listing.wantedItemId());
             paidStack.putInt("count", listing.wantedCount());
             AuctionStore.mail(listing.seller(), paidStack);
+        } else if (sellerData.infiniteStashActive) {
+            // The seller is inside an Infinite Mode run, so pd.emeralds is the RUN wallet and
+            // their real balance is parked in the stash. Paying into the run wallet would hand
+            // them money that vanishes on the way out - leaving the run overwrites pd.emeralds
+            // with the stashed balance wholesale - so the sale has to land in the parked one.
+            sellerData.infiniteStashEmeralds += listing.emeraldPrice();
+            paidIntoParkedWallet = true;
         } else {
             sellerData.addEmeralds(listing.emeraldPrice());
         }
@@ -218,11 +226,22 @@ public final class AuctionCommands {
         markDirty(player);
         player.sendMessage(Text.literal("§aBought §f" + listing.count() + "x "
             + listing.displayName() + "§a."), false);
+        // The client keeps its own copy of the balance for the HUD and the respec screens, and
+        // nothing here told it the number had changed. Both sides were really debited and
+        // credited server-side, but each watched their balance sit still - which reads as the
+        // sale not having paid out at all. (Same fix the lootbox purchase path already needed.)
+        com.crackedgames.craftics.network.ModNetworking.syncPlayerStats(player);
 
         ServerPlayerEntity seller = player.getServer().getPlayerManager().getPlayer(listing.seller());
         if (seller != null) {
             seller.sendMessage(Text.literal("§a" + player.getName().getString() + " bought your §f"
                 + listing.displayName() + "§a."), false);
+            if (paidIntoParkedWallet) {
+                seller.sendMessage(Text.literal("§7The §f" + listing.emeraldPrice()
+                    + "§7 emeralds are waiting with your island balance - an Infinite Mode run"
+                    + " spends its own wallet, so they land when the run ends."), false);
+            }
+            com.crackedgames.craftics.network.ModNetworking.syncPlayerStats(seller);
         }
         return true;
     }

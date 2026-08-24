@@ -82,7 +82,9 @@ public final class SculkSensorEffect implements BiomeEffect {
         used.add(new GridPos(width / 2, 0)); // player start - never place here
 
         for (int i = 0; i < count; i++) {
-            GridPos pos = MinibossSpawns.findOpen(width, height, used, rng);
+            // Real floor only - a sensor is a block, and one placed on a VOID tile becomes
+            // walkable ground the moment a player mines it.
+            GridPos pos = MinibossSpawns.findOpen(width, height, used, rng, arena::isPlaceableFloor);
             if (pos == null) continue;
             used.add(pos);
             // A plain mineable obstacle backed by the sculk sensor block - no HP

@@ -367,8 +367,10 @@ public final class DeeperAndDarkerCompat {
         int count = (infestedBlock == null && vaseBlock == null) ? 0 : 1 + rng.nextInt(2);
         boolean placedAny = false;
         for (int i = 0; i < count; i++) {
+            // Props are blocks, so they need real floor - the bare roll would hang a vase
+            // over a VOID pit.
             GridPos pos = com.crackedgames.craftics.combat.miniboss.MinibossSpawns
-                .findOpen(width, height, used, rng);
+                .findOpen(width, height, used, rng, ctx.arena()::isPlaceableFloor);
             if (pos == null) continue;
             used.add(pos);
             boolean asVase = vaseBlock != null && (infestedBlock == null || rng.nextFloat() < VASE_SHARE);

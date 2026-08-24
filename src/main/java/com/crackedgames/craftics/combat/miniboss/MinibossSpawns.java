@@ -4,6 +4,7 @@ import com.crackedgames.craftics.core.GridPos;
 
 import java.util.List;
 import java.util.Random;
+import java.util.function.Predicate;
 
 /**
  * Shared spawn-tile pickers for miniboss mechanics. Every mechanic scatters its opening
@@ -24,6 +25,9 @@ public final class MinibossSpawns {
     /** Manhattan gap below which two tiles are "too close" (avoids stacking spawns). */
     private static final int MIN_GAP = 2;
 
+    /** The old behaviour: any in-rectangle tile will do, whatever is on it. */
+    private static final Predicate<GridPos> ACCEPT_ANY = pos -> true;
+
     /**
      * A random open tile in the spawn-safe rectangle (x in {@code [1, width-2]}, z in
      * {@code [2, height-3]}) that is not within {@link #MIN_GAP} of any {@code used} tile,
@@ -31,11 +35,25 @@ public final class MinibossSpawns {
      * player's front row.
      */
     public static GridPos findOpen(int width, int height, List<GridPos> used, Random rng) {
+        return findOpen(width, height, used, rng, ACCEPT_ANY);
+    }
+
+    /**
+     * {@link #findOpen} with an extra test every candidate must pass.
+     *
+     * <p>This exists because the plain roll is blind to what is actually ON the tile: it knows
+     * the arena's width and height and nothing else, so it happily returns a VOID tile - a hole
+     * in the floor - and the caller places a grave or a bee hive hanging over the pit. Callers
+     * that put a BLOCK down pass {@code arena::isPlaceableFloor}; the predicate keeps this class
+     * free of arena and Minecraft types, so it stays unit-testable with no bootstrap.
+     */
+    public static GridPos findOpen(int width, int height, List<GridPos> used, Random rng,
+                                   Predicate<GridPos> valid) {
         for (int attempts = 0; attempts < 40; attempts++) {
             int x = 1 + rng.nextInt(Math.max(1, width - 2));
             int z = 2 + rng.nextInt(Math.max(1, height - 3));
             GridPos pos = new GridPos(x, z);
-            if (!tooClose(pos, used)) return pos;
+            if (!tooClose(pos, used) && valid.test(pos)) return pos;
         }
         return null;
     }
@@ -47,13 +65,19 @@ public final class MinibossSpawns {
      */
     public static GridPos findOpenBiased(int width, int height, List<GridPos> used, Random rng,
                                          int biasX, int biasZ) {
+        return findOpenBiased(width, height, used, rng, biasX, biasZ, ACCEPT_ANY);
+    }
+
+    /** {@link #findOpenBiased} with the same extra test {@link #findOpen} takes. */
+    public static GridPos findOpenBiased(int width, int height, List<GridPos> used, Random rng,
+                                         int biasX, int biasZ, Predicate<GridPos> valid) {
         for (int attempts = 0; attempts < 20; attempts++) {
             int x = clamp(biasX + rng.nextInt(5) - 2, 1, Math.max(1, width - 2));
             int z = clamp(biasZ + rng.nextInt(5) - 2, 2, Math.max(2, height - 2));
             GridPos pos = new GridPos(x, z);
-            if (!tooClose(pos, used)) return pos;
+            if (!tooClose(pos, used) && valid.test(pos)) return pos;
         }
-        return findOpen(width, height, used, rng);
+        return findOpen(width, height, used, rng, valid);
     }
 
     /** True if {@code pos} is within {@link #MIN_GAP} Manhattan of any tile in {@code used}. */

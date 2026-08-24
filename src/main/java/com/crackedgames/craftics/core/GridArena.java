@@ -112,6 +112,23 @@ public class GridArena {
 
     // --- Occupant tracking ---
 
+    /**
+     * True when {@code pos} can hold a placed block - a grave, a hive, a sculk sensor, any of
+     * the block-backed objects a mechanic scatters at fight start.
+     *
+     * <p>Walkability is the test because it is exactly "this tile has a floor". A VOID tile is
+     * a hole in the arena, and a block placed on one is placed in mid-air over a pit: it looks
+     * like ground the player can use, the grid still says the tile kills you, and mining it
+     * reverts the tile to plain floor - which turns a death pit into walkable ground with no
+     * world block under it.
+     */
+    public boolean isPlaceableFloor(GridPos pos) {
+        if (pos == null || !isInBounds(pos)) return false;
+        GridTile tile = getTile(pos);
+        if (tile == null || !tile.isWalkable()) return false;
+        return !isOccupied(pos);
+    }
+
     public boolean isOccupied(GridPos pos) {
         if (pos.equals(playerGridPos)) return true;
         for (GridPos p : allPlayerGridPositions) {

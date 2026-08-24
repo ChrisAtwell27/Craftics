@@ -91,7 +91,8 @@ public final class PlainsGraveyardMechanic implements MinibossMechanic {
         }
 
         for (int i = 0; i < GRAVE_COUNT; i++) {
-            GridPos pos = MinibossSpawns.findOpen(arena.getWidth(), arena.getHeight(), used, ctx.rng());
+            GridPos pos = MinibossSpawns.findOpen(arena.getWidth(), arena.getHeight(), used,
+                ctx.rng(), arena::isPlaceableFloor); // a grave is a block: no pits
             if (pos == null) continue;
             used.add(pos);
             CombatEntity grave = ctx.spawnBlockObject("craftics:grave", pos, GRAVE_HP, Blocks.COBBLESTONE_WALL);

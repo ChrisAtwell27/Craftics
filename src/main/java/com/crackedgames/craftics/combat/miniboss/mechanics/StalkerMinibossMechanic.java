@@ -105,7 +105,8 @@ public final class StalkerMinibossMechanic implements MinibossMechanic {
         }
         var arena = ctx.arena();
         for (int i = 0; i < SENSORS; i++) {
-            GridPos pos = MinibossSpawns.findOpen(arena.getWidth(), arena.getHeight(), used, ctx.rng());
+            GridPos pos = MinibossSpawns.findOpen(arena.getWidth(), arena.getHeight(), used,
+                ctx.rng(), arena::isPlaceableFloor); // a sensor is a block: no pits
             if (pos == null) break;
             used.add(pos);
             ctx.placeObstacle(pos, sensorBlock());

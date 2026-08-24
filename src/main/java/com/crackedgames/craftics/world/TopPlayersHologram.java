@@ -37,15 +37,19 @@ public final class TopPlayersHologram {
 
     private static int clock = 0;
 
-    /** Spawn a board at {@code pos}. Returns the entity, or null when spawning failed. */
+    /**
+     * Spawn a board whose BOTTOM edge sits at {@code pos}. The entity itself goes half a
+     * board higher, because the board is centred on its own pivot - see {@link BoardLayout}.
+     */
     public static DisplayEntity.TextDisplayEntity spawn(ServerWorld world, Vec3d pos) {
         DisplayEntity.TextDisplayEntity board =
             new DisplayEntity.TextDisplayEntity(EntityType.TEXT_DISPLAY, world);
-        board.refreshPositionAndAngles(pos.x, pos.y, pos.z, 0f, 0f);
+        Text text = buildBoard(world);
+        board.refreshPositionAndAngles(pos.x, pos.y + BoardLayout.halfHeight(text), pos.z, 0f, 0f);
         board.addCommandTag(TAG);
         ((DisplayEntityInvoker) board).craftics$setBillboardMode(DisplayEntity.BillboardMode.CENTER);
         ((TextDisplayInvoker) board).craftics$setLineWidth(220);
-        ((TextDisplayInvoker) board).craftics$setText(buildBoard(world));
+        BoardLayout.applyText(board, text);
         return world.spawnEntity(board) ? board : null;
     }
 
@@ -81,10 +85,10 @@ public final class TopPlayersHologram {
                 var tags = display.getCommandTags();
                 if (tags.contains(TAG)) {
                     if (careerBoard == null) careerBoard = buildBoard(world);
-                    ((TextDisplayInvoker) display).craftics$setText(careerBoard);
+                    BoardLayout.applyText(display, careerBoard);
                 } else if (tags.contains(SeasonLeaderboard.TAG)) {
                     if (seasonBoard == null) seasonBoard = SeasonLeaderboard.buildBoard(world);
-                    ((TextDisplayInvoker) display).craftics$setText(seasonBoard);
+                    BoardLayout.applyText(display, seasonBoard);
                 }
             }
         }

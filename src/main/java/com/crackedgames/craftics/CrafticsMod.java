@@ -1311,6 +1311,62 @@ public class CrafticsMod implements ModInitializer {
      *
      * <p>Falls back to {@code /craftics home}, which is namespaced and therefore always real.
      */
+    /**
+     * The mid-combat guard every hub-teleport command shares. Returns true when the command
+     * must stop, having already told the player why.
+     *
+     * <p>A teleport out of a fight is an escape hatch that trivialises a hard one, and the
+     * fight it abandons never charges a death penalty. {@code /home} has always said so and
+     * blocked it - but {@code /lobby}, {@code /spawn} and {@code /craftics world lobby} each
+     * grew their own copy of the teleport WITHOUT the check, so the rule only ever applied to
+     * the one command players had least reason to use. They all ask here now.
+     *
+     * <p>The bypass is a permission node rather than a bare op check, so a moderator can be
+     * given it without being handed the whole game; with no permissions mod installed it
+     * falls back to op level 2, exactly as before.
+     */
+    private static boolean blockedByCombatEscape(ServerCommandSource src,
+                                                 ServerPlayerEntity player, String label) {
+        CombatManager playerCm = CombatManager.get(player);
+        CombatManager activeCm = CombatManager.getActiveCombat(player.getUuid());
+        boolean inCombat = (activeCm != null && activeCm.isActive()) || playerCm.isActive();
+        if (!inCombat) return false;
+        // ...but a DECIDED fight is not a fight. LEVEL_COMPLETE and GAME_OVER are the windows
+        // where the server has stopped taking turn input and is waiting on a screen the player
+        // may no longer have: the victory screen can be closed or stomped, and there is then
+        // nothing left that will ever ask again. Blocking here does not protect the difficulty
+        // - the fight is already over - it just removes the last way out of a softlock.
+        CombatManager fightCm = (activeCm != null && activeCm.isActive()) ? activeCm : playerCm;
+        if (fightCm.getPhase() == com.crackedgames.craftics.combat.CombatPhase.LEVEL_COMPLETE
+            || fightCm.getPhase() == com.crackedgames.craftics.combat.CombatPhase.GAME_OVER) {
+            return false;
+        }
+        if (CrafticsPermissions.check(src, "combat.teleport_bypass")) return false;
+        src.sendError(Text.literal("§cYou can't use §e" + label + "§c during combat."));
+        return true;
+    }
+
+    /**
+     * Detach {@code player} from whatever fight they are in, ahead of a teleport out of it.
+     *
+     * <p>Party combat runs on the LEADER's manager, so a member's own manager reads inactive
+     * and {@code endCombat()} on it does nothing - the member teleports out and the fight
+     * keeps a ghost where they were standing. The lobby shortcuts all did exactly that.
+     */
+    private static void detachFromCombatForTeleport(ServerPlayerEntity player) {
+        CombatManager activeCm = CombatManager.getActiveCombat(player.getUuid());
+        if (activeCm != null && activeCm.isActive()) {
+            activeCm.leavePartyCombat(player);
+            return;
+        }
+        CombatManager playerCm = CombatManager.get(player);
+        if (playerCm.isActive()) {
+            playerCm.endCombat();
+            net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
+                new com.crackedgames.craftics.network.ExitCombatPayload(false));
+        }
+    }
+
     public static String homeCommandLabel() {
         String active = activeHomeAlias;
         return active.isEmpty() ? "/craftics home" : "/" + active;
@@ -1608,6 +1664,14 @@ public class CrafticsMod implements ModInitializer {
         ServerWorld overworld = source.getServer().getOverworld();
         CrafticsSavedData data = CrafticsSavedData.get(overworld);
         java.util.UUID owner = data.getEffectiveWorldOwner(who.getUuid());
+        // The setting is written to the ISLAND, so a guest running this changed the owner's
+        // difficulty for everyone who plays there, including while the owner was offline.
+        // Same owner-only rule /craftics hp_per_level already applies to its island setting.
+        if (!owner.equals(who.getUuid())) {
+            source.sendError(net.minecraft.text.Text.literal(
+                "§cOnly the island owner can change the difficulty."));
+            return 0;
+        }
         data.getPlayerData(owner).difficulty = level.name();
         data.markDirty();
         source.sendFeedback(() -> net.minecraft.text.Text.literal(
@@ -2380,7 +2444,11 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             // /craftics force_event <event>: force the next between-level event
-            var forceEventNode = CommandManager.literal("force_event");
+            // Gated: forcing your own next event is picking your own reward. Left ungated
+            // since it shipped, so any player could line up a vault or a trader every
+            // level - and the op-only feedback broadcast was the only sign of it.
+            var forceEventNode = CommandManager.literal("force_event")
+                .requires(CrafticsPermissions.require("command.force_event"));
             // Built-in event names: bare strings that the dispatch in
             // CombatManager.rollEvent compares against. Must match the
             // {@code forced.equals("...")} arms over there exactly.
@@ -2788,8 +2856,11 @@ public class CrafticsMod implements ModInitializer {
                 .requires(CrafticsPermissions.require("command.seasonboard"))
                 .then(CommandManager.literal("spawn").executes(ctx -> {
                     ServerPlayerEntity admin = ctx.getSource().getPlayerOrThrow();
+                    // The admin's feet: spawn() takes the board's bottom edge, so the board
+                    // stands up from the floor the admin is on rather than starting above
+                    // their head and climbing from there.
                     var placed = com.crackedgames.craftics.world.SeasonLeaderboard.spawn(
-                        (ServerWorld) admin.getEntityWorld(), admin.getPos().add(0, 2.2, 0));
+                        (ServerWorld) admin.getEntityWorld(), admin.getPos());
                     if (placed == null) {
                         ctx.getSource().sendError(Text.literal("§cFailed to spawn the season board."));
                         return 0;
@@ -2961,38 +3032,10 @@ public class CrafticsMod implements ModInitializer {
                     return 0;
                 }
 
-                // /home is an escape hatch out of combat, which trivializes
-                // a tough fight, so block it mid-combat for non-ops. Ops can
-                // still teleport home for debugging / world maintenance.
-                CombatManager playerCm = CombatManager.get(player);
-                CombatManager activeCm = CombatManager.getActiveCombat(player.getUuid());
-                boolean inCombat = (activeCm != null && activeCm.isActive()) || playerCm.isActive();
-                // ...but a DECIDED fight is not a fight. LEVEL_COMPLETE and GAME_OVER are the
-                // windows where the server has stopped taking turn input and is waiting on a
-                // screen the player may no longer have: the victory screen can be closed or
-                // stomped, and there is then nothing left that will ever ask again. Blocking
-                // /home there does not protect the difficulty - the fight is already over -
-                // it just removes the last way out of a softlock. Let those phases through.
-                CombatManager fightCm = (activeCm != null && activeCm.isActive()) ? activeCm : playerCm;
-                boolean alreadyDecided = inCombat
-                    && (fightCm.getPhase() == com.crackedgames.craftics.combat.CombatPhase.LEVEL_COMPLETE
-                     || fightCm.getPhase() == com.crackedgames.craftics.combat.CombatPhase.GAME_OVER);
-                if (inCombat && !alreadyDecided && !ctx.getSource().hasPermissionLevel(2)) {
-                    ctx.getSource().sendError(Text.literal(
-                        "§cYou can't use §e" + homeCommandLabel() + "§c during combat."));
-                    return 0;
-                }
-
-                // Handle party combat: gracefully remove this player instead of ending for everyone
-                if (activeCm != null && activeCm.isActive()) {
-                    // Player is in party combat, remove them gracefully
-                    activeCm.leavePartyCombat(player);
-                } else if (playerCm.isActive()) {
-                    // Solo combat, end normally
-                    playerCm.endCombat();
-                    net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
-                        new com.crackedgames.craftics.network.ExitCombatPayload(false));
-                }
+                // A teleport out of a fight trivialises it - see blockedByCombatEscape,
+                // which every hub-teleport command now shares.
+                if (blockedByCombatEscape(ctx.getSource(), player, homeCommandLabel())) return 0;
+                detachFromCombatForTeleport(player);
 
                 // Show loading screen, load chunks, then teleport
                 ServerPlayNetworking.send(player,
@@ -3095,8 +3138,10 @@ public class CrafticsMod implements ModInitializer {
             // independently in tab-completion instead of hiding behind one canonical name.
             var lobbyCmd = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
                 ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
-                CombatManager cm = CombatManager.get(player);
-                if (cm.isActive()) cm.endCombat();
+                // Same rule as /home: these are hub teleports too, and ending a losing fight
+                // by typing /spawn skipped every death penalty the fight was about to charge.
+                if (blockedByCombatEscape(ctx.getSource(), player, "/lobby")) return 0;
+                detachFromCombatForTeleport(player);
                 clearClientRunState(player);
 
                 com.crackedgames.craftics.world.HubTeleports.toLobby(player);
@@ -3228,8 +3273,9 @@ public class CrafticsMod implements ModInitializer {
         worldNode.then(CommandManager.literal("lobby").executes(ctx -> {
             ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
 
-            CombatManager cm = CombatManager.get(player);
-            if (cm.isActive()) cm.endCombat();
+            // The third copy of the lobby teleport, and the third that skipped the guard.
+            if (blockedByCombatEscape(ctx.getSource(), player, "/craftics world lobby")) return 0;
+            detachFromCombatForTeleport(player);
             clearClientRunState(player);
 
             com.crackedgames.craftics.world.HubTeleports.toLobby(player);

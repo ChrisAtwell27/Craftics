@@ -70,7 +70,9 @@ public final class ForestHiveEffect implements BiomeEffect {
 
         int placed = 0;
         for (int i = 0; i < count; i++) {
-            GridPos pos = MinibossSpawns.findOpen(width, height, used, rng);
+            // arena::isPlaceableFloor, not the bare roll: a hive is a BLOCK, and the bare
+            // roll cannot see that a tile is a VOID pit.
+            GridPos pos = MinibossSpawns.findOpen(width, height, used, rng, arena::isPlaceableFloor);
             if (pos == null) continue;
             used.add(pos);
             CombatEntity hive = ctx.spawnBlockObject(

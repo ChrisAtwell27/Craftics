@@ -174,56 +174,18 @@ public final class LootboxManager {
         UseBlockCallback.EVENT.register((player, world, hand, hit) -> {
             if (world.isClient() || !(player instanceof ServerPlayerEntity sp)) return ActionResult.PASS;
             if (!(world instanceof ServerWorld sw)) return ActionResult.PASS;
-            BlockPos pos = hit.getBlockPos();
-            CrafticsSavedData data = CrafticsSavedData.get(sw);
-            String entry = data.getLootboxChestType(sw, pos);
-            if (entry == null) return ActionResult.PASS;
-            if (!sw.getBlockState(pos).isOf(Blocks.CHEST)) {
-                // Chest gone (broken by other means): drop the dead registration and its label.
-                data.unregisterLootboxChest(sw, pos);
-                LootboxPresentation.clearLabel(sw, pos);
-                return ActionResult.PASS;
-            }
-            ChestConfig config = resolveChestConfig(entry);
-            if (config == null) return ActionResult.PASS;
-            if (!CrafticsSavedData.get(sw).areLootboxesEnabled()) {
-                // SUCCESS, not PASS. Passing would drop the click through to the next use
-                // handler - in the lobby that is the spawn protection, which would answer a
-                // temporarily closed kiosk with "the lobby is protected" and tell the player
-                // the wrong thing entirely.
-                sp.sendMessage(net.minecraft.text.Text.literal(
-                    "§eThis lootbox is closed right now."), true);
-                return ActionResult.SUCCESS;
-            }
-            if (config.cost() > 0 && findKey(sp) != null) {
-                // Holding a valid Key: skip the confirm stop entirely and open right away -
-                // openChest() is the one place that actually consumes it.
-                openChest(sp, sw, pos, config.type(), config.cost());
-                return ActionResult.SUCCESS;
-            }
-            // A stop, not a formality: price, balance and an [Odds] button, before anything is
-            // charged. The [Open] icon is what actually calls confirmOpen().
-            openConfirmMenu(sp, sw, pos, config.type(), config.cost());
-            return ActionResult.SUCCESS; // never open the vanilla container UI
+            return onKioskClicked(sp, sw, hit.getBlockPos());
         });
         AttackBlockCallback.EVENT.register((player, world, hand, pos, direction) -> {
             if (world.isClient() || !(player instanceof ServerPlayerEntity sp)) return ActionResult.PASS;
             if (!(world instanceof ServerWorld sw)) return ActionResult.PASS;
-            CrafticsSavedData data = CrafticsSavedData.get(sw);
-            String entry = data.getLootboxChestType(sw, pos);
-            if (entry == null) return ActionResult.PASS;
-            if (!sw.getBlockState(pos).isOf(Blocks.CHEST)) {
-                data.unregisterLootboxChest(sw, pos);
-                LootboxPresentation.clearLabel(sw, pos);
-                return ActionResult.PASS;
-            }
-            ChestConfig config = resolveChestConfig(entry);
-            if (config == null) return ActionResult.PASS;
-            // Punching a lootbox chest shows the odds - and only the odds. Cancelling here
-            // (any non-PASS result on the logical server) is what keeps a registered kiosk
-            // from ever taking damage or breaking from a punch.
-            openOddsMenu(sp, config.type(), sw, null);
-            return ActionResult.SUCCESS;
+            // Punching a kiosk opens it, exactly as right-clicking does. Punching used to open
+            // the odds instead, which made the odds the only thing a player could reach by the
+            // most obvious way to interact with a chest, and left the two clicks doing
+            // unrelated things on one block. The odds are still one click away, from the
+            // button inside. Cancelling here (any non-PASS result on the logical server) is
+            // also what keeps a registered kiosk from ever taking damage or breaking.
+            return onKioskClicked(sp, sw, pos);
         });
         // A crash mid-reveal can leave a rising item display behind; sweep any on restart.
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(
@@ -238,6 +200,46 @@ public final class LootboxManager {
             (server, resourceManager, success) -> {
                 if (success) invalidatePoolCaches();
             });
+    }
+
+    /**
+     * A registered kiosk was clicked - by hand or by fist, both of which land here.
+     *
+     * <p>Returns PASS for anything that is not a live kiosk, so an ordinary chest keeps
+     * behaving like an ordinary chest, and SUCCESS for every kiosk click so the vanilla
+     * container never opens and the block never takes a hit.
+     */
+    private static ActionResult onKioskClicked(ServerPlayerEntity sp, ServerWorld sw, BlockPos pos) {
+        CrafticsSavedData data = CrafticsSavedData.get(sw);
+        String entry = data.getLootboxChestType(sw, pos);
+        if (entry == null) return ActionResult.PASS;
+        if (!sw.getBlockState(pos).isOf(Blocks.CHEST)) {
+            // Chest gone (broken by other means): drop the dead registration and its label.
+            data.unregisterLootboxChest(sw, pos);
+            LootboxPresentation.clearLabel(sw, pos);
+            return ActionResult.PASS;
+        }
+        ChestConfig config = resolveChestConfig(entry);
+        if (config == null) return ActionResult.PASS;
+        if (!data.areLootboxesEnabled()) {
+            // SUCCESS, not PASS. Passing would drop the click through to the next handler -
+            // in the lobby that is the spawn protection, which would answer a temporarily
+            // closed kiosk with "the lobby is protected" and tell the player the wrong thing
+            // entirely.
+            sp.sendMessage(net.minecraft.text.Text.literal(
+                "§eThis lootbox is closed right now."), true);
+            return ActionResult.SUCCESS;
+        }
+        if (config.cost() > 0 && findKey(sp) != null) {
+            // Holding a valid Key: skip the confirm stop entirely and open right away -
+            // openChest() is the one place that actually consumes it.
+            openChest(sp, sw, pos, config.type(), config.cost());
+            return ActionResult.SUCCESS;
+        }
+        // A stop, not a formality: price, balance and an [Odds] button, before anything is
+        // charged. The [Open] icon is what actually calls confirmOpen().
+        openConfirmMenu(sp, sw, pos, config.type(), config.cost());
+        return ActionResult.SUCCESS; // never open the vanilla container UI
     }
 
     /** Registration value decoded: which type a chest is, and what it costs to open. */
@@ -560,7 +562,8 @@ public final class LootboxManager {
 
     /** Opens the read-only odds menu. {@code onBack} is run when the back/close icon is
      *  clicked - reopening the confirm menu when this was reached from it, or null to just
-     *  close (reached by punching the chest directly, which has no parent to return to). */
+     *  close. Nothing in-tree passes null now that both clicks open the confirm menu, but
+     *  this is public API and a caller with no parent screen still needs the branch. */
     public static void openOddsMenu(ServerPlayerEntity player, Type type, ServerWorld world, Runnable onBack) {
         SimpleInventory inv = buildOddsInventory(type, world);
         Runnable back = onBack != null ? onBack : player::closeHandledScreen;

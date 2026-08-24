@@ -255,11 +255,26 @@ public class CombatManager {
      *  party members off floorless tiles in schematic arenas (trial chambers), where the
      *  grid can mark a real gap "walkable" even though the world has no floor under it. */
     private static boolean hasSolidFloorBelow(ServerWorld world, BlockPos standPos) {
-        for (int dy = 0; dy <= 3; dy++) {
+        // Starts at down(1), NOT down(0). standPos is the block the player stands IN, so a
+        // block there is something in the way - a torch, a slab, a cobweb, one of the
+        // block-backed objects like a hive or a grave - and never floor. Counting it meant
+        // any prop sitting over an open pit reported the tile as floored, which is one of
+        // the ways a member could be placed on a hole and drop straight through it.
+        for (int dy = 1; dy <= FLOOR_PROBE_DEPTH; dy++) {
             if (!world.getBlockState(standPos.down(dy)).isAir()) return true;
         }
         return false;
     }
+
+    /**
+     * How far below a tile to look for something to land on.
+     *
+     * <p>Was 3, which is shallower than a trial chamber's pits: a gap deeper than three
+     * blocks read as "no floor here" only by accident, and a gap with a ledge at four read
+     * as floored when the player would still fall past it. Six covers the authored drops
+     * without being so deep that a genuine void reads as solid.
+     */
+    private static final int FLOOR_PROBE_DEPTH = 6;
 
     /** Like {@link #findNearestWalkableUnreserved} but ALSO requires a real floor under the
      *  tile, so a player is never dropped into a trial-chamber pit. Falls back to plain
@@ -297,8 +312,22 @@ public class CombatManager {
             }
         }
         if (bestFloored != null) return bestFloored;
-        if (bestWalkable != null) return bestWalkable;
-        return takenFloored != null ? takenFloored : takenWalkable;
+        // Floor outranks everything below it, including being free. Sharing a tile with a
+        // mob is survivable and self-corrects the moment either of them moves; a floorless
+        // tile is a death pit, and this method exists precisely to keep players out of one.
+        // The old order preferred a FREE floorless tile over an OCCUPIED floored one, so a
+        // busy arena could hand a party member a hole to stand on.
+        if (takenFloored != null) return takenFloored;
+        // Nothing floored anywhere. Deliberately NOT falling back to a floorless tile: that
+        // fallback is what "I immediately fell in the void pit" looks like from the player's
+        // side. Null sends the caller to the leader's own tile, which is the one tile that
+        // was already vetted, and a warning here makes the situation diagnosable instead of
+        // silently lethal - it usually means the arena's blocks are not where we think.
+        CrafticsMod.LOGGER.warn(
+            "findNearestSafeSpawn: no floored tile anywhere in the {}x{} arena at {} - refusing"
+                + " to place a player over a pit; caller falls back to the leader's tile",
+            arena.getWidth(), arena.getHeight(), arena.getOrigin());
+        return null;
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -2376,6 +2405,10 @@ public class CombatManager {
         if (pos == null || block == null) return;
         GridTile tile = arena.getTile(pos);
         if (tile == null || arena.isOccupied(pos)) return;
+        // Never over a pit. Mining an obstacle reverts its tile to NORMAL, so an obstacle
+        // stamped onto a VOID tile turns that pit into walkable floor with nothing under it
+        // the first time someone breaks it.
+        if (!tile.isWalkable()) return;
         tile.setType(TileType.OBSTACLE);
         tile.setBlockType(block);
         if (player != null) {
@@ -14450,13 +14483,33 @@ public class CombatManager {
             // drop a teammate below the arena outside their own turn, where the
             // turn-holder check above never sees them -they kept falling into
             // the void and died through vanilla damage, outside the combat flow.
+            //
+            // Two things here used to differ from the turn-holder branch above, and both
+            // were bugs rather than decisions. The `member == player` guard means this loop
+            // can ONLY ever kill a non-leader, so both landed exclusively on party members:
+            //
+            //   • The threshold was arenaFloorY - 2, while the turn holder is caught at
+            //     arenaFloorY - 0.5. A dug void pit is capped at floorY-2 so its floor sits
+            //     at floorY-1 - between the two. A member who fell in was therefore never
+            //     rescued AND never killed: they stood in the hole, grid position somewhere
+            //     else, while enemies attacked the tile they used to be on. That is the
+            //     exact desync the comment on the branch above says was fixed; it was only
+            //     ever fixed for the turn holder.
+            //
+            //   • It killed unconditionally. The turn holder gets tryConsumeTotemAndResurrect
+            //     before any death, and so does the ordinary death path; this one went
+            //     straight to SPECTATOR with the totem still in the member's hand. Combined
+            //     with the entry grace - during which all damage to a routed player is
+            //     swallowed, so they fall harmlessly behind the loading screen - a member
+            //     misplaced over a pit on arrival was killed the tick the grace expired,
+            //     with no counterplay of any kind.
             if (partyPlayers.size() > 1) {
                 boolean anyMemberFell = false;
                 for (ServerPlayerEntity member : partyPlayers) {
                     if (member == null || member == player || member.isRemoved()
                         || member.isDisconnected()
                         || deadPartyMembers.contains(member.getUuid())) continue;
-                    if (member.getY() >= arenaFloorY - 2) continue;
+                    if (member.getY() >= arenaFloorY - 0.5) continue;
 
                     BlockPos safePos = getSafeArenaBlockPos(arena);
                     if (safePos != null) {
@@ -14468,6 +14521,18 @@ public class CombatManager {
                     member.fallDistance = 0;
                     member.setFireTicks(0);
                     member.setFrozenTicks(0);
+                    // Their grid position followed them into the hole, and the tile they
+                    // fell through is not somewhere anyone can stand. Resync it to where
+                    // the rescue actually put them, or the survivor fights on with a
+                    // teammate whose highlights and attack range point into the floor.
+                    refreshAllPlayerGridPositions();
+                    if (tryConsumeTotemForMember(member)) {
+                        sendMessageTo(member, "§6You were snatched back from the void!");
+                        sendMessage("§6" + member.getName().getString()
+                            + " was snatched back from the void!");
+                        anyMemberFell = true;
+                        continue;
+                    }
                     member.setHealth(1);
                     deadPartyMembers.add(member.getUuid());
                     member.changeGameMode(net.minecraft.world.GameMode.SPECTATOR);
@@ -24276,6 +24341,14 @@ public class CombatManager {
      */
     private CombatEntity placeBlockObject(String typeId, GridPos pos, int hp, int fakeEntityId,
                                           net.minecraft.block.Block block, ServerWorld world) {
+        // The floor check is here as well as in the callers' tile pickers, because this method
+        // is what actually calls setBlockState: a block object on a VOID tile is a solid block
+        // sitting in a hole, which reads as ground the player can stand on and is not.
+        if (!arena.isPlaceableFloor(pos)) {
+            com.crackedgames.craftics.CrafticsMod.LOGGER.warn(
+                "Refused to place block object {} at {} - tile has no floor", typeId, pos);
+            return null;
+        }
         // attackPower=0 intended (these never attack), but CombatEntity clamps to min 1
         CombatEntity obj = new CombatEntity(fakeEntityId, typeId, pos, hp, 0, 0, 1);
         obj.setPassableForBoss(true);
@@ -26914,15 +26987,28 @@ public class CombatManager {
      * caller can decrement it directly. {@code null} if no totem is held.
      */
     private net.minecraft.item.ItemStack findTotemStack() {
-        net.minecraft.item.ItemStack mainHand = player.getMainHandStack();
+        return findTotemStack(player);
+    }
+
+    /**
+     * The same search, for any party member rather than only the turn holder.
+     *
+     * <p>Split out because a totem used to be something only the acting player could be
+     * saved by: the below-floor sweep for NON-acting members killed them outright, with the
+     * totem still in their hand. Everything that decides "does this player die" has to be
+     * able to ask this question about the player it is about to kill.
+     */
+    private net.minecraft.item.ItemStack findTotemStack(ServerPlayerEntity who) {
+        if (who == null) return null;
+        net.minecraft.item.ItemStack mainHand = who.getMainHandStack();
         if (!mainHand.isEmpty() && isAnyTotem(mainHand.getItem())) {
             return mainHand;
         }
-        net.minecraft.item.ItemStack offHand = player.getOffHandStack();
+        net.minecraft.item.ItemStack offHand = who.getOffHandStack();
         if (!offHand.isEmpty() && isAnyTotem(offHand.getItem())) {
             return offHand;
         }
-        var inv = player.getInventory();
+        var inv = who.getInventory();
         for (int i = 0; i < inv.size(); i++) {
             net.minecraft.item.ItemStack stack = inv.getStack(i);
             if (!stack.isEmpty() && isAnyTotem(stack.getItem())) {
@@ -26930,6 +27016,26 @@ public class CombatManager {
             }
         }
         return null;
+    }
+
+    /**
+     * Spend a party member's totem to save them from a void death, and report whether one
+     * was there to spend.
+     *
+     * <p>Deliberately simpler than {@link #tryConsumeTotemAndResurrect}, which drives the
+     * MoreTotems effects through {@code this.player} and cannot speak for anyone else. This
+     * grants the core contract - the totem is consumed, the holder lives - rather than
+     * nothing at all, which is what a member got before.
+     */
+    private boolean tryConsumeTotemForMember(ServerPlayerEntity member) {
+        net.minecraft.item.ItemStack totem = findTotemStack(member);
+        if (totem == null) return false;
+        totem.decrement(1);
+        member.setHealth(8.0f); // four hearts, as a vanilla totem leaves you
+        member.clearStatusEffects();
+        member.setFireTicks(0);
+        member.setFrozenTicks(0);
+        return true;
     }
 
     /** Vanilla Totem of Undying or any MoreTotems totem. */

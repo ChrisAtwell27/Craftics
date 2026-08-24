@@ -115,6 +115,22 @@ if ($DeployOnly) {
 }
 
 $ErrorActionPreference = "Stop"
+
+# --- Connection settings for large uploads ----------------------------------------------------
+# The shard jars are ~78 MB each (the music alone is most of that), and Windows PowerShell's
+# defaults are not set up for pushing that much over one request:
+#
+#   * TLS: 5.1 negotiates from the system default, which can still offer TLS 1.0. Both
+#     endpoints require 1.2+, so pin it rather than depend on the machine's registry.
+#   * Expect: 100-continue stays ON deliberately. It costs one round trip and lets the server
+#     reject a bad token or bad metadata BEFORE 78 MB goes up the wire instead of after.
+#   * The idle timeout is dropped well below the default two minutes so a pooled connection
+#     that the far end has already discarded is not handed to the next shard's upload.
+[System.Net.ServicePointManager]::SecurityProtocol =
+    [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls11
+[System.Net.ServicePointManager]::Expect100Continue = $true
+[System.Net.ServicePointManager]::MaxServicePointIdleTime = 30000
+
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ApiBase = "https://minecraft.curseforge.com"
 $ModrinthApi = "https://api.modrinth.com/v2"
@@ -398,7 +414,12 @@ function Send-MultipartUpload {
     $req.Headers.Add($AuthHeaderName, $Token)
     $req.AllowWriteStreamBuffering = $false          # don't buffer 190 MB in RAM
     $req.SendChunked = $false
-    $req.KeepAlive = $true
+    # KeepAlive OFF, deliberately. Each shard is one request to one endpoint and the connection
+    # is never reused, so there is nothing to gain - and with it ON, a server or proxy that
+    # closes the socket after taking the body makes .NET raise "a connection that was expected
+    # to be kept alive was closed by the server" INSTEAD of reading the response that was
+    # already sent. That failure looks like a failed upload while the file actually landed.
+    $req.KeepAlive = $false
     $req.Timeout = 20 * 60 * 1000                    # 20 min: these are big files
     $req.ReadWriteTimeout = 20 * 60 * 1000
     $req.ContentLength = $headBytes.Length + $fileInfo.Length + $tailBytes.Length
@@ -436,6 +457,16 @@ function Send-MultipartUpload {
             $sr = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
             $body = $sr.ReadToEnd()
             $sr.Dispose()
+        }
+        # A closed connection AFTER the whole body went up is ambiguous: the platform may well
+        # have accepted the file and only the response was lost. Retrying blind is how you end
+        # up with the same jar on the project twice, so say so instead of just failing.
+        if ($_.Exception.Status -eq [System.Net.WebExceptionStatus]::KeepAliveFailure -or
+            $_.Exception.Message -match "expected to be kept alive") {
+            throw ("Upload failed AFTER the file was fully sent: $($_.Exception.Message)`n" +
+                   "The upload may have SUCCEEDED and only the reply was lost. Check the " +
+                   "project's Files page for '$fileName' before re-running, or you will " +
+                   "publish it twice.`n$body")
         }
         throw "Upload failed: $($_.Exception.Message)`n$body"
     }
