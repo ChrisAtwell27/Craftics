@@ -61,8 +61,10 @@ public final class SimplySwordsUniques {
     public static boolean isTridentLike(Item item) {
         if (item == null) return false;
         Identifier id = Registries.ITEM.getId(item);
+        // Gloampiercer inherits bettercombat's trident attributes in Simply Swords' own data,
+        // so it is a thrown spear there and should be one here too.
         return SimplySwordsCompat.NAMESPACE.equals(id.getNamespace())
-            && "wickpiercer".equals(id.getPath());
+            && ("wickpiercer".equals(id.getPath()) || "gloampiercer".equals(id.getPath()));
     }
 
     // Damage baselines: uniques sit at/above netherite, read live from config.
@@ -152,7 +154,423 @@ public final class SimplySwordsUniques {
         any |= u("harbinger", DamageType.BLUNT, axe(2), 3, 1, harbinger());
         any |= u("sword_on_a_stick", DamageType.PHYSICAL, sword(-2), 1, 2, swordOnAStick());
 
+        // -- Added in Simply Swords 1.70 --
+        // AP and range follow the standard-weapon conventions in SimplySwordsCompat for each
+        // weapon's own category: sickles fight as one-handed swords, claymores and scythes as
+        // heavy two-handers, glaives reach a tile further, and the trident-shaped one throws.
+        any |= u("bloodwake", DamageType.SLASHING, sword(0), 1, 1, bloodwake());
+        any |= u("wraithmaw", DamageType.SPECIAL, sword(0), 1, 1, wraithmaw());
+        any |= u("soulstalker", DamageType.CLEAVING, axe(1), 2, 2, soulstalker());
+        any |= u("dreadwhisper", DamageType.SLASHING, sword(1), 1, 1, dreadwhisper());
+        any |= u("gloampiercer", DamageType.SPECIAL, sword(0), 1,
+            com.crackedgames.craftics.combat.PlayerCombatStats.TRIDENT_THROW_RANGE, true,
+            gloampiercer());
+        any |= u("riftmane", DamageType.CLEAVING, axe(2), 3, 1, riftmane());
+        any |= u("stormscale", DamageType.SPECIAL, sword(0), 3, 2, stormscale());
+        any |= u("ionbound_stormscale", DamageType.SPECIAL, sword(1), 3, 2, ionboundStormscale());
+        any |= u("dawnquiver", DamageType.RANGED, sword(0), 2, 4, true, dawnquiver());
+        any |= u("the_devourer", DamageType.SPECIAL, axe(3), 3, 1, theDevourer());
+
         return any;
+    }
+
+
+    // =========================================================================
+    // Simply Swords 1.70 uniques
+    //
+    // Each of these is a real-time effect in Simply Swords - a channelled beam, a held bow
+    // draw, a mount that strides over terrain - and none of that survives a turn-based grid
+    // intact. What is kept is the SHAPE of the weapon: what it rewards, what it punishes, and
+    // what its signature moment feels like. A charge-and-spend weapon stays charge-and-spend;
+    // a weapon that wants you standing still stays that way.
+    // =========================================================================
+
+    /** Bloodwake: bleed to the brim, then burst. */
+    private static final int BLOODWAKE_BURST_AT = 3;
+    /** Dawnquiver / Ionbound Stormscale: how much is banked before the big move fires. */
+    private static final int DAWN_CHORUS_MAX = 3;
+    private static final int ION_CUBE_MAX = 3;
+    /** Wraithmaw: bound cutlasses circling the wielder. */
+    private static final int WRAITHMAW_MAX_CUTLASSES = 3;
+    /** Stormscale: each arrival grows the pulse, up to this many stacks. */
+    private static final int STORMSCALE_MAX_STACKS = 8;
+
+    private static final java.util.Map<java.util.UUID, Integer> DAWN_CHORUS =
+        new java.util.HashMap<>();
+    private static final java.util.Map<java.util.UUID, Integer> ION_CUBES =
+        new java.util.HashMap<>();
+    private static final java.util.Map<java.util.UUID, Integer> WRAITH_CUTLASSES =
+        new java.util.HashMap<>();
+    private static final java.util.Map<java.util.UUID, GridPos> STORMSCALE_ROD =
+        new java.util.HashMap<>();
+    private static final java.util.Map<java.util.UUID, Integer> STORMSCALE_STACKS =
+        new java.util.HashMap<>();
+    private static final java.util.Map<java.util.UUID, Integer> DEVOURER_MASS =
+        new java.util.HashMap<>();
+
+    /**
+     * Bloodwake - Crimson Revelry: every hit deepens the bleed, and the hit that tops it out
+     * consumes the whole wound in a burst that spatters the tiles around the target.
+     *
+     * <p>The blood-stained ground heals you in Simply Swords; here the burst itself returns the
+     * health, since there is nowhere for a player to stand and soak.
+     */
+    private static WeaponAbilityHandler bloodwake() {
+        return (player, target, arena, baseDamage, stats, luckPoints) -> {
+            List<String> msgs = new ArrayList<>();
+            int total = baseDamage;
+            if (target.getBleedStacks() >= BLOODWAKE_BURST_AT) {
+                target.setBleedStacks(0);
+                int burst = Math.max(1, baseDamage / 2);
+                int splashed = 0;
+                for (CombatEntity e : AoeShapes.enemiesOn(arena,
+                        AoeShapes.filledDisc(target.getGridPos(), 1), target)) {
+                    e.takeDamage(burst);
+                    e.stackBleed(1);
+                    splashed++;
+                }
+                int rupture = target.takeDamage(burst);
+                total += rupture;
+                int healed = lifesteal(player, baseDamage, 0.25);
+                fxRing(player, arena, target, 1.6, ParticleTypes.CRIT,
+                    "entity.player.attack.crit", 0.7f);
+                msgs.add("§c✦ BLOOD BURST! §7The wound opens for +" + rupture
+                    + (splashed > 0 ? ", spattering " + splashed + " nearby." : ".")
+                    + (healed > 0 ? " §cYou drink " + healed + "." : ""));
+            } else {
+                target.stackBleed(1);
+                fxBurst(player, arena, target, ParticleTypes.CRIT, 8, null, 0.9f);
+                msgs.add("§c✦ Crimson Revelry: §7bleed " + target.getBleedStacks() + "/"
+                    + BLOODWAKE_BURST_AT
+                    + (target.getBleedStacks() >= BLOODWAKE_BURST_AT
+                        ? " - §cnext strike bursts it!" : "."));
+            }
+            return new WeaponAbility.AttackResult(total, msgs, List.of());
+        };
+    }
+
+    /**
+     * Wraithmaw - Spectral Downpour: cutlasses collect above you as you fight, and every swing
+     * sends the ones you have hunting for someone else on the field.
+     *
+     * <p>They deliberately never strike the target you just hit. The weapon's whole point is that
+     * it fights the room rather than the enemy in front of you.
+     */
+    private static WeaponAbilityHandler wraithmaw() {
+        return (player, target, arena, baseDamage, stats, luckPoints) -> {
+            List<String> msgs = new ArrayList<>();
+            int bound = WRAITH_CUTLASSES.getOrDefault(player.getUuid(), 0);
+            int total = baseDamage;
+
+            List<CombatEntity> others = AoeShapes.enemiesOn(arena,
+                AoeShapes.filledDisc(arena.getPlayerGridPos(), 4), target);
+            if (bound > 0 && !others.isEmpty()) {
+                int each = Math.max(1, baseDamage / 3);
+                int flung = Math.min(bound, others.size());
+                for (int i = 0; i < flung; i++) {
+                    CombatEntity victim = others.get(i);
+                    victim.takeDamage(each);
+                    victim.stackSlowness(1, 0);   // the Gloam they land in
+                    fxTrail(player, arena, victim, ParticleTypes.SCULK_SOUL, ParticleTypes.SOUL,
+                        "entity.vex.charge", 1.3f);
+                }
+                WRAITH_CUTLASSES.put(player.getUuid(), 0);
+                msgs.add("§5✦ SPECTRAL DOWNPOUR! §7" + flung + " bound cutlass"
+                    + (flung == 1 ? "" : "es") + " hunt for " + each + " each.");
+            }
+
+            int held = Math.min(WRAITHMAW_MAX_CUTLASSES,
+                WRAITH_CUTLASSES.getOrDefault(player.getUuid(), 0) + 1);
+            WRAITH_CUTLASSES.put(player.getUuid(), held);
+            fxBurst(player, arena, target, ParticleTypes.SCULK_SOUL, 6, null, 1.4f);
+            msgs.add("§5✦ Hunger Beyond Death: §7" + held + "/" + WRAITHMAW_MAX_CUTLASSES
+                + " cutlasses circle you.");
+            return new WeaponAbility.AttackResult(total, msgs, List.of());
+        };
+    }
+
+    /**
+     * Soulstalker - Stygian Stride: tendrils come out of your back, so they hit what is beside
+     * YOU rather than what is beside your target. Standing in the middle of a crowd is the point.
+     */
+    private static WeaponAbilityHandler soulstalker() {
+        return (player, target, arena, baseDamage, stats, luckPoints) -> {
+            List<String> msgs = new ArrayList<>();
+            int each = Math.max(1, baseDamage / 3);
+            int pierced = 0;
+            for (CombatEntity e : AoeShapes.enemiesOn(arena,
+                    AoeShapes.ring(arena.getPlayerGridPos(), 1), target)) {
+                e.takeDamage(each);
+                e.stackSlowness(1, 0);           // Gloam underfoot
+                fxBurst(player, arena, e, ParticleTypes.SCULK_SOUL, 10, null, 0.8f);
+                pierced++;
+            }
+            if (pierced > 0) {
+                // One clip for the whole proc, not one per tendril.
+                fxSelfSound(player, arena, "entity.warden.tendril_clicks", 0.7f);
+                msgs.add("§8✦ Stygian Tendrils: §7" + pierced + " enemy"
+                    + (pierced == 1 ? "" : " enemies") + " pierced from behind for " + each + ".");
+            } else {
+                target.stackSlowness(1, 0);
+                fxRing(player, arena, target, 1.2, ParticleTypes.SCULK_SOUL,
+                    "block.sculk_sensor.clicking", 0.6f);
+                msgs.add("§8✦ Stygian Stride: §7Gloam spreads underfoot.");
+            }
+            return new WeaponAbility.AttackResult(baseDamage, msgs, List.of());
+        };
+    }
+
+    /**
+     * Dreadwhisper - Shadow Rend: the first hit opens a Corrupted Wound, and hitting the same
+     * wound again is a guaranteed critical that ruptures it and feeds you.
+     *
+     * <p>Craftics has no "guaranteed crit" flag reachable from a weapon ability, so the rupture is
+     * paid as flat bonus damage instead - the same outcome, arrived at honestly.
+     */
+    private static WeaponAbilityHandler dreadwhisper() {
+        return (player, target, arena, baseDamage, stats, luckPoints) -> {
+            List<String> msgs = new ArrayList<>();
+            int total = baseDamage;
+            if (target.isMarked()) {
+                int rupture = target.takeDamage(baseDamage);
+                total += rupture;
+                int healed = lifesteal(player, baseDamage + rupture, 0.25);
+                fxBurst(player, arena, target, ParticleTypes.SQUID_INK, 24,
+                    "entity.wither.shoot", 0.6f);
+                msgs.add("§8✦ WOUND RUPTURED! §7The corruption tears wide: +" + rupture
+                    + (healed > 0 ? ", §cdraining " + healed + " to you." : "."));
+            } else {
+                target.markNonAdditive(2);
+                fxBurst(player, arena, target, ParticleTypes.SQUID_INK, 10,
+                    "entity.phantom.flap", 0.7f);
+                msgs.add("§8✦ Corrupted Wound: §7" + target.getDisplayName()
+                    + " is marked - strike again to rupture it.");
+            }
+            return new WeaponAbility.AttackResult(total, msgs, List.of());
+        };
+    }
+
+    /**
+     * Gloampiercer - Phantom Phalanx: a shadow clone throws a second spear at whoever else is
+     * standing near the one you hit, and the blast leaves Gloam behind.
+     *
+     * <p>Thrown like a trident (see {@link #isTridentLike}), so the clone is what happens at
+     * range rather than a separate aimed move.
+     */
+    private static WeaponAbilityHandler gloampiercer() {
+        return (player, target, arena, baseDamage, stats, luckPoints) -> {
+            List<String> msgs = new ArrayList<>();
+            List<CombatEntity> nearby = AoeShapes.enemiesOn(arena,
+                AoeShapes.filledDisc(target.getGridPos(), 2), target);
+            if (nearby.isEmpty()) {
+                target.stackSlowness(2, 0);
+                fxBurst(player, arena, target, ParticleTypes.LARGE_SMOKE, 12, null, 0.8f);
+                msgs.add("§8✦ Gloam: §7the spear's wake slows " + target.getDisplayName() + ".");
+                return new WeaponAbility.AttackResult(baseDamage, msgs, List.of());
+            }
+            CombatEntity victim = nearby.get(0);
+            int blast = Math.max(1, (baseDamage * 2) / 3);
+            int dealt = victim.takeDamage(blast);
+            victim.stackSlowness(2, 0);
+            fxTrail(player, arena, victim, ParticleTypes.SMOKE, ParticleTypes.SQUID_INK,
+                "entity.generic.explode", 1.4f);
+            msgs.add("§8✦ Phantom Phalanx: §7a shadow clone spears "
+                + victim.getDisplayName() + " for " + dealt + " and leaves Gloam.");
+            return new WeaponAbility.AttackResult(baseDamage, msgs, List.of());
+        };
+    }
+
+    /**
+     * Riftmane - Vanguard: spectral chargers tear through the rank BEHIND whoever you hit,
+     * goring everything in the lane and scattering it.
+     */
+    private static WeaponAbilityHandler riftmane() {
+        return (player, target, arena, baseDamage, stats, luckPoints) -> {
+            List<String> msgs = new ArrayList<>();
+            int gore = Math.max(1, baseDamage / 2);
+            int gored = 0;
+            for (CombatEntity e : AoeShapes.enemiesOn(arena,
+                    AoeShapes.lineBehind(arena.getPlayerGridPos(), target.getGridPos(), 3), target)) {
+                e.takeDamage(gore);
+                e.stackConfusion(1, 0);          // scattered
+                fxBurst(player, arena, e, ParticleTypes.GUST, 10, null, 0.9f);
+                gored++;
+            }
+            if (gored > 0) {
+                fxSelfSound(player, arena, "entity.horse.gallop", 0.8f);
+                msgs.add("§f✦ RIFTCHARGE! §7Chargers gore " + gored + " behind the line for "
+                    + gore + " each.");
+            } else {
+                target.stackConfusion(1, 0);
+                fxBurst(player, arena, target, ParticleTypes.GUST, 12,
+                    "entity.horse.gallop", 1.2f);
+                msgs.add("§f✦ Vanguard: §7a charger clips " + target.getDisplayName()
+                    + " and scatters it.");
+            }
+            return new WeaponAbility.AttackResult(baseDamage, msgs, List.of());
+        };
+    }
+
+    /**
+     * Stormscale - Lightning Rod: the first swing plants a spectral glaive on the target's tile,
+     * and every swing after that sends a pulse to it. The pulse grows with each arrival.
+     *
+     * <p>The planted tile is remembered per player, so it deliberately survives your own movement
+     * - walking away from the rod and hitting something else is how the weapon is meant to be
+     * played. It is re-planted when the remembered tile is not in the current arena, which is what
+     * happens between fights.
+     */
+    private static WeaponAbilityHandler stormscale() {
+        return (player, target, arena, baseDamage, stats, luckPoints) ->
+            stormscaleStrike(player, target, arena, baseDamage, 1);
+    }
+
+    /**
+     * Ionbound Stormscale - Ion Containment: the same rod, plus cubes that bank up and discharge
+     * as a corridor which drags everything inward and slams shut.
+     *
+     * <p>Its defensive half - a cube spent to negate one huge incoming hit - is not modelled: a
+     * weapon ability in Craftics only ever runs on YOUR attack, so there is no hook to intercept
+     * damage from here.
+     */
+    private static WeaponAbilityHandler ionboundStormscale() {
+        return (player, target, arena, baseDamage, stats, luckPoints) -> {
+            int cubes = ION_CUBES.getOrDefault(player.getUuid(), 0);
+            if (cubes >= ION_CUBE_MAX) {
+                ION_CUBES.put(player.getUuid(), 0);
+                List<String> msgs = new ArrayList<>();
+                int slam = Math.max(1, baseDamage / 2);
+                int caught = 0;
+                for (CombatEntity e : AoeShapes.enemiesOn(arena,
+                        AoeShapes.filledDisc(target.getGridPos(), 2), null)) {
+                    pullTowardPlayer(arena, e);
+                    e.takeDamage(slam);
+                    e.setStunned(true);          // paralysis
+                    caught++;
+                }
+                fxRing(player, arena, target, 2.4, ParticleTypes.ELECTRIC_SPARK,
+                    "entity.lightning_bolt.impact", 1.8f);
+                msgs.add("§b✦ CONTAINMENT SLAM! §7The corridor drags " + caught
+                    + " inward and paralyses them for " + slam + " each.");
+                return new WeaponAbility.AttackResult(baseDamage, msgs, List.of());
+            }
+            ION_CUBES.put(player.getUuid(), cubes + 1);
+            WeaponAbility.AttackResult rod =
+                stormscaleStrike(player, target, arena, baseDamage, 2);
+            List<String> msgs = new ArrayList<>(rod.messages());
+            msgs.add("§b✦ Ion Containment: §7" + (cubes + 1) + "/" + ION_CUBE_MAX + " cubes"
+                + (cubes + 1 >= ION_CUBE_MAX ? " - §bnext strike slams the corridor shut!" : "."));
+            return new WeaponAbility.AttackResult(rod.totalDamage(), msgs, List.of());
+        };
+    }
+
+    /** The shared Lightning Rod behaviour, at {@code growth} stacks gained per arrival. */
+    private static WeaponAbility.AttackResult stormscaleStrike(ServerPlayerEntity player,
+            CombatEntity target, GridArena arena, int baseDamage, int growth) {
+        List<String> msgs = new ArrayList<>();
+        java.util.UUID id = player.getUuid();
+        GridPos rod = STORMSCALE_ROD.get(id);
+        // A rod remembered from a previous arena points at a tile that no longer exists.
+        if (rod == null || !arena.isInBounds(rod)) {
+            STORMSCALE_ROD.put(id, target.getGridPos());
+            STORMSCALE_STACKS.put(id, 0);
+            fxBurst(player, arena, target, ParticleTypes.ELECTRIC_SPARK, 14,
+                "block.beacon.activate", 1.5f);
+            msgs.add("§b✦ Lightning Rod: §7a spectral glaive plants itself and tethers to you.");
+            return new WeaponAbility.AttackResult(baseDamage, msgs, List.of());
+        }
+
+        int stacks = Math.min(STORMSCALE_MAX_STACKS,
+            STORMSCALE_STACKS.getOrDefault(id, 0) + growth);
+        STORMSCALE_STACKS.put(id, stacks);
+        int pulse = Math.max(1, (baseDamage * (2 + stacks)) / 8);
+        int radius = stacks >= STORMSCALE_MAX_STACKS / 2 ? 2 : 1;
+        int struck = 0;
+        for (CombatEntity e : AoeShapes.enemiesOn(arena, AoeShapes.filledDisc(rod, radius), null)) {
+            e.takeDamage(pulse);
+            struck++;
+        }
+        ServerWorld sw = world(player);
+        if (sw != null) {
+            BlockPos bp = arena.gridToBlockPos(rod);
+            sw.spawnParticles(ParticleTypes.ELECTRIC_SPARK,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 20, 0.4, 0.6, 0.4, 0.05);
+            sound(sw, bp, "entity.lightning_bolt.thunder", 1.7f);
+        }
+        msgs.add("§b✦ Lightning Rod pulses: §7" + struck + " caught for " + pulse
+            + " (§b" + stacks + "/" + STORMSCALE_MAX_STACKS + " charge§7).");
+        return new WeaponAbility.AttackResult(baseDamage, msgs, List.of());
+    }
+
+    /**
+     * Dawnquiver - Seraph's Draw: a bow. Ordinary shots bank Dawn Chorus, and a full quiver of it
+     * looses the Seraphic Chorus - three converging bows that pick their own targets.
+     */
+    private static WeaponAbilityHandler dawnquiver() {
+        return (player, target, arena, baseDamage, stats, luckPoints) -> {
+            List<String> msgs = new ArrayList<>();
+            int total = baseDamage;
+            int chorus = DAWN_CHORUS.getOrDefault(player.getUuid(), 0);
+            if (chorus >= DAWN_CHORUS_MAX) {
+                DAWN_CHORUS.put(player.getUuid(), 0);
+                int lance = Math.max(1, (baseDamage * 3) / 4);
+                int pierced = target.takeDamage(lance);
+                total += pierced;
+                int extra = 0;
+                for (CombatEntity e : AoeShapes.enemiesOn(arena,
+                        AoeShapes.filledDisc(target.getGridPos(), 2), target)) {
+                    if (extra >= 2) break;       // three bows, one already spent on the target
+                    e.takeDamage(lance);
+                    fxTrail(player, arena, e, ParticleTypes.END_ROD, ParticleTypes.GLOW,
+                        "entity.arrow.hit_player", 1.6f);
+                    extra++;
+                }
+                fxBurst(player, arena, target, ParticleTypes.END_ROD, 30,
+                    "item.trident.thunder", 1.4f);
+                msgs.add("§e✦ SERAPHIC CHORUS! §7Converging bows loose on " + (extra + 1)
+                    + " target" + (extra == 0 ? "" : "s") + " for " + lance + " each.");
+            } else {
+                chorus++;
+                DAWN_CHORUS.put(player.getUuid(), chorus);
+                fxBurst(player, arena, target, ParticleTypes.GLOW, 8, null, 1.5f);
+                msgs.add("§e✦ Dawn Chorus: §7" + chorus + "/" + DAWN_CHORUS_MAX
+                    + (chorus >= DAWN_CHORUS_MAX ? " - §enext shot summons the chorus!" : "."));
+            }
+            return new WeaponAbility.AttackResult(total, msgs, List.of());
+        };
+    }
+
+    /**
+     * The Devourer - Devouring Mass: an abyssal maw opens under whoever you hit, drags what is
+     * around them into its middle, and grows fatter every time it feeds.
+     *
+     * <p>The mass grows across a fight and is never reset, which is the weapon's own bargain: it
+     * is the reforged, awakened form of The Watcher and is supposed to end fights it is left
+     * alone in.
+     */
+    private static WeaponAbilityHandler theDevourer() {
+        return (player, target, arena, baseDamage, stats, luckPoints) -> {
+            List<String> msgs = new ArrayList<>();
+            java.util.UUID id = player.getUuid();
+            int mass = Math.min(6, DEVOURER_MASS.getOrDefault(id, 0) + 1);
+            DEVOURER_MASS.put(id, mass);
+
+            int soul = Math.max(1, (baseDamage * mass) / 8);
+            int fed = 0;
+            for (CombatEntity e : AoeShapes.enemiesOn(arena,
+                    AoeShapes.filledDisc(target.getGridPos(), 1), target)) {
+                pullTowardPlayer(arena, e);
+                e.takeDamage(soul);
+                e.stackSoulBurning(2, 0);
+                fed++;
+            }
+            int devoured = target.takeDamage(soul);
+            fxRing(player, arena, target, 1.8, ParticleTypes.SCULK_SOUL,
+                "entity.warden.heartbeat", 0.5f);
+            msgs.add("§8✦ Devouring Mass §7(§8" + mass + "§7): the maw takes +" + devoured
+                + (fed > 0 ? " and drags " + fed + " in for " + soul + " each." : "."));
+            return new WeaponAbility.AttackResult(baseDamage + devoured, msgs, List.of());
+        };
     }
 
     private static boolean u(String path, DamageType dt, IntSupplier dmg, int ap, int range,
@@ -184,6 +602,20 @@ public final class SimplySwordsUniques {
         if (ev != null) {
             sw.playSound(null, pos, ev, SoundCategory.PLAYERS, 0.8f, pitch);
         }
+    }
+
+    /**
+     * One sound at the wielder's own tile.
+     *
+     * <p>For procs that happen around the player rather than to one enemy. Playing the per-target
+     * sound in a loop instead stacks four copies of the same clip on the same tick, which reads as
+     * a bug rather than as a bigger hit.
+     */
+    private static void fxSelfSound(ServerPlayerEntity player, GridArena arena,
+                                    String soundId, float pitch) {
+        ServerWorld sw = world(player);
+        if (sw == null || soundId == null) return;
+        sound(sw, arena.gridToBlockPos(arena.getPlayerGridPos()), soundId, pitch);
     }
 
     /** Particle burst on the target tile + optional sound. */

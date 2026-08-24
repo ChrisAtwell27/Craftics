@@ -19,6 +19,29 @@ Backpacked Compatibility
 - Unstackable rewards go in too - a sword that will not fit is exactly what a backpack is for
 - Reached entirely by reflection with no compile-time dependency, so Craftics builds and runs with Backpacked absent, and every failure path degrades to "no backpack" rather than breaking loot delivery
 
+Simply Swords 1.70 Uniques
+
+Ten unique weapons added in Simply Swords 1.70 now have Craftics abilities. They were falling through to generic gear inference before this, which can guess a damage number off an item but cannot give a weapon a signature move, so every one of them fought like a plain sword.
+
+- **Bloodwake** - every hit deepens the bleed, and the hit that tops it out bursts the wound, spattering the tiles around it and drinking back a quarter of the blow
+- **Wraithmaw** - spectral cutlasses collect above you as you fight, and each swing sends the ones you have hunting for *other* enemies on the field
+- **Soulstalker** - abyssal tendrils come out of your back, so they strike what is beside you rather than beside your target. Standing in a crowd is the point
+- **Dreadwhisper** - the first hit opens a Corrupted Wound, and striking the same wound again ruptures it for a second full hit and drains the target
+- **Gloampiercer** - throws like a trident, and a shadow clone spears a second enemy near the one you hit, leaving Gloam that slows them
+- **Riftmane** - spectral chargers gore the whole rank behind your target and scatter it
+- **Stormscale** - plants a spectral glaive on the first swing. Every swing after pulses lightning at the planted tile, growing with each arrival
+- **Ionbound Stormscale** - the same rod, plus ion cubes that bank up and discharge as a corridor that drags everything inward and paralyses it
+- **Dawnquiver** - attacks at 4 tiles and conjures its own arrows of light, so it needs none from your quiver and takes no bow enchantments. Ordinary shots bank Dawn Chorus, and a full quiver of it looses three converging bows that pick their own targets
+- **The Devourer** - an abyssal maw opens under your target, drags what is around them into its middle, and grows fatter every time it feeds
+
+Legendary Weapons Missing From Their Own Loot Pool
+
+- Fixed 22 unique weapons never appearing in the legendary section of a weapon lootbox, and being eligible to turn up as ordinary common rolls instead. The legendary pool was a hand-written list that had to be kept in step with the weapons Craftics registers, and it had fallen behind: the list is alphabetical and stops at "s", so every unique added after that point was missing. Twelve older weapons were affected before the ten that arrived with Simply Swords 1.70
+- The list does two jobs and a missing weapon failed both, which is why it was invisible: absent from the legendary pool, and absent from the exclusion list that keeps boss-drop weapons out of the ordinary tiered pools
+- The Simply Swords half is now derived from the uniques that actually registered, so the two can no longer disagree
+
+Each weapon keeps the shape of its real behaviour rather than a literal copy: a charge-and-spend weapon stays charge-and-spend, and a weapon that wants you standing still still does. All ten join the unique boss-drop pool automatically.
+
 The Enchanter Tells You What Might Happen
 
 - Hovering a weapon or armor piece at the enchanter now lists a few things the enhancement could turn out to be. One of them is what you will actually get

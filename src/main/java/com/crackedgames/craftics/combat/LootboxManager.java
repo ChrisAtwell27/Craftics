@@ -142,30 +142,58 @@ public final class LootboxManager {
     private static final int MAX_ENCHANT_LEVEL = 5;
 
     /**
-     * Legendary weapons - Simply Swords uniques and Simply Bows uniques, the rare boss-drop
-     * tier of each mod. Every id is resolved through the registry and skipped when absent, so
-     * this whole table degrades to the vanilla netherite fallback on a plain install.
+     * Simply Bows uniques - the rare boss-drop tier of that mod, whose item paths nest one level
+     * deep. Listed by hand because Simply Bows has no equivalent of the live registration list
+     * that {@link #legendaryIds()} pulls the Simply Swords half from.
      */
-    private static final String[] LEGENDARY_IDS = {
-        // Simply Swords uniques
-        "simplyswords:arcanethyst", "simplyswords:awakened_lichblade", "simplyswords:bramblethorn",
-        "simplyswords:brimstone_claymore", "simplyswords:caelestis", "simplyswords:chompolotl",
-        "simplyswords:dreadtide", "simplyswords:emberblade", "simplyswords:emberlash",
-        "simplyswords:enigma", "simplyswords:flamewind", "simplyswords:frostfall",
-        "simplyswords:harbinger", "simplyswords:hearthflame", "simplyswords:hiveheart",
-        "simplyswords:icewhisper", "simplyswords:livyatan", "simplyswords:magiblade",
-        "simplyswords:magic_estoc", "simplyswords:magiscythe", "simplyswords:magispear",
-        "simplyswords:mjolnir", "simplyswords:molten_edge", "simplyswords:ribboncleaver",
-        "simplyswords:shadowsting", "simplyswords:slumbering_lichblade", "simplyswords:soulkeeper",
-        "simplyswords:soulpyre", "simplyswords:soulrender", "simplyswords:soulstealer",
-        "simplyswords:stars_edge", "simplyswords:stormbringer", "simplyswords:storms_edge",
-        "simplyswords:sunfire", "simplyswords:sword_on_a_stick",
-        // Simply Bows uniques - the mod nests its item paths one level deep.
+    private static final String[] LEGENDARY_BOW_IDS = {
         "simplybows:bee_bow/bee_bow", "simplybows:blossom_bow/blossom_bow",
         "simplybows:bubble_bow/bubble_bow", "simplybows:earth_bow/earth_bow",
         "simplybows:echo_bow/echo_bow", "simplybows:ice_bow/ice_bow",
         "simplybows:vine_bow/vine_bow"
     };
+
+    /**
+     * Every legendary weapon id: the rare boss-drop tier of Simply Swords and Simply Bows.
+     *
+     * <p>The Simply Swords half is <b>derived</b> from the uniques that actually registered this
+     * launch rather than listed here. It used to be a hand-written array and it had drifted badly:
+     * it was alphabetical and stopped at "s", so every unique added after that point - twelve of
+     * them, before the ten that arrived with Simply Swords 1.70 - was missing. That is not a
+     * cosmetic omission. This list does two jobs, and a weapon absent from it fails both: it never
+     * appears in the legendary lootbox section, AND it is not excluded from the ordinary tiered
+     * weapon pools, so a boss-drop weapon can turn up as a common roll.
+     *
+     * <p>Deriving it means the two can no longer disagree. Every id is still resolved through the
+     * registry and skipped when absent, so this degrades to the vanilla netherite fallback on a
+     * plain install.
+     */
+    private static String[] legendaryIds() {
+        return mergeLegendaryIds(LEGENDARY_BOW_IDS,
+            com.crackedgames.craftics.compat.simplyswords.SimplySwordsUniques.registeredPaths());
+    }
+
+    /**
+     * Namespace the Simply Swords paths and fold them in with the hand-listed bows.
+     *
+     * <p>Split out from {@link #legendaryIds()} so the merge itself can be tested: the registry
+     * cannot be reached from a test, but forgetting the namespace or letting a duplicate through
+     * are exactly the mistakes worth pinning down.
+     */
+    static String[] mergeLegendaryIds(String[] bowIds, java.util.List<String> swordPaths) {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        if (swordPaths != null) {
+            for (String path : swordPaths) {
+                if (path != null && !path.isEmpty()) out.add("simplyswords:" + path);
+            }
+        }
+        if (bowIds != null) {
+            for (String id : bowIds) {
+                if (id != null && !id.isEmpty()) out.add(id);
+            }
+        }
+        return out.toArray(new String[0]);
+    }
 
     // ── Init / tick ──────────────────────────────────────────────────────────
 
@@ -858,8 +886,14 @@ public final class LootboxManager {
     /** Every weapon in the game, split by material tier. Built once, cached. */
     private static java.util.Map<WeaponTier, List<ItemStack>> weaponTiers() {
         if (weaponTierCache != null) return weaponTierCache;
+        // Simply Swords registers its uniques late, and the legendary exclusion set is derived
+        // from that registration. Building the pools before it finishes would bake in an empty
+        // exclusion - every unique loose in the ordinary tiers - and cache it for the session.
+        boolean uniquesPending =
+            com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.isLoaded()
+            && !com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.isRegistered();
         java.util.Set<Item> exclude = new java.util.HashSet<>();
-        for (String id : LEGENDARY_IDS) {
+        for (String id : legendaryIds()) {
             Item item = modded(id);
             if (item != null) exclude.add(item);
         }
@@ -888,8 +922,10 @@ public final class LootboxManager {
 
         java.util.Map<WeaponTier, List<ItemStack>> frozen = new java.util.EnumMap<>(WeaponTier.class);
         tiers.forEach((tier, list) -> frozen.put(tier, List.copyOf(list)));
-        weaponTierCache = java.util.Collections.unmodifiableMap(frozen);
-        return weaponTierCache;
+        java.util.Map<WeaponTier, List<ItemStack>> built =
+            java.util.Collections.unmodifiableMap(frozen);
+        if (!uniquesPending) weaponTierCache = built;
+        return built;
     }
 
     /** Weapons of no special material: everything below diamond. */
@@ -1106,7 +1142,7 @@ public final class LootboxManager {
         return switch (type) {
             case WEAPONS -> {
                 List<ItemStack> legends = new ArrayList<>();
-                addModded(legends, LEGENDARY_IDS);
+                addModded(legends, legendaryIds());
                 if (legends.isEmpty()) {
                     legends.add(new ItemStack(Items.NETHERITE_SWORD));
                     legends.add(new ItemStack(Items.NETHERITE_AXE));
