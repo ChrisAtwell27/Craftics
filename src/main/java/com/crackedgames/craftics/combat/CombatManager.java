@@ -649,6 +649,12 @@ public class CombatManager {
      */
     private boolean tickPlayerPerTurnEffects() {
         if (player == null) return false;
+        // NOTE: every player-facing line in here goes to `member` alone, never through
+        // sendMessage(), which broadcasts to the whole party. These messages are all in the
+        // second person - "Magma burns YOU", "Regeneration healed 2 HP" - and this method runs
+        // once PER MEMBER, so broadcasting them printed one player's poison tick to everybody,
+        // three times over in a three-player party. Players read chat as what happened to them,
+        // so that alone made a single person's debuff look like the whole party had been hit.
         // The player this pass is processing. handlePlayerDeathOrGameOver swaps
         // this.player to the next-alive member on death, so we capture the member
         // up front and stop processing them the moment they die (returning false
@@ -661,7 +667,7 @@ public class CombatManager {
         if (trimRegen > 0 && turnNumber % 2 == 0
                 && member.getHealth() < member.getMaxHealth()) {
             member.setHealth(Math.min(member.getMaxHealth(), member.getHealth() + trimRegen));
-            sendMessage("§a♥ Trim regen healed " + trimRegen + " HP");
+            sendMessageTo(member, "§a♥ Trim regen healed " + trimRegen + " HP");
         }
 
         int hpChange = combatEffects.applyPerTurnEffects(SpecialAffinity.points(member));
@@ -669,13 +675,13 @@ public class CombatManager {
             float newHp = Math.max(1, Math.min(member.getMaxHealth(), member.getHealth() + hpChange));
             member.setHealth(newHp);
             if (hpChange > 0) {
-                sendMessage("§a♥ Regeneration healed " + hpChange + " HP");
+                sendMessageTo(member, "§a♥ Regeneration healed " + hpChange + " HP");
             } else {
                 StringBuilder dmgSources = new StringBuilder();
                 if (combatEffects.hasEffect(CombatEffects.EffectType.POISON)) dmgSources.append("Poison ");
                 if (combatEffects.hasEffect(CombatEffects.EffectType.WITHER)) dmgSources.append("Wither ");
                 if (combatEffects.hasEffect(CombatEffects.EffectType.BURNING)) dmgSources.append("Fire ");
-                sendMessage("§c☠ " + dmgSources.toString().trim() + " dealt " + (-hpChange) + " damage");
+                sendMessageTo(member, "§c☠ " + dmgSources.toString().trim() + " dealt " + (-hpChange) + " damage");
             }
             if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return partyPlayers.size() <= 1 || !active; }
         }
@@ -686,11 +692,11 @@ public class CombatManager {
             net.minecraft.block.Block tileBlock = playerTile.getBlockType();
             if (tileBlock == Blocks.MAGMA_BLOCK && !combatEffects.hasFireResistance()) {
                 int magmaDmg = damagePlayer(4);
-                sendMessage("§cMagma burns you for " + magmaDmg + " damage!");
+                sendMessageTo(member, "§cMagma burns you for " + magmaDmg + " damage!");
                 if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return partyPlayers.size() <= 1 || !active; }
             } else if (tileBlock == Blocks.SOUL_SAND || tileBlock == Blocks.SOUL_SOIL) {
                 movePointsRemaining = Math.max(1, movePointsRemaining - 1);
-                sendMessage("§7☁ Soul sand slows your movement (-1 Speed)");
+                sendMessageTo(member, "§7☁ Soul sand slows your movement (-1 Speed)");
             }
             // Respiration air: swim deep water for `level` turns, then drown if still standing
             // in it. this.player is already swapped to `member` by the caller, so playerTile
@@ -706,7 +712,7 @@ public class CombatManager {
             // rather than inheriting whatever the map happened to hold (or 0).
             int air = respirationAir.getOrDefault(member.getUuid(), respLevel);
             if (CombatEnchantHelpers.respirationDrowns(air, inDeepWater)) {
-                sendMessage("§1You run out of air and drown!");
+                sendMessageTo(member, "§1You run out of air and drown!");
                 // Same lethal-tile mechanism as the MAGMA_BLOCK branch above: environmental
                 // damage (no attacker) skips all dodge/armor mitigation, so an overkill value
                 // reliably clamps health to the death threshold and routes through the normal
@@ -721,7 +727,7 @@ public class CombatManager {
                     && activeTrimScan.setBonus() == TrimEffects.SetBonus.TIDAL
                     && member.getHealth() < member.getMaxHealth()) {
                 member.setHealth(Math.min(member.getMaxHealth(), member.getHealth() + 1));
-                sendMessage("§b§l✦ Tidal! §r§3Water heals you for 1 HP");
+                sendMessageTo(member, "§b§l✦ Tidal! §r§3Water heals you for 1 HP");
             }
         }
 
@@ -744,13 +750,13 @@ public class CombatManager {
                     float healed = Math.min(member.getMaxHealth(), member.getHealth() + 2);
                     if (healed > member.getHealth()) {
                         member.setHealth(healed);
-                        sendMessage("§6Campfire heals 2 HP.");
+                        sendMessageTo(member, "§6Campfire heals 2 HP.");
                     }
                 }
             } else if ("poison_cloud".equals(effect)) {
                 if (playerPos.manhattanDistance(tPos) <= 1) {
                     member.setHealth(Math.max(1, member.getHealth() - 1));
-                    sendMessage("§5You breathe in the poison cloud! -1 HP");
+                    sendMessageTo(member, "§5You breathe in the poison cloud! -1 HP");
                     if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return partyPlayers.size() <= 1 || !active; }
                 }
             }
@@ -3393,14 +3399,26 @@ public class CombatManager {
     public boolean wasLastHitAvoided() { return lastHitAvoided; }
 
     private int getPlayerHp() {
-        if (player == null) return 0;
-        int hp = (int) player.getHealth();
+        return hpOf(player);
+    }
+
+    /**
+     * The same readout for any party member.
+     *
+     * <p>Split out because the sync packet has to tell each client about ITSELF here, not about
+     * whoever holds the turn: the low-health warning vignette is driven by this number, and a
+     * shared one meant the whole party saw the red edge whenever the turn holder was hurt while
+     * a player actually near death saw nothing.
+     */
+    private static int hpOf(ServerPlayerEntity who) {
+        if (who == null) return 0;
+        int hp = (int) who.getHealth();
         // HP clamped to 1 to prevent vanilla death -- report 0 at clamp threshold
         if (hp <= 1) return 0;
         // Absorption (golden apples, enchanted golden apples) counts as bonus HP
         // stacked on top of the base pool. Vitality and trim HP already raise
         // getMaxHealth() via our attribute modifier, so they're inside getHealth().
-        int absorb = (int) player.getAbsorptionAmount();
+        int absorb = (int) who.getAbsorptionAmount();
         return hp + absorb;
     }
 
@@ -3409,9 +3427,14 @@ public class CombatManager {
      * absorption. When absorption ticks out mid-combat the max shrinks back.
      */
     private int getPlayerMaxHpForDisplay() {
-        if (player == null) return 0;
-        int maxHp = (int) player.getMaxHealth();
-        int absorb = (int) player.getAbsorptionAmount();
+        return maxHpOf(player);
+    }
+
+    /** {@link #getPlayerMaxHpForDisplay} for any party member - see {@link #hpOf}. */
+    private static int maxHpOf(ServerPlayerEntity who) {
+        if (who == null) return 0;
+        int maxHp = (int) who.getMaxHealth();
+        int absorb = (int) who.getAbsorptionAmount();
         return maxHp + absorb;
     }
 
@@ -21692,7 +21715,7 @@ public class CombatManager {
             int soulTurns = CombatEffects.SOUL_BURN_TURNS
                 + combatEffects.getTurnsRemaining(CombatEffects.EffectType.SOUL_BURNING);
             if (addEffectHooked(CombatEffects.EffectType.SOUL_BURNING, soulTurns, soulLevel - 1)) {
-                sendMessage("§b  You're standing in soul fire! §3Soul Burning "
+                sendMessageToActor("§b  You're standing in soul fire! §3Soul Burning "
                     + "I".repeat(Math.max(1, soulLevel)) + " for "
                     + combatEffects.getTurnsRemaining(CombatEffects.EffectType.SOUL_BURNING)
                     + " turns."
@@ -22849,7 +22872,7 @@ public class CombatManager {
                                 + (tideSwapped ? rider.getName().getString() : "you")
                                 + " along " + before.manhattanDistance(after) + " tiles!");
                         } else {
-                            sendMessage("§3≈ The tide breaks against your back - nowhere to be carried.");
+                            sendMessageToActor("§3≈ The tide breaks against your back - nowhere to be carried.");
                         }
                     } finally {
                         if (tideSwapped && active) {
@@ -22916,7 +22939,7 @@ public class CombatManager {
             } else if (floodedSet.contains(arena.getPlayerGridPos())
                     && boatOf(player) == null && !player.hasVehicle()) {
                 addEffectHooked(CombatEffects.EffectType.SOAKED, 2, 0);
-                sendMessage("§b  The tidal wave leaves you Soaked for 2 turns.");
+                sendMessageToActor("§b  The tidal wave leaves you Soaked for 2 turns.");
             }
 
             // Soak the drowned too: the chain arcs through them, and a wave that soaked only
@@ -25472,13 +25495,13 @@ public class CombatManager {
                 // Flame enchant on enemy bow ignites the player
                 if (rangedFlame && !combatEffects.hasFireResistance()) {
                     addEffectHooked(CombatEffects.EffectType.BURNING, 2 + rangedFlameLevel, 0);
-                    sendMessage("§6  Flaming arrow ignites you! (Burning for "
+                    sendMessageToActor("§6  Flaming arrow ignites you! (Burning for "
                         + (2 + rangedFlameLevel) + " turns)");
                 }
                 // Punch enchant: knock the player back
                 if (rangedPunchLevel > 0) {
                     applyPlayerKnockback(currentEnemy.getGridPos(), rangedPunchLevel + 1, currentEnemy);
-                    sendMessage("§e  Punch arrow knocks you back!");
+                    sendMessageToActor("§e  Punch arrow knocks you back!");
                 }
                 } // end ranged on-hit effects (skipped on a fully avoided shot)
                 checkOverwatchCounter(currentEnemy);
@@ -32456,6 +32479,22 @@ public class CombatManager {
         p.sendMessage(net.minecraft.text.Text.literal(msg), false);
     }
 
+    /**
+     * Send a second-person line to the player it is actually about.
+     *
+     * <p>{@link #sendMessage} broadcasts to the whole party, which is right for events the party
+     * shares and wrong for anything phrased as "you". Several hazards and enemy attacks swap
+     * {@code this.player} to the victim before applying their effect, so a broadcast there told
+     * every member they had been soaked, ignited or knocked back when one of them had.
+     *
+     * <p>Reads {@code this.player} on purpose rather than taking a recipient: these calls sit
+     * beside an {@code addEffectHooked} that targets the same field, so the message cannot drift
+     * away from the effect it is describing.
+     */
+    private void sendMessageToActor(String msg) {
+        if (player != null) sendMessageTo(player, msg);
+    }
+
     /** Every player in this combat: the party roster when populated (leader is
      *  registered first in MP), falling back to the current turn-holder so solo
      *  combats that never register a roster are still covered. Use for ambient
@@ -37707,13 +37746,55 @@ public class CombatManager {
             effectsDisplay = effectsDisplay.isEmpty() ? hidden : (hidden + " | " + effectsDisplay);
         }
 
-        sendToAllParty(new CombatSyncPayload(
-            phase.ordinal(), apRemaining, movePointsRemaining,
-            getPlayerHp(), getPlayerMaxHpForDisplay(), turnNumber,
-            maxAp, maxSpeed, enemyData, typeIds.toString(),
-            effectsDisplay, killStreak,
-            partyHpData, turnOrderData, buildPlayerStatsData()
-        ));
+        // The effects strip is the one field in this payload that is NOT about the active
+        // player: every client stores it as "my effects" and renders it as their own. Sending
+        // one string to the whole party therefore told every member they were carrying the turn
+        // holder's status - so one player eating rotten flesh read as the whole party being
+        // weakened, and a buff the turn holder drank appeared on teammates who then never healed
+        // from it, because they never actually had it. The server state was right the whole time;
+        // this is the wire telling everyone the same lie.
+        //
+        // Everything else here is deliberately the active player's (AP, movement, the turn
+        // counter), which is why the payload is otherwise identical for everyone.
+        for (ServerPlayerEntity member : getAllParticipants()) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (member.networkHandler == null) continue;
+            try {
+                ServerPlayNetworking.send(member, new CombatSyncPayload(
+                    phase.ordinal(), apRemaining, movePointsRemaining,
+                    // Their own health, for the same reason as their own effects below: the
+                    // client reads these as "me". AP and movement above stay the ACTIVE
+                    // player's on purpose - those describe whose turn it is.
+                    hpOf(member), maxHpOf(member), turnNumber,
+                    maxAp, maxSpeed, enemyData, typeIds.toString(),
+                    effectsFor(member, effectsDisplay), killStreak,
+                    partyHpData, turnOrderData, buildPlayerStatsData()
+                ));
+            } catch (Throwable t) {
+                CrafticsMod.LOGGER.error("Failed to send combat sync to {}: {}",
+                    member.getName().getString(), t.toString(), t);
+            }
+        }
+    }
+
+    /**
+     * The effects strip {@code member} should see: their own.
+     *
+     * <p>Falls back to the already-built active-player string when this member has no entry yet,
+     * which is the solo case and the first tick of a fight before anyone has been retargeted -
+     * in both, the active player IS the recipient.
+     */
+    private String effectsFor(ServerPlayerEntity member, String activePlayerDisplay) {
+        if (player != null && member.getUuid().equals(player.getUuid())) return activePlayerDisplay;
+        CombatEffects fx = playerCombatEffects.get(member.getUuid());
+        if (fx == null) return activePlayerDisplay;
+        String display = fx.getDisplayString();
+        // Their own tile decides their own stealth, not the turn holder's.
+        if (arena != null && !deadPartyMembers.contains(member.getUuid())
+                && StealthTiles.isStealthTile(arena, gridPosOf(member), member.getEntityWorld())) {
+            display = display.isEmpty() ? "Hidden" : ("Hidden | " + display);
+        }
+        return display;
     }
 
     /**

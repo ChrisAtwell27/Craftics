@@ -19,6 +19,18 @@ Backpacked Compatibility
 - Unstackable rewards go in too - a sword that will not fit is exactly what a backpack is for
 - Reached entirely by reflection with no compile-time dependency, so Craftics builds and runs with Backpacked absent, and every failure path degrades to "no backpack" rather than breaking loot delivery
 
+Your Status Effects Are Yours Again in Multiplayer
+
+Four separate places were telling every player about one player. Together they made a single member's debuff look like the whole party had been hit.
+
+- **Chat.** Fourteen second-person lines - "Magma burns you", "Regeneration healed 2 HP", "You breathe in the poison cloud" - went to the entire party. Nine of them live in the per-turn hazard pass, which runs once per member, so a three-player party got one person's poison tick printed three times to everyone. Chat is where players read what happened to them, so this alone was most of the problem. They now go to the player they are about
+- **The effects strip.** The combat sync packet carries one effects string and every client stores it as "my effects". Each client is now sent its own, including its own stealth state
+- **Screen overlays.** Blindness, Darkness, Poison, Burning and Warped vignettes all read that same shared string, so the turn holder's blindness dimmed everybody's screen. Darkness also hides distant enemies, and it was hiding them from the whole party - the code even documents that as per-player, which it had quietly stopped being
+- **The low-health warning.** The red pulsing edge read a shared health value, so the party saw it whenever the turn holder was hurt, while a player actually near death saw nothing. Each client is now sent its own health
+
+Worth saying plainly: the effects themselves were never shared. Regeneration really was healing only the player who had it, and poison really was only damaging the player who ate the thing. The server had it right and everything the player could see had it wrong.
+
+
 Tamed Animals Actually Reach Your Island Now
 
 - Fixed tamed animals never arriving home. The game said they had been sent, and they had not been
