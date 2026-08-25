@@ -35024,8 +35024,16 @@ public class CombatManager {
             if (e.isAlive() && e.isAlly() && !e.isTemporaryAlly()) {
                 HubPetCollector.PetData data = HubPetCollector.PetData.fromCombatEntity(
                     e, e.getOriginalHubNbt());
-                if (e.isTamedInCombat()) tamedThisLevel.add(data);
-                else savedPets.add(data);
+                if (e.isTamedInCombat()) {
+                    tamedThisLevel.add(data);
+                    // Retire the arena mob NOW, before the copy is sent home. The snapshot in
+                    // `data` was taken from THIS entity, so it carries this entity's UUID, and
+                    // the world will not accept a second entity holding it - the homecoming
+                    // copy would be silently dropped. It has left the fight either way.
+                    if (e.getMobEntity() != null) e.getMobEntity().discard();
+                } else {
+                    savedPets.add(data);
+                }
             }
         }
         sendTamedAnimalsHome(tamedThisLevel);
@@ -35435,9 +35443,17 @@ public class CombatManager {
             ServerWorld world = (ServerWorld) player.getEntityWorld();
             com.crackedgames.craftics.world.CrafticsSavedData data =
                 com.crackedgames.craftics.world.CrafticsSavedData.get(world);
-            HubPetCollector.restorePetsToHub(world, player, tamed, data);
-            sendMessage("§a" + tamed.size() + (tamed.size() == 1 ? " tamed animal has" : " tamed animals have")
-                + " been sent home to your island.");
+            int sent = HubPetCollector.restorePetsToHub(world, player, tamed, data);
+            // Report what actually happened. Announcing the homecoming regardless is how this
+            // looked fine while every animal was being dropped on the way.
+            if (sent > 0) {
+                sendMessage("§a" + sent + (sent == 1 ? " tamed animal has" : " tamed animals have")
+                    + " been sent home to your island.");
+            }
+            if (sent < tamed.size()) {
+                CrafticsMod.LOGGER.error("Only {} of {} tamed animal(s) reached a hub", sent, tamed.size());
+                sendMessage("§c" + (tamed.size() - sent) + " tamed animal(s) could not be sent home.");
+            }
         } catch (Throwable t) {
             CrafticsMod.LOGGER.error("Could not send tamed animals home; carrying them instead", t);
             savedPets.addAll(tamed);

@@ -316,29 +316,38 @@ public class HubPetCollector {
     /**
      * Restore surviving pets to the hub world after a biome run ends.
      * Recreates entities from their original NBT snapshots with updated positions.
-     * The original entity UUID is kept so the mob stays valid in the player's
-     * battle party - its hub copy was discarded when it was collected for combat,
-     * so there is no duplicate to worry about.
+     *
+     * <p>The original entity UUID is kept where it can be, so the mob stays valid in the
+     * player's battle party. It is only dropped when it is not free - see below.
+     *
+     * @return how many animals actually reached a hub. Callers that announce success to the
+     *         player must read this: every failure in here is silent by design (a lost animal
+     *         must never cost someone their run), so a caller that assumes it worked will
+     *         cheerfully report a homecoming that did not happen.
      */
-    public static void restorePetsToHub(ServerWorld world, ServerPlayerEntity player,
-                                         List<PetData> survivingPets, CrafticsSavedData data) {
+    public static int restorePetsToHub(ServerWorld world, ServerPlayerEntity player,
+                                        List<PetData> survivingPets, CrafticsSavedData data) {
         BlockPos defaultHub = data.getHubTeleportPos(player.getUuid());
-        if (defaultHub == null) return;
+        int restoredCount = 0;
 
         int offset = 0;
         for (PetData pet : survivingPets) {
-            // Each animal goes home to ITS owner's island, not to whoever this restore was
-            // called for. Same-owner pets (every single-player case) resolve to exactly what
-            // the old code did.
-            ServerWorld petWorld = world;
-            BlockPos hubPos = defaultHub;
-            if (pet.owner() != null && !pet.owner().equals(player.getUuid())) {
-                BlockPos ownerHub = data.getHubTeleportPos(pet.owner());
-                ServerWorld ownerWorld = islandWorldOf(world, pet.owner());
-                if (ownerHub != null && ownerWorld != null) {
-                    hubPos = ownerHub;
-                    petWorld = ownerWorld;
-                }
+            // Each animal goes home to ITS OWN owner's island. This resolves the island for
+            // every pet rather than only for other people's, because "the world we are standing
+            // in" is not the owner's island as often as it looks: a guest fights inside the
+            // HOST's island dimension, so a guest's own animal took the shortcut and was spawned
+            // into the host's world at the guest's coordinates - nowhere at all. Falls back to
+            // the current world when the owner has no island, which is what single-player and
+            // every pre-island save want.
+            java.util.UUID ownerId = pet.owner() != null ? pet.owner() : player.getUuid();
+            BlockPos hubPos = data.getHubTeleportPos(ownerId);
+            if (hubPos == null) hubPos = defaultHub;
+            ServerWorld petWorld = islandWorldOf(world, ownerId);
+            if (petWorld == null) petWorld = world;
+            if (hubPos == null) {
+                CrafticsMod.LOGGER.warn("No hub anchor for {} - cannot send {} home",
+                    ownerId, pet.entityType());
+                continue;
             }
             final ServerWorld world0 = petWorld;   // the loop body below spawns into this
             // The player this animal belongs to, when they are online. Used for the tame/bond
@@ -387,6 +396,16 @@ public class HubPetCollector {
 
                     if (restored != null) {
                         restored.readNbt(nbt);
+                        // The UUID in that snapshot may still belong to a mob standing in the
+                        // arena. An animal TAMED in combat is snapshotted from the live arena
+                        // mob - unlike a hub pet, whose original was discarded when it was
+                        // collected - so the id is taken, and Minecraft drops a duplicate-UUID
+                        // spawn on the floor with only a log line. That is exactly how tamed
+                        // animals were disappearing on the way home. Identity is worth keeping
+                        // when it is free and worth nothing when it costs the animal.
+                        if (world0.getEntity(restored.getUuid()) != null) {
+                            restored.setUuid(UUID.randomUUID());
+                        }
                         restored.refreshPositionAndAngles(px, py, pz, 0, 0);
                         restored.setVelocity(0, 0, 0);
                         if (restored instanceof net.minecraft.entity.mob.MobEntity mob) {
@@ -394,9 +413,16 @@ public class HubPetCollector {
                             mob.setAiDisabled(false);
                             mob.setSilent(false);
                         }
-                        world0.spawnEntity(restored);
-                        CrafticsMod.LOGGER.info("Restored pet to hub: {} at ({}, {}, {})",
-                            pet.entityType(), (int) px, (int) py, (int) pz);
+                        if (world0.spawnEntity(restored)) {
+                            restoredCount++;
+                            CrafticsMod.LOGGER.info("Restored pet to hub: {} at ({}, {}, {}) in {}",
+                                pet.entityType(), (int) px, (int) py, (int) pz,
+                                world0.getRegistryKey().getValue());
+                        } else {
+                            CrafticsMod.LOGGER.error(
+                                "Hub restore REFUSED for {} at ({}, {}, {}) - the world rejected the spawn",
+                                pet.entityType(), (int) px, (int) py, (int) pz);
+                        }
                     }
                 } else {
                     // Fallback: create a fresh entity (no NBT to restore)
@@ -422,7 +448,7 @@ public class HubPetCollector {
                             /*horse.setOwner(owner0);*/
                             horse.bondWithPlayer(owner0);
                         }
-                        world0.spawnEntity(mob);
+                        if (world0.spawnEntity(mob)) restoredCount++;
                     }
                 }
             } catch (Exception e) {
@@ -444,6 +470,7 @@ public class HubPetCollector {
                 if (other != null) PartyMobSync.sync(other);
             }
         }
+        return restoredCount;
     }
 
     /**

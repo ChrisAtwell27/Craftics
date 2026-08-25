@@ -19,6 +19,13 @@ Backpacked Compatibility
 - Unstackable rewards go in too - a sword that will not fit is exactly what a backpack is for
 - Reached entirely by reflection with no compile-time dependency, so Craftics builds and runs with Backpacked absent, and every failure path degrades to "no backpack" rather than breaking loot delivery
 
+Tamed Animals Actually Reach Your Island Now
+
+- Fixed tamed animals never arriving home. The game said they had been sent, and they had not been
+- An animal tamed in a fight is copied home from a snapshot taken of the mob standing in the arena, so the copy carried that mob's entity id. The original was still in the arena at that moment, and a world refuses a second entity holding an id it already has, so the homecoming copy was dropped with nothing but a log line. A pet brought FROM your island never hit this, because its original is removed the moment it is collected for a fight - which is exactly why hub pets came back and tamed ones did not. The arena mob is now retired before its copy is sent
+- Fixed a guest's tamed animal landing nowhere in multiplayer. Each animal is routed to its owner's island, but that lookup was skipped whenever the animal already belonged to the player the restore was running for, on the assumption they were standing on their own island. A guest fights inside the HOST's island, so a guest's own animal was spawned into the host's world at the guest's coordinates. Every animal now resolves its owner's island explicitly
+- The "sent home to your island" message reports what actually arrived, and says so plainly when something did not. Announcing success regardless is what let this look fine for so long
+
 Simply Swords 1.70 Uniques
 
 Ten unique weapons added in Simply Swords 1.70 now have Craftics abilities. They were falling through to generic gear inference before this, which can guess a damage number off an item but cannot give a weapon a signature move, so every one of them fought like a plain sword.
