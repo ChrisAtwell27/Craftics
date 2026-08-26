@@ -31,6 +31,8 @@ public class ModNetworking {
         PayloadTypeRegistry.playC2S().register(LeadSelectPayload.ID, LeadSelectPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(ClearPartyPayload.ID, ClearPartyPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(MountAbilityPayload.ID, MountAbilityPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(
+            TogglePartyMemberPayload.ID, TogglePartyMemberPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(DialogueChoicePayload.ID, DialogueChoicePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(EnterScenePayload.ID, EnterScenePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(SceneClickPayload.ID, SceneClickPayload.CODEC);
@@ -350,6 +352,26 @@ public class ModNetworking {
                 if (cm != null && cm.isActive()) {
                     cm.handleMountAbility(p.getUuid());
                 }
+            });
+        });
+
+        // Battle party: the player pressed the party key while looking at a mob. The key is the
+        // conflict-free way in - Shift + Right-Click is the same gesture Carry On uses to pick a
+        // mob up, so on a setup with both, one click did both things.
+        ServerPlayNetworking.registerGlobalReceiver(TogglePartyMemberPayload.ID, (payload, context) -> {
+            ServerPlayerEntity p = context.player();
+            int entityId = payload.entityId();
+            p.getServer().execute(() -> {
+                if (com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(p)) return;
+                net.minecraft.entity.Entity target = p.getEntityWorld().getEntityById(entityId);
+                if (!(target instanceof net.minecraft.entity.mob.MobEntity mob)) return;
+                // The client picked the target, so the server re-checks it is one the player
+                // could actually have been looking at. Vanilla reach is 3 blocks for entities;
+                // this is deliberately generous rather than exact - it exists to refuse an id
+                // plucked from across the world, not to referee a borderline click.
+                if (p.squaredDistanceTo(mob) > 64.0) return;
+                if (!p.getMainHandStack().isEmpty()) return;   // same empty-hand rule as the click
+                com.crackedgames.craftics.combat.PartyMobs.toggleParty(p, mob);
             });
         });
 

@@ -53,6 +53,7 @@ public class CrafticsClient implements ClientModInitializer {
     private static KeyBinding clearPartyKey;
     private static KeyBinding mountAbilityKey;
     private static KeyBinding threatOverlayKey;
+    private static KeyBinding partyMemberKey;
     private static KeyBinding focusSelfKey;
     private static KeyBinding pingKey;
 
@@ -69,7 +70,7 @@ public class CrafticsClient implements ClientModInitializer {
         return new KeyBinding[] {
             guideBookKey, respecKey, endTurnKey, affinityRespecKey, toggleUiKey,
             moveSlotLeftKey, moveSlotRightKey, clearPartyKey, mountAbilityKey, threatOverlayKey,
-            focusSelfKey, pingKey
+            focusSelfKey, pingKey, partyMemberKey
         };
     }
 
@@ -811,6 +812,19 @@ public class CrafticsClient implements ClientModInitializer {
             KEYBIND_CATEGORY
         ));
 
+        // Add/remove the mob you are looking at from your battle party. P is free in vanilla and
+        // free among the binds above, and it is the letter a player would guess for "party".
+        //
+        // This exists because Shift + Right-Click is not ours alone: Carry On picks mobs up with
+        // exactly that gesture, so with both installed one click did both things. A keybind is
+        // listed in the controls screen, the player can move it, and Minecraft arbitrates
+        // conflicts between binds itself - none of which is true of a hardcoded modifier+click.
+        partyMemberKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.toggle_party_member",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_P,
+            KEYBIND_CATEGORY
+        ));
+
         // X rather than the more obvious C. The conflict resolver below unbinds any other mod
         // that shares a Craftics key, and C is what most zoom mods bind by default - taking a
         // popular mod's zoom key away on first launch is a poor greeting for a convenience
@@ -1144,6 +1158,20 @@ public class CrafticsClient implements ClientModInitializer {
                 if (CombatState.isInCombat() && client.currentScreen == null) {
                     net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
                         new com.crackedgames.craftics.network.MountAbilityPayload());
+                }
+            }
+
+            while (partyMemberKey.wasPressed()) {
+                if (client.currentScreen != null) break;   // typing, not playing
+                // Whatever the crosshair is on. The server re-checks the id it is sent, so this
+                // only has to answer "what is the player looking at", not "may they have it".
+                if (client.crosshairTarget instanceof net.minecraft.util.hit.EntityHitResult hit) {
+                    net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
+                        new com.crackedgames.craftics.network.TogglePartyMemberPayload(
+                            hit.getEntity().getId()));
+                } else {
+                    com.crackedgames.craftics.client.CombatLog.addMessage(
+                        "\u00a77Look at a mob to add or remove it from your battle party.");
                 }
             }
 

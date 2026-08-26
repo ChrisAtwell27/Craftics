@@ -209,6 +209,10 @@ public class CrafticsMod implements ModInitializer {
             if (com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(player)) {
                 return net.minecraft.util.ActionResult.FAIL;
             }
+            // Switchable, because this gesture is not ours alone - Carry On picks mobs up with
+            // it, and with both mods a single click did both things. The keybind is the way in
+            // that cannot clash; this is the convenience, and it can be turned off.
+            if (CONFIG != null && !CONFIG.partyToggleByShiftClick()) return net.minecraft.util.ActionResult.PASS;
             if (!player.isSneaking() || !player.getMainHandStack().isEmpty()) return net.minecraft.util.ActionResult.PASS;
             if (!(entity instanceof net.minecraft.entity.mob.MobEntity mob)) return net.minecraft.util.ActionResult.PASS;
             if (!(player instanceof net.minecraft.server.network.ServerPlayerEntity sp)) return net.minecraft.util.ActionResult.PASS;

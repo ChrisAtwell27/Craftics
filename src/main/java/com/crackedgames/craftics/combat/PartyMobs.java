@@ -172,6 +172,34 @@ public final class PartyMobs {
      *         (always, for an eligible-or-not mob), so vanilla interaction
      *         (mounting, breeding, ...) does not also fire.
      */
+    /**
+     * Outline a mob so the player can see, at a glance, which animals are in their battle party.
+     *
+     * <p>Uses the entity's glow FLAG rather than the Glowing status effect. The effect has a
+     * duration and would quietly lapse mid-session, leaving a party member looking unselected; the
+     * flag has none, and it is written into the entity's own NBT, so it survives a relog with the
+     * membership it represents.
+     */
+    public static void setPartyGlow(MobEntity mob, boolean inParty) {
+        if (mob != null) mob.setGlowing(inParty);
+    }
+
+    /**
+     * Re-apply the outline across a player's whole party.
+     *
+     * <p>Called wherever the party is read back rather than only where it is edited: a mob that
+     * was in an unloaded chunk when it was added never saw the flag set, and anything that
+     * clears entity flags wholesale would otherwise leave the party invisible until each member
+     * was toggled off and on again.
+     */
+    public static void refreshPartyGlow(ServerPlayerEntity player) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        for (UUID id : data.getPlayerData(player.getUuid()).getPartyMobs()) {
+            if (world.getEntity(id) instanceof MobEntity mob) setPartyGlow(mob, true);
+        }
+    }
+
     public static ActionResult toggleParty(ServerPlayerEntity player, MobEntity mob) {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
@@ -194,6 +222,7 @@ public final class PartyMobs {
         // Already in the party - Shift+Right-Click again removes it.
         if (party.contains(mobId)) {
             party.remove(mobId);
+            setPartyGlow(mob, false);
             data.markDirty();
             PartyMobSync.sync(player);
             actionBar(player, "§e" + name + " left your battle party. (" + party.size() + "/" + cap + ")");
@@ -214,6 +243,7 @@ public final class PartyMobs {
         }
 
         party.add(mobId);
+        setPartyGlow(mob, true);
         mob.setPersistent(); // party mobs must not despawn before the next fight
         data.markDirty();
         PartyMobSync.sync(player);
@@ -248,6 +278,11 @@ public final class PartyMobs {
         }
 
         int removed = party.size();
+        // Drop the outlines before the list is emptied - afterwards there is nothing left to say
+        // which mobs were in it, and they would glow forever with no way to turn it off.
+        for (UUID id : party) {
+            if (world.getEntity(id) instanceof MobEntity member) setPartyGlow(member, false);
+        }
         party.clear();
         data.markDirty();
         PartyMobSync.sync(player);

@@ -5,8 +5,14 @@
 Modpack Additions
 
 - Ex Barrels (created by me) so we can farm dirt on our islands now.
-- MC Forum (created by me) for in server chats and conversations.
 - EMI and EMI addons for crafting recipes and enchantment descriptions
+
+Battle Party: A Real Keybind, and Glowing Members
+
+- **Adding a mob to your battle party has a keybind now** (**P** by default), so it no longer depends on Shift + Right-Click. Look at a mob and press it. Being a keybind means it is listed in the controls screen, you can move it, and Minecraft arbitrates conflicts between binds itself - none of which was true of a hardcoded modifier and click
+- This was a real clash rather than a tidy-up: Carry On picks mobs up with exactly that gesture, so with both mods installed one click both picked the mob up and toggled your party
+- **Shift + Right-Click can be switched off** with the new `partyToggleByShiftClick` option. It stays on by default, so nothing changes unless you want it to; turn it off and the gesture belongs to Carry On alone while the keybind keeps working
+- **Party members glow**, so you can see which animals are coming with you. It uses the entity's glow flag rather than the Glowing status effect - an effect has a duration and would quietly lapse, leaving a member looking unselected, while the flag persists with the membership it represents. The outline is re-applied wherever the party is synced, so it survives a relog and follows pets home after a run
 
 Killed For Real By An Evoker
 

@@ -67,6 +67,7 @@
   "key.craftics.clear_party": "Clear Battle Party (hub)",
   "key.craftics.mount_ability": "Mount Ability (in combat)",
   "key.craftics.threat_overlay": "Toggle Enemy Threat Ranges",
+  "key.craftics.toggle_party_member": "Add/Remove Battle Party Member",
   "key.craftics.focus_self": "Center Camera on Your Character",
   "key.craftics.ping": "Ping (hold for wheel)",
 

@@ -129,6 +129,16 @@ public class CrafticsConfig {
     public boolean healBetweenLevels = true;
 
     /**
+     * Whether Shift + Right-Click on a mob still adds it to the battle party.
+     *
+     * <p>Turn this off if another mod wants that gesture. Carry On is the usual case: it picks
+     * mobs up with Shift + Right-Click, so with both installed one click both picks the mob up
+     * and toggles it in your party. The battle-party KEYBIND works either way and never clashes,
+     * so switching this off costs nothing but the shortcut.
+     */
+    public boolean partyToggleByShiftClick = true;
+
+    /**
      * When true, {@code /craftics rebuild_arenas} requires op/permission level 2.
      * When false (default), any player may run it on their own personal world.
      */

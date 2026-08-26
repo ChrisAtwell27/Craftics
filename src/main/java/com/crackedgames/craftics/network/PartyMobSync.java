@@ -28,5 +28,10 @@ public final class PartyMobSync {
             sb.append(id.toString());
         }
         ServerPlayNetworking.send(player, new PartyMobsSyncPayload(sb.toString()));
+        // The outline that marks a party member follows membership from here rather than from
+        // each place that edits it. Every route that changes the party ends in this call - adding,
+        // removing, clearing, pets coming home after a run - so re-asserting it once here cannot
+        // be forgotten the way a new edit site can.
+        com.crackedgames.craftics.combat.PartyMobs.refreshPartyGlow(player);
     }
 }
