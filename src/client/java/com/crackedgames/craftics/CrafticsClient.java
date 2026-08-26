@@ -90,6 +90,12 @@ public class CrafticsClient implements ClientModInitializer {
     public void onInitializeClient() {
         CrafticsMod.LOGGER.info("Craftics client initializing...");
 
+        // A recipe viewer (EMI, JEI, or both) and the inventory stat panels share the space
+        // either side of the inventory and draw straight through each other. Only one is up at a
+        // time; the viewer starts down so a new player sees the Craftics panels, and the toggle
+        // key hands the space over.
+        com.crackedgames.craftics.client.compat.RecipeViewerCompat.init();
+
         // Registry health scan, client side: multiplayer disconnect crashes happen in
         // the CLIENT's registries (Fabric's registry-sync unmap iterates them after
         // the DISCONNECT event), so scan after join's remap and again right before
@@ -1039,6 +1045,11 @@ public class CrafticsClient implements ClientModInitializer {
         com.crackedgames.craftics.client.vfx.VfxClientDispatcher.register();
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Hold the recipe viewer where Craftics put it. A one-shot "hide it at startup" does
+            // not survive: EMI's client entrypoint reads the flag back off disk, and Fabric gives
+            // no ordering guarantee that ours runs after theirs, so whether EMI came up hidden was
+            // down to load order. It also reloads that config whenever its settings screen opens.
+            CombatState.enforceViewerState();
             AchievementToast.tick();
             RaidBossToast.tick();
             com.crackedgames.craftics.client.music.MusicToast.tick();

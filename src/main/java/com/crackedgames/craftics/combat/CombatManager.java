@@ -670,7 +670,10 @@ public class CombatManager {
             sendMessageTo(member, "§a♥ Trim regen healed " + trimRegen + " HP");
         }
 
-        int hpChange = combatEffects.applyPerTurnEffects(SpecialAffinity.points(member));
+        // Their own max health goes in so each damage-over-time tick carries a share of the
+        // pool it is eating, exactly as a mob's ticks always have. See EffectFormulas.maxHpDotBonus.
+        int hpChange = combatEffects.applyPerTurnEffects(
+            SpecialAffinity.points(member), (int) member.getMaxHealth());
         if (hpChange != 0) {
             float newHp = Math.max(1, Math.min(member.getMaxHealth(), member.getHealth() + hpChange));
             member.setHealth(newHp);
@@ -3641,6 +3644,10 @@ public class CombatManager {
         if (mitigable && attacker != null && actual > 0) {
             int resist = combatEffects.getResistanceBonus();
             if (resist > 0) actual = Math.max(1, actual - resist);
+            // Vulnerable is Resistance's mirror and applies under exactly the same conditions,
+            // so the pair stays symmetrical: enemy hits only, never hazards.
+            int exposed = combatEffects.getDefensePenalty();
+            if (exposed > 0) actual += exposed;
         }
 
         // Worn armor: a small flat reduction on top of the AC dodge roll, so gear that
@@ -25456,14 +25463,28 @@ public class CombatManager {
                     player.getWorld().playSound(null, player.getBlockPos(),
                         net.minecraft.sound.SoundEvents.ENTITY_EVOKER_FANGS_ATTACK,
                         net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 1.0f);
-                    // Spawn evoker fang entities at the player's feet for visual effect
+                    // Fangs, drawn rather than summoned.
+                    //
+                    // This used to spawn three real EvokerFangsEntity, commented as being "for
+                    // visual effect" - but that entity is not a decoration. It ticks on its own,
+                    // and when it snaps it deals genuine MAGIC damage to whatever is standing
+                    // there, which is the player, seconds after the turn resolved. So the
+                    // evoker's metered hit landed, damagePlayer clamped the player to 1 HP to
+                    // hold them for the death animation, and then a fang bit for real and killed
+                    // them outright - vanilla death screen, mid-fight, run stranded.
+                    //
+                    // Nothing in an arena may deal damage on its own schedule. Every point of
+                    // damage in a fight goes through damagePlayer so it can be metered, resisted,
+                    // and survived; an entity that bites by itself cannot be part of that, so the
+                    // look is reproduced with particles instead.
                     BlockPos fangPos = player.getBlockPos();
                     for (int fi = 0; fi < 3; fi++) {
                         double fx = fangPos.getX() + 0.5 + (Math.random() - 0.5) * 2;
                         double fz = fangPos.getZ() + 0.5 + (Math.random() - 0.5) * 2;
-                        var fangs = new net.minecraft.entity.mob.EvokerFangsEntity(
-                            raWorld, fx, fangPos.getY(), fz, 0, fi * 2, null);
-                        raWorld.spawnEntity(fangs);
+                        raWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
+                            fx, fangPos.getY() + 0.4, fz, 1, 0.0, 0.0, 0.0, 0.0);
+                        raWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                            fx, fangPos.getY() + 0.2, fz, 8, 0.15, 0.3, 0.15, 0.02);
                     }
                     // Casting particles at the evoker
                     if (currentEnemy.getMobEntity() != null) {
@@ -27448,6 +27469,57 @@ public class CombatManager {
      * becomes a spectator and combat continues with the next alive member.
      * Only triggers a full game over when ALL party members are dead (or solo play).
      */
+    /**
+     * Something was about to kill {@code who} for real, in the middle of a fight. Take it over.
+     *
+     * <p>Craftics owns death inside an arena: a defeat runs an animation, spends a totem if there
+     * is one, hands the turn on in a party, and ends the run properly. A vanilla death does none
+     * of that - it opens the death screen over a fight that is still running, and the run is
+     * stranded with no way back in. That is a softlock, and it is what happens if ANY damage
+     * reaches the player outside the metered path.
+     *
+     * <p>Called from the death guard, which cancels the vanilla death outright, so this must
+     * leave the player alive at 1 HP. It is a backstop, not the normal route: every source it
+     * catches is a hole somewhere else, so it says so in the log with the damage type named.
+     */
+    public void takeOverRealDeath(ServerPlayerEntity who, String cause) {
+        if (who == null) return;
+        // Alive again first, whatever else happens below. The guard has already told Minecraft
+        // this death is cancelled, and a player left on 0 HP would simply die to the next tick.
+        who.setHealth(1.0f);
+
+        CrafticsMod.LOGGER.warn(
+            "Craftics took over a real death for {} during combat (cause: {}). Something dealt "
+            + "damage outside the metered path - that is the bug; this only stops it stranding "
+            + "the run.", who.getName().getString(), cause);
+
+        // Already dying: the animation set the 1-HP clamp and invulnerability itself, and is
+        // mid-sequence. Restoring the clamp above is the whole job; starting a second death
+        // would run the defeat flow twice.
+        if (phase == CombatPhase.PLAYER_DYING || phase == CombatPhase.GAME_OVER
+                || phase == CombatPhase.GAME_OVER_FLIP) {
+            return;
+        }
+        ServerPlayerEntity saved = this.player;
+        boolean swapped = who != saved;
+        if (swapped) {
+            this.player = who;
+            retargetEffectsToCurrentPlayer();
+        }
+        try {
+            handlePlayerDeathOrGameOver();
+        } finally {
+            // Only restore if the death handler did not already move on to someone else - in a
+            // party it reassigns this.player to the next survivor, and putting the dead player
+            // back would undo that.
+            if (swapped && this.player == who && saved != null
+                    && !deadPartyMembers.contains(saved.getUuid())) {
+                this.player = saved;
+                retargetEffectsToCurrentPlayer();
+            }
+        }
+    }
+
     private void handlePlayerDeathOrGameOver() {
         // Totem of Undying: save the player from downing/death entirely.
         if (tryConsumeTotemAndResurrect()) {
@@ -36400,7 +36472,8 @@ public class CombatManager {
             case HASTE -> net.minecraft.entity.effect.StatusEffects.HASTE;
             case SLOW_FALLING -> net.minecraft.entity.effect.StatusEffects.SLOW_FALLING;
             case WATER_BREATHING -> net.minecraft.entity.effect.StatusEffects.WATER_BREATHING;
-            case BURNING, SOUL_BURNING, SOAKED, CONFUSION, BLEEDING, AIRTIME, WARPED, MARKED -> null; // no vanilla equivalent
+            case BURNING, SOUL_BURNING, SOAKED, CONFUSION, BLEEDING, AIRTIME, WARPED, MARKED,
+                 VULNERABLE -> null; // no vanilla equivalent
         };
     }
 

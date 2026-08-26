@@ -34,10 +34,10 @@ public final class InstrumentRoster {
             List.of(Effect.of(EffectType.CONFUSION, 2, 0)), 5, Signature.NONE,
             List.of("saxophone_note_1", "saxophone_note_5", "saxophone_note_3"), 0xFFC34D),
         new InstrumentDef(E, "pipa", Role.ATTACK, Shape.STAR, 2,
-            List.of(Effect.of(EffectType.BLEEDING, 3, 0)), 6, Signature.NONE,
+            List.of(Effect.of(EffectType.BLEEDING, 3, 2)), 6, Signature.NONE,
             List.of("pipa_tremolo_note_1", "pipa_tremolo_note_3", "pipa_note_5"), 0xCC2244),
         new InstrumentDef(E, "shamisen", Role.ATTACK, Shape.DIAGONALS, 2,
-            List.of(Effect.of(EffectType.BLEEDING, 2, 1)), 6, Signature.NONE,
+            List.of(Effect.of(EffectType.BLEEDING, 2, 1)), 6, Signature.NONE,   // 2 stacks
             List.of("shamisen_note_1", "shamisen_note_3", "shamisen_note_5"), 0xC8323C),
 
         // --- Support (8) --- (effects = buffs applied to friendlies in-shape; some have two)

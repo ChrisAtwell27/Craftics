@@ -11,6 +11,10 @@ public class CombatEffects {
         SPEED("Speed", "+2 movement/level"),
         STRENGTH("Strength", "+3 attack/level"),
         RESISTANCE("Resistance", "-2 damage taken/level"),
+        // Resistance's mirror, and the player-side twin of CombatEntity's defensePenalty.
+        // Mobs could always be made easier to hurt; players could not, so any effect that
+        // wanted to strip a player's guard had nothing to apply and silently did nothing.
+        VULNERABLE("Vulnerable", "+2 damage taken/level"),
         REGENERATION("Regeneration", "+2 HP/turn/level"),
         FIRE_RESISTANCE("Fire Resistance", "immune to fire; +1 Special damage"),
         INVISIBILITY("Invisibility", "enemies skip you"),
@@ -106,7 +110,50 @@ public class CombatEffects {
         return config != null ? config.maxCombatEffectDuration() : DEFAULT_MAX_DURATION;
     }
 
+    /**
+     * Add bleed stacks, the same way {@code CombatEntity.stackBleed} does.
+     *
+     * <p>Bleed is the one effect that is a COUNT rather than a duration: it punishes being hit
+     * often, not being hit once for a long time. The stack count lives in {@code turnsRemaining}
+     * on purpose - stacks decay one per turn and bleed ends when they run out, which is exactly
+     * what the ordinary duration tick already does, so there is no second counter to keep in
+     * sync with the first.
+     *
+     * <p>Before this, a player's bleed was a duration with an amplifier that REPLACED on every
+     * application, so a mob hitting you five times left bleed at the same size it started while
+     * the identical five hits on a mob built to five stacks. Same word, two mechanics.
+     */
+    public void stackBleed(int stacks) {
+        if (stacks <= 0) return;
+        ActiveEffect prev = effects.get(EffectType.BLEEDING);
+        // The player ceiling, not the mob one. Stacks climb faster than they decay when you are
+        // being hit every turn, and the mob curve turned loose on a player's health bar made
+        // bleed harsher than the flat effect it replaced.
+        int total = Math.min(EffectFormulas.MAX_PLAYER_BLEED_STACKS,
+            (prev != null ? prev.turnsRemaining : 0) + stacks);
+        ActiveEffect next = new ActiveEffect(EffectType.BLEEDING, total, Math.max(0, total - 1));
+        next.peakTurns = total;
+        effects.put(EffectType.BLEEDING, next);
+    }
+
+    /** Live bleed stacks, 0 when not bleeding. Mirrors {@code CombatEntity.getBleedStacks}. */
+    public int getBleedStacks() {
+        ActiveEffect bleeding = effects.get(EffectType.BLEEDING);
+        return bleeding != null ? Math.max(0, bleeding.turnsRemaining) : 0;
+    }
+
     public void addEffect(EffectType type, int turns, int amplifier) {
+        // Bleed never takes the duration path - see stackBleed. Callers pass it as an amplifier
+        // (amplifier + 1 = stacks, the same arithmetic the mob side uses), so it is translated
+        // here rather than at every call site.
+        if (type == EffectType.BLEEDING) {
+            // amplifier + 1 = stacks, the same arithmetic every other effect uses for its
+            // level and the same number CombatEntity.stackBleed takes. The duration argument is
+            // ignored on purpose: a stack decays every turn, so the stack count already IS the
+            // duration, and honouring both would let one bleed be counted twice.
+            stackBleed(amplifier + 1);
+            return;
+        }
         // Same floor the mob side enforces (CombatEntity.MIN_DOT_TURNS): a one-turn DoT
         // flickers and vanishes, so nothing is allowed to apply one. Stuns and control
         // effects are untouched - they do their job on the turn they land.
@@ -225,7 +272,24 @@ public class CombatEffects {
      * </ul>
      */
     public int applyPerTurnEffects(int specialAffinity) {
+        return applyPerTurnEffects(specialAffinity, 0);
+    }
+
+    /**
+     * @param maxHp the victim's maximum health, so every damage-over-time tick carries a share
+     *              of their own pool - see {@link EffectFormulas#maxHpDotBonus}. Pass 0 to omit
+     *              that term, which is what the formula-level tests want and what the older
+     *              single-argument overload does.
+     */
+    public int applyPerTurnEffects(int specialAffinity, int maxHp) {
         int hpChange = 0;
+        // One share of the pool, computed once and charged by each DOT that is active - the same
+        // term CombatEntity has always added to a mob's ticks. Without it a DOT means something
+        // completely different depending on whose health bar it is sitting on.
+        int pool = maxHp > 0 ? EffectFormulas.maxHpDotBonus(maxHp) : 0;
+        // Every tick below is the mob's own number - same formula, same pool term - put through
+        // EffectFormulas.forPlayer at the end. The shared rules stay shared; only the last step
+        // knows whose health bar this is.
 
         ActiveEffect regen = effects.get(EffectType.REGENERATION);
         if (regen != null && !regen.isFrozen()) {
@@ -234,19 +298,21 @@ public class CombatEffects {
 
         ActiveEffect poison = effects.get(EffectType.POISON);
         if (poison != null && !poison.isFrozen()) {
-            hpChange -= EffectFormulas.poisonTick(
-                poison.amplifier + 1, poison.turnsRemaining, specialAffinity);
+            hpChange -= EffectFormulas.forPlayer(EffectFormulas.poisonTick(
+                poison.amplifier + 1, poison.turnsRemaining, specialAffinity) + pool);
         }
 
         ActiveEffect wither = effects.get(EffectType.WITHER);
         if (wither != null && !wither.isFrozen()) {
-            hpChange -= EffectFormulas.witherTick(
-                wither.amplifier + 1, wither.peakTurns, wither.turnsRemaining, specialAffinity);
+            hpChange -= EffectFormulas.forPlayer(EffectFormulas.witherTick(
+                wither.amplifier + 1, wither.peakTurns, wither.turnsRemaining, specialAffinity)
+                + pool);
         }
 
         ActiveEffect burning = effects.get(EffectType.BURNING);
         if (burning != null && !burning.isFrozen() && !hasFireResistance()) {
-            hpChange -= EffectFormulas.burningTick(burning.amplifier + 1, specialAffinity);
+            hpChange -= EffectFormulas.forPlayer(
+                EffectFormulas.burningTick(burning.amplifier + 1, specialAffinity) + pool);
         }
 
         // Soul burning: hotter than ordinary fire, and fire resistance does not switch it
@@ -260,12 +326,14 @@ public class CombatEffects {
             if (hasFireResistance()) {
                 soulTick = Math.max(1, soulTick - SOUL_BURN_RESISTED_REDUCTION);
             }
-            hpChange -= soulTick;
+            hpChange -= EffectFormulas.forPlayer(soulTick + pool);
         }
 
+        // turnsRemaining IS the stack count here - see stackBleed.
         ActiveEffect bleeding = effects.get(EffectType.BLEEDING);
         if (bleeding != null && !bleeding.isFrozen()) {
-            hpChange -= EffectFormulas.bleedTick(bleeding.amplifier + 1);
+            hpChange -= EffectFormulas.forPlayer(
+                EffectFormulas.bleedTick(bleeding.turnsRemaining) + pool);
         }
 
         return hpChange;
@@ -349,6 +417,13 @@ public class CombatEffects {
     public int getResistanceBonus() {
         if (!hasEffect(EffectType.RESISTANCE)) return 0;
         return 2 * (effects.get(EffectType.RESISTANCE).amplifier + 1);
+    }
+
+    /** Extra damage taken per hit. The same 2-per-level as {@link #getResistanceBonus}, added
+     *  instead of subtracted, so the pair is symmetrical the way the mob side already was. */
+    public int getDefensePenalty() {
+        if (!hasEffect(EffectType.VULNERABLE)) return 0;
+        return 2 * (effects.get(EffectType.VULNERABLE).amplifier + 1);
     }
 
     public boolean hasFireResistance() {
@@ -472,7 +547,7 @@ public class CombatEffects {
         return switch (type) {
             case POISON, SLOWNESS, WEAKNESS, WITHER, BURNING, SOUL_BURNING, BLEEDING,
                  BLINDNESS, MINING_FATIGUE, LEVITATION, DARKNESS, SOAKED, CONFUSION, WARPED,
-                 MARKED -> true;
+                 MARKED, VULNERABLE -> true;
             default -> false;
         };
     }

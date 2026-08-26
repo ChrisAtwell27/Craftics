@@ -93,7 +93,9 @@ public final class ModdedMobWeapons {
         if (itemPath == null) return null;
         String p = itemPath.toLowerCase(java.util.Locale.ROOT);
         if (containsAny(p, "katana", "shadowsting", "ribboncleaver", "scythe"))
-            return new Debuff(CombatEffects.EffectType.BLEEDING, 2, 0);
+            // 2 stacks: bleed counts stacks, not turns, so the strength lives in the
+            // amplifier now. Two stacks still bleeds for two turns as it decays.
+            return new Debuff(CombatEffects.EffectType.BLEEDING, 2, 1);
         if (containsAny(p, "toxic", "plague", "poison", "venom", "bramble"))
             return new Debuff(CombatEffects.EffectType.POISON, 2, 0);
         if (containsAny(p, "frost", "ice", "dreadtide", "livyatan", "chompolotl"))

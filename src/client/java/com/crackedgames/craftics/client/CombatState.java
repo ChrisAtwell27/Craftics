@@ -1170,11 +1170,85 @@ public class CombatState {
     // --- Inventory stats/affinity overlay visibility (toggled by a keybind) ---
     private static boolean statsOverlayVisible = true;
 
-    /** Whether the inventory stats + damage-affinity panels should be drawn. */
-    public static boolean isStatsOverlayVisible() { return statsOverlayVisible; }
+    /**
+     * Whether the inventory stats + damage-affinity panels should be drawn.
+     *
+     * <p>The viewer is consulted LIVE rather than trusted to be where we last put it. Even with
+     * Craftics driving the switch it can move underneath us - EMI reloads its config from disk
+     * whenever its settings screen is opened - so asking at draw time is what actually holds the
+     * "never both" rule, rather than any bookkeeping we do.
+     */
+    public static boolean isStatsOverlayVisible() {
+        return com.crackedgames.craftics.compat.PanelExclusion.statsVisible(
+            statsOverlayVisible, com.crackedgames.craftics.client.compat.RecipeViewerCompat.isEnabled());
+    }
 
-    /** Flips the inventory stats + damage-affinity panel visibility. */
-    public static void toggleStatsOverlay() { statsOverlayVisible = !statsOverlayVisible; }
+    /** Whether the player asked for the panels, ignoring whether a viewer is currently in the way. */
+    public static boolean isStatsOverlayRequested() { return statsOverlayVisible; }
+
+    /**
+     * What Craftics wants the recipe viewer to be doing.
+     *
+     * <p>Kept because a one-shot "hide it at startup" does not survive contact with EMI: its
+     * client entrypoint calls {@code EmiConfig.loadConfig()}, which reads the flag back off disk,
+     * and Fabric gives no ordering guarantee that our entrypoint runs after theirs. Whether EMI
+     * came up hidden was therefore down to load order. This is the intent, re-asserted by
+     * {@link #enforceViewerState()} until it sticks.
+     */
+    private static boolean viewerWanted = false;
+
+    /**
+     * Hold the viewer where Craftics put it. Called every client tick.
+     *
+     * <p>Deliberately an assertion rather than a one-off: the viewer reloads its own config at
+     * several points in a session (opening its settings screen, a resource reload), and each of
+     * those silently undoes whatever we set. Cheap - a boolean comparison, and a write only on
+     * the rare tick where they differ.
+     *
+     * <p>The cost is real and worth stating: the viewer's OWN visibility keybind no longer sticks,
+     * because this puts it back within a tick. Craftics owns which of the two has the space, and
+     * one owner is the only way "never both" survives a mod that resets the flag behind us.
+     */
+    public static void enforceViewerState() {
+        if (!com.crackedgames.craftics.client.compat.RecipeViewerCompat.isPresent()) return;
+        if (com.crackedgames.craftics.client.compat.RecipeViewerCompat.isEnabled() != viewerWanted) {
+            com.crackedgames.craftics.client.compat.RecipeViewerCompat.setEnabled(viewerWanted);
+        }
+    }
+
+    /**
+     * Show or hide the inventory panels, standing the viewer down when they come up.
+     */
+    public static void setStatsOverlayVisible(boolean visible) {
+        apply(new com.crackedgames.craftics.compat.PanelExclusion.State(visible, visible ? false : viewerWanted));
+    }
+
+    /**
+     * The toggle key. With a recipe viewer installed this SWAPS the two, because they share one
+     * screen region: turning the panels off hands the space over, turning them on takes it back.
+     * With no viewer installed it just flips the panels, exactly as it always did.
+     *
+     * @return true if a viewer ended up on screen
+     */
+    public static boolean toggleStatsOverlay() {
+        var next = com.crackedgames.craftics.compat.PanelExclusion.toggle(
+            new com.crackedgames.craftics.compat.PanelExclusion.State(statsOverlayVisible, com.crackedgames.craftics.client.compat.RecipeViewerCompat.isEnabled()),
+            com.crackedgames.craftics.client.compat.RecipeViewerCompat.isPresent());
+        apply(next);
+        return next.viewerEnabled();
+    }
+
+    /**
+     * Put a decision from {@link com.crackedgames.craftics.compat.PanelExclusion} into effect.
+     *
+     * <p>Every state change goes through here so the tested rule is the rule that actually runs,
+     * rather than a second copy of it written out by hand on the client side.
+     */
+    private static void apply(com.crackedgames.craftics.compat.PanelExclusion.State next) {
+        statsOverlayVisible = next.statsRequested();
+        viewerWanted = next.viewerEnabled();
+        com.crackedgames.craftics.client.compat.RecipeViewerCompat.setEnabled(viewerWanted);
+    }
 
     // --- Per-panel minimize state (per session, not persisted) ---
     private static boolean statsPanelCollapsed = false;

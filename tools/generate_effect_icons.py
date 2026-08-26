@@ -82,6 +82,18 @@ ICONS = {
         "..####..",
         "...##...",
     ]),
+    # Vulnerable: Resistance's shield with a crack splitting it. Reads as the same object
+    # that effect protects with, broken - which is exactly what the effect does.
+    "vulnerable": (RED, [
+        ".######.",
+        "###++###",
+        "##+..+##",
+        "##..+.##",
+        "##.+..##",
+        ".##+.##.",
+        "..####..",
+        "...##...",
+    ]),
     # Speed: a forward chevron / motion arrow.
     "speed": (AQUA, [
         "..#.....",

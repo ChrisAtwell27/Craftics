@@ -50,8 +50,14 @@ class BleedScalingTest {
 
             assertEquals(halfTriangular(stacks), CombatEntity.computeBleedTickDamage(stacks),
                 "enemy bleed at " + stacks + " stacks");
-            assertEquals(CombatEntity.computeBleedTickDamage(stacks), playerDamage,
-                "player and enemy bleed must match at " + stacks + " stacks");
+            // Not raw equality any more: a player takes the mob's number through one
+            // documented factor (EffectFormulas.forPlayer). The sides are still bound to each
+            // other - change the mob curve and this moves with it - but a player's health bar
+            // has to last a whole run, so their share is trimmed.
+            assertEquals(EffectFormulas.forPlayer(CombatEntity.computeBleedTickDamage(stacks)),
+                playerDamage,
+                "player bleed must be the mob's bleed through the player factor, at "
+                    + stacks + " stacks");
         }
     }
 }

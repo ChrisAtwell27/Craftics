@@ -92,6 +92,7 @@ public final class SimplySwordsTooltips {
             case "glaive" -> new String[]{"Reach (2 tiles) + wide cleave arc at half damage"};
             case "greataxe" -> new String[]{"15% (+Cleaving) to permanently shatter armor"};
             case "greathammer" -> new String[]{"3x3 shockwave, knockback + stun roll"};
+
             default -> new String[0];
         };
     }
@@ -251,6 +252,37 @@ public final class SimplySwordsTooltips {
             case "sword_on_a_stick" -> new String[]{"Bonk",
                 "reach 2; 10% to bonk the target silly (stun)",
                 "It's a sword. On a stick."};
+            // -- Added in Simply Swords 1.70 --
+            case "bloodwake" -> new String[]{"Crimson Revelry",
+                "every hit adds a Bleed stack; at 3 the next hit bursts them for half damage to the target and everything within 1, and heals you a quarter of your damage",
+                "The tide it leaves is not seawater."};
+            case "wraithmaw" -> new String[]{"Spectral Downpour",
+                "each swing hurls the cutlasses you hold at OTHER enemies within 4 for a third damage and a slow, then collects another (max 3)",
+                "Hunger outlives the body."};
+            case "soulstalker" -> new String[]{"Stygian Tendrils",
+                "tendrils hit every enemy adjacent to YOU rather than to your target, for a third damage and a slow",
+                "That which walks behind."};
+            case "dreadwhisper" -> new String[]{"Corrupted Wound",
+                "the first hit marks for 2 turns; hitting a marked target repeats your full hit and heals you a quarter of the total",
+                "The wind screams back."};
+            case "gloampiercer" -> new String[]{"Phantom Phalanx",
+                "thrown like a trident; a shadow clone spears a second enemy within 2 of your target for two thirds damage and slows it 2 turns",
+                "The wick goes dark."};
+            case "riftmane" -> new String[]{"Riftcharge",
+                "chargers gore the 3 tiles BEHIND your target for half damage and confuse them",
+                "Hold the line."};
+            case "stormscale" -> new String[]{"Lightning Rod",
+                "the first swing plants a rod on your target; every swing after pulses lightning there, growing stronger each time and widening to 2 tiles once half charged",
+                "Remain grounded."};
+            case "ionbound_stormscale" -> new String[]{"Ion Containment",
+                "the same rod, charging twice as fast; every 4th swing also slams a corridor shut - everything within 2 of your target is dragged in for half damage and stunned",
+                "Lightning in a bottle."};
+            case "dawnquiver" -> new String[]{"Seraph's Draw",
+                "every shot builds a charge; the 4th spends all three - your target takes an extra three quarters damage, and so do up to 2 enemies within 2 tiles of it",
+                "Loose the dawn."};
+            case "the_devourer" -> new String[]{"Devouring Mass",
+                "each hit feeds the maw (max 6); it drags everything within 1 of your target inward for an eighth of your damage per feeding, and soul-burns them",
+                "All-consuming."};
             default -> null;
         };
     }

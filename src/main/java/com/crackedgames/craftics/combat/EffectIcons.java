@@ -117,6 +117,7 @@ public final class EffectIcons {
         put(new Icon("stunned", YELLOW, true),       "stunned");
         put(new Icon("enraged", RED, false),         "enraged");
         put(new Icon("marked", RED, true),           "marked");
+        put(new Icon("vulnerable", RED, true),       "vulnerable");
         put(new Icon("frozen", AQUA, true),          "frozen");
         put(new Icon("taunting", ORANGE, false),     "taunting");
         put(new Icon("exposed", PURPLE, true),       "exposed");

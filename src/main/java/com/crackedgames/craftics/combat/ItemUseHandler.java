@@ -860,6 +860,7 @@ public class ItemUseHandler {
             case AIRTIME -> 1; // not vanilla-potion-driven; unreachable via this path
             case WARPED -> 1; // not vanilla-potion-driven; unreachable via this path
             case MARKED -> 1; // not vanilla-potion-driven; unreachable via this path
+            case VULNERABLE -> 3; // matches Resistance's mirror duration band
         };
         // Extended potions (long vanilla duration > 4 min) double the combat turn count
         if (vanillaDurationTicks > 4800) {

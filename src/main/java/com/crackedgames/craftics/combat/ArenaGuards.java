@@ -38,15 +38,41 @@ public final class ArenaGuards {
 
             // Only entity-sourced damage is refused. Anything the mod applies itself goes
             // directly to health and never arrives here, so this cannot swallow a hazard,
-            // a status tick, or a boss ability - only a mob swinging on its own initiative.
+            // a status tick, or a boss ability - only something swinging on its own initiative.
             Entity attacker = source.getAttacker();
             if (attacker == null) attacker = source.getSource();
-            if (!(attacker instanceof LivingEntity) && !(attacker instanceof MobEntity)) return true;
+            // No entity behind it at all: fall, void, suffocation, a status tick. Craftics owns
+            // those itself, so they are left alone.
+            if (attacker == null) return true;
             if (attacker instanceof ServerPlayerEntity) return true;   // PvP is not this system's business
+            // ANY other entity, not just a living one. This used to require LivingEntity or
+            // MobEntity, and that hole is what let evoker fangs through: EvokerFangsEntity is a
+            // plain Entity, so it sailed past this check and bit a player who had already been
+            // clamped to 1 HP for their death animation, killing them for real mid-fight. Area
+            // effect clouds, arrows with no shooter and falling blocks all have the same shape.
 
             CrafticsMod.LOGGER.debug("Refused off-turn {} damage to {} from {}",
                 amount, player.getName().getString(), attacker.getType());
             return false;
+        });
+
+        // ── A fight may never end in a vanilla death ────────────────────────────
+        //
+        // Craftics owns death inside an arena: the animation, the totem, the party hand-off, the
+        // defeat screen and the run teardown all hang off its own path. A vanilla death runs none
+        // of it - the death screen opens over a fight that is still live, and the player respawns
+        // into a run with no way back in. There is no recovery from that; it is a softlock.
+        //
+        // Refusing the death outright and handing it to the mod turns the worst outcome into a
+        // normal defeat. It is a backstop rather than a fix: anything it catches got damage past
+        // the metered path, which is a bug in its own right, so it logs the cause by name.
+        ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
+            if (!(entity instanceof ServerPlayerEntity player)) return true;
+            if (!CombatManager.isEngaged(player.getUuid())) return true;
+            CombatManager cm = CombatManager.getActiveCombat(player.getUuid());
+            if (cm == null || !cm.isActive()) return true;
+            cm.takeOverRealDeath(player, source.getName());
+            return false;   // the vanilla death does not happen
         });
 
         // The same rule for the party's allies: a pet standing on the grid takes what the

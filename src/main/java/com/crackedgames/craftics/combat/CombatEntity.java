@@ -356,7 +356,7 @@ public class CombatEntity {
      *  +1 per 20 max HP, with a floor of 1. Encourages DOT use against tougher
      *  enemies and bosses without making them devastating against trash mobs. */
     public int getMaxHpDotBonus() {
-        return Math.max(1, maxHp / 20);
+        return EffectFormulas.maxHpDotBonus(maxHp);
     }
 
     /**
@@ -976,7 +976,9 @@ public class CombatEntity {
     public void addPermanentDefReduction(int amount) { this.permanentDefReduction += amount; }
 
     // Duration refreshes to longer value, intensity stacks up to cap
-    private static final int MAX_EFFECT_AMPLIFIER = 999;
+    /** Ceiling on any stacking effect count. Public so the player side caps bleed identically
+     *  rather than keeping a second number that can drift from this one. */
+    public static final int MAX_EFFECT_AMPLIFIER = 999;
 
     /**
      * Floor on how long a damage-over-time effect can be applied for. A one-turn DoT is a

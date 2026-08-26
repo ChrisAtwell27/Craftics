@@ -1,23 +1,46 @@
 ﻿Changelog
 
-0.4.3
+0.4.4
 
-Everyone Shown the Host's Emeralds
+Modpack Additions
 
-- Fixed the emerald counter in a party showing the host's balance instead of your own. It corrected itself only when you next bought something
-- The victory screen, the waiting screen, the event prompt and the defeat screen's remaining-emeralds line now each send the player their own total
+- Ex Barrels (created by me) so we can farm dirt on our islands now.
+- MC Forum (created by me) for in server chats and conversations.
+- EMI and EMI addons for crafting recipes and enchantment descriptions
 
-A Teammate's Open Container No Longer Stalls the Party
+Killed For Real By An Evoker
 
-- Fixed an open screen swallowing the end of a fight. One player standing in a chest, a shulker or a backpack when somebody else landed the killing blow never saw the victory screen, the level transition or the next arena - the packets arrived behind whatever they had open, and from their seat the run simply stopped
-- Nothing anywhere closed a player's screen at a combat boundary; the only hint the problem was known is that the loot overflow chest refuses to open when another screen already is
-- Craftics' own screens are spared, because some of them are the thing being waited on: the post-battle loot screen is what advances the victory flow, so closing it from here would either skip the loot or deadlock the sequence this exists to unblock. Same for a trader mid-event
+- Fixed evoker fangs killing you outright and stranding the run. The evoker's attack spawned three **real** Evoker Fangs entities at your feet - the code called them a visual effect, but that entity ticks on its own and bites for genuine magic damage a moment after the turn resolved. The metered hit landed, your health was clamped to 1 to hold you for the death animation, and then a fang bit for real: vanilla death screen, mid-fight, no way back into the run
+- The fangs are drawn with particles now. Nothing in an arena may deal damage on its own schedule - every point of damage in a fight goes through one path so it can be metered, resisted and survived
+- **The off-turn damage guard had a hole the same shape.** It only refused damage from a *living* attacker, and Evoker Fangs is a plain entity, so it sailed straight past. Area effect clouds, arrows with no shooter and falling blocks all have that shape too. Any entity's damage is now refused during a fight; damage with no entity behind it, like falling or drowning, is still Craftics' own business and is left alone
+- **A fight can no longer end in a vanilla death at all.** If anything does get damage past the metered path, the death is refused and handed to Craftics' own defeat flow instead - the animation, the totem, the party hand-off, the proper end of the run. It is a backstop rather than a fix, so it names the cause in the log: anything it catches is a bug of its own
 
-Backpacked Compatibility
+Two Things That Looked Wrong
 
-- Battle loot now fills a **worn backpack** instead of stopping at the "Inventory Full" screen. Backpacks sit after the normal inventory and before the overflow chest, so they act as the extra capacity they are rather than filing away the potion you wanted on your hotbar
-- Unstackable rewards go in too - a sword that will not fit is exactly what a backpack is for
-- Reached entirely by reflection with no compile-time dependency, so Craftics builds and runs with Backpacked absent, and every failure path degrades to "no backpack" rather than breaking loot delivery
+- The ten Simply Swords weapons added in 1.70 now describe their Craftics ability on their tooltip. They fought correctly from the start; they just never said what they did, because the ability table and the tooltip table are two lists in two files and only one of them got the new entries
+- The Level Select block renders as a proper isometric block in recipes and inventories instead of a flat side-on sprite. Its model came out of Blockbench with no parent, so it inherited none of the display transforms every other block item is drawn with - including the rotation that makes a block look like a block
+
+EMI and JEI Support
+
+- **EMI and JEI both work alongside Craftics now.** Either one's item grid draws in the space either side of the inventory, the same space the stat and damage-affinity panels use, so **only one of them is up at a time**
+- **Your existing panel key (U) swaps them.** Turning the stat panels off hands the space to the recipe viewer; turning them back on takes it back. They share one screen region, so "off" for one is the same event as "on" for the other. With no viewer installed the key behaves exactly as it always did and simply hides the panels
+- The viewer starts hidden, so a new player still meets the Craftics panels first, and it is held there rather than set once. EMI reads its own config back off disk during startup and again whenever its settings screen is opened, so a single "hide it" at launch was a race against load order - which is why it was coming up visible
+- Craftics never writes to either mod's config - the switch is thrown in memory for the session only, so playing with this mod cannot leave your recipe viewer turned off after you stop
+- Having EMI and JEI installed at the same time is handled rather than left to luck: the panels stand down for either, and hiding puts both away instead of leaving a second grid behind the first
+- Because Craftics holds the viewer's state, the viewer's own visibility keybind no longer sticks. One owner of that switch is what keeps "never both on screen" true against a mod that resets it from disk behind us
+
+One Effect, One Meaning, Whoever Has It
+
+Poison, Wither, Burning and Bleeding used to mean different things depending on whether they landed on you or on a mob. The tick formulas were already shared; what was not shared is now.
+
+- **Damage over time scales with the pool it is eating.** Every DoT tick carries a share of the victim's own maximum health, which mobs have always paid and players never did. This is what stops one rule needing two balance tables: a twentieth of the pool is +1 on a 20 HP player and +20 on a 400 HP boss, so the scaling falls out of whose health bar it is rather than being hand-tuned per side
+- **Bleeding is a stack count on both sides now.** It always was on mobs - hit something with a Sharpness V sword and it gains five stacks, which decay one per turn and fade as they go. On a player it was a duration that *replaced itself* on every application, so a mob hitting you five times left bleed exactly where it started while the same five hits on a mob built to five stacks. Player bleed now accumulates and decays identically
+- **Vulnerable** is new, and it is Resistance with the sign flipped: +2 damage taken per level. Mobs could always have their guard stripped and players could not, so any effect that wanted to do it to a player had nothing to apply. It counts as a debuff, so cleanses remove it
+- Bleed on the two content sources that expressed it as a duration (an instrument song, modded mob weapons) was rewritten as stacks at the same strength, rather than bending the rule to fit them
+- **Damage over time is gentler on players than on mobs**, by one factor applied at the very end. A mob only has to survive this fight; your health bar has to last the whole run, so the same number is not the same threat. Poison I now reads 4, 3, 2 a turn where it read 5, 4, 3; burning and wither come down by roughly the same. The formulas themselves are untouched and still shared - the difference between the two sides is a single readable number, not a second ruleset
+- **Bleed is capped at five stacks on a player** and never hits harder than the flat version it replaced, at any strength. Sharpness V used to bleed you for 7 a turn for its whole duration; it now peaks at 5 and decays from there. Accumulation still matters - five stacks hurt far more than one - it simply cannot run away on a health bar that small
+
+The guard is a test that gives a mob and a player the same maximum health, applies the same effect, and demands the identical number out of both - no allowance subtracted. That, plus a bleed-curve comparison turn by turn, is what stops the two drifting apart again.
 
 Your Status Effects Are Yours Again in Multiplayer
 
@@ -37,6 +60,25 @@ Tamed Animals Actually Reach Your Island Now
 - An animal tamed in a fight is copied home from a snapshot taken of the mob standing in the arena, so the copy carried that mob's entity id. The original was still in the arena at that moment, and a world refuses a second entity holding an id it already has, so the homecoming copy was dropped with nothing but a log line. A pet brought FROM your island never hit this, because its original is removed the moment it is collected for a fight - which is exactly why hub pets came back and tamed ones did not. The arena mob is now retired before its copy is sent
 - Fixed a guest's tamed animal landing nowhere in multiplayer. Each animal is routed to its owner's island, but that lookup was skipped whenever the animal already belonged to the player the restore was running for, on the assumption they were standing on their own island. A guest fights inside the HOST's island, so a guest's own animal was spawned into the host's world at the guest's coordinates. Every animal now resolves its owner's island explicitly
 - The "sent home to your island" message reports what actually arrived, and says so plainly when something did not. Announcing success regardless is what let this look fine for so long
+
+0.4.3
+
+Everyone Shown the Host's Emeralds
+
+- Fixed the emerald counter in a party showing the host's balance instead of your own. It corrected itself only when you next bought something
+- The victory screen, the waiting screen, the event prompt and the defeat screen's remaining-emeralds line now each send the player their own total
+
+A Teammate's Open Container No Longer Stalls the Party
+
+- Fixed an open screen swallowing the end of a fight. One player standing in a chest, a shulker or a backpack when somebody else landed the killing blow never saw the victory screen, the level transition or the next arena - the packets arrived behind whatever they had open, and from their seat the run simply stopped
+- Nothing anywhere closed a player's screen at a combat boundary; the only hint the problem was known is that the loot overflow chest refuses to open when another screen already is
+- Craftics' own screens are spared, because some of them are the thing being waited on: the post-battle loot screen is what advances the victory flow, so closing it from here would either skip the loot or deadlock the sequence this exists to unblock. Same for a trader mid-event
+
+Backpacked Compatibility
+
+- Battle loot now fills a **worn backpack** instead of stopping at the "Inventory Full" screen. Backpacks sit after the normal inventory and before the overflow chest, so they act as the extra capacity they are rather than filing away the potion you wanted on your hotbar
+- Unstackable rewards go in too - a sword that will not fit is exactly what a backpack is for
+- Reached entirely by reflection with no compile-time dependency, so Craftics builds and runs with Backpacked absent, and every failure path degrades to "no backpack" rather than breaking loot delivery
 
 Simply Swords 1.70 Uniques
 
