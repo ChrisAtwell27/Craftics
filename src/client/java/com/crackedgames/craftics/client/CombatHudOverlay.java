@@ -1608,7 +1608,12 @@ public class CombatHudOverlay implements HudRenderCallback {
             case LEAD -> {
                 boolean picked = CombatState.getLeadSelectedAllyId() != null;
                 // Once an ally is picked the highlights are theirs, so name the price here.
-                modeText = picked ? "COMMAND: MOVE OR STRIKE · 1 AP" : "COMMAND: PICK ALLY";
+                // An addon selection is not that gesture - the click goes to the addon, which
+                // does its own thing for its own cost - so the pill must not quote a price
+                // Craftics is not going to take.
+                modeText = !picked ? "COMMAND: PICK ALLY"
+                    : CombatState.isAddonAllySelection() ? "COMMAND: CHOOSE A TARGET"
+                    : "COMMAND: MOVE OR STRIKE · 1 AP";
                 modeColor = 0xFF66BBFF; pillBg = 0xBB112233;
             }
             default -> { modeText = "MOVE"; modeColor = 0xFF55FF55; pillBg = 0xBB113311; }

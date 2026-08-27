@@ -726,6 +726,17 @@ public class CrafticsClient implements ClientModInitializer {
                     CombatState.addTileFlash(payload.tiles(), payload.color(), payload.durationTicks()));
             });
 
+        // An addon has selected an ally for this player, or given the gesture back. There is
+        // no Lead in hand to infer it from, so the server says so outright.
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.AllySelectionPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    boolean selected = payload.allyEntityId() >= 0;
+                    CombatState.setLeadSelectedAllyId(selected ? payload.allyEntityId() : null);
+                    CombatState.setAddonAllySelection(selected);
+                });
+            });
+
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.TeammateHoverPayload.ID, (payload, context) -> {
                 context.client().execute(() -> {
@@ -1084,8 +1095,11 @@ public class CrafticsClient implements ClientModInitializer {
 
             // If the player drops the Lead while an ally is selected, clear
             // the local selection so the COMMAND pill doesn't lie about state.
+            // An addon selection is exempt: it was never made with a Lead, so an empty hand
+            // is its normal state and this would cancel it on the frame it appeared.
             if (client.player != null
                     && CombatState.getLeadSelectedAllyId() != null
+                    && !CombatState.isAddonAllySelection()
                     && client.player.getMainHandStack().getItem() != net.minecraft.item.Items.LEAD) {
                 CombatState.setLeadSelectedAllyId(null);
                 net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(

@@ -1,5 +1,48 @@
 ﻿Changelog
 
+0.4.5
+
+Addon API: Selection, Targeting and Grid Highlights
+
+Craftics already knew how to point at things. Pick an ally and the grid stops describing you and starts describing it - green where it can walk on its own speed budget, red on the enemies it can reach - and the click that follows either walks it there along a pathfound route or has it strike. All of it was gated on holding a Lead, and the click arrived on Craftics' own packet with nowhere for an addon to answer it. So a mod whose fights are commanded rather than swung had to rebuild the visible half of the fight inside a screen: a Move button that could not reach Craftics' walk, and attack buttons standing in for grid targeting that was already there and already worked.
+
+- **An addon can select an ally itself**, with nothing in hand. The ally glows for the party, the highlights become the ally's, and the next grid click is an order rather than a swing. The item was never the feature; it was the only way in
+- **The command click can be answered by the addon.** Both branches of it: a click on bare ground brings the tile, a click on an enemy brings the tile and the enemy. That is real grid targeting, with Craftics' own highlighting, in place of a row of buttons in a screen
+- **Nothing is spent for a command an addon claims** - no AP, no ally turn, no message. Craftics charges for its own walk-or-strike; an addon's move is its own to price. Decline the clicks you have no answer for and the ally still walks and strikes exactly as it did
+- **The selection is never cleared out from under the addon.** Craftics clears its own after a Lead command, because that is one order and then the ally is done. An addon issuing several orders from one pick would find the creature deselected mid-gesture, so its selection stands until it says otherwise
+- **Craftics' walk and strike are callable directly.** The real walk - pathfound, capped at the ally's move speed, lerped a tile at a time rather than teleported - and the real attack, through the same damage, resistance, typing and accuracy handling the ally's own turn uses
+- **An addon can paint the grid.** Its own tiles on any of the four overlays (move, attack, danger, warning), either on top of Craftics' own or instead of them. Replacing matters as much as adding: a mod whose Move button is its own was drawing its targeting on top of the weapon range it was replacing. The lists are rebuilt from scratch on every refresh, which is why tiles an addon drew for itself used to last exactly one click
+- **Warnings are addon-writable too** - the flashing red boss telegraph, with the marching arrows that say which way a push, pull or charge travels. And tile flashes, which are pushed the moment they are called in any phase, so an addon can mark what is happening while the enemies are the ones acting
+- **The mode pill tells the truth about an addon selection.** It read "COMMAND: MOVE OR STRIKE - 1 AP" for every selection, which is a price Craftics does not take and a pair of options it does not own once an addon has the click
+- Overlays and selections are cleared when the fight ends, so nothing an addon left up can leak into the next arena
+
+Nothing here changes a fight that has no addon in it. The Lead works exactly as it did, at the same price, and every refusal it could give is still given by the same code - the walk and the strike were lifted out whole so both routes into them run the identical checks
+
+Turn Order Is An Addon's To Decide
+
+Craftics acted in spawn order. The first mob the level put on the board moved first, every round, for the whole fight, and nothing a creature was could change it. For a mod whose creatures have a Speed stat that was the one number the fight would not read - you could describe a fast creature perfectly and it still waited behind a slow one.
+
+- **An addon can order the round.** It is handed every creature acting that round - enemies and the player's own allies in one list, because they take their turns in one pass - and hands back the order they should act in. A fast enemy can now act before the player's creature, which is the whole point of having a Speed stat
+- **Asked fresh at the top of every round**, so a creature slowed or hasted mid-fight is ordered on what it is now rather than what it was when the fight started
+- **This was the missing half of a pick-then-resolve round.** The other half already worked: an order left on an ally is obeyed on the creature's own turn rather than the instant the player clicks, and carries its attack type and accuracy with it. So the player picks, the enemy picks when its turn comes, and Speed decides who goes first
+- **An addon cannot add a combatant to the round or take one out of it.** A creature left out of the answer still acts, after the ones that were named, in the order it already had; one named twice acts once; one that is not in the fight is ignored. The list a provider returns is what the round walks, and a dropped creature reads as the fight being stuck rather than as an ordering choice
+- **A provider that throws is skipped** and the round runs in Craftics' own order. The first provider to answer wins, so two mods cannot both hold an opinion about initiative
+- The player's own turn still comes first. They are the one choosing, and choosing is what their turn is for - what Speed decides is whose creature moves first
+
+Nothing changes for a fight with no provider registered: with nothing listening the ordering pass is skipped entirely and the round is walked in spawn order, exactly as before.
+
+Blocks Left Behind In Arenas
+
+The mace and the shovel throw a few blocks of the floor into the air when they hit, and those blocks are meant to come down and land - a slam that leaves nothing behind is a light show. What they were not meant to do is stay. A landed block is a real block, so a swing paved a tile for the rest of the fight, stacked a second block on the first, and left both in the world afterwards. Arenas are read back from whatever blocks are physically in them on your next visit, so anything left behind stopped being litter and became terrain.
+
+- **Landed debris crumbles like a block you placed yourself.** It stands for three turns as real terrain to path around, mine or hide behind, cracking a little deeper each turn, and then breaks. Same countdown, same crack overlay, same removal as a wall block - it just gives nothing back when it goes, because nobody paid for it
+- **Anything the grid cannot adopt is put back when the fight ends, wherever it landed.** The cleanup only ever recognised a block that came to rest at the arena's own floor height, in bounds, on a tile it still thought was empty. Everything else - perched on a wall, sitting on top of earlier debris, or clear of the arena entirely - was a block nobody owned, and it stayed for good
+- **A landing is now identified by where the block flew**, not by a guess at where it should have come down. The tracker watches the cells each thrown block passes through, so a cell that was empty one tick and holds that block the next is known to be its landing, at any height and anywhere on the map
+- **It restores what was there rather than clearing to air**, and only if our block is still the one standing there. A block you mined during the fight, or one a boss built over, has already been answered for and is left alone
+- The fix is in the machinery rather than in the two weapons, so it covers everything that throws a block: the boss slam, the collapse rubble, the pillar timbers, and whatever an addon launches
+
+Arenas already polluted by this keep their leftovers - once a block is down it is indistinguishable from real floor. **`/craftics rebuild_arenas`** regenerates them and clears it out.
+
 0.4.4
 
 Modpack Additions

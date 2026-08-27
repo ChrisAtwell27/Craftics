@@ -1004,6 +1004,180 @@ CrafticsAPI.commandAlly(player, ally, new EnemyAction.CustomAction(
     </p>
 
     <!-- ================================================================
+         SELECTION, TARGETING AND HIGHLIGHTS
+         ================================================================ -->
+    <h2 id="grid-ui">Selection, Targeting and Grid Highlights</h2>
+    <p>
+      Craftics already knows how to point at things. Pick an ally and the grid stops describing you and starts describing it: green where it can walk on its own speed budget, red on the enemies it can reach from where it stands. Click a green tile and it walks there along a pathfound route; click a red one and it strikes.
+    </p>
+    <p>
+      All of that was gated on holding a Lead, and the click arrived on Craftics' own packet with nowhere for an addon to answer it. So a mod whose fights are commanded rather than swung had to rebuild the visible half of the fight inside a screen: a Move button that could not reach Craftics' walk, and attack buttons standing in for grid targeting that was already there and already worked. These four pieces close that.
+    </p>
+
+    <h3 id="select-ally">Selecting an ally</h3>
+    <p>
+      <code>CrafticsAPI.selectAlly(player, ally)</code> turns the whole gesture on with nothing in hand. The ally glows for the party, the highlights become the ally's, and the next grid click is an order rather than a swing.
+    </p>
+
+    <pre><code>// Your Move button, or your move menu, or a click on the creature itself.
+CrafticsAPI.selectAlly(player, creature);
+
+// ... and when the gesture is over
+CrafticsAPI.clearAllySelection(player);</code></pre>
+
+    <ul>
+      <li><strong>Only on your own turn, and only over your own ally.</strong> It is an order, and orders are given on your turn.</li>
+      <li><strong>The selection is never cleared for you</strong> when your handler claims a command. Craftics clears its own because a Lead command is one order and then the ally is done; an addon issuing several orders from one pick would find the creature deselected under its UI. Clear it yourself.</li>
+      <li><strong>Selection alone is worth having.</strong> With no command handler registered the ally still walks and strikes the built-in way - you have just replaced the Lead as the way in.</li>
+    </ul>
+
+    <h3 id="ally-command">Answering the command</h3>
+    <p>
+      The click that follows arrives at every registered <code>AllyCommandHandler</code>, before the AP check and before either built-in branch. A click on bare ground brings a tile; a click on a combatant brings the tile <em>and</em> whoever is standing on it - an enemy to hit, or one of your own creatures to heal. That is real grid targeting, with Craftics' highlighting, in place of a row of buttons in a screen.
+    </p>
+
+    <pre><code>CrafticsAPI.registerAllyCommandHandler((player, ally, tile, target) -&gt; {
+    Move move = pendingMove(player);
+    if (move == null) return false;              // nothing picked: let Craftics walk it
+
+    if (target != null) {
+        useMoveOn(player, ally, move, target);   // they clicked an enemy
+    } else {
+        useMoveOnTile(player, ally, move, tile); // they clicked the floor
+    }
+    CrafticsAPI.clearAllySelection(player);
+    return true;
+});</code></pre>
+
+    <ul>
+      <li><strong>Nothing is spent for a claimed command.</strong> No AP, no ally turn, no message. Craftics charges for its own walk-or-strike; your move is yours to price.</li>
+      <li><strong>Return false for anything you do not recognise.</strong> Handlers are asked in registration order and the first to claim wins, so one that claims every click takes the Lead away from everyone.</li>
+      <li><strong>Craftics' adjacency rule is Craftics'.</strong> Its own strike needs the enemy within one tile of the ally; yours does not have to.</li>
+      <li><strong>A handler that throws loses the click</strong> and is logged; the built-in command runs instead.</li>
+    </ul>
+
+    <h3 id="ally-move-strike">Craftics' own move and strike</h3>
+    <p>
+      Sometimes the answer to the click is exactly what Craftics would have done, just without the item and without the price. <code>moveAlly</code> is the real walk - pathfound, capped at the ally's move speed, lerped a tile at a time rather than teleported - and <code>allyStrike</code> is the real attack, through the same damage, resistance, typing and accuracy handling the ally's own turn uses.
+    </p>
+
+    <pre><code>// Reposition, as a free part of the move you are resolving.
+CrafticsAPI.moveAlly(player, ally, tile);
+
+// A contact move, typed and with its own accuracy.
+ally.setPendingAttackType("mymod:water");
+ally.setPendingAccuracy(0.85);
+CrafticsAPI.allyStrike(player, ally, target);</code></pre>
+
+    <p>
+      Neither spends AP or the ally's turn: a mod that meters its own moves would otherwise pay for one twice. A refusal - out of bounds, occupied, unwalkable, a tile that would kill it, no route - returns <code>false</code>, tells the player why, and changes nothing.
+    </p>
+
+    <h3 id="highlights">Painting your own tiles</h3>
+    <p>
+      Craftics rebuilds every highlight list from scratch whenever anything changes, which is why tiles an addon drew for itself lasted until the next click. An overlay set through the API is re-applied on every refresh until it is cleared.
+    </p>
+
+    <pre><code>// Where the move the player just picked can be aimed. Exclusive, because the weapon
+// range underneath it is not what this turn is about.
+CrafticsAPI.setHighlights(player, HighlightLayer.ATTACK, move.legalTargets(), true);
+
+// Additive, over what Craftics already shows.
+CrafticsAPI.setHighlights(player, HighlightLayer.DANGER, hazardTiles);
+
+CrafticsAPI.clearHighlights(player);   // all four layers</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Layer</th><th>Reads as</th><th>Craftics fills it from</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>MOVE</code></td><td>Green</td><td>The player's remaining move points</td></tr>
+          <tr><td><code>ATTACK</code></td><td>Red</td><td>The held weapon's range</td></tr>
+          <tr><td><code>DANGER</code></td><td>Orange</td><td>Enemy reach next turn, when the player has range hints on</td></tr>
+          <tr><td><code>WARNING</code></td><td>Flashing red</td><td>Boss telegraphs, with direction arrows</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      An <strong>exclusive</strong> overlay drops Craftics' own tiles for that layer, which is what a mod whose Move button is its own needs: otherwise its targeting is drawn on top of the weapon range it is replacing. An empty exclusive overlay is how you say <em>nowhere is a legal target</em>.
+    </p>
+
+    <h3 id="warnings">Warnings and flashes</h3>
+    <p>
+      <code>showWarning</code> is the boss telegraph: flashing red on the tiles an attack will land on, with the marching arrows that say which way it travels. Pass <code>0, 0</code> for something that does not move.
+    </p>
+
+    <pre><code>// A wave that sweeps east across three tiles.
+CrafticsAPI.showWarning(player, waveTiles, 1, 0);
+// ... and when it lands
+CrafticsAPI.clearWarning(player);
+
+// Something that has to be seen right now, mid enemy phase. Fades on its own.
+CrafticsAPI.flashTiles(player, footprint, 0xFFBF1A, 20);</code></pre>
+
+    <div class="callout">
+      <p>
+        <strong>Overlays are published on the next highlight refresh, which happens on the player's turn.</strong> That is the same lifecycle a boss telegraph has. For anything that must be seen while the enemies are the ones acting, use <code>flashTiles</code>, which is pushed the moment it is called in any phase.
+      </p>
+    </div>
+
+    <p>
+      Highlights show to everyone watching the fight, exactly as Craftics' own already do, and are cleared for you when the fight ends so nothing can leak into the next one.
+    </p>
+    <!-- ================================================================
+         TURN ORDER
+         ================================================================ -->
+    <h2 id="turn-order">Turn Order</h2>
+    <p>
+      Craftics acts in spawn order. The first mob the level put on the board moves first, every round, for the whole fight, and nothing a creature <em>is</em> can change that. For a mod whose creatures have a Speed stat that is the one number the fight would not read: you could describe a fast creature perfectly and it would still wait behind a slow one.
+    </p>
+
+    <pre><code>CrafticsAPI.registerTurnOrderProvider((player, actors, round) -&gt; actors.stream()
+    .sorted(Comparator.comparingInt(this::speedOf).reversed())
+    .toList());
+
+// Or, if your Speed is already the move speed Craftics knows about:
+CrafticsAPI.registerTurnOrderProvider(TurnOrderProvider.byMoveSpeed());</code></pre>
+
+    <p>
+      <code>actors</code> is every creature acting this round - enemies and the player's own allies in one list, because they take their turns in one pass - so a fast enemy can act before the player's creature. It is asked once at the top of every round, so a creature slowed or hasted mid-fight is ordered on what it is now.
+    </p>
+
+    <h3>A pick-then-resolve round</h3>
+    <p>
+      Ordering was the missing half. The other half is <a href="#ally-command">commanding an ally</a>, which leaves an order that is obeyed on the creature's own turn rather than the instant the player clicks - and carries its attack type and accuracy with it. Put the two together and the round is: the player picks, the enemy AI picks when its turn comes, and Speed decides who goes first.
+    </p>
+
+    <pre><code>// In your command handler: queue the move instead of resolving it.
+CrafticsAPI.registerAllyCommandHandler((player, ally, tile, target) -&gt; {
+    Move move = pendingMove(player);
+    if (move == null) return false;
+
+    ally.setPendingAttackType(move.typeId());
+    ally.setPendingAccuracy(move.accuracy());
+    CrafticsAPI.commandAlly(player, ally, new EnemyAction.CustomAction(
+        move.id(), List.of(tile), move.power(), move.params()));
+
+    CrafticsAPI.clearAllySelection(player);
+    return true;     // nothing resolves yet - the order waits for the creature's turn
+});</code></pre>
+
+    <h3>What it orders, and what it does not</h3>
+    <ul>
+      <li><strong>The player's own turn still comes first.</strong> They are the one choosing, and choosing is what their turn is for. For a fight where the creature is the fighter, that <em>is</em> pick-then-resolve - what Speed decides is whose creature moves first.</li>
+      <li><strong>You cannot add a combatant to the round or take one out of it.</strong> A creature you leave out still acts, after the ones you named, in the order it already had; one you name twice acts once; one that is not in the fight is ignored. The list a provider returns is what the round iterates, so a dropped creature would read as the fight being stuck rather than as an ordering choice.</li>
+      <li><strong>The first provider to answer wins</strong>, in registration order. Return <code>null</code> to leave the round alone. Two mods with opinions about initiative cannot both have one.</li>
+      <li><strong>A provider that throws is skipped</strong> and the round runs in Craftics' own order.</li>
+      <li><strong>Craftics keeps everything else.</strong> A turn resolves through the same movement, damage, resistance, typing and accuracy handling whatever order it arrives in.</li>
+    </ul>
+
+    <p>
+      <code>CrafticsAPI.getTurnOrder(player)</code> returns the creatures in the order they will act, after your provider has had its say, for drawing your own initiative strip. Craftics' own turn-order HUD lists the multiplayer party queue, which is a different thing and stays what it is.
+    </p>
+    <!-- ================================================================
          ACCURACY
          ================================================================ -->
     <h2 id="accuracy">Accuracy</h2>

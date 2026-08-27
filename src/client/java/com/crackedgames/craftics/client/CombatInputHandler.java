@@ -48,6 +48,12 @@ public class CombatInputHandler {
         if (client.player == null) return ActionMode.MOVE;
         Item held = client.player.getMainHandStack().getItem();
 
+        // An addon selection is ally-command mode with an empty hand: the addon opened the
+        // gesture through the API, so there is no item for this to read. It wins over the
+        // held item, because a click while a creature is selected is an order to that
+        // creature and not a swing.
+        if (CombatState.isAddonAllySelection() && CombatState.getLeadSelectedAllyId() != null)
+            return ActionMode.LEAD;
         if (held == com.crackedgames.craftics.item.ModItems.MOVE_ITEM) return ActionMode.MOVE;
         if (held == Items.LEAD) return ActionMode.LEAD;
         if (com.crackedgames.craftics.compat.instruments.InstrumentsCompat.isInstrument(held))
@@ -381,6 +387,17 @@ public class CombatInputHandler {
             com.crackedgames.craftics.client.hints.HintManager hintMgr) {
         Integer selected = CombatState.getLeadSelectedAllyId();
         Integer mappedId = CombatState.getEnemyGridMap().get(tilePos);
+
+        // An addon selection means the addon owns every click while it stands, including
+        // clicks on allies and on the selected creature itself. Send the tile as-is and let
+        // its handler say what the click meant; the server is the authority on when the
+        // selection ends, so nothing is cleared here.
+        if (selected != null && CombatState.isAddonAllySelection()) {
+            ClientPlayNetworking.send(new com.crackedgames.craftics.network.LeadCommandPayload(
+                selected, tilePos.x(), tilePos.z(), mappedId != null ? mappedId : -1));
+            hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.USED_ITEM);
+            return;
+        }
         // The TileSetPayload's per-tile type string doesn't carry the ;ally
         // flag (only CombatSyncPayload's inspect-type list does). Use the
         // ally HP map as the source of truth for which entity ids are allies.

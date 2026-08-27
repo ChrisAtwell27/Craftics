@@ -3006,6 +3006,13 @@ public class CombatManager {
     private static final int LEAD_COMMAND_AP = 1;
     /** The ally currently glowing because the player picked it with a Lead. */
     private CombatEntity leadSelectedAlly = null;
+    /**
+     * True when that selection came from {@code CrafticsAPI.selectAlly} rather than from a
+     * Lead in hand. It stands in for the item everywhere the item is checked, so an addon
+     * whose Move button is its own can drive the selection, the highlights and the command
+     * without making the player carry a Lead to use its own UI.
+     */
+    private boolean allySelectionByAddon = false;
 
     /** Lerped walk-to-target queued by a Lead move-command. */
     private CombatEntity leadWalkAlly = null;
@@ -4226,6 +4233,11 @@ public class CombatManager {
         // Bed anchors are scoped to a single arena. endCombat clears this too; doing it
         // here as well means an abnormal exit can't leak a tile into the next room.
         this.bedRespawnAnchor = null;
+        // Same for a standing ally selection: the creature it pointed at belongs to the fight
+        // that just ended, and an addon selection carried into this one would let a command
+        // through with no Lead and nothing selected on screen.
+        this.leadSelectedAlly = null;
+        this.allySelectionByAddon = false;
         // Begin tallying loot for this fight so the victory screen can show
         // everything collected. Records all current participants.
         {
@@ -5617,7 +5629,29 @@ public class CombatManager {
      * the data tracker sync). Pass {@code -1} to clear.
      */
     public void handleLeadSelect(int allyEntityId) {
+        applyAllySelection(allyEntityId, false);
+    }
+
+    /**
+     * Select an ally on an addon's behalf, so the whole gesture - the glow, the ally-aware
+     * highlights, the command click - works with no Lead in hand. Pass {@code -1} to clear.
+     *
+     * @return true if the selection took (or was a clear)
+     */
+    public boolean selectAllyForAddon(int allyEntityId) {
+        applyAllySelection(allyEntityId, true);
+        return allyEntityId < 0 || leadSelectedAlly != null;
+    }
+
+    /** The ally currently picked out for commands, whether by a Lead or by an addon. */
+    public CombatEntity getSelectedAlly() { return leadSelectedAlly; }
+
+    /** Whether the standing selection came from an addon rather than from a Lead. */
+    public boolean isAllySelectionFromAddon() { return allySelectionByAddon; }
+
+    private void applyAllySelection(int allyEntityId, boolean byAddon) {
         if (!active) return;
+        boolean wasFromAddon = allySelectionByAddon;
         // Clear the previous glow regardless.
         if (leadSelectedAlly != null && leadSelectedAlly.getMobEntity() != null) {
             leadSelectedAlly.getMobEntity().setGlowing(false);
@@ -5632,6 +5666,16 @@ public class CombatManager {
                 }
             }
         }
+        allySelectionByAddon = byAddon && leadSelectedAlly != null;
+        // Nothing on the client says an addon selection exists - there is no item in hand
+        // announcing it - and the click handler has to know it is aiming a command rather
+        // than swinging a weapon. Tell it when the addon takes the gesture, and again when
+        // it hands it back.
+        if ((byAddon || wasFromAddon) && player != null && player.networkHandler != null) {
+            ServerPlayNetworking.send(player,
+                new com.crackedgames.craftics.network.AllySelectionPayload(
+                    allySelectionByAddon ? leadSelectedAlly.getEntityId() : -1));
+        }
         // Selecting/clearing an ally swaps the highlights between "where the PLAYER can
         // act" and "where this ALLY can act", so they have to be rebuilt right now.
         refreshHighlights();
@@ -5645,7 +5689,10 @@ public class CombatManager {
      */
     private CombatEntity leadCommandTarget() {
         if (leadSelectedAlly == null || player == null || arena == null) return null;
-        if (player.getMainHandStack().getItem() != net.minecraft.item.Items.LEAD) return null;
+        // An addon selection is its own authority: it was made through the API rather than by
+        // clicking with an item, so there is no Lead to still be holding.
+        if (!allySelectionByAddon
+                && player.getMainHandStack().getItem() != net.minecraft.item.Items.LEAD) return null;
         if (!leadSelectedAlly.isAlive() || !leadSelectedAlly.isAlly()) return null;
         java.util.UUID owner = leadSelectedAlly.getOwnerUuid();
         if (owner != null && !owner.equals(player.getUuid())) return null;
@@ -5896,18 +5943,14 @@ public class CombatManager {
         if (!active) return;
         if (phase != CombatPhase.PLAYER_TURN) return;
         if (player == null) return;
-        // Must be holding a Lead.
-        if (player.getMainHandStack().getItem() != net.minecraft.item.Items.LEAD) {
+        // Must be holding a Lead - unless an addon made the selection, in which case the
+        // selection IS the authority. Requiring the item as well would put it back in front of
+        // a mod whose command UI is its own.
+        boolean addonSelected = allySelectionByAddon && leadSelectedAlly != null
+            && leadSelectedAlly.getEntityId() == allyEntityId;
+        if (!addonSelected
+                && player.getMainHandStack().getItem() != net.minecraft.item.Items.LEAD) {
             sendMessage("§cYou need to hold a Lead to command allies.");
-            return;
-        }
-        if (apRemaining < LEAD_COMMAND_AP) {
-            sendMessage("§cNeed " + LEAD_COMMAND_AP + " AP to command an ally with the Lead!");
-            return;
-        }
-        // One walk at a time.
-        if (leadWalkAlly != null) {
-            sendMessage("§cAn ally is already moving.");
             return;
         }
 
@@ -5924,62 +5967,55 @@ public class CombatManager {
             return;
         }
 
-        GridPos allyPos = ally.getGridPos();
         GridPos targetTile = new GridPos(targetX, targetZ);
-
+        CombatEntity clicked = null;
         if (targetEntityId >= 0) {
-            CombatEntity victim = null;
             for (CombatEntity e : enemies) {
-                if (e.getEntityId() == targetEntityId) { victim = e; break; }
+                if (e.getEntityId() == targetEntityId) { clicked = e; break; }
             }
-            if (victim == null || !victim.isAlive() || victim.isAlly()) {
-                sendMessage("§cInvalid lead target.");
-                return;
-            }
-            if (victim.minDistanceTo(allyPos) > 1) {
-                sendMessage("§cThat enemy is too far from " + ally.getDisplayName() + " (need adjacent).");
-                return;
-            }
-            int rawDamage = ally.getAttackPower() + computeAllyPetBonus(ally);
-            if (attackMisses(ally, victim)) {
-                // The AP is still spent. The order was given and the ally swung at it;
-                // refunding on a miss would make commanding a blinded pet strictly free,
-                // and a free retry until it connects is not a miss chance at all.
-                apRemaining -= LEAD_COMMAND_AP;
-                handleLeadSelect(-1);
-                sendSync();
-                refreshHighlights();
-                return;
-            }
-            int dealt = victim.takeDamage(rawDamage);
-            apRemaining -= LEAD_COMMAND_AP;
-            sendMessage("§a" + ally.getDisplayName() + " strikes " + victim.getDisplayName()
-                + " for " + dealt + " damage! §7(-" + LEAD_COMMAND_AP + " AP)");
-            ServerWorld world = (ServerWorld) player.getEntityWorld();
-            if (victim.getMobEntity() != null) {
-                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
-                    victim.getMobEntity().getX(), victim.getMobEntity().getY() + 0.8,
-                    victim.getMobEntity().getZ(), 8, 0.3, 0.4, 0.3, 0.05);
-            }
-            checkAndHandleDeath(victim);
-            // Clear the glow now that the ally has acted.
-            handleLeadSelect(-1);
+        }
+
+        // An addon gets first refusal on the order itself, before the AP check and before
+        // either built-in branch. A creature whose turn is a chosen move is not walking one
+        // tile or swinging at whatever stands beside it, and this click - on a tile, or on the
+        // enemy it means to hit - is the one that names the target. Nothing is spent for a
+        // claimed command.
+        if (arena != null && arena.isInBounds(targetTile)
+                && com.crackedgames.craftics.api.registry.AllyCommandRegistry.handle(
+                    player, ally, targetTile, clicked)) {
+            // The selection is left exactly as it was: an addon may be issuing several orders
+            // from one pick, and clearing it here would deselect the creature under its own UI.
             sendSync();
             refreshHighlights();
             return;
         }
 
+        if (apRemaining < LEAD_COMMAND_AP) {
+            sendMessage("§cNeed " + LEAD_COMMAND_AP + " AP to command an ally with the Lead!");
+            return;
+        }
+        // One walk at a time.
+        if (leadWalkAlly != null) {
+            sendMessage("§cAn ally is already moving.");
+            return;
+        }
+
+        GridPos allyPos = ally.getGridPos();
+
+        if (targetEntityId >= 0) {
+            if (performAllyStrike(ally, clicked, true)) {
+                // Clear the glow now that the ally has acted.
+                handleLeadSelect(-1);
+                sendSync();
+                refreshHighlights();
+            }
+            return;
+        }
+
         // Move mode -walk the ally along a pathfound route, capped at its
         // move speed. Reject only true instakill hazards; water and divots
-        // are fair game.
-        if (!arena.isInBounds(targetTile)) {
-            sendMessage("§cTarget tile is out of bounds.");
-            return;
-        }
-        if (targetTile.equals(allyPos)) {
-            sendMessage("§c" + ally.getDisplayName() + " is already there.");
-            return;
-        }
+        // are fair game. performAllyWalk does that validation; the only thing that has to
+        // happen first is Tag Team, which is a swap rather than a walk.
 
         // Tag Team enchant (shovel): commanding a pet onto YOUR OWN tile swaps you with it,
         // as a free action, once per turn. The occupied-tile rejection below would otherwise
@@ -6016,15 +6052,91 @@ public class CombatManager {
             return;
         }
 
+        if (performAllyWalk(ally, targetTile, true)) {
+            // Clear the glow once the walk starts.
+            handleLeadSelect(-1);
+            sendSync();
+        }
+    }
+
+    /**
+     * One commanded strike, shared by the Lead's attack-command and
+     * {@code CrafticsAPI.allyStrike}. Returns false, with the refusal already sent, when the
+     * order cannot be given at all; a miss is an order obeyed, so that returns true.
+     *
+     * <p>{@code spendAp} is false for an API command: an addon that charges its own resource
+     * would otherwise pay for one move twice.
+     */
+    private boolean performAllyStrike(CombatEntity ally, CombatEntity victim, boolean spendAp) {
+        if (victim == null || !victim.isAlive() || victim.isAlly()) {
+            sendMessage("§cInvalid lead target.");
+            return false;
+        }
+        GridPos allyPos = ally.getGridPos();
+        if (victim.minDistanceTo(allyPos) > 1) {
+            sendMessage("§cThat enemy is too far from " + ally.getDisplayName() + " (need adjacent).");
+            return false;
+        }
+        int cost = spendAp ? LEAD_COMMAND_AP : 0;
+        if (apRemaining < cost) {
+            sendMessage("§cNeed " + LEAD_COMMAND_AP + " AP to command an ally with the Lead!");
+            return false;
+        }
+        int rawDamage = ally.getAttackPower() + computeAllyPetBonus(ally);
+        if (attackMisses(ally, victim)) {
+            // The AP is still spent. The order was given and the ally swung at it;
+            // refunding on a miss would make commanding a blinded pet strictly free,
+            // and a free retry until it connects is not a miss chance at all.
+            apRemaining -= cost;
+            return true;
+        }
+        int dealt = victim.takeDamage(rawDamage);
+        apRemaining -= cost;
+        sendMessage("§a" + ally.getDisplayName() + " strikes " + victim.getDisplayName()
+            + " for " + dealt + " damage!" + (cost > 0 ? " §7(-" + cost + " AP)" : ""));
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        if (victim.getMobEntity() != null) {
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                victim.getMobEntity().getX(), victim.getMobEntity().getY() + 0.8,
+                victim.getMobEntity().getZ(), 8, 0.3, 0.4, 0.3, 0.05);
+        }
+        checkAndHandleDeath(victim);
+        return true;
+    }
+
+    /**
+     * One commanded walk, shared by the Lead's move-command and {@code CrafticsAPI.moveAlly}.
+     * The route is pathfound and capped at the ally's own move speed, so a far tile sends it
+     * as far as that budget allows rather than teleporting it.
+     *
+     * <p>Returns false with the refusal already sent. An API command spends no AP and says
+     * nothing in chat - the addon that issued it speaks for itself.
+     */
+    private boolean performAllyWalk(CombatEntity ally, GridPos targetTile, boolean spendAp) {
+        if (arena == null) return false;
+        GridPos allyPos = ally.getGridPos();
+        // One walk at a time: two lerps on one ally would fight over its position.
+        if (leadWalkAlly != null) {
+            sendMessage("§cAn ally is already moving.");
+            return false;
+        }
+        if (!arena.isInBounds(targetTile)) {
+            sendMessage("§cTarget tile is out of bounds.");
+            return false;
+        }
+        if (targetTile.equals(allyPos)) {
+            sendMessage("§c" + ally.getDisplayName() + " is already there.");
+            return false;
+        }
         if (arena.isOccupied(targetTile)) {
             sendMessage("§cTarget tile is occupied.");
-            return;
+            return false;
         }
         GridTile gridTile = arena.getTile(targetTile);
         if (gridTile == null || !gridTile.isWalkableEx(false, false,
                 CombatEntity.isAquatic(ally.getEntityTypeId()))) {
             sendMessage("§cTarget tile isn't walkable.");
-            return;
+            return false;
         }
         com.crackedgames.craftics.core.TileType tt = gridTile.getType();
         boolean instakill = tt == com.crackedgames.craftics.core.TileType.LAVA
@@ -6034,7 +6146,7 @@ public class CombatManager {
                 && !CombatEntity.isAquatic(ally.getEntityTypeId()));
         if (instakill && !ally.isHazardImmune()) {
             sendMessage("§cThat tile would kill " + ally.getDisplayName() + ".");
-            return;
+            return false;
         }
 
         int allySpeed = Math.max(1, ally.getMoveSpeed());
@@ -6043,16 +6155,70 @@ public class CombatManager {
         if (path == null || path.isEmpty()) {
             sendMessage("§c" + ally.getDisplayName() + " can't reach that tile (max "
                 + allySpeed + " tile" + (allySpeed == 1 ? "" : "s") + " per command).");
-            return;
+            return false;
+        }
+        int cost = spendAp ? LEAD_COMMAND_AP : 0;
+        if (apRemaining < cost) {
+            sendMessage("§cNeed " + LEAD_COMMAND_AP + " AP to command an ally with the Lead!");
+            return false;
         }
 
-        apRemaining -= LEAD_COMMAND_AP;
-        sendMessage("§a" + ally.getDisplayName() + " moves! §7(-" + LEAD_COMMAND_AP + " AP)");
+        apRemaining -= cost;
+        if (cost > 0) {
+            sendMessage("§a" + ally.getDisplayName() + " moves! §7(-" + cost + " AP)");
+        }
         startLeadWalk(ally, path);
-        // Clear the glow once the walk starts.
-        handleLeadSelect(-1);
-        sendSync();
+        return true;
     }
+
+    /**
+     * Walk an ally to a tile on an addon's behalf: Craftics' own pathfound, lerped walk,
+     * capped at the ally's move speed, with no Lead and no AP spent.
+     *
+     * @return true if the walk started
+     */
+    public boolean addonMoveAlly(CombatEntity ally, GridPos targetTile) {
+        if (!active || phase != CombatPhase.PLAYER_TURN || player == null) return false;
+        if (ally == null || !ally.isAlive() || !ally.isAlly()) return false;
+        if (ally.getOwnerUuid() != null && !ally.getOwnerUuid().equals(player.getUuid())) return false;
+        if (!performAllyWalk(ally, targetTile, false)) return false;
+        sendSync();
+        refreshHighlights();
+        return true;
+    }
+
+    /**
+     * Have an ally strike an adjacent enemy on an addon's behalf, through the same damage,
+     * resistance, typing and accuracy handling its own turn would use. No Lead, no AP.
+     *
+     * @return true if the order resolved, hit or miss
+     */
+    public boolean addonAllyStrike(CombatEntity ally, CombatEntity victim) {
+        if (!active || phase != CombatPhase.PLAYER_TURN || player == null) return false;
+        if (ally == null || !ally.isAlive() || !ally.isAlly()) return false;
+        if (ally.getOwnerUuid() != null && !ally.getOwnerUuid().equals(player.getUuid())) return false;
+        if (!performAllyStrike(ally, victim, false)) return false;
+        sendSync();
+        refreshHighlights();
+        return true;
+    }
+
+    /**
+     * Flash a set of tiles on every client in the fight. Unlike the highlight overlays this
+     * is pushed the moment it is called, in any phase, so an addon can mark what an enemy is
+     * about to do while the enemies are the ones acting.
+     */
+    public void addonFlashTiles(java.util.Collection<GridPos> tiles, int color, int durationTicks) {
+        if (!active || tiles == null || tiles.isEmpty()) return;
+        java.util.List<Integer> packed = new java.util.ArrayList<>(tiles.size() * 2);
+        for (GridPos t : tiles) { packed.add(t.x()); packed.add(t.z()); }
+        sendToAllParty(new com.crackedgames.craftics.network.TileFlashPayload(
+            packed.stream().mapToInt(Integer::intValue).toArray(),
+            color, Math.max(1, durationTicks)));
+    }
+
+    /** The player this combat is currently taking a turn for. Null outside a fight. */
+    public ServerPlayerEntity getTurnPlayer() { return player; }
 
     /** Kick off a per-tick lerped walk for a lead-commanded ally. */
     private void startLeadWalk(CombatEntity ally, java.util.List<GridPos> path) {
@@ -6499,6 +6665,8 @@ public class CombatManager {
         // Player-placed walls refund their block when mined. Cache the item
         // before clearing the wall so the lookup survives the clear call.
         com.crackedgames.craftics.core.GridArena.PlacedWall placed = arena.getPlacedWall(targetTile);
+        // Null item = debris nobody placed. It breaks like a wall and gives back nothing,
+        // because there is nothing to give back.
         net.minecraft.item.Item refundItem = placed != null ? placed.item() : null;
         // Tell the client to stop the breaking animation on this tile.
         sendBlockBreakingProgress(targetTile, -1);
@@ -6583,7 +6751,8 @@ public class CombatManager {
         if (arena.isVfxObstacle(targetTile)) {
             com.crackedgames.craftics.core.GridArena.PlacedWall placed = arena.getPlacedWall(targetTile);
             arena.clearVfxObstacle(world, targetTile);
-            if (placed != null) {
+            // A null item is debris that cost nobody anything - it breaks, it refunds nothing.
+            if (placed != null && placed.item() != null) {
                 net.minecraft.item.ItemStack refund = new net.minecraft.item.ItemStack(placed.item());
                 if (!player.getInventory().insertStack(refund)) {
                     player.dropItem(refund, false);
@@ -13962,6 +14131,10 @@ public class CombatManager {
         clearHighlights();
         // Keep live boss telegraphs painted while the enemies act.
         syncWarningTiles();
+        // Ask an addon what order the creatures act in, before anything starts walking
+        // the list. Craftics acts in spawn order, which is the one thing a creature's
+        // Speed can never change on its own.
+        applyTurnOrder();
         phase = CombatPhase.ENEMY_TURN;
         enemyTurnIndex = 0;
         enemyTurnDelay = 10;
@@ -15477,6 +15650,53 @@ public class CombatManager {
         if (dmg < 0) return null; // unsupported: caller falls back to a normal player turn
         return new EnemyAction.MoveAndAttackMob(
             path != null ? path : java.util.List.of(), victim.getEntityId(), Math.max(1, dmg));
+    }
+
+    /**
+     * The creatures that act this round, in the order they will act. Allies and enemies
+     * together, since they take their turns in one pass.
+     */
+    public java.util.List<CombatEntity> getTurnOrder() {
+        if (enemies == null) return java.util.List.of();
+        java.util.List<CombatEntity> acting = new java.util.ArrayList<>(enemies.size());
+        for (CombatEntity e : enemies) {
+            if (e != null && e.isAlive() && !e.isMountWall()) acting.add(e);
+        }
+        return java.util.List.copyOf(acting);
+    }
+
+    /**
+     * Let an addon order the creatures for this round.
+     *
+     * <p>The {@code enemies} list itself is reordered rather than a running order being
+     * kept beside it. Every site in the enemy phase indexes that list directly - the walk,
+     * the stall watchdog, the summon append - and a second order would be one more thing
+     * that can disagree with it, in the phase least able to survive disagreement.
+     *
+     * <p>Nothing joins or leaves the round here: the reordered list holds exactly the
+     * entities it held before. Whatever does not act - the dead, the netherite mount's wall
+     * sentinel - keeps its own relative order at the back, where the walk skips it anyway.
+     */
+    private void applyTurnOrder() {
+        if (com.crackedgames.craftics.api.registry.TurnOrderRegistry.isEmpty()) return;
+        if (enemies == null || enemies.size() < 2) return;
+        java.util.List<CombatEntity> acting = getTurnOrder();
+        if (acting.size() < 2) return;   // nothing to order
+
+        java.util.List<CombatEntity> ordered = com.crackedgames.craftics.api.registry
+            .TurnOrderRegistry.order(player, acting, turnNumber);
+        if (ordered == null) return;
+
+        java.util.Set<CombatEntity> placed = java.util.Collections.newSetFromMap(
+            new java.util.IdentityHashMap<>());
+        placed.addAll(ordered);
+        java.util.List<CombatEntity> rest = new java.util.ArrayList<>();
+        for (CombatEntity e : enemies) {
+            if (!placed.contains(e)) rest.add(e);
+        }
+        enemies.clear();
+        enemies.addAll(ordered);
+        enemies.addAll(rest);
     }
 
     private void tickEnemyDeciding() {
@@ -34748,6 +34968,16 @@ public class CombatManager {
         // These must happen before any world operations that could throw during
         // disconnect, otherwise inCombat stays true and corrupts the save.
         active = false;
+        // Addon combat UI is per-fight. A standing ally selection or a tile overlay left
+        // behind here would be re-applied over the next fight's highlights, in an arena the
+        // addon never drew it for.
+        allySelectionByAddon = false;
+        for (ServerPlayerEntity overlayOwner : getAllParticipants()) {
+            if (overlayOwner != null) {
+                com.crackedgames.craftics.api.registry.GridHighlightRegistry
+                    .clear(overlayOwner.getUuid());
+            }
+        }
         // Fade the soundtrack out now that the run is over. The per-tick refresh
         // won't fire once this instance goes inactive, so push the stop explicitly.
         refreshMusic();
@@ -35934,6 +36164,38 @@ public class CombatManager {
         return ce;
     }
 
+    /**
+     * Merge one addon overlay into the flattened tile list it belongs to. An exclusive overlay
+     * clears the list first, so the addon's tiles are the only ones on that layer.
+     *
+     * <p>{@code arrows} is non-null only for the warning layer, which carries a direction so a
+     * push, pull or charge can say which way it travels.
+     */
+    private void applyHighlightOverlay(java.util.UUID owner,
+            com.crackedgames.craftics.api.HighlightLayer layer,
+            java.util.List<Integer> packed, java.util.List<Integer> arrows) {
+        var overlay = com.crackedgames.craftics.api.registry.GridHighlightRegistry.get(owner, layer);
+        if (overlay == null) return;
+        if (overlay.exclusive()) {
+            packed.clear();
+            if (arrows != null) arrows.clear();
+        }
+        boolean directed = overlay.dirX() != 0 || overlay.dirZ() != 0;
+        for (GridPos t : overlay.tiles()) {
+            // Out-of-bounds tiles are dropped rather than sent: the client indexes the grid
+            // with them, and a stray tile paints outside the arena floor.
+            if (arena != null && !arena.isInBounds(t)) continue;
+            packed.add(t.x());
+            packed.add(t.z());
+            if (arrows != null && directed) {
+                arrows.add(t.x());
+                arrows.add(t.z());
+                arrows.add(overlay.dirX());
+                arrows.add(overlay.dirZ());
+            }
+        }
+    }
+
     public void refreshHighlights() {
         if (!active || player == null || phase != CombatPhase.PLAYER_TURN) return;
 
@@ -36220,6 +36482,24 @@ public class CombatManager {
             warningArrowList.add(a[1]);
             warningArrowList.add(a[2]);
             warningArrowList.add(a[3]);
+        }
+
+        // --- Addon overlays ---
+        // Applied last, over everything computed above, because those lists are rebuilt from
+        // scratch on every refresh: tiles an addon wrote into them would survive exactly one
+        // click. An exclusive layer drops Craftics' own tiles for that layer, which is what a
+        // mod whose Move button is its own needs - otherwise its targeting is drawn on top of
+        // the weapon range it is replacing.
+        if (com.crackedgames.craftics.api.registry.GridHighlightRegistry.hasAny(player.getUuid())) {
+            java.util.UUID overlayOwner = player.getUuid();
+            applyHighlightOverlay(overlayOwner,
+                com.crackedgames.craftics.api.HighlightLayer.MOVE, moveList, null);
+            applyHighlightOverlay(overlayOwner,
+                com.crackedgames.craftics.api.HighlightLayer.ATTACK, attackList, null);
+            applyHighlightOverlay(overlayOwner,
+                com.crackedgames.craftics.api.HighlightLayer.DANGER, dangerList, null);
+            applyHighlightOverlay(overlayOwner,
+                com.crackedgames.craftics.api.HighlightLayer.WARNING, warningList, warningArrowList);
         }
 
         // Convert lists to int arrays

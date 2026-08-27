@@ -1334,6 +1334,19 @@ public class CombatState {
     public static Integer getLeadSelectedAllyId() { return leadSelectedAllyId; }
     public static void setLeadSelectedAllyId(Integer id) { leadSelectedAllyId = id; }
 
+    /**
+     * Client-local: true when the standing selection was made by an addon through
+     * {@code CrafticsAPI.selectAlly} rather than by clicking with a Lead.
+     *
+     * <p>The client cannot work this out for itself - there is no item in hand saying so -
+     * so the server pushes it. It is what puts the click handler into command mode with an
+     * empty hand, and what stops the drop-the-Lead guard from cancelling a selection the
+     * player never made with a Lead.
+     */
+    private static boolean addonAllySelection = false;
+    public static boolean isAddonAllySelection() { return addonAllySelection; }
+    public static void setAddonAllySelection(boolean addon) { addonAllySelection = addon; }
+
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getMoveTiles() { return cachedMoveTiles; }
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getAttackTiles() { return cachedAttackTiles; }
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getDangerTiles() { return cachedDangerTiles; }
@@ -1424,6 +1437,7 @@ public class CombatState {
         tileFlashes.clear();
         hoveredTile = null;
         leadSelectedAllyId = null;
+        addonAllySelection = false;
     }
 
     /**

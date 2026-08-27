@@ -775,6 +775,312 @@ public final class CrafticsAPI {
         }
     }
 
+    // === Ally selection, commands and grid highlights ===
+
+    /**
+     * Select one of the player's allies, turning on the whole ally-command gesture without a
+     * Lead in hand: the ally glows for the party, and the grid highlights stop describing the
+     * player and start describing the ALLY - green where it can walk on its own speed budget,
+     * red on the enemies it can reach from where it stands.
+     *
+     * <p>All of that already existed and worked; it was gated on the player holding a Lead, and
+     * an addon with its own Move button could not reach any of it. That gate is what made an
+     * addon rebuild the visible half of the fight in a screen: buttons standing in for grid
+     * targeting that was right there.
+     *
+     * <p>The click that follows arrives at {@link AllyCommandHandler}. Without a handler it
+     * still walks or strikes the built-in way, so selection alone is worth having.
+     *
+     * <p>Only the player whose turn it is can hold a selection - it is an order, and orders are
+     * given on your turn - and only over an ally that is theirs. The selection is <b>not</b>
+     * cleared for you when your handler claims a command: call {@link #clearAllySelection} when
+     * the gesture is done.
+     *
+     * @param player the player selecting. Must be the one whose turn it is
+     * @param ally   the ally to select. Must be alive, on the field and theirs
+     * @return true if the selection took
+     * @since 0.4.5
+     */
+    public static boolean selectAlly(net.minecraft.server.network.ServerPlayerEntity player,
+                                     com.crackedgames.craftics.combat.CombatEntity ally) {
+        if (player == null || ally == null || !ally.isAlly() || !ally.isAlive()) return false;
+        var cm = combatFor(player);
+        if (cm == null) return false;
+        if (ally.getOwnerUuid() != null && !ally.getOwnerUuid().equals(player.getUuid())) return false;
+        return cm.selectAllyForAddon(ally.getEntityId());
+    }
+
+    /**
+     * Drop the ally selection: the glow goes out and the highlights describe the player again.
+     *
+     * @since 0.4.5
+     */
+    public static void clearAllySelection(net.minecraft.server.network.ServerPlayerEntity player) {
+        var cm = combatFor(player);
+        if (cm != null) cm.selectAllyForAddon(-1);
+    }
+
+    /**
+     * The ally this player currently has selected, whether an addon or a Lead picked it. Null
+     * when nothing is selected or the player is not in a fight.
+     *
+     * @since 0.4.5
+     */
+    public static com.crackedgames.craftics.combat.CombatEntity getSelectedAlly(
+            net.minecraft.server.network.ServerPlayerEntity player) {
+        var cm = combatFor(player);
+        return cm == null ? null : cm.getSelectedAlly();
+    }
+
+    /**
+     * Answer the click that follows a selection - a tile, or an enemy - yourself.
+     *
+     * <p>Handlers are asked before the AP check and before either built-in branch, so a claimed
+     * command costs nothing and does nothing on its own. Decline the clicks you have no answer
+     * for and the ally still walks and strikes exactly as it did.
+     *
+     * @see AllyCommandHandler
+     * @since 0.4.5
+     */
+    public static void registerAllyCommandHandler(com.crackedgames.craftics.api.AllyCommandHandler handler) {
+        com.crackedgames.craftics.api.registry.AllyCommandRegistry.register(handler);
+    }
+
+    /**
+     * Walk an ally to a tile using Craftics' own movement: a pathfound route, capped at the
+     * ally's move speed, lerped a tile at a time rather than teleported.
+     *
+     * <p>This is the Move button, for an addon that draws its own. Nothing is spent - no AP, no
+     * ally turn - because a mod that meters its own moves would otherwise pay for one twice.
+     * A far-away tile sends the ally as far as its speed allows.
+     *
+     * <p>Refusals (out of bounds, occupied, unwalkable, a tile that would kill it, no route)
+     * return false and tell the player why, changing nothing.
+     *
+     * @return true if the walk started
+     * @since 0.4.5
+     */
+    public static boolean moveAlly(net.minecraft.server.network.ServerPlayerEntity player,
+                                   com.crackedgames.craftics.combat.CombatEntity ally,
+                                   com.crackedgames.craftics.core.GridPos tile) {
+        var cm = combatFor(player);
+        return cm != null && cm.addonMoveAlly(ally, tile);
+    }
+
+    /**
+     * Have an ally strike an adjacent enemy, through the same damage, resistance, attack-typing
+     * and accuracy handling the ally's own turn would use. Set
+     * {@code ally.setPendingAttackType} and {@code ally.setPendingAccuracy} first if this move
+     * has its own typing; both are read as the strike resolves.
+     *
+     * <p>No AP and no ally turn, like {@link #moveAlly}. A miss is still an order obeyed and
+     * returns true.
+     *
+     * @return true if the order resolved
+     * @since 0.4.5
+     */
+    public static boolean allyStrike(net.minecraft.server.network.ServerPlayerEntity player,
+                                     com.crackedgames.craftics.combat.CombatEntity ally,
+                                     com.crackedgames.craftics.combat.CombatEntity target) {
+        var cm = combatFor(player);
+        return cm != null && cm.addonAllyStrike(ally, target);
+    }
+
+    /**
+     * Paint your own tiles on one of the grid's four overlays, on top of Craftics' own.
+     *
+     * <p>Craftics rebuilds every highlight list from scratch whenever anything changes, so
+     * tiles an addon drew for itself lasted until the next click. An overlay set here is
+     * re-applied on every refresh until {@link #clearHighlights} takes it down.
+     *
+     * <p>The tiles show to everyone watching the fight, which is how Craftics' own highlights
+     * already behave, and are published on the next highlight refresh - so they appear on the
+     * player's turn. For something that must show while the enemies are acting, use
+     * {@link #flashTiles}.
+     *
+     * <pre>{@code
+     * // Where the move the player just picked can be aimed. Exclusive, because the weapon
+     * // range underneath it is not what this turn is about.
+     * CrafticsAPI.setHighlights(player, HighlightLayer.ATTACK, move.legalTargets(), true);
+     * }</pre>
+     *
+     * @param player    whose fight to draw on
+     * @param layer     which overlay
+     * @param tiles     the tiles. Out-of-bounds tiles are dropped
+     * @param exclusive true to hide Craftics' own tiles on that layer, false to add to them
+     * @since 0.4.5
+     */
+    public static void setHighlights(net.minecraft.server.network.ServerPlayerEntity player,
+                                     com.crackedgames.craftics.api.HighlightLayer layer,
+                                     java.util.Collection<com.crackedgames.craftics.core.GridPos> tiles,
+                                     boolean exclusive) {
+        if (player == null || layer == null) return;
+        com.crackedgames.craftics.api.registry.GridHighlightRegistry
+            .set(player.getUuid(), layer, tiles, exclusive, 0, 0);
+        pushHighlights(player);
+    }
+
+    /**
+     * {@link #setHighlights(net.minecraft.server.network.ServerPlayerEntity,
+     * com.crackedgames.craftics.api.HighlightLayer, java.util.Collection, boolean)} that adds to
+     * Craftics' own tiles rather than replacing them.
+     *
+     * @since 0.4.5
+     */
+    public static void setHighlights(net.minecraft.server.network.ServerPlayerEntity player,
+                                     com.crackedgames.craftics.api.HighlightLayer layer,
+                                     java.util.Collection<com.crackedgames.craftics.core.GridPos> tiles) {
+        setHighlights(player, layer, tiles, false);
+    }
+
+    /**
+     * Telegraph an attack: the flashing red warning tiles Craftics uses for a boss's wind-up,
+     * with the marching direction arrows that say which way it travels.
+     *
+     * <p>Pass {@code 0, 0} for a warning that does not move - a slam, a pool, a summon. The
+     * warning stands until {@link #clearWarning}; it is not cleared when the attack lands,
+     * because only the addon knows when that is.
+     *
+     * @param tiles the tiles the attack will land on
+     * @param dirX  arrow direction x, -1/0/1
+     * @param dirZ  arrow direction z, -1/0/1
+     * @since 0.4.5
+     */
+    public static void showWarning(net.minecraft.server.network.ServerPlayerEntity player,
+                                   java.util.Collection<com.crackedgames.craftics.core.GridPos> tiles,
+                                   int dirX, int dirZ) {
+        if (player == null) return;
+        com.crackedgames.craftics.api.registry.GridHighlightRegistry.set(
+            player.getUuid(), com.crackedgames.craftics.api.HighlightLayer.WARNING,
+            tiles, false, Integer.signum(dirX), Integer.signum(dirZ));
+        pushHighlights(player);
+    }
+
+    /**
+     * Take down a warning set by {@link #showWarning}.
+     *
+     * @since 0.4.5
+     */
+    public static void clearWarning(net.minecraft.server.network.ServerPlayerEntity player) {
+        clearHighlights(player, com.crackedgames.craftics.api.HighlightLayer.WARNING);
+    }
+
+    /**
+     * Drop one overlay. Craftics' own tiles for that layer come back on the next refresh.
+     *
+     * @since 0.4.5
+     */
+    public static void clearHighlights(net.minecraft.server.network.ServerPlayerEntity player,
+                                       com.crackedgames.craftics.api.HighlightLayer layer) {
+        if (player == null) return;
+        com.crackedgames.craftics.api.registry.GridHighlightRegistry.clear(player.getUuid(), layer);
+        pushHighlights(player);
+    }
+
+    /**
+     * Drop every overlay this addon set for the player. Craftics does this itself when the
+     * fight ends, so an overlay can never leak into the next one.
+     *
+     * @since 0.4.5
+     */
+    public static void clearHighlights(net.minecraft.server.network.ServerPlayerEntity player) {
+        if (player == null) return;
+        com.crackedgames.craftics.api.registry.GridHighlightRegistry.clear(player.getUuid());
+        pushHighlights(player);
+    }
+
+    /**
+     * Flash a set of tiles in {@code color} for {@code durationTicks}, pushed the moment it is
+     * called rather than on the next highlight refresh.
+     *
+     * <p>Use it for anything that has to be seen while the enemies are the ones acting: the
+     * footprint of a move as it resolves, or where something is about to land. It fades on its
+     * own and needs no clearing.
+     *
+     * @param color 0xRRGGBB
+     * @since 0.4.5
+     */
+    public static void flashTiles(net.minecraft.server.network.ServerPlayerEntity player,
+                                  java.util.Collection<com.crackedgames.craftics.core.GridPos> tiles,
+                                  int color, int durationTicks) {
+        var cm = combatFor(player);
+        if (cm != null) cm.addonFlashTiles(tiles, color, durationTicks);
+    }
+
+    /**
+     * The fight this player is acting in, or null if they are not in one or it is not their
+     * turn to act. Ally commands and highlights both describe the acting player, so everything
+     * above goes through it.
+     */
+    private static com.crackedgames.craftics.combat.CombatManager combatFor(
+            net.minecraft.server.network.ServerPlayerEntity player) {
+        if (player == null) return null;
+        var cm = com.crackedgames.craftics.combat.CombatManager.getActiveCombat(player.getUuid());
+        // getActiveCombat never returns null - it makes an inactive instance on demand - so
+        // isActive() is the real check.
+        if (cm == null || !cm.isActive()) return null;
+        return player.equals(cm.getTurnPlayer()) ? cm : null;
+    }
+
+    /** Publish overlay changes now, if the fight is at a point where it can. */
+    private static void pushHighlights(net.minecraft.server.network.ServerPlayerEntity player) {
+        var cm = combatFor(player);
+        if (cm != null) cm.refreshHighlights();
+    }
+
+    // === Turn order ===
+
+    /**
+     * Decide what order the creatures act in each round.
+     *
+     * <p>Craftics acts in spawn order: the first mob the level placed moves first, every
+     * round, for the whole fight. For a mod whose creatures have a Speed stat that is the one
+     * number the fight would not read - a fast creature could be described perfectly and still
+     * wait behind a slow one.
+     *
+     * <p>This is the missing half of a pick-then-resolve round. The other half already works:
+     * {@link #commandAlly} leaves an order that is obeyed on the creature's own turn rather
+     * than the instant the player clicks, and carries its attack type and accuracy with it. So
+     * the player picks during their turn, the enemy AI picks when its turn comes, and this
+     * decides which of them goes first.
+     *
+     * <pre>{@code
+     * CrafticsAPI.registerTurnOrderProvider((player, actors, round) -> actors.stream()
+     *     .sorted(Comparator.comparingInt(this::speedOf).reversed())
+     *     .toList());
+     * }</pre>
+     *
+     * <p>It orders the creatures - every enemy and every ally, in one list, so a fast enemy
+     * can act before the player's own creature. The player's own turn still comes first: they
+     * are the one choosing, and choosing is what their turn is for.
+     *
+     * <p>The first provider to answer wins. You cannot add a combatant to the round or remove
+     * one from it - see {@link TurnOrderProvider} for the full contract.
+     *
+     * @see TurnOrderProvider#byMoveSpeed()
+     * @since 0.4.5
+     */
+    public static void registerTurnOrderProvider(com.crackedgames.craftics.api.TurnOrderProvider provider) {
+        com.crackedgames.craftics.api.registry.TurnOrderRegistry.register(provider);
+    }
+
+    /**
+     * The creatures acting this round, in the order they will act - after your provider has
+     * had its say. Empty outside a fight.
+     *
+     * <p>For drawing your own initiative strip. Craftics' own turn-order HUD lists the party
+     * queue, which is a different thing and stays what it is.
+     *
+     * @since 0.4.5
+     */
+    public static java.util.List<com.crackedgames.craftics.combat.CombatEntity> getTurnOrder(
+            net.minecraft.server.network.ServerPlayerEntity player) {
+        if (player == null) return java.util.List.of();
+        var cm = com.crackedgames.craftics.combat.CombatManager.getActiveCombat(player.getUuid());
+        if (cm == null || !cm.isActive()) return java.util.List.of();
+        return cm.getTurnOrder();
+    }
+
     // === Queries ===
 
     /**
