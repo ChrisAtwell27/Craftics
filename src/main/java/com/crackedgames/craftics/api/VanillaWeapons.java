@@ -257,34 +257,16 @@ public final class VanillaWeapons {
             // Push each entity in reverse order (furthest first to avoid collisions)
             for (int i = lineTargets.size() - 1; i >= 0; i--) {
                 CombatEntity pushTarget = lineTargets.get(i);
-                GridPos kbPos = pushTarget.getGridPos();
-                boolean hitWall = false;
-                boolean hitHazard = false;
-                for (int step = 0; step < pushDist; step++) {
-                    GridPos next = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
-                    if (!arena.isInBounds(next) || arena.isOccupied(next)) {
-                        hitWall = true;
-                        break;
-                    }
-                    var tile = arena.getTile(next);
-                    if (tile == null) { hitWall = true; break; }
-                    if (tile.getType() == com.crackedgames.craftics.core.TileType.OBSTACLE) {
-                        hitWall = true;
-                        break;
-                    }
-                    // Hazard tiles: land ON them, then take consequences
-                    if (tile.getType() == com.crackedgames.craftics.core.TileType.VOID
-                        || tile.getType() == com.crackedgames.craftics.core.TileType.DEEP_WATER
-                        || tile.getType() == com.crackedgames.craftics.core.TileType.LAVA
-                        || tile.getType() == com.crackedgames.craftics.core.TileType.WATER) {
-                        if (pushTarget.isHazardImmune()) { hitWall = true; break; }
-                        kbPos = next;
-                        hitHazard = true;
-                        break;
-                    }
-                    if (!tile.isWalkable()) { hitWall = true; break; }
-                    kbPos = next;
-                }
+                // Shared rule - see GridPush. Hazard tiles are landed ON and their
+                // consequences taken below, which is what the switch on the landing tile is for.
+                com.crackedgames.craftics.combat.GridPush.Result shove = com.crackedgames.craftics.combat.GridPush.resolve(
+                    com.crackedgames.craftics.combat.CombatManager.pushGridFor(arena, pushTarget),
+                    pushTarget.getGridPos().x(), pushTarget.getGridPos().z(),
+                    pushTarget.getSizeX(), pushTarget.getSizeZ(),
+                    dx, dz, pushDist, pushTarget.isHazardImmune());
+                GridPos kbPos = new GridPos(shove.x(), shove.z());
+                boolean hitHazard = shove.enteredHazard();
+                boolean hitWall = shove.blocked() && !hitHazard;
                 if (!kbPos.equals(pushTarget.getGridPos())) {
                     arena.moveEntity(pushTarget, kbPos);
                     if (pushTarget.getMobEntity() != null) {
@@ -675,14 +657,14 @@ public final class VanillaWeapons {
                         // Pull toward impact point
                         int pdx = Integer.signum(impactPos.x() - pullTarget.getGridPos().x());
                         int pdz = Integer.signum(impactPos.z() - pullTarget.getGridPos().z());
-                        GridPos pullPos = pullTarget.getGridPos();
-                        for (int step = 0; step < pullDist; step++) {
-                            GridPos next = new GridPos(pullPos.x() + pdx, pullPos.z() + pdz);
-                            if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
-                            var tile = arena.getTile(next);
-                            if (tile == null || !tile.isWalkable()) break;
-                            pullPos = next;
-                        }
+                        // A pull is a push with the direction reversed, so it uses the same
+                        // rule - see GridPush.
+                        com.crackedgames.craftics.combat.GridPush.Result pull = com.crackedgames.craftics.combat.GridPush.resolve(
+                            com.crackedgames.craftics.combat.CombatManager.pushGridFor(arena, pullTarget),
+                            pullTarget.getGridPos().x(), pullTarget.getGridPos().z(),
+                            pullTarget.getSizeX(), pullTarget.getSizeZ(),
+                            pdx, pdz, pullDist, pullTarget.isHazardImmune());
+                        GridPos pullPos = new GridPos(pull.x(), pull.z());
                         if (!pullPos.equals(pullTarget.getGridPos())) {
                             arena.moveEntity(pullTarget, pullPos);
                             if (pullTarget.getMobEntity() != null) {
@@ -738,15 +720,13 @@ public final class VanillaWeapons {
                     int kdx = Integer.signum(kbTarget.getGridPos().x() - pPos.x());
                     int kdz = Integer.signum(kbTarget.getGridPos().z() - pPos.z());
                     if (kdx == 0 && kdz == 0) kdx = 1;
-                    GridPos kbPos = kbTarget.getGridPos();
-                    boolean slammedWall = false;
-                    for (int step = 0; step < wbKb; step++) {
-                        GridPos next = new GridPos(kbPos.x() + kdx, kbPos.z() + kdz);
-                        if (!arena.isInBounds(next) || arena.isOccupied(next)) { slammedWall = true; break; }
-                        var tile = arena.getTile(next);
-                        if (tile == null || !tile.isWalkable()) { slammedWall = true; break; }
-                        kbPos = next;
-                    }
+                    com.crackedgames.craftics.combat.GridPush.Result burst = com.crackedgames.craftics.combat.GridPush.resolve(
+                        com.crackedgames.craftics.combat.CombatManager.pushGridFor(arena, kbTarget),
+                        kbTarget.getGridPos().x(), kbTarget.getGridPos().z(),
+                        kbTarget.getSizeX(), kbTarget.getSizeZ(),
+                        kdx, kdz, wbKb, kbTarget.isHazardImmune());
+                    GridPos kbPos = new GridPos(burst.x(), burst.z());
+                    boolean slammedWall = burst.blocked();
                     if (!kbPos.equals(kbTarget.getGridPos())) {
                         arena.moveEntity(kbTarget, kbPos);
                         if (kbTarget.getMobEntity() != null) {

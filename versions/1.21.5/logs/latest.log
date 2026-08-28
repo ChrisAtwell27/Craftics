@@ -1,5 +1,5 @@
-[15:40:34] [Test worker/WARN]: No handler registered for custom action 'test:missing' - the enemy passes its turn. Is the addon that defines it still installed?
-[15:40:34] [Test worker/ERROR]: Custom action 'test:flamethrower' threw; the enemy passes its turn
+[10:11:46] [Test worker/WARN]: No handler registered for custom action 'test:missing' - the enemy passes its turn. Is the addon that defines it still installed?
+[10:11:46] [Test worker/ERROR]: Custom action 'test:flamethrower' threw; the enemy passes its turn
 java.lang.IllegalStateException: boom
 	at com.crackedgames.craftics.api.registry.CustomActionRegistryTest.lambda$resolve_survivesAThrowingHandler$1(CustomActionRegistryTest.java:53) ~[test/:?]
 	at com.crackedgames.craftics.api.registry.CustomActionRegistry.resolve(CustomActionRegistry.java:60) ~[main/:?]
@@ -86,9 +86,9 @@ java.lang.IllegalStateException: boom
 	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:72) [gradle-worker-main-9.4.1.jar:9.4.1]
 	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69) [gradle-worker.jar:?]
 	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74) [gradle-worker.jar:?]
-[15:40:34] [Test worker/WARN]: No handler registered for custom action 'test:gone' - the enemy passes its turn. Is the addon that defines it still installed?
-[15:40:34] [Test worker/WARN]: No handler registered for custom action 'test:missing' - the enemy passes its turn. Is the addon that defines it still installed?
-[15:40:34] [Test worker/ERROR]: Custom action 'test:bad' threw; the enemy passes its turn
+[10:11:46] [Test worker/WARN]: No handler registered for custom action 'test:gone' - the enemy passes its turn. Is the addon that defines it still installed?
+[10:11:46] [Test worker/WARN]: No handler registered for custom action 'test:missing' - the enemy passes its turn. Is the addon that defines it still installed?
+[10:11:46] [Test worker/ERROR]: Custom action 'test:bad' threw; the enemy passes its turn
 java.lang.IllegalStateException: boom
 	at com.crackedgames.craftics.api.registry.CustomActionRegistryTest.lambda$resolve_aThrowingHandlerDoesNotPoisonLaterCalls$2(CustomActionRegistryTest.java:62) ~[test/:?]
 	at com.crackedgames.craftics.api.registry.CustomActionRegistry.resolve(CustomActionRegistry.java:60) ~[main/:?]
@@ -175,32 +175,119 @@ java.lang.IllegalStateException: boom
 	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:72) [gradle-worker-main-9.4.1.jar:9.4.1]
 	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69) [gradle-worker.jar:?]
 	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74) [gradle-worker.jar:?]
-[15:40:34] [Test worker/WARN]: No handler registered for custom action 'null' - the enemy passes its turn. Is the addon that defines it still installed?
-[15:40:37] [Test worker/WARN]: Unknown dialogue action 'banana' - treating as close
-[15:40:37] [Test worker/WARN]: Unknown dialogue action '' - treating as close
-[15:40:37] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x missing 'id' - skipping
-[15:40:37] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x has no 'lines' - skipping
-[15:40:37] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x missing 'speaker' - skipping
-[15:40:37] [Test worker/WARN]: Dialogue craftics:dialogue/x has a choice missing label/action - skipping that choice
-[15:40:38] [Test worker/WARN]: Campaign branch in region 'world' has overlapping/interleaving segments (segmentA at [1,2], segmentB at [2,3]); falling back to linear order
-[15:40:38] [Test worker/WARN]: Campaign branch in region 'surface' has segment(s) that are not a contiguous sublist (segmentA=[wildwood] found=true, segmentB=[NOTHERE] found=false); falling back to linear order
-[15:40:38] [Test worker/WARN]: Campaign branch in region 'world' has segment(s) that are not a contiguous sublist (segmentA=[w1, w2, w3] found=true, segmentB=[c1, MISSING] found=false); falling back to linear order
-[15:40:38] [Test worker/WARN]: Campaign branch in region 'world' has segment(s) that are not a contiguous sublist (segmentA=[w1, w3] found=false, segmentB=[c1, c2] found=true); falling back to linear order
-[15:40:38] [Test worker/WARN]: Campaign branch references unknown region 'noregion'; falling back to linear order
-[15:40:38] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' has an empty segment - ignoring branch (linear)
-[15:40:38] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' must be either two strings or two arrays of strings - ignoring branch (linear)
-[15:40:38] [Test worker/WARN]: Campaign JSON craftics:campaigns/x has empty 'regions' - skipping
-[15:40:38] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing non-blank 'id' - skipping
-[15:40:38] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing non-blank 'id' - skipping
-[15:40:38] [Test worker/WARN]: Campaign craftics:campaigns/x branch missing 'swap' array - ignoring branch (linear)
-[15:40:38] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing non-blank 'id' - skipping
-[15:40:38] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' has malformed 'map_color' "ZZZ" - defaulting to white
-[15:40:38] [Test worker/WARN]: Campaign craftics:campaigns/x branch missing non-blank 'region' - ignoring branch (linear)
-[15:40:38] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' must have exactly 2 entries (had 1) - ignoring branch (linear)
-[15:40:38] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' missing 'nodes' array - skipping campaign
-[15:40:38] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' has a node missing non-blank 'biome' - skipping campaign
-[15:40:38] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' segment has a non-string entry - ignoring branch (linear)
-[15:40:38] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing 'regions' array - skipping
-[15:40:38] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' has empty 'nodes' - skipping campaign
-[15:40:38] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing 'regions' array - skipping
-[15:40:38] [Test worker/WARN]: Campaign branch in region 'surface' has segment(s) that are not a contiguous sublist (segmentA=[wildwood] found=true, segmentB=[marsh] found=false); falling back to linear order
+[10:11:46] [Test worker/WARN]: No handler registered for custom action 'null' - the enemy passes its turn. Is the addon that defines it still installed?
+[10:11:46] [Test worker/ERROR]: Turn order provider threw; the round keeps its own order
+java.lang.IllegalStateException: boom
+	at com.crackedgames.craftics.api.registry.TurnOrderRegistryTest.lambda$aThrowingProviderLosesTheRoundRatherThanBreakingIt$6(TurnOrderRegistryTest.java:122) ~[test/:?]
+	at com.crackedgames.craftics.api.registry.TurnOrderRegistry.order(TurnOrderRegistry.java:56) ~[main/:?]
+	at com.crackedgames.craftics.api.registry.TurnOrderRegistryTest.aThrowingProviderLosesTheRoundRatherThanBreakingIt(TurnOrderRegistryTest.java:125) ~[test/:?]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[?:?]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[?:?]
+	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:728) ~[junit-platform-commons-1.10.2.jar:1.10.2]
+	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$7(TestMethodTestDescriptor.java:218) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:214) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:139) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:69) ~[junit-jupiter-engine-5.10.2.jar:5.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:151) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596) ~[?:?]
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596) ~[?:?]
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54) ~[junit-platform-engine-1.10.2.jar:1.10.2]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:198) ~[junit-platform-launcher-1.10.2.jar:1.10.2]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:169) ~[junit-platform-launcher-1.10.2.jar:1.10.2]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:93) ~[junit-platform-launcher-1.10.2.jar:1.10.2]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:58) ~[junit-platform-launcher-1.10.2.jar:1.10.2]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:141) [junit-platform-launcher-1.10.2.jar:1.10.2]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:57) [junit-platform-launcher-1.10.2.jar:1.10.2]
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:103) [junit-platform-launcher-1.10.2.jar:1.10.2]
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:85) [junit-platform-launcher-1.10.2.jar:1.10.2]
+	at org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:47) [junit-platform-launcher-1.10.2.jar:1.10.2]
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestDefinitionProcessor$CollectThenExecuteTestDefinitionConsumer.processAllTestDefinitions(JUnitPlatformTestDefinitionProcessor.java:179) [gradle-testing-jvm-infrastructure-9.4.1.jar:9.4.1]
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestDefinitionProcessor$CollectThenExecuteTestDefinitionConsumer.access$000(JUnitPlatformTestDefinitionProcessor.java:122) [gradle-testing-jvm-infrastructure-9.4.1.jar:9.4.1]
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestDefinitionProcessor.stop(JUnitPlatformTestDefinitionProcessor.java:116) [gradle-testing-jvm-infrastructure-9.4.1.jar:9.4.1]
+	at org.gradle.api.internal.tasks.testing.SuiteTestDefinitionProcessor.stop(SuiteTestDefinitionProcessor.java:63) [gradle-testing-base-infrastructure-9.4.1.jar:9.4.1]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[?:?]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[?:?]
+	at org.gradle.internal.dispatch.MethodInvocation.invokeOn(MethodInvocation.java:77) [gradle-messaging-9.4.1.jar:9.4.1]
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:28) [gradle-messaging-9.4.1.jar:9.4.1]
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:19) [gradle-messaging-9.4.1.jar:9.4.1]
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33) [gradle-messaging-9.4.1.jar:9.4.1]
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:88) [gradle-messaging-9.4.1.jar:9.4.1]
+	at jdk.proxy1/jdk.proxy1.$Proxy4.stop(Unknown Source) [?:?]
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$3.run(TestWorker.java:195) [gradle-testing-base-infrastructure-9.4.1.jar:9.4.1]
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:126) [gradle-testing-base-infrastructure-9.4.1.jar:9.4.1]
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:103) [gradle-testing-base-infrastructure-9.4.1.jar:9.4.1]
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:63) [gradle-testing-base-infrastructure-9.4.1.jar:9.4.1]
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56) [gradle-worker-main-9.4.1.jar:9.4.1]
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:122) [gradle-worker-main-9.4.1.jar:9.4.1]
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:72) [gradle-worker-main-9.4.1.jar:9.4.1]
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69) [gradle-worker.jar:?]
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74) [gradle-worker.jar:?]
+[10:11:48] [Test worker/WARN]: Unknown dialogue action 'banana' - treating as close
+[10:11:48] [Test worker/WARN]: Unknown dialogue action '' - treating as close
+[10:11:48] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x missing 'id' - skipping
+[10:11:48] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x has no 'lines' - skipping
+[10:11:48] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x missing 'speaker' - skipping
+[10:11:48] [Test worker/WARN]: Dialogue craftics:dialogue/x has a choice missing label/action - skipping that choice
+[10:11:48] [Test worker/WARN]: Campaign branch in region 'world' has overlapping/interleaving segments (segmentA at [1,2], segmentB at [2,3]); falling back to linear order
+[10:11:48] [Test worker/WARN]: Campaign branch in region 'surface' has segment(s) that are not a contiguous sublist (segmentA=[wildwood] found=true, segmentB=[NOTHERE] found=false); falling back to linear order
+[10:11:48] [Test worker/WARN]: Campaign branch in region 'world' has segment(s) that are not a contiguous sublist (segmentA=[w1, w2, w3] found=true, segmentB=[c1, MISSING] found=false); falling back to linear order
+[10:11:48] [Test worker/WARN]: Campaign branch in region 'world' has segment(s) that are not a contiguous sublist (segmentA=[w1, w3] found=false, segmentB=[c1, c2] found=true); falling back to linear order
+[10:11:48] [Test worker/WARN]: Campaign branch references unknown region 'noregion'; falling back to linear order
+[10:11:48] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' has an empty segment - ignoring branch (linear)
+[10:11:48] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' must be either two strings or two arrays of strings - ignoring branch (linear)
+[10:11:48] [Test worker/WARN]: Campaign JSON craftics:campaigns/x has empty 'regions' - skipping
+[10:11:48] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing non-blank 'id' - skipping
+[10:11:48] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing non-blank 'id' - skipping
+[10:11:48] [Test worker/WARN]: Campaign craftics:campaigns/x branch missing 'swap' array - ignoring branch (linear)
+[10:11:48] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing non-blank 'id' - skipping
+[10:11:48] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' has malformed 'map_color' "ZZZ" - defaulting to white
+[10:11:48] [Test worker/WARN]: Campaign craftics:campaigns/x branch missing non-blank 'region' - ignoring branch (linear)
+[10:11:48] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' must have exactly 2 entries (had 1) - ignoring branch (linear)
+[10:11:48] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' missing 'nodes' array - skipping campaign
+[10:11:48] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' has a node missing non-blank 'biome' - skipping campaign
+[10:11:48] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' segment has a non-string entry - ignoring branch (linear)
+[10:11:48] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing 'regions' array - skipping
+[10:11:48] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' has empty 'nodes' - skipping campaign
+[10:11:48] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing 'regions' array - skipping
+[10:11:48] [Test worker/WARN]: Campaign branch in region 'surface' has segment(s) that are not a contiguous sublist (segmentA=[wildwood] found=true, segmentB=[marsh] found=false); falling back to linear order

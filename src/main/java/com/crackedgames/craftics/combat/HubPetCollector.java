@@ -269,8 +269,17 @@ public class HubPetCollector {
         try {
             var server = world.getServer();
             CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
-            if (!data.hasPersonalWorld(owner)) return null;
-            return com.crackedgames.craftics.world.IslandDimensions.getOrCreate(server, owner);
+            // Resolve through the SAME rule the hub coordinates use. getHubTeleportPos runs the
+            // player through getEffectiveWorldOwner, which maps a party member to their leader,
+            // because a party plays on the leader's island and returns there together. Looking
+            // the WORLD up by the raw uuid meant the two disagreed for anyone who was not the
+            // leader: an animal tamed by a guest was spawned at the leader's hub coordinates
+            // inside the guest's OWN island dimension - a real position in an empty world, which
+            // is why nobody ever found it. It only worked for guests who had no island of their
+            // own, because then this returned null and the caller fell back to the right world.
+            UUID effective = data.getEffectiveWorldOwner(owner);
+            if (!data.hasPersonalWorld(effective)) return null;
+            return com.crackedgames.craftics.world.IslandDimensions.getOrCreate(server, effective);
         } catch (Exception e) {
             CrafticsMod.LOGGER.warn("Could not resolve island for pet restore: {}", e.toString());
             return null;

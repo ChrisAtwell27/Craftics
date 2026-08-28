@@ -577,16 +577,13 @@ public final class DeeperAndDarkerCompat {
             }
 
             // Shove the primary target back along the boom.
-            GridPos push = target.getGridPos();
-            int pushed = 0;
-            for (int step = 0; step < SONIC_BOOM_KNOCKBACK; step++) {
-                GridPos next = new GridPos(push.x() + dx, push.z() + dz);
-                if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
-                var tile = arena.getTile(next);
-                if (tile == null || !tile.isWalkable()) break;
-                push = next;
-                pushed++;
-            }
+            com.crackedgames.craftics.combat.GridPush.Result boom = com.crackedgames.craftics.combat.GridPush.resolve(
+                com.crackedgames.craftics.combat.CombatManager.pushGridFor(arena, target),
+                target.getGridPos().x(), target.getGridPos().z(),
+                target.getSizeX(), target.getSizeZ(),
+                dx, dz, SONIC_BOOM_KNOCKBACK, target.isHazardImmune());
+            GridPos push = new GridPos(boom.x(), boom.z());
+            int pushed = boom.moved();
             if (pushed > 0) {
                 arena.moveEntity(target, push);
                 if (target.getMobEntity() != null) {

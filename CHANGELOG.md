@@ -43,6 +43,43 @@ The mace and the shovel throw a few blocks of the floor into the air when they h
 
 Arenas already polluted by this keep their leftovers - once a block is down it is indistinguishable from real floor. **`/craftics rebuild_arenas`** regenerates them and clears it out.
 
+One Rule For Being Shoved Across The Grid
+
+- Every knockback, pull, sweep, wind burst and sonic boom in the game now walks the grid by the same rule. There were seven hand-written copies of it - in the combat manager, the weapon abilities, the vanilla weapon table and the Deeper and Darker compat - and they had quietly stopped agreeing with each other
+- That disagreement is what the arena-border exploit was. One copy killed anything crossing the edge and the rest treated it as a wall, and the only way to discover that was to be exploited by it
+- The rule now lives in one place and is unit-tested: the edge stops a push, a hazard is stepped into, a cactus scratches without stopping you, a boss stops at a hazard's rim, and the full footprint of a big mob is checked rather than just its corner. Each of those had at least one copy that got it wrong
+- The callers keep what genuinely differs - Crater's slam damage, a cactus scratch, whether a particular hazard is fatal - because those are real differences. How far something travels never was one
+
+The Arena Border Is A Wall, Not A Kill Zone
+
+- Fixed knocking an enemy over the edge of the battle area killing it outright, whatever its health. A Punch bow made that free and repeatable: shoot from range, shove the mob past the line, and it was gone - past every resistance, from somewhere it could not answer
+- Ring-outs still exist and are still deliberate. A pit INSIDE the arena is a placed hazard and still kills; the difference is that a designed pit is on the board and the boundary is where the board stops
+- Only one of the four knockback paths ever did this. The others already treated out-of-bounds as a wall and killed only on a real void tile, so this was the odd one out rather than the rule
+
+Nobody Spawns Marooned
+
+- Fixed a party member starting a fight stranded on an isolated patch of ground with no legal move for the whole battle, which the Dark Forest's terrain made easy to hit
+- Spawn placement checked that a tile had a floor under it, which keeps players out of pits, but never checked they could walk anywhere from it. A lump of terrain across a gap passes the floor test perfectly
+- Party members are now placed only on tiles reachable from the leader. The enemy placement has always worked this way; the party never did
+
+Campaign Progress Belongs To The Island
+
+- Fixed helping on someone else's island permanently unlocking biomes on your own. Beating a boss used to write every participant's personal record, and SET it rather than stepping it: a player sitting at biome 2 who joined a party fighting at the leader's frontier of 6 went home with 7 unlocked, having never met bosses 3, 4 or 5. Somebody added to an in-progress island inherited its whole campaign for one fight
+- Only the island's own record advances now. Nothing is lost by that, because everything you can see and do was already island-scoped: while you are on someone's island you read THEIR progress and can play every biome it has opened, which is the credit for helping. Go home and you resolve to your own record, exactly where you left it
+- This also settles a stranger side of the same line: because the whole unlock was gated on the leader being at their own frontier, helping a newcomer through a boss the leader had already beaten granted absolutely nobody anything. A newcomer on an in-progress island now simply has that island's progress available from the moment they arrive
+
+Guests' Tamed Animals Really Do Come Home Now
+
+- Fixed a tamed animal vanishing when the person who tamed it was not the island owner. The previous fix routed each animal to its owner's island, but a party plays on the LEADER's island and returns there together - and the two halves of that lookup disagreed. The hub COORDINATES resolved a party member to their leader; the island DIMENSION did not. A guest's animal was spawned at the leader's hub coordinates inside the guest's own island: a real position, in a world nobody was standing in
+- It only ever worked for guests who had no island of their own, because then the dimension lookup failed and fell back to the right world by accident
+- Both halves resolve the same way now, so the position and the world cannot disagree
+
+Splash Potions Reach Your Party
+
+- Fixed a thrown splash potion affecting only the person who threw it. It reached enemies, allies and the thrower and stopped there, so a Regeneration potion thrown into your own party healed one player - which is exactly what "only the one giving the effect heals" looks like from the inside
+- Every party member standing in the splash is now caught by it, buff or debuff, the same as the thrower
+
+
 0.4.4
 
 Modpack Additions
