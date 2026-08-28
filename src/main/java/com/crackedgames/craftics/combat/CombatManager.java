@@ -285,6 +285,20 @@ public class CombatManager {
      *  not a pit with a bottom but open void. */
     public static GridPos findNearestSafeSpawn(ServerWorld world, GridArena arena,
                                                GridPos desired, java.util.Set<GridPos> reserved) {
+        return findNearestSafeSpawn(world, arena, desired, reserved, null);
+    }
+
+    /**
+     * @param connected tiles the party can actually walk between, or null to skip the check.
+     *                  A tile can be walkable AND floored and still be an island - a patch of
+     *                  ground the rest of the arena cannot be reached from, which in a forest
+     *                  arena is just a lump of terrain across a gap. A member dropped there has
+     *                  a solid block under their feet and no legal move for the whole fight.
+     *                  Floor was the only thing being checked, which is why they got stranded.
+     */
+    public static GridPos findNearestSafeSpawn(ServerWorld world, GridArena arena,
+                                               GridPos desired, java.util.Set<GridPos> reserved,
+                                               java.util.Set<GridPos> connected) {
         GridPos bestFloored = null; int bestFlDist = Integer.MAX_VALUE;
         GridPos bestWalkable = null; int bestWkDist = Integer.MAX_VALUE;
         // Same tiles, but a mob is standing on them. Kept only as a last resort, for the
@@ -297,6 +311,7 @@ public class CombatManager {
                 if (reserved.contains(c)) continue;
                 GridTile tile = arena.getTile(c);
                 if (tile == null || !tile.isWalkable()) continue;
+                if (connected != null && !connected.contains(c)) continue;
                 int dist = c.manhattanDistance(desired);
                 boolean floored = hasSolidFloorBelow(world, arena.gridToBlockPos(c));
                 // Enemies are already on the grid by the time the party is positioned, so
@@ -327,6 +342,11 @@ public class CombatManager {
             "findNearestSafeSpawn: no floored tile anywhere in the {}x{} arena at {} - refusing"
                 + " to place a player over a pit; caller falls back to the leader's tile",
             arena.getWidth(), arena.getHeight(), arena.getOrigin());
+        // One retry without the connectivity filter before giving up: a tiny or oddly cut arena
+        // where nothing reachable is floored should still place the player somewhere solid
+        // rather than fall through to the leader's tile. Standing on a reachable pit is worse
+        // than standing on an isolated floor.
+        if (connected != null) return findNearestSafeSpawn(world, arena, desired, reserved, null);
         return null;
     }
 
@@ -1676,6 +1696,14 @@ public class CombatManager {
         if (safeLeaderGrid == null) safeLeaderGrid = startGrid;
         newArena.setPlayerGridPos(safeLeaderGrid);
 
+        // Everywhere the party can walk from where the leader is standing. Members are placed
+        // only on these, so nobody starts the fight marooned on a patch of ground with no legal
+        // move off it. The enemy placement below has always done this; the party never did.
+        java.util.Set<GridPos> partyReachable = com.crackedgames.craftics.combat.Pathfinding
+            .getReachableTiles(newArena, safeLeaderGrid,
+                newArena.getWidth() * newArena.getHeight(), playerHasBoat());
+        partyReachable.add(safeLeaderGrid);
+
         EnterCombatPayload enterPayload = makeEnterPayload(newArena);
 
         // Revive dead party members with 2 hearts for new level
@@ -1697,7 +1725,8 @@ public class CombatManager {
         for (int i = 0; i < orderedMembers.size(); i++) {
             ServerPlayerEntity member = orderedMembers.get(i);
             GridPos desired = desiredSpawns.get(i);
-            GridPos chosen = findNearestSafeSpawn(spawnWorld, newArena, desired, reservedSpawns);
+            GridPos chosen = findNearestSafeSpawn(
+                spawnWorld, newArena, desired, reservedSpawns, partyReachable);
             if (chosen == null) chosen = safeLeaderGrid;
             reservedSpawns.add(chosen);
 
@@ -3006,6 +3035,13 @@ public class CombatManager {
     private static final int LEAD_COMMAND_AP = 1;
     /** The ally currently glowing because the player picked it with a Lead. */
     private CombatEntity leadSelectedAlly = null;
+    /**
+     * True when that selection came from {@code CrafticsAPI.selectAlly} rather than from a
+     * Lead in hand. It stands in for the item everywhere the item is checked, so an addon
+     * whose Move button is its own can drive the selection, the highlights and the command
+     * without making the player carry a Lead to use its own UI.
+     */
+    private boolean allySelectionByAddon = false;
 
     /** Lerped walk-to-target queued by a Lead move-command. */
     private CombatEntity leadWalkAlly = null;
@@ -4226,6 +4262,11 @@ public class CombatManager {
         // Bed anchors are scoped to a single arena. endCombat clears this too; doing it
         // here as well means an abnormal exit can't leak a tile into the next room.
         this.bedRespawnAnchor = null;
+        // Same for a standing ally selection: the creature it pointed at belongs to the fight
+        // that just ended, and an addon selection carried into this one would let a command
+        // through with no Lead and nothing selected on screen.
+        this.leadSelectedAlly = null;
+        this.allySelectionByAddon = false;
         // Begin tallying loot for this fight so the victory screen can show
         // everything collected. Records all current participants.
         {
@@ -5617,7 +5658,29 @@ public class CombatManager {
      * the data tracker sync). Pass {@code -1} to clear.
      */
     public void handleLeadSelect(int allyEntityId) {
+        applyAllySelection(allyEntityId, false);
+    }
+
+    /**
+     * Select an ally on an addon's behalf, so the whole gesture - the glow, the ally-aware
+     * highlights, the command click - works with no Lead in hand. Pass {@code -1} to clear.
+     *
+     * @return true if the selection took (or was a clear)
+     */
+    public boolean selectAllyForAddon(int allyEntityId) {
+        applyAllySelection(allyEntityId, true);
+        return allyEntityId < 0 || leadSelectedAlly != null;
+    }
+
+    /** The ally currently picked out for commands, whether by a Lead or by an addon. */
+    public CombatEntity getSelectedAlly() { return leadSelectedAlly; }
+
+    /** Whether the standing selection came from an addon rather than from a Lead. */
+    public boolean isAllySelectionFromAddon() { return allySelectionByAddon; }
+
+    private void applyAllySelection(int allyEntityId, boolean byAddon) {
         if (!active) return;
+        boolean wasFromAddon = allySelectionByAddon;
         // Clear the previous glow regardless.
         if (leadSelectedAlly != null && leadSelectedAlly.getMobEntity() != null) {
             leadSelectedAlly.getMobEntity().setGlowing(false);
@@ -5632,6 +5695,16 @@ public class CombatManager {
                 }
             }
         }
+        allySelectionByAddon = byAddon && leadSelectedAlly != null;
+        // Nothing on the client says an addon selection exists - there is no item in hand
+        // announcing it - and the click handler has to know it is aiming a command rather
+        // than swinging a weapon. Tell it when the addon takes the gesture, and again when
+        // it hands it back.
+        if ((byAddon || wasFromAddon) && player != null && player.networkHandler != null) {
+            ServerPlayNetworking.send(player,
+                new com.crackedgames.craftics.network.AllySelectionPayload(
+                    allySelectionByAddon ? leadSelectedAlly.getEntityId() : -1));
+        }
         // Selecting/clearing an ally swaps the highlights between "where the PLAYER can
         // act" and "where this ALLY can act", so they have to be rebuilt right now.
         refreshHighlights();
@@ -5645,7 +5718,10 @@ public class CombatManager {
      */
     private CombatEntity leadCommandTarget() {
         if (leadSelectedAlly == null || player == null || arena == null) return null;
-        if (player.getMainHandStack().getItem() != net.minecraft.item.Items.LEAD) return null;
+        // An addon selection is its own authority: it was made through the API rather than by
+        // clicking with an item, so there is no Lead to still be holding.
+        if (!allySelectionByAddon
+                && player.getMainHandStack().getItem() != net.minecraft.item.Items.LEAD) return null;
         if (!leadSelectedAlly.isAlive() || !leadSelectedAlly.isAlly()) return null;
         java.util.UUID owner = leadSelectedAlly.getOwnerUuid();
         if (owner != null && !owner.equals(player.getUuid())) return null;
@@ -5896,18 +5972,14 @@ public class CombatManager {
         if (!active) return;
         if (phase != CombatPhase.PLAYER_TURN) return;
         if (player == null) return;
-        // Must be holding a Lead.
-        if (player.getMainHandStack().getItem() != net.minecraft.item.Items.LEAD) {
+        // Must be holding a Lead - unless an addon made the selection, in which case the
+        // selection IS the authority. Requiring the item as well would put it back in front of
+        // a mod whose command UI is its own.
+        boolean addonSelected = allySelectionByAddon && leadSelectedAlly != null
+            && leadSelectedAlly.getEntityId() == allyEntityId;
+        if (!addonSelected
+                && player.getMainHandStack().getItem() != net.minecraft.item.Items.LEAD) {
             sendMessage("§cYou need to hold a Lead to command allies.");
-            return;
-        }
-        if (apRemaining < LEAD_COMMAND_AP) {
-            sendMessage("§cNeed " + LEAD_COMMAND_AP + " AP to command an ally with the Lead!");
-            return;
-        }
-        // One walk at a time.
-        if (leadWalkAlly != null) {
-            sendMessage("§cAn ally is already moving.");
             return;
         }
 
@@ -5924,62 +5996,55 @@ public class CombatManager {
             return;
         }
 
-        GridPos allyPos = ally.getGridPos();
         GridPos targetTile = new GridPos(targetX, targetZ);
-
+        CombatEntity clicked = null;
         if (targetEntityId >= 0) {
-            CombatEntity victim = null;
             for (CombatEntity e : enemies) {
-                if (e.getEntityId() == targetEntityId) { victim = e; break; }
+                if (e.getEntityId() == targetEntityId) { clicked = e; break; }
             }
-            if (victim == null || !victim.isAlive() || victim.isAlly()) {
-                sendMessage("§cInvalid lead target.");
-                return;
-            }
-            if (victim.minDistanceTo(allyPos) > 1) {
-                sendMessage("§cThat enemy is too far from " + ally.getDisplayName() + " (need adjacent).");
-                return;
-            }
-            int rawDamage = ally.getAttackPower() + computeAllyPetBonus(ally);
-            if (attackMisses(ally, victim)) {
-                // The AP is still spent. The order was given and the ally swung at it;
-                // refunding on a miss would make commanding a blinded pet strictly free,
-                // and a free retry until it connects is not a miss chance at all.
-                apRemaining -= LEAD_COMMAND_AP;
-                handleLeadSelect(-1);
-                sendSync();
-                refreshHighlights();
-                return;
-            }
-            int dealt = victim.takeDamage(rawDamage);
-            apRemaining -= LEAD_COMMAND_AP;
-            sendMessage("§a" + ally.getDisplayName() + " strikes " + victim.getDisplayName()
-                + " for " + dealt + " damage! §7(-" + LEAD_COMMAND_AP + " AP)");
-            ServerWorld world = (ServerWorld) player.getEntityWorld();
-            if (victim.getMobEntity() != null) {
-                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
-                    victim.getMobEntity().getX(), victim.getMobEntity().getY() + 0.8,
-                    victim.getMobEntity().getZ(), 8, 0.3, 0.4, 0.3, 0.05);
-            }
-            checkAndHandleDeath(victim);
-            // Clear the glow now that the ally has acted.
-            handleLeadSelect(-1);
+        }
+
+        // An addon gets first refusal on the order itself, before the AP check and before
+        // either built-in branch. A creature whose turn is a chosen move is not walking one
+        // tile or swinging at whatever stands beside it, and this click - on a tile, or on the
+        // enemy it means to hit - is the one that names the target. Nothing is spent for a
+        // claimed command.
+        if (arena != null && arena.isInBounds(targetTile)
+                && com.crackedgames.craftics.api.registry.AllyCommandRegistry.handle(
+                    player, ally, targetTile, clicked)) {
+            // The selection is left exactly as it was: an addon may be issuing several orders
+            // from one pick, and clearing it here would deselect the creature under its own UI.
             sendSync();
             refreshHighlights();
             return;
         }
 
+        if (apRemaining < LEAD_COMMAND_AP) {
+            sendMessage("§cNeed " + LEAD_COMMAND_AP + " AP to command an ally with the Lead!");
+            return;
+        }
+        // One walk at a time.
+        if (leadWalkAlly != null) {
+            sendMessage("§cAn ally is already moving.");
+            return;
+        }
+
+        GridPos allyPos = ally.getGridPos();
+
+        if (targetEntityId >= 0) {
+            if (performAllyStrike(ally, clicked, true)) {
+                // Clear the glow now that the ally has acted.
+                handleLeadSelect(-1);
+                sendSync();
+                refreshHighlights();
+            }
+            return;
+        }
+
         // Move mode -walk the ally along a pathfound route, capped at its
         // move speed. Reject only true instakill hazards; water and divots
-        // are fair game.
-        if (!arena.isInBounds(targetTile)) {
-            sendMessage("§cTarget tile is out of bounds.");
-            return;
-        }
-        if (targetTile.equals(allyPos)) {
-            sendMessage("§c" + ally.getDisplayName() + " is already there.");
-            return;
-        }
+        // are fair game. performAllyWalk does that validation; the only thing that has to
+        // happen first is Tag Team, which is a swap rather than a walk.
 
         // Tag Team enchant (shovel): commanding a pet onto YOUR OWN tile swaps you with it,
         // as a free action, once per turn. The occupied-tile rejection below would otherwise
@@ -6016,15 +6081,91 @@ public class CombatManager {
             return;
         }
 
+        if (performAllyWalk(ally, targetTile, true)) {
+            // Clear the glow once the walk starts.
+            handleLeadSelect(-1);
+            sendSync();
+        }
+    }
+
+    /**
+     * One commanded strike, shared by the Lead's attack-command and
+     * {@code CrafticsAPI.allyStrike}. Returns false, with the refusal already sent, when the
+     * order cannot be given at all; a miss is an order obeyed, so that returns true.
+     *
+     * <p>{@code spendAp} is false for an API command: an addon that charges its own resource
+     * would otherwise pay for one move twice.
+     */
+    private boolean performAllyStrike(CombatEntity ally, CombatEntity victim, boolean spendAp) {
+        if (victim == null || !victim.isAlive() || victim.isAlly()) {
+            sendMessage("§cInvalid lead target.");
+            return false;
+        }
+        GridPos allyPos = ally.getGridPos();
+        if (victim.minDistanceTo(allyPos) > 1) {
+            sendMessage("§cThat enemy is too far from " + ally.getDisplayName() + " (need adjacent).");
+            return false;
+        }
+        int cost = spendAp ? LEAD_COMMAND_AP : 0;
+        if (apRemaining < cost) {
+            sendMessage("§cNeed " + LEAD_COMMAND_AP + " AP to command an ally with the Lead!");
+            return false;
+        }
+        int rawDamage = ally.getAttackPower() + computeAllyPetBonus(ally);
+        if (attackMisses(ally, victim)) {
+            // The AP is still spent. The order was given and the ally swung at it;
+            // refunding on a miss would make commanding a blinded pet strictly free,
+            // and a free retry until it connects is not a miss chance at all.
+            apRemaining -= cost;
+            return true;
+        }
+        int dealt = victim.takeDamage(rawDamage);
+        apRemaining -= cost;
+        sendMessage("§a" + ally.getDisplayName() + " strikes " + victim.getDisplayName()
+            + " for " + dealt + " damage!" + (cost > 0 ? " §7(-" + cost + " AP)" : ""));
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        if (victim.getMobEntity() != null) {
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                victim.getMobEntity().getX(), victim.getMobEntity().getY() + 0.8,
+                victim.getMobEntity().getZ(), 8, 0.3, 0.4, 0.3, 0.05);
+        }
+        checkAndHandleDeath(victim);
+        return true;
+    }
+
+    /**
+     * One commanded walk, shared by the Lead's move-command and {@code CrafticsAPI.moveAlly}.
+     * The route is pathfound and capped at the ally's own move speed, so a far tile sends it
+     * as far as that budget allows rather than teleporting it.
+     *
+     * <p>Returns false with the refusal already sent. An API command spends no AP and says
+     * nothing in chat - the addon that issued it speaks for itself.
+     */
+    private boolean performAllyWalk(CombatEntity ally, GridPos targetTile, boolean spendAp) {
+        if (arena == null) return false;
+        GridPos allyPos = ally.getGridPos();
+        // One walk at a time: two lerps on one ally would fight over its position.
+        if (leadWalkAlly != null) {
+            sendMessage("§cAn ally is already moving.");
+            return false;
+        }
+        if (!arena.isInBounds(targetTile)) {
+            sendMessage("§cTarget tile is out of bounds.");
+            return false;
+        }
+        if (targetTile.equals(allyPos)) {
+            sendMessage("§c" + ally.getDisplayName() + " is already there.");
+            return false;
+        }
         if (arena.isOccupied(targetTile)) {
             sendMessage("§cTarget tile is occupied.");
-            return;
+            return false;
         }
         GridTile gridTile = arena.getTile(targetTile);
         if (gridTile == null || !gridTile.isWalkableEx(false, false,
                 CombatEntity.isAquatic(ally.getEntityTypeId()))) {
             sendMessage("§cTarget tile isn't walkable.");
-            return;
+            return false;
         }
         com.crackedgames.craftics.core.TileType tt = gridTile.getType();
         boolean instakill = tt == com.crackedgames.craftics.core.TileType.LAVA
@@ -6034,7 +6175,7 @@ public class CombatManager {
                 && !CombatEntity.isAquatic(ally.getEntityTypeId()));
         if (instakill && !ally.isHazardImmune()) {
             sendMessage("§cThat tile would kill " + ally.getDisplayName() + ".");
-            return;
+            return false;
         }
 
         int allySpeed = Math.max(1, ally.getMoveSpeed());
@@ -6043,16 +6184,70 @@ public class CombatManager {
         if (path == null || path.isEmpty()) {
             sendMessage("§c" + ally.getDisplayName() + " can't reach that tile (max "
                 + allySpeed + " tile" + (allySpeed == 1 ? "" : "s") + " per command).");
-            return;
+            return false;
+        }
+        int cost = spendAp ? LEAD_COMMAND_AP : 0;
+        if (apRemaining < cost) {
+            sendMessage("§cNeed " + LEAD_COMMAND_AP + " AP to command an ally with the Lead!");
+            return false;
         }
 
-        apRemaining -= LEAD_COMMAND_AP;
-        sendMessage("§a" + ally.getDisplayName() + " moves! §7(-" + LEAD_COMMAND_AP + " AP)");
+        apRemaining -= cost;
+        if (cost > 0) {
+            sendMessage("§a" + ally.getDisplayName() + " moves! §7(-" + cost + " AP)");
+        }
         startLeadWalk(ally, path);
-        // Clear the glow once the walk starts.
-        handleLeadSelect(-1);
-        sendSync();
+        return true;
     }
+
+    /**
+     * Walk an ally to a tile on an addon's behalf: Craftics' own pathfound, lerped walk,
+     * capped at the ally's move speed, with no Lead and no AP spent.
+     *
+     * @return true if the walk started
+     */
+    public boolean addonMoveAlly(CombatEntity ally, GridPos targetTile) {
+        if (!active || phase != CombatPhase.PLAYER_TURN || player == null) return false;
+        if (ally == null || !ally.isAlive() || !ally.isAlly()) return false;
+        if (ally.getOwnerUuid() != null && !ally.getOwnerUuid().equals(player.getUuid())) return false;
+        if (!performAllyWalk(ally, targetTile, false)) return false;
+        sendSync();
+        refreshHighlights();
+        return true;
+    }
+
+    /**
+     * Have an ally strike an adjacent enemy on an addon's behalf, through the same damage,
+     * resistance, typing and accuracy handling its own turn would use. No Lead, no AP.
+     *
+     * @return true if the order resolved, hit or miss
+     */
+    public boolean addonAllyStrike(CombatEntity ally, CombatEntity victim) {
+        if (!active || phase != CombatPhase.PLAYER_TURN || player == null) return false;
+        if (ally == null || !ally.isAlive() || !ally.isAlly()) return false;
+        if (ally.getOwnerUuid() != null && !ally.getOwnerUuid().equals(player.getUuid())) return false;
+        if (!performAllyStrike(ally, victim, false)) return false;
+        sendSync();
+        refreshHighlights();
+        return true;
+    }
+
+    /**
+     * Flash a set of tiles on every client in the fight. Unlike the highlight overlays this
+     * is pushed the moment it is called, in any phase, so an addon can mark what an enemy is
+     * about to do while the enemies are the ones acting.
+     */
+    public void addonFlashTiles(java.util.Collection<GridPos> tiles, int color, int durationTicks) {
+        if (!active || tiles == null || tiles.isEmpty()) return;
+        java.util.List<Integer> packed = new java.util.ArrayList<>(tiles.size() * 2);
+        for (GridPos t : tiles) { packed.add(t.x()); packed.add(t.z()); }
+        sendToAllParty(new com.crackedgames.craftics.network.TileFlashPayload(
+            packed.stream().mapToInt(Integer::intValue).toArray(),
+            color, Math.max(1, durationTicks)));
+    }
+
+    /** The player this combat is currently taking a turn for. Null outside a fight. */
+    public ServerPlayerEntity getTurnPlayer() { return player; }
 
     /** Kick off a per-tick lerped walk for a lead-commanded ally. */
     private void startLeadWalk(CombatEntity ally, java.util.List<GridPos> path) {
@@ -6499,6 +6694,8 @@ public class CombatManager {
         // Player-placed walls refund their block when mined. Cache the item
         // before clearing the wall so the lookup survives the clear call.
         com.crackedgames.craftics.core.GridArena.PlacedWall placed = arena.getPlacedWall(targetTile);
+        // Null item = debris nobody placed. It breaks like a wall and gives back nothing,
+        // because there is nothing to give back.
         net.minecraft.item.Item refundItem = placed != null ? placed.item() : null;
         // Tell the client to stop the breaking animation on this tile.
         sendBlockBreakingProgress(targetTile, -1);
@@ -6583,7 +6780,8 @@ public class CombatManager {
         if (arena.isVfxObstacle(targetTile)) {
             com.crackedgames.craftics.core.GridArena.PlacedWall placed = arena.getPlacedWall(targetTile);
             arena.clearVfxObstacle(world, targetTile);
-            if (placed != null) {
+            // A null item is debris that cost nobody anything - it breaks, it refunds nothing.
+            if (placed != null && placed.item() != null) {
                 net.minecraft.item.ItemStack refund = new net.minecraft.item.ItemStack(placed.item());
                 if (!player.getInventory().insertStack(refund)) {
                     player.dropItem(refund, false);
@@ -11219,6 +11417,38 @@ public class CombatManager {
     }
 
     /** Apply a combat effect to a specific player's effect set by UUID (party-wide buffs). */
+    /**
+     * Every OTHER party player standing within {@code radius} tiles of {@code tile}.
+     *
+     * <p>Exists because an area effect a PLAYER creates was only ever applied to enemies, allies
+     * and the caster - never to teammates. A splash potion of Regeneration thrown into the party
+     * healed the thrower and nobody else, which is precisely how "only the one giving the effect
+     * heals" looks from the inside.
+     */
+    public java.util.List<java.util.UUID> partyPlayersNear(GridPos tile, int radius) {
+        java.util.List<java.util.UUID> out = new java.util.ArrayList<>();
+        if (tile == null || partyPlayers.size() <= 1) return out;
+        for (ServerPlayerEntity member : partyPlayers) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (player != null && member.getUuid().equals(player.getUuid())) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            GridPos pos = gridPosOf(member);
+            if (pos != null && pos.manhattanDistance(tile) <= radius) out.add(member.getUuid());
+        }
+        return out;
+    }
+
+    /** Apply a combat effect to one party member by uuid. See {@link #partyPlayersNear}. */
+    public void applyEffectToPartyMember(java.util.UUID playerUuid, CombatEffects.EffectType type,
+                                         int turns, int amplifier) {
+        applyEffectToPlayerUuid(playerUuid, type, turns, amplifier);
+    }
+
+    /** Heal one party member by uuid. See {@link #partyPlayersNear}. */
+    public void healPartyMember(java.util.UUID uuid, int amount) {
+        healPlayerByUuid(uuid, amount);
+    }
+
     private void applyEffectToPlayerUuid(java.util.UUID playerUuid, CombatEffects.EffectType type, int turns, int amplifier) {
         CombatEffects fx = playerCombatEffects.computeIfAbsent(playerUuid, k -> new CombatEffects());
         applyPlayerEffectLive(fx, playerUuid, type, turns, amplifier);
@@ -12975,24 +13205,16 @@ public class CombatManager {
             int dx = Integer.signum(target.getGridPos().x() - playerPos.x());
             int dz = Integer.signum(target.getGridPos().z() - playerPos.z());
             if (dx == 0 && dz == 0) dx = 1;
-            GridPos kbPos = target.getGridPos();
-            boolean intoVoid = false;
-            for (int step = 0; step < distance; step++) {
-                GridPos next = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
-                if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
-                GridTile tile = arena.getTile(next);
-                if (tile == null) break;
-                // A pit (VOID) is a valid landing spot: push the target onto it and let it
-                // fall in, rather than treating it as an impassable wall. Hazard-immune
-                // (flying) mobs are stopped at the rim like any other non-walkable tile.
-                if (tile.getType() == TileType.VOID && !target.isHazardImmune()) {
-                    kbPos = next;
-                    intoVoid = true;
-                    break;
-                }
-                if (!tile.isWalkable()) break;
-                kbPos = next;
-            }
+            // Shared rule - see GridPush. A pit is a valid landing spot: the target is
+            // pushed ONTO it and falls in, rather than being stopped at the rim. Hazard-immune
+            // (flying) mobs stop at the edge instead, which GridPush handles from the flag.
+            com.crackedgames.craftics.combat.GridPush.Result kick = com.crackedgames.craftics.combat.GridPush.resolve(
+                pushGridFor(arena, target), target.getGridPos().x(), target.getGridPos().z(),
+                target.getSizeX(), target.getSizeZ(), dx, dz, distance, target.isHazardImmune());
+            GridPos kbPos = new GridPos(kick.x(), kick.z());
+            GridTile landed = arena.getTile(kbPos);
+            boolean intoVoid = kick.enteredHazard() && landed != null
+                && landed.getType() == TileType.VOID;
             if (!kbPos.equals(target.getGridPos())) {
                 arena.moveEntity(target, kbPos);
                 if (target.getMobEntity() != null) {
@@ -13962,6 +14184,10 @@ public class CombatManager {
         clearHighlights();
         // Keep live boss telegraphs painted while the enemies act.
         syncWarningTiles();
+        // Ask an addon what order the creatures act in, before anything starts walking
+        // the list. Craftics acts in spawn order, which is the one thing a creature's
+        // Speed can never change on its own.
+        applyTurnOrder();
         phase = CombatPhase.ENEMY_TURN;
         enemyTurnIndex = 0;
         enemyTurnDelay = 10;
@@ -15477,6 +15703,53 @@ public class CombatManager {
         if (dmg < 0) return null; // unsupported: caller falls back to a normal player turn
         return new EnemyAction.MoveAndAttackMob(
             path != null ? path : java.util.List.of(), victim.getEntityId(), Math.max(1, dmg));
+    }
+
+    /**
+     * The creatures that act this round, in the order they will act. Allies and enemies
+     * together, since they take their turns in one pass.
+     */
+    public java.util.List<CombatEntity> getTurnOrder() {
+        if (enemies == null) return java.util.List.of();
+        java.util.List<CombatEntity> acting = new java.util.ArrayList<>(enemies.size());
+        for (CombatEntity e : enemies) {
+            if (e != null && e.isAlive() && !e.isMountWall()) acting.add(e);
+        }
+        return java.util.List.copyOf(acting);
+    }
+
+    /**
+     * Let an addon order the creatures for this round.
+     *
+     * <p>The {@code enemies} list itself is reordered rather than a running order being
+     * kept beside it. Every site in the enemy phase indexes that list directly - the walk,
+     * the stall watchdog, the summon append - and a second order would be one more thing
+     * that can disagree with it, in the phase least able to survive disagreement.
+     *
+     * <p>Nothing joins or leaves the round here: the reordered list holds exactly the
+     * entities it held before. Whatever does not act - the dead, the netherite mount's wall
+     * sentinel - keeps its own relative order at the back, where the walk skips it anyway.
+     */
+    private void applyTurnOrder() {
+        if (com.crackedgames.craftics.api.registry.TurnOrderRegistry.isEmpty()) return;
+        if (enemies == null || enemies.size() < 2) return;
+        java.util.List<CombatEntity> acting = getTurnOrder();
+        if (acting.size() < 2) return;   // nothing to order
+
+        java.util.List<CombatEntity> ordered = com.crackedgames.craftics.api.registry
+            .TurnOrderRegistry.order(player, acting, turnNumber);
+        if (ordered == null) return;
+
+        java.util.Set<CombatEntity> placed = java.util.Collections.newSetFromMap(
+            new java.util.IdentityHashMap<>());
+        placed.addAll(ordered);
+        java.util.List<CombatEntity> rest = new java.util.ArrayList<>();
+        for (CombatEntity e : enemies) {
+            if (!placed.contains(e)) rest.add(e);
+        }
+        enemies.clear();
+        enemies.addAll(ordered);
+        enemies.addAll(rest);
     }
 
     private void tickEnemyDeciding() {
@@ -26202,8 +26475,16 @@ public class CombatManager {
             if (piece.isEmpty()) continue;
             if (Math.random() >= breakChance) continue;
             String name = piece.getName().getString();
+            ServerPlayerEntity wearer = player;
             player.equipStack(slot, ItemStack.EMPTY);
-            sendMessage("§c§l✦ SHATTERED! §r§7Your " + name + " breaks apart.");
+            // To the wearer, not the party. This is the one thing in the game that DELETES a
+            // worn item outright, so the person it happened to has to be the person who is told
+            // - broadcasting "your boots break apart" to everyone tells three players a thing
+            // that happened to one of them, and leaves the one it did happen to unable to tell
+            // it was about them.
+            sendMessageToActor("§c§l✦ SHATTERED! §r§7Your " + name + " breaks apart.");
+            sendMessageToAllChatExcept(wearer,
+                "§7" + wearer.getName().getString() + "'s " + name + " shatters.");
             player.getWorld().playSound(null, player.getBlockPos(),
                 net.minecraft.sound.SoundEvents.BLOCK_GLASS_BREAK,
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.8f);
@@ -26545,6 +26826,68 @@ public class CombatManager {
      * Knock an enemy back, allowing them to land on hazard tiles (void/lava/water).
      * Returns the final landing position.
      */
+    /**
+     * The arena, described to {@link GridPush} one tile at a time.
+     *
+     * <p>All the Minecraft-specific knowledge lives here - block types, occupancy, who counts as
+     * scenery - so the rule itself stays plain arithmetic over an enum and can be tested. Built
+     * per push because it closes over the entity being moved: an entity is never an obstacle to
+     * itself.
+     */
+    private GridPush.Grid pushGridFor(CombatEntity moving) {
+        return pushGridFor(arena, moving);
+    }
+
+    /**
+     * Static so every pusher can reach it - the weapon abilities in the API package push things
+     * too, and they were each carrying their own copy of these rules.
+     */
+    public static GridPush.Grid pushGridFor(GridArena arena, CombatEntity moving) {
+        return (x, z) -> {
+            GridPos fp = new GridPos(x, z);
+            if (!arena.isInBounds(fp)) return GridPush.Cell.OUT_OF_BOUNDS;
+            CombatEntity occ = arena.getOccupant(fp);
+            if (occ != null && occ != moving && !occ.isBackgroundBoss()) return GridPush.Cell.ENTITY;
+            if (fp.equals(arena.getPlayerGridPos())) return GridPush.Cell.PLAYER;
+            for (GridPos pp : arena.getAllPlayerGridPositions()) {
+                if (fp.equals(pp)) return GridPush.Cell.PLAYER;
+            }
+            var tile = arena.getTile(fp);
+            if (tile == null) return GridPush.Cell.IMPASSABLE;
+            if (tile.getType() == com.crackedgames.craftics.core.TileType.OBSTACLE) {
+                return tile.getBlockType() == Blocks.CACTUS
+                    ? GridPush.Cell.SOFT_OBSTACLE : GridPush.Cell.HARD_OBSTACLE;
+            }
+            // Sink tiles are shoved INTO and take effect, rather than being bounced off. Mirrors
+            // GridArena.getEntityY's sink set, so a mob both visually drops and wears the tile:
+            // VOID (falls), DEEP_WATER (drowns), WATER (soaked), LAVA (burns), POWDER_SNOW
+            // (freezes), LOW_GROUND (lands a level down).
+            TileType tt = tile.getType();
+            if (tt == com.crackedgames.craftics.core.TileType.VOID
+                || tt == com.crackedgames.craftics.core.TileType.DEEP_WATER
+                || tt == com.crackedgames.craftics.core.TileType.WATER
+                || tt == com.crackedgames.craftics.core.TileType.LAVA
+                || tt == com.crackedgames.craftics.core.TileType.POWDER_SNOW
+                || tt == com.crackedgames.craftics.core.TileType.LOW_GROUND) {
+                return GridPush.Cell.HAZARD;
+            }
+            return tile.isWalkable() ? GridPush.Cell.OPEN : GridPush.Cell.IMPASSABLE;
+        };
+    }
+
+    /** How a stopped push reads in chat. */
+    private static String pushStopLabel(GridPush.Stop stop) {
+        return switch (stop) {
+            case BOUNDARY -> "arena wall";
+            case ENTITY -> "another enemy";
+            case PLAYER -> "the player";
+            case OBSTACLE -> "obstacle";
+            case HAZARD_EDGE -> "hazard edge";
+            case IMPASSABLE -> "terrain";
+            default -> "wall";
+        };
+    }
+
     private GridPos knockEnemyBack(CombatEntity enemy, int dx, int dz, int tiles) {
         // Crater enchant: knockback the player causes flies 1 tile further, and slamming into
         // anything hurts and Stuns. Gated on the PLAYER_TURN phase so an enemy-driven push (the
@@ -26556,134 +26899,19 @@ public class CombatManager {
         if (crater) tiles += SwordAxeEnchantEffects.CRATER_EXTRA_TILES;
 
         GridPos startPos = enemy.getGridPos();
-        int sizeX = enemy.getSizeX();
-        int sizeZ = enemy.getSizeZ();
-        GridPos landingPos = startPos;
-        boolean hitHazard = false;
-        boolean hitCactus = false;
-        boolean hitWall = false;
-        String wallLabel = "wall";
 
-        // Iterate the push 1 tile at a time. For multi-tile entities we have
-        // to check the FULL footprint at each candidate -the old single-tile
-        // check let a 2x2 spider land on a small mob because only the
-        // top-left corner of the destination got validated, sharing the other
-        // three footprint tiles with whoever was already there.
-        for (int i = 1; i <= tiles; i++) {
-            GridPos candidate = new GridPos(startPos.x() + dx * i, startPos.z() + dz * i);
+        // How far it gets, and what stopped it: one shared rule, in GridPush. What follows -
+        // the cactus scratch, the hazard's effect, Crater's slam - is this method's own business
+        // and stays here.
+        GridPush.Result push = GridPush.resolve(
+            pushGridFor(enemy), startPos.x(), startPos.z(),
+            enemy.getSizeX(), enemy.getSizeZ(), dx, dz, tiles, enemy.isHazardImmune());
 
-            boolean candidateHazard = false;
-            boolean candidateWall = false;
-            boolean candidateCactus = false;
-            boolean candidateEdgeVoid = false;
-            for (int fx = 0; fx < sizeX && !candidateWall && !candidateEdgeVoid; fx++) {
-                for (int fz = 0; fz < sizeZ; fz++) {
-                    GridPos fp = new GridPos(candidate.x() + fx, candidate.z() + fz);
-
-                    if (!arena.isInBounds(fp)) {
-                        // Pushed off the arena edge into the surrounding void. A
-                        // non-immune mob falls to its death (there's no tile to
-                        // land on out here); a hazard-immune boss just stops at
-                        // the wall as before.
-                        if (!enemy.isHazardImmune()) {
-                            candidateEdgeVoid = true;
-                            break;
-                        }
-                        candidateWall = true;
-                        wallLabel = "arena wall";
-                        break;
-                    }
-                    CombatEntity occ = arena.getOccupant(fp);
-                    if (occ != null && occ != enemy && !occ.isBackgroundBoss()) {
-                        candidateWall = true;
-                        wallLabel = "another enemy";
-                        break;
-                    }
-                    if (fp.equals(arena.getPlayerGridPos())) {
-                        candidateWall = true;
-                        wallLabel = "the player";
-                        break;
-                    }
-                    for (GridPos pp : arena.getAllPlayerGridPositions()) {
-                        if (fp.equals(pp)) { candidateWall = true; wallLabel = "the player"; break; }
-                    }
-                    if (candidateWall) break;
-                    var tile = arena.getTile(fp);
-                    if (tile == null) { candidateWall = true; break; }
-
-                    if (tile.getType() == com.crackedgames.craftics.core.TileType.OBSTACLE) {
-                        if (tile.getBlockType() == Blocks.CACTUS) {
-                            candidateCactus = true;
-                        } else {
-                            candidateWall = true;
-                            wallLabel = "obstacle";
-                            break;
-                        }
-                        continue;
-                    }
-
-                    // Sink/hazard tiles the mob is shoved INTO (and affected by),
-                    // not stopped in front of. Matches GridArena.getEntityY's sink
-                    // set so the mob both visually drops AND takes the tile's
-                    // effect: VOID (fall to death), DEEP_WATER (drown), WATER
-                    // (soak), LAVA (burn), POWDER_SNOW (freeze), LOW_GROUND (a
-                    // sunken pit - lands one level down). A hazard-immune mob (a
-                    // boss) treats them as a wall and stops at the edge instead.
-                    TileType tt = tile.getType();
-                    if (tt == com.crackedgames.craftics.core.TileType.VOID
-                        || tt == com.crackedgames.craftics.core.TileType.DEEP_WATER
-                        || tt == com.crackedgames.craftics.core.TileType.WATER
-                        || tt == com.crackedgames.craftics.core.TileType.LAVA
-                        || tt == com.crackedgames.craftics.core.TileType.POWDER_SNOW
-                        || tt == com.crackedgames.craftics.core.TileType.LOW_GROUND) {
-                        if (enemy.isHazardImmune()) {
-                            candidateWall = true;
-                            wallLabel = "hazard edge";
-                            break;
-                        }
-                        candidateHazard = true;
-                        continue;
-                    }
-
-                    if (!tile.isWalkable()) {
-                        candidateWall = true;
-                        wallLabel = "terrain";
-                        break;
-                    }
-                }
-            }
-
-            if (candidateEdgeVoid) {
-                // Shoved clean off the arena edge. There's no tile out there to
-                // move onto, so fling the mob toward the edge visually and kill
-                // it outright - a void fall, same fate as an in-arena VOID tile.
-                ServerWorld voidWorld = (ServerWorld) player.getEntityWorld();
-                if (enemy.getMobEntity() != null) {
-                    BlockPos edgeBp = arena.gridToBlockPos(candidate);
-                    enemy.getMobEntity().requestTeleport(
-                        edgeBp.getX() + 0.5, edgeBp.getY() - 3.0, edgeBp.getZ() + 0.5);
-                    voidWorld.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
-                        edgeBp.getX() + 0.5, edgeBp.getY(), edgeBp.getZ() + 0.5, 20, 0.4, 0.4, 0.4, 0.3);
-                }
-                enemy.takeDamage(enemy.getCurrentHp() + 100);
-                sendMessage("§4" + enemy.getDisplayName() + " is knocked off the edge into the void!");
-                killEnemy(enemy);
-                return startPos;
-            }
-
-            if (candidateWall) {
-                hitWall = true;
-                if (candidateCactus) hitCactus = true;
-                break;
-            }
-            if (candidateCactus) hitCactus = true;
-            if (candidateHazard) {
-                landingPos = candidate;
-                hitHazard = true;
-                break;
-            }
-            landingPos = candidate;
-        }
+        GridPos landingPos = new GridPos(push.x(), push.z());
+        boolean hitHazard = push.stop() == GridPush.Stop.HAZARD_ENTERED;
+        boolean hitCactus = push.brushedCactus();
+        boolean hitWall = push.blocked() && !hitHazard;
+        String wallLabel = pushStopLabel(push.stop());
 
         // Cactus collision damage -cactus has its own fixed-damage effect that fires
         // even if the enemy didn't move at all (adjacent slam).
@@ -29246,13 +29474,22 @@ public class CombatManager {
                 ld.highestBiomeUnlocked = currentBiomeOrder + 1;
                 data.markDirty();
                 com.crackedgames.craftics.CrafticsMod.updateWorldIcon(player.getServer(), ld);
-                // Unlock biome for all party members
-                for (ServerPlayerEntity recipient : rewardRecipients) {
-                    CrafticsSavedData.PlayerData pd = data.getPlayerData(recipient.getUuid());
-                    if (pd.highestBiomeUnlocked <= currentBiomeOrder) {
-                        pd.highestBiomeUnlocked = currentBiomeOrder + 1;
-                    }
-                }
+                // Campaign progress belongs to the ISLAND, not to each player who was standing
+                // on it. Only `ld` - the island owner's record - advances here.
+                //
+                // This used to also write every participant's OWN record, and set it rather than
+                // stepping it: a guest sitting at biome 2 who joined a party fighting at the
+                // leader's frontier of 6 came out with 7 unlocked, having never met bosses 3, 4
+                // or 5. They then carried that home. Somebody added to an in-progress island
+                // inherited its whole campaign permanently, on their own island, for one fight.
+                //
+                // Nothing is lost by dropping it, because everything a player can SEE and DO is
+                // already island-scoped: the level select block resolves a party member through
+                // getEffectiveWorldOwner, and so does the gate on starting a biome. While they
+                // are on the leader's island a guest reads the leader's progress and can play
+                // every biome it has opened - which is the credit for helping. The moment they
+                // go home, they resolve to their own record, which is exactly where they left
+                // it.
                 // Region-boundary "unlocked" banner -campaign-driven. Resolve the
                 // just-cleared biome id, then announce the NEXT region (if any) when the
                 // next biome in flattened campaign order belongs to a different region.
@@ -32547,6 +32784,14 @@ public class CombatManager {
         }
     }
 
+    /** Tell the rest of the party what happened to someone else, in the third person. */
+    private void sendMessageToAllChatExcept(ServerPlayerEntity except, String msg) {
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p == null || p == except) continue;
+            p.sendMessage(net.minecraft.text.Text.literal(msg), false);
+        }
+    }
+
     private void sendMessageTo(ServerPlayerEntity p, String msg) {
         p.sendMessage(net.minecraft.text.Text.literal(msg), false);
     }
@@ -34748,6 +34993,16 @@ public class CombatManager {
         // These must happen before any world operations that could throw during
         // disconnect, otherwise inCombat stays true and corrupts the save.
         active = false;
+        // Addon combat UI is per-fight. A standing ally selection or a tile overlay left
+        // behind here would be re-applied over the next fight's highlights, in an arena the
+        // addon never drew it for.
+        allySelectionByAddon = false;
+        for (ServerPlayerEntity overlayOwner : getAllParticipants()) {
+            if (overlayOwner != null) {
+                com.crackedgames.craftics.api.registry.GridHighlightRegistry
+                    .clear(overlayOwner.getUuid());
+            }
+        }
         // Fade the soundtrack out now that the run is over. The per-tick refresh
         // won't fire once this instance goes inactive, so push the stop explicitly.
         refreshMusic();
@@ -35934,6 +36189,38 @@ public class CombatManager {
         return ce;
     }
 
+    /**
+     * Merge one addon overlay into the flattened tile list it belongs to. An exclusive overlay
+     * clears the list first, so the addon's tiles are the only ones on that layer.
+     *
+     * <p>{@code arrows} is non-null only for the warning layer, which carries a direction so a
+     * push, pull or charge can say which way it travels.
+     */
+    private void applyHighlightOverlay(java.util.UUID owner,
+            com.crackedgames.craftics.api.HighlightLayer layer,
+            java.util.List<Integer> packed, java.util.List<Integer> arrows) {
+        var overlay = com.crackedgames.craftics.api.registry.GridHighlightRegistry.get(owner, layer);
+        if (overlay == null) return;
+        if (overlay.exclusive()) {
+            packed.clear();
+            if (arrows != null) arrows.clear();
+        }
+        boolean directed = overlay.dirX() != 0 || overlay.dirZ() != 0;
+        for (GridPos t : overlay.tiles()) {
+            // Out-of-bounds tiles are dropped rather than sent: the client indexes the grid
+            // with them, and a stray tile paints outside the arena floor.
+            if (arena != null && !arena.isInBounds(t)) continue;
+            packed.add(t.x());
+            packed.add(t.z());
+            if (arrows != null && directed) {
+                arrows.add(t.x());
+                arrows.add(t.z());
+                arrows.add(overlay.dirX());
+                arrows.add(overlay.dirZ());
+            }
+        }
+    }
+
     public void refreshHighlights() {
         if (!active || player == null || phase != CombatPhase.PLAYER_TURN) return;
 
@@ -36220,6 +36507,24 @@ public class CombatManager {
             warningArrowList.add(a[1]);
             warningArrowList.add(a[2]);
             warningArrowList.add(a[3]);
+        }
+
+        // --- Addon overlays ---
+        // Applied last, over everything computed above, because those lists are rebuilt from
+        // scratch on every refresh: tiles an addon wrote into them would survive exactly one
+        // click. An exclusive layer drops Craftics' own tiles for that layer, which is what a
+        // mod whose Move button is its own needs - otherwise its targeting is drawn on top of
+        // the weapon range it is replacing.
+        if (com.crackedgames.craftics.api.registry.GridHighlightRegistry.hasAny(player.getUuid())) {
+            java.util.UUID overlayOwner = player.getUuid();
+            applyHighlightOverlay(overlayOwner,
+                com.crackedgames.craftics.api.HighlightLayer.MOVE, moveList, null);
+            applyHighlightOverlay(overlayOwner,
+                com.crackedgames.craftics.api.HighlightLayer.ATTACK, attackList, null);
+            applyHighlightOverlay(overlayOwner,
+                com.crackedgames.craftics.api.HighlightLayer.DANGER, dangerList, null);
+            applyHighlightOverlay(overlayOwner,
+                com.crackedgames.craftics.api.HighlightLayer.WARNING, warningList, warningArrowList);
         }
 
         // Convert lists to int arrays

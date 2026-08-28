@@ -129,6 +129,9 @@ public final class WeaponVfx {
             .particles(ParticleTypes.EXPLOSION, VfxAnchor.TARGET, 1, ZERO, 0.0)
             .directionalBurst(VfxAnchor.TARGET, ParticleTypes.CLOUD, 10, 0.45, 70, 0.25)
             .debris(VfxAnchor.TARGET, Blocks.COBBLESTONE.getDefaultState(), 8, 0.4)
+            // Long enough to come back down and land - the slam throws the floor up and
+            // the floor comes back. VfxBlockTracker adopts whatever settles and puts the
+            // world back the way it found it when the fight ends, wherever it landed.
             .launchFloorBlock(VfxAnchor.TARGET, new Vec3d( 0.35, 0.6,  0.0), 40)
             .launchFloorBlock(VfxAnchor.TARGET, new Vec3d(-0.35, 0.6,  0.0), 40)
             .launchFloorBlock(VfxAnchor.TARGET, new Vec3d( 0.0,  0.7,  0.35), 40)

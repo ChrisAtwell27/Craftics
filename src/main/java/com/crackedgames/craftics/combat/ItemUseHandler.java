@@ -1374,6 +1374,29 @@ public class ItemUseHandler {
                         hitCount++;
                     }
                 }
+
+                // === And everyone else standing in it ===
+                //
+                // A splash reached enemies, allies and the thrower, and stopped there - so a
+                // Regeneration potion thrown into your own party healed only the person who
+                // threw it. It is an AREA effect; the area does not end at your teammates.
+                CombatManager splashCm = CombatManager.getActiveCombat(player.getUuid());
+                for (java.util.UUID mate : splashCm.partyPlayersNear(targetTile, 1)) {
+                    CombatEffects.EffectType mateType = mapStatusEffect(effectType);
+                    if (effectType == StatusEffects.INSTANT_HEALTH.value()) {
+                        splashCm.healPartyMember(mate,
+                            INSTANT_HEALTH_PER_LEVEL * (amp + 1) + getSpecialAffinityPoints(player));
+                        hitCount++;
+                    } else if (mateType != null) {
+                        // The thrower's brewing skill scales what they hand out, but a debuff
+                        // caught in the blast lands at the potion's own level - the same split
+                        // the self-application above makes, for the same reason.
+                        int mateAmp = CombatEffects.isDebuff(mateType) ? amp : scaledAmp;
+                        splashCm.applyEffectToPartyMember(mate, mateType,
+                            getScaledPotionTurns(player, mateType, sei.getDuration()), mateAmp);
+                        hitCount++;
+                    }
+                }
             }
 
             if (hitCount > 0) {

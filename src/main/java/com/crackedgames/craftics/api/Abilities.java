@@ -130,17 +130,16 @@ public final class Abilities {
             boolean crater = CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.CRATER) > 0;
             int reach = crater ? distance + SwordAxeEnchantEffects.CRATER_EXTRA_TILES : distance;
 
-            GridPos kbPos = target.getGridPos();
-            int pushed = 0;
-            boolean blocked = false;
-            for (int step = 0; step < reach; step++) {
-                GridPos next = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
-                if (!arena.isInBounds(next) || arena.isOccupied(next)) { blocked = true; break; }
-                var tile = arena.getTile(next);
-                if (tile == null || !tile.isWalkable()) { blocked = true; break; }
-                kbPos = next;
-                pushed++;
-            }
+            // How far a push gets is one shared rule now - see GridPush. Each place that
+            // shoved something used to walk the grid itself, and walking it themselves is
+            // exactly how they drifted apart.
+            com.crackedgames.craftics.combat.GridPush.Result kb = com.crackedgames.craftics.combat.GridPush.resolve(
+                com.crackedgames.craftics.combat.CombatManager.pushGridFor(arena, target),
+                target.getGridPos().x(), target.getGridPos().z(),
+                target.getSizeX(), target.getSizeZ(), dx, dz, reach, target.isHazardImmune());
+            GridPos kbPos = new GridPos(kb.x(), kb.z());
+            int pushed = kb.moved();
+            boolean blocked = kb.blocked();
             if (pushed > 0) {
                 arena.moveEntity(target, kbPos);
                 if (target.getMobEntity() != null) {
@@ -176,26 +175,19 @@ public final class Abilities {
             int dx = Integer.signum(target.getGridPos().x() - pPos.x());
             int dz = Integer.signum(target.getGridPos().z() - pPos.z());
             if (dx == 0 && dz == 0) dx = 1;
-            GridPos kbPos = target.getGridPos();
-            int pushed = 0;
-            boolean blocked = false;
-            boolean intoVoid = false;
-            for (int step = 0; step < distance; step++) {
-                GridPos next = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
-                if (!arena.isInBounds(next) || arena.isOccupied(next)) { blocked = true; break; }
-                var tile = arena.getTile(next);
-                if (tile == null) { blocked = true; break; }
-                if (tile.getType() == com.crackedgames.craftics.core.TileType.VOID
-                        && !target.isHazardImmune()) {
-                    kbPos = next;
-                    pushed++;
-                    intoVoid = true;
-                    break;
-                }
-                if (!tile.isWalkable()) { blocked = true; break; }
-                kbPos = next;
-                pushed++;
-            }
+            com.crackedgames.craftics.combat.GridPush.Result push = com.crackedgames.craftics.combat.GridPush.resolve(
+                com.crackedgames.craftics.combat.CombatManager.pushGridFor(arena, target),
+                target.getGridPos().x(), target.getGridPos().z(),
+                target.getSizeX(), target.getSizeZ(), dx, dz, distance, target.isHazardImmune());
+            GridPos kbPos = new GridPos(push.x(), push.z());
+            int pushed = push.moved();
+            boolean blocked = push.blocked();
+            // GridPush reports that a hazard was entered; WHICH hazard decides the outcome, and
+            // that stays here. Only real void is fatal - water and lava are not deaths, and this
+            // loop used to treat every non-walkable tile as one because it only looked for VOID.
+            var landedTile = arena.getTile(kbPos);
+            boolean intoVoid = push.enteredHazard() && landedTile != null
+                && landedTile.getType() == com.crackedgames.craftics.core.TileType.VOID;
             if (pushed > 0) {
                 arena.moveEntity(target, kbPos);
                 if (target.getMobEntity() != null) {

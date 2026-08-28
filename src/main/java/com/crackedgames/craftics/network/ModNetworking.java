@@ -71,6 +71,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(BarterContextPayload.ID, BarterContextPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(RewardRevealPayload.ID, RewardRevealPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(RunInvitePayload.ID, RunInvitePayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(AllySelectionPayload.ID, AllySelectionPayload.CODEC);
 
         // Register C2S hover update
         PayloadTypeRegistry.playC2S().register(HoverUpdatePayload.ID, HoverUpdatePayload.CODEC);

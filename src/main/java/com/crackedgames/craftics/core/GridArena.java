@@ -30,11 +30,15 @@ public class GridArena {
     private final java.util.Map<GridPos, TileType> vfxObstaclePriorType = new java.util.HashMap<>();
 
     /**
-     * Player-placed wall blocks. Tracks the item the player consumed, the
-     * turns remaining before silent expiry, and the starting duration so the
-     * client can show progressive breaking texture as the wall ticks down.
+     * Temporary blocks standing on a tile. Tracks the item to give back when the block is
+     * broken, the turns remaining before it crumbles on its own, and the starting duration
+     * so the client can show progressive breaking texture as it ticks down.
      * These tiles also live in {@link #vfxObstaclePriorType} for tile-type
      * restoration; the two maps are kept in sync.
+     *
+     * <p>{@code item} is null for a block nobody paid for - debris thrown up by a weapon or
+     * a boss and left where it landed. It crumbles on the same clock and cracks the same way
+     * as a wall the player built; it just does not hand anything back when it goes.
      */
     public record PlacedWall(net.minecraft.item.Item item, int turnsRemaining, int startTurns) {
         public PlacedWall withTurns(int newTurns) { return new PlacedWall(item, newTurns, startTurns); }
@@ -301,14 +305,16 @@ public class GridArena {
     // --- VFX obstacle tracking (mace slam debris) ---
 
     /** Mark a tile as a VFX-placed obstacle. Remembers the prior tile type for cleanup. */
-    public void markVfxObstacle(GridPos pos) {
-        if (pos == null || !isInBounds(pos)) return;
+    /** @return true if the tile was taken, false if it was already something other than floor */
+    public boolean markVfxObstacle(GridPos pos) {
+        if (pos == null || !isInBounds(pos)) return false;
         GridTile t = getTile(pos);
-        if (t == null) return;
+        if (t == null) return false;
         // Don't overwrite existing obstacles or special tile types
-        if (t.getType() != TileType.NORMAL) return;
+        if (t.getType() != TileType.NORMAL) return false;
         vfxObstaclePriorType.put(pos, t.getType());
         t.setType(TileType.OBSTACLE);
+        return true;
     }
 
     public boolean isVfxObstacle(GridPos pos) {
@@ -328,10 +334,11 @@ public class GridArena {
     }
 
     /**
-     * Register a tile as a temporary player-placed wall. The caller is
+     * Register a tile as holding a temporary block. The caller is
      * responsible for actually setting the block in the world and marking the
      * tile type via {@link #markVfxObstacle}. {@code item} is the item that
-     * was consumed, so mining can refund it.
+     * was consumed, so mining can refund it, or null for debris that cost nobody
+     * anything and gives nothing back.
      */
     public void markPlacedWall(GridPos pos, net.minecraft.item.Item item, int turns) {
         if (pos == null || !isInBounds(pos)) return;
