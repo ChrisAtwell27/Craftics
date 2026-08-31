@@ -56,6 +56,35 @@ public final class ArenaGuards {
             return false;
         });
 
+        // ── Nothing spawns itself into a fight ──────────────────────────────────
+        //
+        // Removing unwanted mobs after the fact was never going to be enough for a Creaking,
+        // because the thing producing them keeps producing them: a Creaking Heart is a live
+        // spawner, and Craftics places one itself as the body of its own boss-fight heart. The
+        // heart is placed inert now, but the backport gates that on a config a server can turn
+        // off, so "inert" is a strong default rather than a guarantee.
+        //
+        // This is the guarantee. A Creaking that arrives inside a live arena without Craftics
+        // having put it there is refused the moment it loads, before it ticks, before it moves,
+        // before it can hit anyone. Craftics tags its own the instant before spawning them, so
+        // the fight's real creaking is never touched.
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register(
+            (entity, world) -> {
+                if (entity.getCommandTags().contains("craftics_arena")) return;
+                if (!(entity instanceof net.minecraft.entity.mob.MobEntity)) return;
+                String id = net.minecraft.registry.Registries.ENTITY_TYPE
+                    .getId(entity.getType()).toString();
+                if (!com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat
+                        .isCreakingEntity(id)) {
+                    return;
+                }
+                if (!CombatManager.insideActiveArena(world, entity.getBlockPos())) return;
+                entity.discard();
+                CrafticsMod.LOGGER.info(
+                    "Refused a {} that spawned itself into a live arena at {}",
+                    id, entity.getBlockPos());
+            });
+
         // ── A fight may never end in a vanilla death ────────────────────────────
         //
         // Craftics owns death inside an arena: the animation, the totem, the party hand-off, the

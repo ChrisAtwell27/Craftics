@@ -85,12 +85,40 @@ class ArmorSetEffectsTest {
     @Test
     void luck_lowersFragileBreak_butNeverBelowTheFloor() {
         String wooden = ArmorSetEffects.WOODEN;
-        assertEquals(ArmorSetEffects.FRAGILE_BREAK_CHANCE,
+        assertEquals(ArmorSetEffects.WOODEN_BREAK_CHANCE,
             ArmorSetEffects.fragileBreakChance(wooden, 0), 1e-9);
         assertTrue(ArmorSetEffects.fragileBreakChance(wooden, 4)
             < ArmorSetEffects.fragileBreakChance(wooden, 0), "luck steadies the gear");
         assertEquals(ArmorSetEffects.FRAGILE_BREAK_FLOOR,
             ArmorSetEffects.fragileBreakChance(wooden, 1000), 1e-9);
+    }
+
+    @Test
+    void bone_shattersFarLessOftenThanWooden() {
+        assertEquals(0.01, ArmorSetEffects.fragileBreakChance(ArmorSetEffects.BONE, 0), 1e-9);
+        assertTrue(ArmorSetEffects.fragileBreakChance(ArmorSetEffects.BONE, 0)
+                < ArmorSetEffects.fragileBreakChance(ArmorSetEffects.WOODEN, 0),
+            "bone is the durable one of the two brittle sets");
+    }
+
+    @Test
+    void bone_isStillBreakable_atEveryLuckLevel() {
+        // Bone starts AT the floor, so luck cannot take it any lower - and must never take it
+        // to zero, or a lucky archer's set becomes quietly unbreakable.
+        for (int luck : new int[]{0, 1, 5, 20, 1000}) {
+            assertEquals(ArmorSetEffects.FRAGILE_BREAK_FLOOR,
+                ArmorSetEffects.fragileBreakChance(ArmorSetEffects.BONE, luck), 1e-9,
+                "bone at luck " + luck);
+        }
+    }
+
+    @Test
+    void bothBrittleSetsStayBrittle() {
+        // The split into per-set rates must not accidentally drop one of them out of the
+        // fragile path: a set with no rate stops shattering altogether.
+        assertTrue(ArmorSetEffects.fragileBreakChance(ArmorSetEffects.WOODEN) > 0);
+        assertTrue(ArmorSetEffects.fragileBreakChance(ArmorSetEffects.BONE) > 0);
+        assertEquals(0.0, ArmorSetEffects.fragileBreakChance(ArmorSetEffects.HEAVY), 1e-9);
     }
 
     @Test

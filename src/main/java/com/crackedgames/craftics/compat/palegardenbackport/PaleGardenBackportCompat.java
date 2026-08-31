@@ -6,6 +6,7 @@ import com.crackedgames.craftics.combat.ai.CreakingAI;
 import com.crackedgames.craftics.combat.ai.CreakingHeartAI;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
@@ -104,6 +105,36 @@ public final class PaleGardenBackportCompat {
     }
 
     /** Block placed at the heart's world position (visual only - entity is the actual target). */
+    /**
+     * The heart block as Craftics places it: looking exactly like a Creaking Heart, and unable
+     * to spawn anything.
+     *
+     * <p>Craftics puts a REAL heart in the arena as the body of its own boss-fight heart. A real
+     * heart is a live spawner - it ticks and produces Creakings of its own, outside the turn
+     * system, which is exactly what was killing people in the Dark Forest. Sweeping the children
+     * was never going to be enough while the parent was still running.
+     *
+     * <p>Both vanilla and the backport gate the block entity's ticker on the {@code active}
+     * property, and gate natural spawning on {@code natural}. Turning both off leaves the block
+     * as scenery: the same texture, no ticker, no spawns, nothing to sweep.
+     *
+     * <p>The properties are looked up by NAME from the block's own state manager rather than
+     * referenced directly, because the block is vanilla's on 1.21.4+ and the backport's below
+     * that, and this module never compiles against either.
+     */
+    public static BlockState inertCreakingHeartState() {
+        Block heart = creakingHeartBlock();
+        BlockState state = heart.getDefaultState();
+        for (String name : new String[] { "active", "natural" }) {
+            var property = heart.getStateManager().getProperty(name);
+            if (property instanceof net.minecraft.state.property.BooleanProperty flag
+                    && state.contains(flag)) {
+                state = state.with(flag, false);
+            }
+        }
+        return state;
+    }
+
     public static Block creakingHeartBlock() {
         //? if >=1.21.4 {
         /*return Blocks.CREAKING_HEART;

@@ -669,6 +669,9 @@ public class CombatManager {
      */
     private boolean tickPlayerPerTurnEffects() {
         if (player == null) return false;
+        // this.combatEffects is pointed at whichever member is being ticked, so this samples
+        // every player in the party rather than only the one who started the fight.
+        recordBuffPeak(combatEffects);
         // NOTE: every player-facing line in here goes to `member` alone, never through
         // sendMessage(), which broadcasts to the whole party. These messages are all in the
         // second person - "Magma burns YOU", "Regeneration healed 2 HP" - and this method runs
@@ -812,6 +815,34 @@ public class CombatManager {
     }
 
     private CombatAchievementTracker achievementTracker = new CombatAchievementTracker();
+
+    /** Milk cleared this many debuffs in one drink. Feeds the Milk Save feat. */
+    public void recordMilkCleanse(int debuffsCleared) {
+        if (achievementTracker != null) achievementTracker.recordMilkDebuffsCleared(debuffsCleared);
+    }
+
+    /** A cast pulled up the top loot tier. Feeds the Fisherman's Luck feat. */
+    public void recordFishingTreasure() {
+        if (achievementTracker != null) achievementTracker.recordFishingRareItem();
+    }
+
+    /**
+     * Whether this player is standing on a tile a boss has telegraphed an attack onto.
+     *
+     * <p>Read before and after an Ender Pearl to decide whether the pearl was a dodge: standing in
+     * the red before, out of it after, with the attack still pending. Anything else - pearling
+     * into the red, or pearling around when nothing is winding up - is just travel.
+     */
+    public boolean isOnTelegraphedTile(ServerPlayerEntity who) {
+        if (who == null || arena == null || pendingBossWarnings.isEmpty()) return false;
+        GridPos here = gridPosOf(who);
+        if (here == null) return false;
+        for (PendingBossWarning pw : pendingBossWarnings) {
+            var tiles = pw.ability().warningTiles();
+            if (tiles != null && tiles.contains(here)) return true;
+        }
+        return false;
+    }
 
     /** Record a damage type dealt by something other than a swung weapon (thrown consumables,
      *  item abilities). Kept as a narrow forwarder rather than exposing the tracker itself. */
@@ -1993,8 +2024,7 @@ public class CombatManager {
         // and just outside the arena too.
         java.util.List<net.minecraft.entity.Entity> naturals = world.getOtherEntities(null,
             volume.expand(8, 0, 8),
-            e -> e instanceof net.minecraft.entity.mob.HostileEntity
-                && e.getCommandTags().isEmpty());
+            e -> e.getCommandTags().isEmpty() && isUnsanctionedHostile(e));
         for (net.minecraft.entity.Entity stray : naturals) {
             stray.discard();
         }
@@ -2031,6 +2061,51 @@ public class CombatManager {
                     petrified, o);
             }
         }
+    }
+
+    /**
+     * Whether an untagged entity in the arena is something that will attack the party.
+     *
+     * <p>Not simply {@code instanceof HostileEntity}, which is what this was and what let the
+     * Dark Forest go wrong. The Pale Garden backport's Creaking extends ANIMAL, not hostile -
+     * a reasonable choice for a mob that stands still until you look away, and a fatal one for a
+     * sweep that asked about the class instead of the behaviour. Every Creaking already standing
+     * in the terrain when an arena was built survived the sweep and spent the fight attacking
+     * people outside the turn system.
+     *
+     * <p>Matched by registry id rather than by class, because the id is the thing Craftics
+     * already knows this mob by everywhere else, and it holds whether the Creaking is vanilla's
+     * (1.21.4+) or the backport's.
+     */
+    private static boolean isUnsanctionedHostile(net.minecraft.entity.Entity e) {
+        if (e instanceof net.minecraft.entity.mob.HostileEntity) return true;
+        if (!(e instanceof net.minecraft.entity.mob.MobEntity)) return false;
+        String id = net.minecraft.registry.Registries.ENTITY_TYPE.getId(e.getType()).toString();
+        return com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat
+            .isCreakingEntity(id);
+    }
+
+    /**
+     * Whether {@code pos} sits inside (or just outside) any arena with a fight running in it.
+     *
+     * <p>Used by the spawn veto: outside an arena a mob is the world's business, but inside one
+     * the turn system owns every combatant, and anything that arrives by itself is by definition
+     * not part of the fight.
+     *
+     * <p>The margin matches the sweep's, so a mob that spawns just off the edge and walks in is
+     * refused at the same distance one already standing there is removed.
+     */
+    public static boolean insideActiveArena(ServerWorld world, BlockPos pos) {
+        for (CombatManager cm : INSTANCES.values()) {
+            if (!cm.active || cm.arena == null || cm.player == null) continue;
+            if (cm.player.getEntityWorld() != world) continue;
+            BlockPos o = cm.arena.getOrigin();
+            if (pos.getX() < o.getX() - 8 || pos.getX() > o.getX() + cm.arena.getWidth() + 8) continue;
+            if (pos.getZ() < o.getZ() - 8 || pos.getZ() > o.getZ() + cm.arena.getHeight() + 8) continue;
+            if (pos.getY() < o.getY() - 8 || pos.getY() > o.getY() + 24) continue;
+            return true;
+        }
+        return false;
     }
 
     /** A block by registry id, or null when nothing is registered under it. containsId + get is
@@ -2917,6 +2992,29 @@ public class CombatManager {
     private static final int SUDDEN_DEATH_ROUND = 20;
     private static final int SUDDEN_DEATH_SPEED = 3;
     private static final int SUDDEN_DEATH_ATTACK = 2;
+    /**
+     * Damage every party member takes on the FIRST round of Sudden Death. It climbs by
+     * {@link #SUDDEN_DEATH_DAMAGE_RAMP} every round after.
+     *
+     * <p>Flat, and deliberately so. Sudden Death's job is to end a fight that has gone on too
+     * long, and the way it did that was by making enemies hit harder - which armour, Resistance
+     * and a high AC all answer. A well-built party could simply out-tank the clock, which is not
+     * a clock. This does not go through mitigation at all, so waiting always costs something.
+     */
+    private static final int SUDDEN_DEATH_TICK_DAMAGE = 2;
+
+    /**
+     * How much the per-round drain grows each round.
+     *
+     * <p>A fixed drain is only a clock if the party is losing HP faster than they can heal it;
+     * with enough sustain, a flat 2 a round is another number to out-heal and the fight still
+     * never ends. Ramping guarantees termination - whatever the party can sustain, the drain
+     * passes it eventually, and it passes it soon enough to matter.
+     *
+     * <p>Uncapped on purpose. A ceiling would just be a higher plateau to out-heal, which is the
+     * problem this exists to remove.
+     */
+    private static final int SUDDEN_DEATH_DAMAGE_RAMP = 1;
 
     /** True once this fight has tipped over. Reset with the turn counter each level. */
     private boolean suddenDeath = false;
@@ -2973,9 +3071,51 @@ public class CombatManager {
             e.setAttackBoost(e.getAttackBoost() + SUDDEN_DEATH_ATTACK);
             newlyAngry++;
         }
+        // The clock itself. Unmitigable by construction: damagePlayer with no attacker is the
+        // same path hazards use, and it skips the armour and Resistance steps that only apply to
+        // an enemy's swing.
+        ServerPlayerEntity savedSdPlayer = this.player;
+        java.util.List<ServerPlayerEntity> sdMembers = partyPlayers.size() > 1
+            ? new java.util.ArrayList<>(partyPlayers) : java.util.List.of(player);
+        boolean sdGameOver = false;
+        for (ServerPlayerEntity member : sdMembers) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            boolean sdSwapped = member != this.player;
+            if (sdSwapped) {
+                this.player = member;
+                retargetEffectsToCurrentPlayer();
+            }
+            int dealt = damagePlayer(suddenDeathDrain());
+            sendMessageTo(member, "§4☠ Sudden Death drains " + dealt + " HP.");
+            if (getPlayerHp() <= 0) {
+                handlePlayerDeathOrGameOver();
+                sdGameOver = partyPlayers.size() <= 1 || !active;
+                break;
+            }
+        }
+        if (!sdGameOver && this.player != savedSdPlayer && savedSdPlayer != null
+                && !deadPartyMembers.contains(savedSdPlayer.getUuid())) {
+            this.player = savedSdPlayer;
+            retargetEffectsToCurrentPlayer();
+        }
+        if (sdGameOver) return;
+
         if (newlyAngry > 0 && !suddenDeathBoosted.isEmpty()) {
             sendSync();
         }
+    }
+
+    /**
+     * This round's Sudden Death drain: the base, plus one for every round it has been running.
+     *
+     * <p>Reads {@code turnNumber} rather than counting rounds of its own, because the round
+     * counter is the thing that decides Sudden Death has started in the first place. A second
+     * counter is a second thing to reset, and one that can drift from the first.
+     */
+    private int suddenDeathDrain() {
+        int roundsIn = Math.max(0, turnNumber - SUDDEN_DEATH_ROUND);
+        return SUDDEN_DEATH_TICK_DAMAGE + roundsIn * SUDDEN_DEATH_DAMAGE_RAMP;
     }
 
     /** The moment it lands: title, subtitle, and a sound nobody mistakes for ambience. */
@@ -4324,6 +4464,8 @@ public class CombatManager {
         // Sudden death is per fight, and rides the turn counter it is measured against.
         this.suddenDeath = false;
         this.suddenDeathBoosted.clear();
+        // Poured water belongs to the arena it was poured in.
+        this.bucketWaterTiles.clear();
         // Don't arm the fall-death check until the arena has had time to finish building.
         this.fallDeathGraceTicks = FALL_DEATH_GRACE_TICKS;
         this.active = true;
@@ -4632,7 +4774,7 @@ public class CombatManager {
                 // palegardenbackport's block when that mod is loaded, oak log fallback).
                 world.setBlockState(heartBlockPos,
                     com.crackedgames.craftics.compat.palegardenbackport
-                        .PaleGardenBackportCompat.creakingHeartBlock().getDefaultState());
+                        .PaleGardenBackportCompat.inertCreakingHeartState());
                 // Spawn an invisible armor stand as the entity reference
                 //? if <=1.21.1 {
                 var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world);
@@ -4698,6 +4840,10 @@ public class CombatManager {
                 preMob.noClip = true;
             }
 
+            // Tagged BEFORE it enters the world, not after. The spawn veto in ArenaGuards
+            // reads this tag the instant an entity loads, so a mob tagged afterwards would be
+            // refused by our own guard in the window between the two statements.
+            rawEntity.addCommandTag("craftics_arena");
             // Use spawnEntity (not spawnNewEntityAndPassengers) to bypass mob cap
             // and collision validation that can silently reject arena mobs
             boolean spawned = world.spawnEntity(rawEntity);
@@ -6757,8 +6903,11 @@ public class CombatManager {
                     case 1 -> new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_NUGGET, 2);
                     default -> new net.minecraft.item.ItemStack(net.minecraft.item.Items.COAL, 3);
                 };
+                // Named before delivery, for the same reason fishing is: delivering empties the
+                // stack, so the name has to be taken while there is still something to name.
+                String treasureName = treasure.getName().getString();
                 LootDelivery.deliver(player, treasure);
-                sendMessage("§6⛏ Fortune! Found " + treasure.getName().getString() + ".");
+                sendMessage("§6⛏ Fortune! Found " + treasureName + ".");
             }
         }
         sendSync();
@@ -8494,6 +8643,11 @@ public class CombatManager {
             // the post-hit isAlive() check.
             if (fDiamondCrit) achievementTracker.recordCrit();
             if (fNetheriteExecute && !fTarget.isAlive()) achievementTracker.recordExecutionKill();
+            // Drowned: Water damage finishing a Soaked enemy. Soaked only ever ticks down, so
+            // reading it after the hit still answers what it was during the hit.
+            if (fDamageType == DamageType.WATER && fTarget.isSoaked() && !fTarget.isAlive()) {
+                achievementTracker.recordDrownKill();
+            }
             // Check ability messages for specific achievement events
             for (String msg : abilityMessages) {
                 if (msg.contains("Sweep!")) achievementTracker.recordSweepTargets(1 + extraHits);
@@ -9177,6 +9331,9 @@ public class CombatManager {
 
         player.setYaw(riptideAnimYaw);
         player.setHeadYaw(riptideAnimYaw);
+        // Body too, for the same reason the walk path aligns it: without this the torso keeps
+        // its pre-dash angle for the whole flight and the player renders sideways mid-air.
+        player.setBodyYaw(riptideAnimYaw);
         player.setOnGround(true);
 
         //? if <=1.21.4 {
@@ -9529,7 +9686,7 @@ public class CombatManager {
                     w.syncWorldEvent(2001, heartBlock,
                         net.minecraft.block.Block.getRawIdFromState(
                             com.crackedgames.craftics.compat.palegardenbackport
-                                .PaleGardenBackportCompat.creakingHeartBlock().getDefaultState()));
+                                .PaleGardenBackportCompat.inertCreakingHeartState()));
                 }
                 if (entity.getLinkedCreakingId() >= 0) {
                     for (CombatEntity e : enemies) {
@@ -10711,9 +10868,12 @@ public class CombatManager {
                     applyRandomTrim(dropCopy, world);
                 }
 
+                // Named before delivery: an inserted stack is emptied in place, so naming it
+                // afterwards announced every drop as "Air".
+                String dropName = dropCopy.getName().getString();
                 LootDelivery.deliver(recipient, dropCopy);
                 String label = hasEnchant ? "§b§l✦ ENCHANTED LOOT: " : "§e+ Loot: ";
-                sendMessageTo(recipient, label + dropCopy.getName().getString());
+                sendMessageTo(recipient, label + dropName);
             }
             // Clear the slot once if anyone won, so the death animation doesn't double-render it.
             if (anyDropped) {
@@ -11449,6 +11609,20 @@ public class CombatManager {
         healPlayerByUuid(uuid, amount);
     }
 
+    /**
+     * Note how many distinct buffs a player is holding, for the Alchemist feat.
+     *
+     * <p>Sampled rather than computed at the end of a fight, because the feat is about a PEAK -
+     * five buffs up at once - and by the time the fight ends they have expired. Called from the
+     * two places that can move the count: an effect landing on a player, and the per-turn tick
+     * (which also covers the few paths that add to a player's effects without going through
+     * {@link #applyPlayerEffectLive}).
+     */
+    private void recordBuffPeak(CombatEffects fx) {
+        if (fx == null || achievementTracker == null) return;
+        achievementTracker.recordSimultaneousBuffs(fx.countActiveBuffs());
+    }
+
     private void applyEffectToPlayerUuid(java.util.UUID playerUuid, CombatEffects.EffectType type, int turns, int amplifier) {
         CombatEffects fx = playerCombatEffects.computeIfAbsent(playerUuid, k -> new CombatEffects());
         applyPlayerEffectLive(fx, playerUuid, type, turns, amplifier);
@@ -11476,6 +11650,9 @@ public class CombatManager {
         int speedBefore = liveActor ? fx.getSpeedBonus() : 0;
 
         fx.addEffect(type, turns, amplifier);
+        // Sampled here, not at the end of the fight: the feat asks for five buffs at ONCE, and
+        // whatever was up at the peak has expired by the time anything counts the wreckage.
+        recordBuffPeak(fx);
 
         if (liveActor) {
             if (type == CombatEffects.EffectType.HASTE) {
@@ -12188,8 +12365,36 @@ public class CombatManager {
      * discounted by robe armour, and {@code terraformPriorType} is the target's terrain from
      * BEFORE the cast, which cannot be recovered afterwards by definition.
      */
+    /** How many of {@code item} the acting player is holding in their main hand, 0 for none. */
+    private int heldCountInHand(Item item) {
+        ItemStack hand = player.getMainHandStack();
+        return hand.getItem() == item ? hand.getCount() : 0;
+    }
+
+    /**
+     * Return one {@code item} to the acting player.
+     *
+     * <p>Prefers the main hand so a stack the player is mid-use of just goes back up by one, and
+     * falls back to the inventory when the hand is full or now holds something else - a milk
+     * bucket becoming an empty bucket, for instance.
+     */
+    private void giveBackOne(Item item) {
+        ItemStack hand = player.getMainHandStack();
+        if (hand.getItem() == item && hand.getCount() < hand.getMaxCount()) {
+            hand.increment(1);
+        } else if (hand.isEmpty()) {
+            player.setStackInHand(net.minecraft.util.Hand.MAIN_HAND, new ItemStack(item));
+        } else {
+            player.getInventory().insertStack(new ItemStack(item));
+        }
+    }
+
     private void resolveItemUse(GridPos targetTile, ItemStack heldStack, Item heldItem,
                                 int apCost, TileType terraformPriorType) {
+        // Read BEFORE the use: a pearl that lands the player somewhere else has already moved
+        // them by the time the result comes back, so "were they in the red" is unrecoverable.
+        boolean pearlFromTelegraph = heldItem == Items.ENDER_PEARL && isOnTelegraphedTile(player);
+
         String result = ItemUseHandler.useItem(player, arena, targetTile);
 
         if (result == null) {
@@ -12205,29 +12410,61 @@ public class CombatManager {
             return;
         }
 
+        // Past the failure gate, so these only count uses that actually happened. The gate is
+        // the same "§c means it did not work" rule the AP refund above runs on.
+        if (achievementTracker != null) {
+            if (ItemUseHandler.isFood(heldItem)) {
+                achievementTracker.recordFoodEaten(heldItem);
+            }
+            if (com.crackedgames.craftics.combat.DeployableItems.isDeployable(
+                    net.minecraft.registry.Registries.ITEM.getId(heldItem).toString())) {
+                achievementTracker.recordUtilityPlaced();
+            }
+            // A dodge is leaving a telegraphed tile, not merely owning a pearl. The warning has
+            // to still be pending afterwards, or the attack already resolved and nothing was
+            // dodged.
+            if (pearlFromTelegraph && !isOnTelegraphedTile(player)) {
+                achievementTracker.recordPearlDodge();
+            }
+        }
+
         applyTerraform(targetTile, terraformPriorType, result);
 
-        // Performative (hoe): the cast echoes for free. useItem() consumes the held item itself,
-        // so hand one back BEFORE the encore - otherwise the second cast eats a second item and
-        // the enchantment would be a downgrade rather than a bonus.
+        // Performative (hoe): the cast echoes for free.
+        //
+        // The refund happens AFTER the encore, and only if the encore actually spent something.
+        // Handing one over first assumed the second cast would always eat it - but Special
+        // affinity's conserve roll can decide not to consume the item at all, and then the item
+        // handed over up front was simply minted. On a potion that is a straight duplication
+        // every time both perks fire together.
         if (isSpecialClassItem(heldItem) && HoeEnchantEffects.rollDoubleCast(player)) {
             HoeEnchantEffects.performativeVfx(player, (ServerWorld) player.getEntityWorld());
             sendMessage("§dPerformative! The cast echoes.");
-            ItemStack encoreStack = player.getMainHandStack();
-            boolean refunded = false;
-            if (encoreStack.isEmpty()) {
-                // The first cast used the last one - put a fresh one in hand to spend.
+
+            // The encore still needs something in hand to spend when the first cast used the
+            // last one. That one is LENT, not given: if the encore conserves it, it goes back.
+            boolean lent = false;
+            ItemStack inHand = player.getMainHandStack();
+            if (inHand.isEmpty() || inHand.getItem() != heldItem) {
                 player.setStackInHand(net.minecraft.util.Hand.MAIN_HAND, new ItemStack(heldItem));
-                refunded = true;
-            } else if (encoreStack.getItem() == heldItem) {
-                encoreStack.increment(1);
-                refunded = true;
+                lent = true;
             }
-            if (refunded) {
-                String encore = ItemUseHandler.useItem(player, arena, targetTile);
-                if (encore != null && !encore.startsWith("§c")) {
-                    sendMessage(encore);
-                }
+            int countBefore = heldCountInHand(heldItem);
+
+            String encore = ItemUseHandler.useItem(player, arena, targetTile);
+            if (encore != null && !encore.startsWith("§c")) {
+                sendMessage(encore);
+            }
+
+            boolean encoreSpentOne = heldCountInHand(heldItem) < countBefore;
+            int adjustment = EncoreRefund.adjustment(lent, encoreSpentOne);
+            if (adjustment > 0) {
+                // The echo is meant to be free, so give back what it spent.
+                giveBackOne(heldItem);
+            } else if (adjustment < 0) {
+                // Conserved. Take back what was lent, or the free cast mints an item.
+                ItemStack after = player.getMainHandStack();
+                if (after.getItem() == heldItem) after.decrement(1);
             }
         }
 
@@ -12648,7 +12885,14 @@ public class CombatManager {
                 // Update the GridTile type so fishing/boat checks work
                 GridTile effectTile = arena.getTile(effectPos);
                 if (effectTile != null) {
-                    if ("water".equals(effectType)) effectTile.setType(TileType.WATER);
+                    if ("water".equals(effectType)) {
+                        effectTile.setType(TileType.WATER);
+                        // Remember that a player poured this. Fishing refuses it: a bucket is
+                        // reusable and a poured tile is free to make, so a fishable puddle on
+                        // demand turns the rod into an infinite loot source that happens to
+                        // cost a turn. Water that was part of the arena is still fair game.
+                        bucketWaterTiles.add(effectPos);
+                    }
                     else if ("lava".equals(effectType)) effectTile.setType(TileType.LAVA);
                     else if ("powder_snow".equals(effectType)) effectTile.setType(TileType.POWDER_SNOW);
                 }
@@ -16113,8 +16357,14 @@ public class CombatManager {
                             // Soaked doubles lightning -mirrors CombatEntity.takeLightningDamage
                             // (canonical rule). The rod keeps the SPECIAL-resistance utility path,
                             // so it applies the same 2x factor here rather than routing through it.
-                            int lightningDmg = e.isSoaked() ? 4 * 2 : 4;
+                            boolean wasSoaked = e.isSoaked();
+                            int lightningDmg = wasSoaked ? 4 * 2 : 4;
                             applySpecialUtilityDamage(e, lightningDmg);
+                            // Soaked and killed BY the rod - checked here rather than in the death
+                            // handler, which cannot see what did the killing.
+                            if (wasSoaked && !e.isAlive()) {
+                                achievementTracker.recordLightningOnSoakedKill();
+                            }
                             hit++;
                         }
                     }
@@ -16309,6 +16559,11 @@ public class CombatManager {
                         }
                     }
                     if (victim != null) {
+                        // Remember who a confused enemy was turned loose on. The kill has to be
+                        // credited when the victim dies, which happens after the redirected
+                        // action resolves - by then nothing downstream knows a confusion caused
+                        // it, so the link is recorded here and read in killEnemy.
+                        confusedAttackVictims.add(victim);
                         // Run the REAL AI aimed at the victim, then redirect its action.
                         EnemyAI confusedAi = resolveAi(currentEnemy);
                         EnemyAction realAction = confusedAi.decideAction(
@@ -23333,6 +23588,32 @@ public class CombatManager {
         BlockPos overlayBp = arena.gridToBlockPos(victim.getGridPos());
         int landY = (int) Math.floor(arena.getEntityY(victim.getGridPos()));
         BlockPos targetBp = new BlockPos(overlayBp.getX(), landY, overlayBp.getZ());
+
+        // Only ever ONE anvil physically in flight per tile.
+        //
+        // Vanilla turns a falling block into a REAL anvil the tick it touches down, and the
+        // damage here is deferred 14 ticks - so spam-clicking a mob queues several drops before
+        // the first one lands. The second then lands ON the first, the third on that, and the
+        // stack climbs straight out of the small band the cleanup scans and out of the single
+        // position recorded for the end-of-combat restore. The leftovers are solid anvil blocks
+        // standing on a tile the grid still calls walkable: visually blocked, freely walk-through,
+        // and permanent, because nothing else knows they are there.
+        //
+        // Extra clicks still cost their AP and their anvil and still deal their damage. They just
+        // do not drop a second block onto the first one - which nobody could see anyway, since it
+        // lands in the same place a moment later.
+        boolean alreadyFalling = false;
+        for (PendingAnvil pending : pendingAnvils) {
+            if (targetBp.equals(pending.landingPos())) { alreadyFalling = true; break; }
+        }
+        if (alreadyFalling) {
+            pendingAnvils.add(new PendingAnvil(targetEntityId, damage, null, 14, null));
+            world.playSound(null, targetBp,
+                net.minecraft.sound.SoundEvents.BLOCK_ANVIL_FALL,
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.85f);
+            return;
+        }
+
         recordPlacedBlock(targetBp);
         double cx = targetBp.getX() + 0.5;
         double cz = targetBp.getZ() + 0.5;
@@ -23392,7 +23673,8 @@ public class CombatManager {
             // vanilla already converted it on landing (it lands in ~5-7 ticks, well
             // before this 14-tick countdown). Restore the floor we recorded at spawn
             // so the stage shows the anvil fall, then nothing left behind.
-            net.minecraft.entity.Entity fbe = world.getEntity(pa.fbeUuid());
+            net.minecraft.entity.Entity fbe =
+                pa.fbeUuid() == null ? null : world.getEntity(pa.fbeUuid());
             if (fbe != null) fbe.discard();
             // Clear the real anvil block vanilla left when the falling block landed.
             // The exact rest Y can vary by a block depending on what was solid in the
@@ -28501,7 +28783,21 @@ public class CombatManager {
         }
     }
 
+    /**
+     * Enemies a confused enemy has been sent after this fight.
+     *
+     * <p>Read when one of them dies, to credit Mind Games. Held for the fight rather than the
+     * turn: a confused swing can leave a victim on 1 HP and a second confused enemy can finish it
+     * a round later, which is still confusion doing the killing.
+     */
+    private final java.util.Set<CombatEntity> confusedAttackVictims =
+        java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
     private void killEnemy(CombatEntity enemy) {
+        // Mind Games: this enemy died after a confused enemy was turned on it.
+        if (confusedAttackVictims.remove(enemy) && achievementTracker != null) {
+            achievementTracker.recordConfusionKill();
+        }
         markBurningOnDeath(enemy);
         enemy.takeDamage(9999);
         // A destroyed decoy's armor stand must go with it.
@@ -30508,6 +30804,25 @@ public class CombatManager {
     /** Position of the current biome in the dimension path (0 = first biome). */
     public int getCurrentBiomeOrdinal() { return currentBiomeOrdinal; }
 
+    /** Water tiles a player poured from a bucket this fight. See the fishing refusal. */
+    private final java.util.Set<GridPos> bucketWaterTiles = new java.util.HashSet<>();
+
+    /** Whether this tile is water a player made rather than water the arena came with. */
+    public boolean isBucketWater(GridPos tile) {
+        return tile != null && bucketWaterTiles.contains(tile);
+    }
+
+    /**
+     * Hook a drowned out of the water, scaled to how far the run has come.
+     *
+     * @return true if one surfaced; false when there was nowhere to put it
+     */
+    public boolean spawnFishedDrowned(GridPos waterTile) {
+        int ordinal = getCurrentBiomeOrdinal();
+        return spawnPropAmbusher("minecraft:drowned", waterTile,
+            FishingTable.drownedHealth(ordinal), FishingTable.drownedAttack(ordinal), 0, 1) != null;
+    }
+
     /** The level definition that will be loaded next, if any. */
     public com.crackedgames.craftics.level.LevelDefinition getPendingNextLevel() { return pendingNextLevelDef; }
     public void setPendingNextLevel(com.crackedgames.craftics.level.LevelDefinition def) { this.pendingNextLevelDef = def; }
@@ -30983,8 +31298,13 @@ public class CombatManager {
                 barterOrigin.getX() + 4.5,
                 barterOrigin.getY() + 1,
                 barterOrigin.getZ() - WALKWAY_LEN + 0.5);
+            // All three angles, not two. Seating the look and the head but not the body
+            // leaves the torso pointing wherever the player was walking when the level
+            // ended, so the model renders bent - head to the scene, shoulders elsewhere -
+            // and nothing turns a standing player's body back.
             p.setYaw(0f);       // face +Z, toward the trader area
             p.setHeadYaw(0f);
+            p.setBodyYaw(0f);
         }
 
         java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
@@ -31184,8 +31504,13 @@ public class CombatManager {
                 traderAreaOrigin.getX() + 4.5,
                 traderAreaOrigin.getY() + 1,
                 traderAreaOrigin.getZ() - WALKWAY_LEN + 0.5);
+            // All three angles, not two. Seating the look and the head but not the body
+            // leaves the torso pointing wherever the player was walking when the level
+            // ended, so the model renders bent - head to the scene, shoulders elsewhere -
+            // and nothing turns a standing player's body back.
             p.setYaw(0f);       // face +Z, toward the trader area
             p.setHeadYaw(0f);
+            p.setBodyYaw(0f);
         }
 
         // Spawn real wandering trader in the trader area
@@ -31540,8 +31865,13 @@ public class CombatManager {
                 shrineOrigin.getX() + 4.5,
                 shrineOrigin.getY() + 1,
                 shrineOrigin.getZ() - WALKWAY_LEN + 0.5);
+            // All three angles, not two. Seating the look and the head but not the body
+            // leaves the torso pointing wherever the player was walking when the level
+            // ended, so the model renders bent - head to the scene, shoulders elsewhere -
+            // and nothing turns a standing player's body back.
             p.setYaw(0f);       // face +Z, toward the shrine
             p.setHeadYaw(0f);
+            p.setBodyYaw(0f);
         }
 
         // Begin the cinematic: walk every member onto a ring around the centerpiece,
@@ -31678,8 +32008,13 @@ public class CombatManager {
         for (ServerPlayerEntity p : members) {
             p.requestTeleport(
                 travelerOrigin.getX() + 4.5, travelerOrigin.getY() + 1, travelerOrigin.getZ() + 0.5);
+            // All three angles, not two. Seating the look and the head but not the body
+            // leaves the torso pointing wherever the player was walking when the level
+            // ended, so the model renders bent - head to the scene, shoulders elsewhere -
+            // and nothing turns a standing player's body back.
             p.setYaw(0f);
             p.setHeadYaw(0f);
+            p.setBodyYaw(0f);
         }
 
         java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
@@ -31842,8 +32177,13 @@ public class CombatManager {
                 enchanterOrigin.getX() + 4.5,
                 enchanterOrigin.getY() + 1,
                 enchanterOrigin.getZ() - WALKWAY_LEN + 0.5);
+            // All three angles, not two. Seating the look and the head but not the body
+            // leaves the torso pointing wherever the player was walking when the level
+            // ended, so the model renders bent - head to the scene, shoulders elsewhere -
+            // and nothing turns a standing player's body back.
             p.setYaw(0f);
             p.setHeadYaw(0f);
+            p.setBodyYaw(0f);
         }
 
         // Build per-player offer slots once. Step-2 dialogues are derived from
@@ -32060,7 +32400,10 @@ public class CombatManager {
         // item from the offer rather than showing the player a choice that cannot pay out.
         if (eligible.isEmpty()) return null;
 
-        String chosenKey = eligible.get(rng.nextInt(eligible.size()));
+        // Weighted, not uniform: Hilt and Dull are a sixth as likely as anything else on the
+        // table. They still show up in the shortlist at full strength, so the threat reads the same.
+        String chosenKey = com.crackedgames.craftics.combat.EnchanterOffer.weightedPick(
+            eligible, rng.nextInt(com.crackedgames.craftics.combat.EnchanterOffer.totalWeight(eligible)));
         int level = improvedRoll(world, stack, chosenKey, rng);
         String real = com.crackedgames.craftics.combat.EnchanterPreview.label(chosenKey, level);
 
@@ -32394,8 +32737,13 @@ public class CombatManager {
         for (ServerPlayerEntity p : members) {
             p.requestTeleport(
                 vaultOrigin.getX() + 4.5, vaultOrigin.getY() + 1, vaultOrigin.getZ() + 0.5);
+            // All three angles, not two. Seating the look and the head but not the body
+            // leaves the torso pointing wherever the player was walking when the level
+            // ended, so the model renders bent - head to the scene, shoulders elsewhere -
+            // and nothing turns a standing player's body back.
             p.setYaw(0f);
             p.setHeadYaw(0f);
+            p.setBodyYaw(0f);
         }
 
         java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();

@@ -57,23 +57,9 @@ public final class PartyMobs {
         net.minecraft.entity.attribute.EntityAttributes.ATTACK_DAMAGE;
     *///?}
 
-    /**
-     * Vanilla mobs that attack on sight, unprovoked - never party-eligible. Every
-     * other mob (passive animals, and neutral mobs like endermen/spiders that only
-     * fight when provoked) can be added. Matched by registry id so version-only
-     * mobs simply never match on shards that lack them.
-     */
-    private static final Set<String> ALWAYS_HOSTILE = Set.of(
-        "minecraft:zombie", "minecraft:zombie_villager", "minecraft:husk", "minecraft:drowned",
-        "minecraft:skeleton", "minecraft:stray", "minecraft:bogged", "minecraft:wither_skeleton",
-        "minecraft:creeper", "minecraft:witch", "minecraft:slime", "minecraft:magma_cube",
-        "minecraft:blaze", "minecraft:ghast", "minecraft:silverfish", "minecraft:endermite",
-        "minecraft:guardian", "minecraft:elder_guardian", "minecraft:shulker", "minecraft:phantom",
-        "minecraft:vex", "minecraft:vindicator", "minecraft:pillager", "minecraft:evoker",
-        "minecraft:illusioner", "minecraft:ravager", "minecraft:zoglin", "minecraft:piglin_brute",
-        "minecraft:warden", "minecraft:breeze", "minecraft:creaking",
-        "minecraft:ender_dragon", "minecraft:wither", "minecraft:giant"
-    );
+    /** The ids that may never join a party. Lives in {@link PartyEligibility} so it can be
+     *  tested - it is pure data, and it is the only thing keeping some mobs out. */
+    private static final Set<String> ALWAYS_HOSTILE = PartyEligibility.ALWAYS_HOSTILE;
 
     /** Mobs the player can ride - capped at {@link #MAX_RIDEABLE} per party. */
     private static final Set<String> RIDEABLE_TYPES = Set.of(

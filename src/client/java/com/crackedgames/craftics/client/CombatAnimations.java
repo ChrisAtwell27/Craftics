@@ -16,6 +16,16 @@ import org.jetbrains.annotations.NotNull;
 public class CombatAnimations {
 
     private static boolean wasAnimating = false;
+
+    /**
+     * Whether the previous tick was inside a fight, so leaving one can be detected as an edge.
+     *
+     * <p>Separate from {@link #wasAnimating}, which only says a WALK was in flight. The pose that
+     * outlives a fight is usually the idle breather, installed by the tail of {@link #tick()}
+     * whenever the layer falls idle mid-fight - which has nothing to do with whether the player
+     * was walking when the last enemy died.
+     */
+    private static boolean wasInCombat = false;
     /**
      * Per-player attack-animation countdowns. Attack animations play on EVERY
      * party member's avatar (the damage event names the attacker), so a single
@@ -119,6 +129,7 @@ public class CombatAnimations {
         if (client.player != lastTickPlayer) {
             wasAnimating = false;
             wasCinematicWalking = false;
+            wasInCombat = false;
             attackTimers.clear();
             lastCinX = Double.NaN;
             lastCinZ = Double.NaN;
@@ -151,7 +162,19 @@ public class CombatAnimations {
         }
 
         if (!CombatState.isInCombat()) {
-            if (wasAnimating) { stopAll(); wasAnimating = false; }
+            // Leaving a fight clears the animation layer whatever it is holding - not just when a
+            // walk happened to be mid-stride. This used to be gated on wasAnimating, which is only
+            // true when the fight ended during the player's OWN move animation. Every other ending
+            // (the ordinary one: the last enemy dies on someone else's turn) left the idle-breathing
+            // pose installed, and IdleBreathingAnimation reports isActive() forever, so nothing
+            // retired it: the body kept its animated rotation while the head went on tracking the
+            // camera, and the player rendered bent - on the island, while walking, until a restart.
+            // stopAll() had no callers at all, which is how this survived.
+            if (wasInCombat || wasAnimating) {
+                stopAll();
+                wasAnimating = false;
+                wasInCombat = false;
+            }
             // During a non-combat event cinematic, play the same WalkAnimation combat
             // uses while the player is actually moving (position changing this tick),
             // and stop it when they arrive/stand still.
@@ -206,6 +229,7 @@ public class CombatAnimations {
         if (layer != null && !layer.isActive() && CombatState.isInCombat()) {
             layer.setAnimation(new IdleBreathingAnimation());
         }
+        wasInCombat = true;
     }
 
     public static void startWalking(AbstractClientPlayerEntity player) {

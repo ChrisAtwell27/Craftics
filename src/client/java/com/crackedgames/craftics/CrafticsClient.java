@@ -434,6 +434,11 @@ public class CrafticsClient implements ClientModInitializer {
                 com.crackedgames.craftics.client.ArenaFxRenderer.reset();
                 com.crackedgames.craftics.client.ArenaAmbientFx.reset();
                 com.crackedgames.craftics.client.vfx.EntityBounceState.clear();
+                // Retire the player's animation layer here as well as on the next tick. The tick
+                // clear sits behind the hit-pause gate, and a freeze stranded by the fight ending
+                // never counts down - so the one case that most needs the clear is the one case
+                // the tick would skip. Clearing twice costs nothing.
+                com.crackedgames.craftics.client.CombatAnimations.stopAll();
                 com.crackedgames.craftics.client.ping.PingState.clear();
                 com.crackedgames.craftics.client.ping.PingWheel.close();
                 context.client().options.getBobView().setValue(previousBobView);

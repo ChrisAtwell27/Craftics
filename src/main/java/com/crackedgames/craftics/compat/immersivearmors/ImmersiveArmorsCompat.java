@@ -74,14 +74,14 @@ public final class ImmersiveArmorsCompat {
         set(ArmorSetEffects.WOODEN, DamageType.SLASHING, 2,
             "Wooden: " + pct(ArmorSetEffects.WOODEN_TYPE_RESIST)
             + " less damage from Ranged and Blunt hits; each piece has a "
-            + pct(ArmorSetEffects.FRAGILE_BREAK_CHANCE) + " chance to shatter when you are hit");
+            + pct(ArmorSetEffects.WOODEN_BREAK_CHANCE) + " chance to shatter when you are hit");
 
         // Bone - light, and the quiver never seems to empty. An archer's set, so the
         // affinity follows the quiver rather than the material it is cut from.
         set(ArmorSetEffects.BONE, DamageType.RANGED, 2,
             "Bone: " + pct(ArmorSetEffects.BONE_AMMO_SAVE)
             + " chance to fire without spending an arrow; each piece has a "
-            + pct(ArmorSetEffects.FRAGILE_BREAK_CHANCE) + " chance to shatter when you are hit");
+            + pct(ArmorSetEffects.BONE_BREAK_CHANCE) + " chance to shatter when you are hit");
 
         // Robe - no protection worth the name, but the spells come cheap and never fail.
         set(ArmorSetEffects.ROBE, DamageType.SPECIAL, 1,

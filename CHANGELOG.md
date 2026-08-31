@@ -43,6 +43,81 @@ The mace and the shovel throw a few blocks of the floor into the air when they h
 
 Arenas already polluted by this keep their leftovers - once a block is down it is indistinguishable from real floor. **`/craftics rebuild_arenas`** regenerates them and clears it out.
 
+Fishing Is A Gamble Again
+
+- **30% of casts now catch nothing.** Fishing used to hand out an item every single time, which made it the most reliable loot in the game and the least earned
+- **5% of casts hook a Drowned**, scaled to how far the run has come. It surfaces beside you and joins the fight, so casting a line is no longer free of risk
+- **The table scales with progress.** On the first biome it is mostly plain fish and treasure is a real surprise; deeper in, the good tiers open up. Both are capped, so even the longest run still pulls up cod
+- **You cannot fish water you poured yourself.** A water bucket is reusable and a poured tile costs nothing, so a fishable puddle on demand was an unlimited loot tap that only cost turns. Arena water is still fair game - you just cannot bring your own pond
+- The odds live in one place with tests that count every possible roll, because "about a third of casts catch nothing" is a claim about a distribution and not something you can check by reading the branches
+
+Bone Armor Is No Longer Disposable
+
+- **Bone armor now has a 1% chance per piece to shatter when you are hit**, down from 5%. Wooden is unchanged at 5%
+- The two brittle sets shared one rate, which suited Wooden - a starter set you expect to lose - but not Bone. Bone is an archer's set built around a quiver that does not empty, so it is worn for whole runs rather than replaced between them, and losing pieces at Wooden's rate meant rarely keeping it long enough for its own perk to matter
+- Still brittle, not immortal: 1% is the floor the shatter roll already had, so Luck cannot take Bone any lower and no amount of it makes a piece safe
+
+Performative No Longer Duplicates Potions
+
+- **Fixed Performative minting an item when Special affinity conserved the cast.** The encore handed an item over BEFORE the second cast, assuming it would be spent - but the conserve roll can decide not to consume it, and then the item handed over up front was created out of nothing. On a potion, with both perks on the same cast, that was a reliable duplication
+- The refund happens after the encore now, and only for what the encore actually spent. All four combinations of "an item had to be lent" and "the encore spent one" are checked by a test that asserts the player's stock is unchanged, because the bug was one of those four going the wrong way
+
+Loot Stops Calling Itself "Air"
+
+- **Fixed fishing announcing every catch as "Caught: Air!"** The correct item was always delivered; only the message was wrong. Handing a stack to the inventory empties it in place, and the name was read afterwards, so it described what was left over - nothing
+- The same bug was in **mining Fortune finds** and **enchanted mob loot drops**, both of which announced "Air" too
+- A test now fails on any place that names a stack after delivering it
+
+Anvils Stop Leaving Blocks Behind
+
+- **Fixed spam-clicking a mob with an anvil leaving permanent anvil blocks on the battlefield** - solid to look at, walked straight through, and still there after the fight. Anvil damage lands 14 ticks after the click, so several drops could be queued before the first one touched down. Vanilla turns each falling block into a real anvil the moment it lands, so the second landed on the first and the third on that, climbing out of both the band the cleanup scans and the single position recorded for the end-of-fight restore
+- Only one anvil is ever physically in flight per tile now. Extra clicks still cost their AP and their anvil and still deal their damage; they just do not drop a second block onto the first, which nobody could see anyway
+
+Eight Unearnable Feats Now Work
+
+Eight achievements could never be earned by anyone. Each one was fully built - defined, given an advancement, listed in the guide book, with a grant condition reading a counter - and in every case nothing ever wrote to that counter. No error, no log line, no symptom except a player eventually wondering why the feat never came.
+
+- **Alchemist** - five different buffs at once. Sampled when a buff lands and on each player's turn, because the feat is about a peak: anything counting at the end of the fight would be counting buffs that had already expired. Distinct buffs only, so drinking the same potion five times does not earn it
+- **Chef's Kiss** - five different foods in one fight
+- **Fortress Builder** - five utility items placed. "Placed" means it leaves something standing on the battlefield; eating, drinking and throwing are uses, not construction
+- **Pearl Clutch** - pearling out of a boss's telegraphed tiles. It has to be a real escape: in the red before, out of it after, with the attack still winding up. Pearling INTO the red does not count
+- **Milk Save** - three or more debuffs cleared in one drink, counted before the wipe, which is the only moment the number exists
+- **Fisherman's Luck** - a cast pulling up the top loot tier
+- **Lightning Strike** - a Soaked enemy killed by the rod, credited at the strike where what did the killing is still known
+- **Drowned** - a Soaked enemy finished with Water damage
+- **Mind Games** - a confused enemy killing the enemy it was turned on. Credited when the victim dies rather than when the swing lands, so a confused hit that leaves something on 1 HP still counts when a second confused enemy finishes it
+- Dead tracking for a feat that was deliberately removed (Spear Wall, no spears in 1.21.1) is gone rather than left looking like a ninth bug
+- A test now fails if any achievement counter has nothing writing to it, including through a forwarder - the way this hid in the first place
+
+Players No Longer Render Bent
+
+- **Fixed a combat animation being left running on the player forever.** The pose Craftics installs during a fight was only retired if the fight happened to end while that player was mid-walk on their own turn. Any other ending - the ordinary one, where the last enemy dies on somebody else's turn - left it applied, and it reports itself as active indefinitely, so nothing ever took it off. The animation rotates the torso and arms and never touches the head, so the body kept its animated angle while the head went on tracking the camera: the player rendered bent, on their island, while walking and looking around, until the game was restarted. The cleanup that existed for this had no callers at all
+- **Fixed a player's head and body facing different directions** after a between-level event, which stuck until the game was restarted. A player carries three angles - where they look, where the head model points, and where the torso points - and the six event scenes (trader, barter, shrine, traveler, enchanter, vault) seated two of the three. The head snapped round to face the merchant, the shoulders stayed pointing wherever you were walking when the level ended, and nothing turns a standing player's body back
+- **The same bug in the riptide dash** is fixed too: the torso kept its pre-dash angle for the whole flight, so you flew sideways
+- A test now walks the source and fails on any place that turns a player without seating all three angles, so a seventh scene added later cannot bring it back
+
+The Enchanter Is Less Likely To Ruin Your Sword
+
+- **Hilt and Dull are now a sixth as likely as anything else** the enchanter can offer. They sat in the pool at exactly the same odds as Sharpness, which on a sword meant roughly one roll in ten quartered or halved your damage on a weapon you cannot un-enchant. That is now about one in fifty
+- **They are rarer, not gone.** The enchanter is a gamble, and a gamble with no losing face is just a reward
+- **They still appear in the shortlist just as often.** The preview is the warning, and a warning about something that never happens stops being read - so the dread when Dull shows up on the list is unchanged, only the odds of it being the real one moved
+
+Sudden Death Has Teeth
+
+- Sudden Death now deals **flat damage to every player each round**, on top of enraging the enemies. It does not go through armour, Resistance or AC
+- **The drain climbs by 1 every round**: 2 on the first, 3 on the next, and so on. A fixed drain is only a clock while the party cannot out-heal it; ramping means whatever they can sustain, it is passed eventually - and soon enough to matter. Twenty rounds of stalling costs 2 HP, thirty costs 77
+- Its whole job is to end a fight that has gone on too long, and the only pressure it applied was making enemies hit harder - which a well-built party simply out-tanks. A clock you can armour against is not a clock
+
+Creaking In The Dark Forest
+
+- Fixed live Creaking appearing in Dark Forest arenas and killing players outside the turn system. **They cannot spawn there at all now**, rather than being cleaned up afterwards
+- The source was Craftics' own doing: the boss-fight heart is a REAL Creaking Heart block placed in the arena, and a real heart is a live spawner. It kept producing Creakings all fight. The heart Craftics places is now inert - the same block and the same texture, with the properties that drive its ticker turned off
+- A Creaking that still arrives inside a live arena is refused the moment it loads, before it ticks or moves or hits anyone. Craftics tags its own the instant before spawning them, so the fight's real creaking is untouched. That backstop exists because the backport gates the inert state on a config a server can switch off, which makes "inert" a strong default rather than a guarantee
+- The sweep that was supposed to catch these also never saw them: it asked whether a mob was a HostileEntity, and the backport implements the Creaking as an ANIMAL. Every one already standing in the terrain walked straight through it. It matches by registry id now, like the rest of the mod
+- That is a fair choice by the backport for a mob that stands motionless until you look away, and it defeats every class-based test in this mod. Craftics identifies a Creaking by registry id everywhere else; the sweep is now the same
+- The same root cause had a second symptom: the list of mobs that may never join a battle party named only the vanilla Creaking, so on the shards where the backport supplies it, one could be walked into a party as an ordinary passive animal. Both flavours are named now
+- That list moved somewhere it can be tested. It was pure data trapped inside a class that needs a live registry to initialise, which meant the one thing keeping certain mobs out of a party could never be checked
+
 One Rule For Being Shoved Across The Grid
 
 - Every knockback, pull, sweep, wind burst and sonic boom in the game now walks the grid by the same rule. There were seven hand-written copies of it - in the combat manager, the weapon abilities, the vanilla weapon table and the Deeper and Darker compat - and they had quietly stopped agreeing with each other
