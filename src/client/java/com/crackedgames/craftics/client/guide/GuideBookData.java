@@ -1295,7 +1295,7 @@ public class GuideBookData {
                 new Box("minecraft:wither_rose", "Vengeful Bond", "max I",
                     "An enemy that kills one of your pets is Marked 2 turns - double damage from every source."),
                 new Box("minecraft:lead", "Tag Team", "max I",
-                    "Once per turn, command a pet onto your own tile to SWAP places with it, free."))),
+                    "Select a pet with the Lead, then click it AGAIN to swap places with it. Free, once per turn."))),
             new Page("Hoe Enchantments (Special)",
                 "A hoe rides on your Special-item casts: potions, banners, horns, charges, pearls and sherds.", List.of(
                 new Box("minecraft:amethyst_shard", "Reserving", "max III",

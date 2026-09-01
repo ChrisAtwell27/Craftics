@@ -230,7 +230,7 @@ public final class CrafticsEnchantments {
     public static final Entry MIDAS = new Entry("midas", Tool.BLUNT, 1,
         "Midas", "Slamming an enemy into a wall shakes emeralds into the party bank, once per enemy");
     public static final Entry TAG_TEAM = new Entry("tag_team", Tool.SHOVEL, 1,
-        "Tag Team", "Once per turn, swap tiles with one of your pets as a free action");
+        "Tag Team", "Once per turn, click a selected pet again to swap tiles with it - free action");
     public static final Entry TRAPPER = new Entry("trapper", Tool.HOE, 1,
         "Trapper", "Cast a splash potion onto an empty tile as a hidden trap that springs on the first enemy to step there");
 

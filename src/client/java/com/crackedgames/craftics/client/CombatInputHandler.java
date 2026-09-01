@@ -380,7 +380,8 @@ public class CombatInputHandler {
      *   <li>No ally selected → click an ally tile to select them (sets glow).</li>
      *   <li>Ally selected → click an adjacent enemy to attack-command, or any
      *       walkable tile to move-command. Server validates and charges 2 AP.
-     *       Click the same ally again to deselect.</li>
+     *       Click the same ally again to swap places with it (Tag Team), or to
+     *       deselect when that enchant is absent or already spent this turn.</li>
      * </ol>
      */
     private static void handleLeadClick(GridPos tilePos,
@@ -416,10 +417,14 @@ public class CombatInputHandler {
         }
 
         // Stage 2: a target is being commanded.
-        // Clicking the same ally cancels the selection.
+        // Clicking the same ally again is either a Tag Team swap or a plain cancel, and only
+        // the server knows which - the enchant and its once-per-turn charge live there. Send it
+        // as a command aimed at the ally itself and let the server pick; both outcomes end the
+        // selection, so the local state can be dropped either way.
         if (mappedId != null && mappedId.equals(selected)) {
             CombatState.setLeadSelectedAllyId(null);
-            ClientPlayNetworking.send(new com.crackedgames.craftics.network.LeadSelectPayload(-1));
+            ClientPlayNetworking.send(new com.crackedgames.craftics.network.LeadCommandPayload(
+                selected, tilePos.x(), tilePos.z(), mappedId));
             return;
         }
 

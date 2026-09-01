@@ -6019,6 +6019,58 @@ public class CombatManager {
             return;
         }
 
+        // Tag Team enchant (shovel): clicking the ALREADY-SELECTED pet a second time trades
+        // places with it - free, once per turn. Sits above the AP gate on purpose: "free
+        // action" has to mean usable at 0 AP, or it is only free in name.
+        //
+        // Without the enchant, or once the swap is spent, the same click keeps the meaning it
+        // has always had and just clears the selection - that is why the client routes a
+        // same-ally click here instead of deselecting on its own. The server owns the enchant
+        // state, so it is the only side that can tell the two gestures apart.
+        if (clicked == ally && arena != null) {
+            int tagTeamLevel = CrafticsEnchantments.level(player, CrafticsEnchantments.TAG_TEAM);
+            // Swapping a creature that is mid-walk would fight the walk ticker for its position.
+            boolean canSwap = tagTeamLevel > 0 && !tagTeamUsedThisTurn && leadWalkAlly == null;
+            // Only say why the swap did not happen to someone who owns the enchant to swap with.
+            if (tagTeamLevel > 0 && tagTeamUsedThisTurn) {
+                sendMessage("§cTag Team is spent for this turn.");
+            } else if (tagTeamLevel > 0 && leadWalkAlly != null) {
+                sendMessage("§cAn ally is already moving.");
+            }
+            if (canSwap) {
+                tagTeamUsedThisTurn = true;
+                GridPos swapFrom = gridPosOf(player);
+                GridPos swapTo = ally.getGridPos();
+                arena.moveEntity(ally, swapFrom);
+                if (ally.getMobEntity() != null) {
+                    BlockPos abp = arena.gridToBlockPos(swapFrom);
+                    ally.getMobEntity().requestTeleport(abp.getX() + 0.5,
+                        arena.getEntityY(swapFrom, ally.isFlying()), abp.getZ() + 0.5);
+                }
+                arena.setPlayerGridPos(swapTo);
+                BlockPos pbp = arena.gridToBlockPos(swapTo);
+                player.requestTeleport(pbp.getX() + 0.5, arena.getEntityY(swapTo), pbp.getZ() + 0.5);
+                broadcastPlayerPositionToOthers(player);
+                ServerWorld swapWorld = (ServerWorld) player.getEntityWorld();
+                swapWorld.playSound(null, pbp, net.minecraft.sound.SoundEvents.ENTITY_ENDERMAN_TELEPORT,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 1.4f);
+                sendMessage("§aTag Team! You swap places with " + ally.getDisplayName()
+                    + ". §7(free action)");
+                handleLeadSelect(-1);
+                sendSync();
+                refreshHighlights();
+                return;
+            }
+            // An addon's selection stands until the addon ends it, so a click with no swap behind
+            // it falls through to the strike path's own refusal rather than quietly deselecting
+            // the creature under the addon's UI. A Lead selection has no such contract: the
+            // second click means cancel, exactly as it always did.
+            if (!addonSelected) {
+                handleLeadSelect(-1);
+                return;
+            }
+        }
+
         if (apRemaining < LEAD_COMMAND_AP) {
             sendMessage("§cNeed " + LEAD_COMMAND_AP + " AP to command an ally with the Lead!");
             return;
@@ -6043,44 +6095,7 @@ public class CombatManager {
 
         // Move mode -walk the ally along a pathfound route, capped at its
         // move speed. Reject only true instakill hazards; water and divots
-        // are fair game. performAllyWalk does that validation; the only thing that has to
-        // happen first is Tag Team, which is a swap rather than a walk.
-
-        // Tag Team enchant (shovel): commanding a pet onto YOUR OWN tile swaps you with it,
-        // as a free action, once per turn. The occupied-tile rejection below would otherwise
-        // eat the click - your own tile is always "occupied".
-        if (targetTile.equals(gridPosOf(player))) {
-            if (CrafticsEnchantments.level(player, CrafticsEnchantments.TAG_TEAM) <= 0) {
-                sendMessage("§cTarget tile is occupied.");
-                return;
-            }
-            if (tagTeamUsedThisTurn) {
-                sendMessage("§cTag Team is spent for this turn.");
-                return;
-            }
-            tagTeamUsedThisTurn = true;
-            GridPos pPos = gridPosOf(player);
-            arena.moveEntity(ally, pPos);
-            if (ally.getMobEntity() != null) {
-                BlockPos abp = arena.gridToBlockPos(pPos);
-                ally.getMobEntity().requestTeleport(abp.getX() + 0.5,
-                    arena.getEntityY(pPos, ally.isFlying()), abp.getZ() + 0.5);
-            }
-            arena.setPlayerGridPos(allyPos);
-            BlockPos pbp = arena.gridToBlockPos(allyPos);
-            player.requestTeleport(pbp.getX() + 0.5, arena.getEntityY(allyPos), pbp.getZ() + 0.5);
-            broadcastPlayerPositionToOthers(player);
-            ServerWorld swapWorld = (ServerWorld) player.getEntityWorld();
-            swapWorld.playSound(null, pbp, net.minecraft.sound.SoundEvents.ENTITY_ENDERMAN_TELEPORT,
-                net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 1.4f);
-            sendMessage("§aTag Team! You swap places with " + ally.getDisplayName()
-                + ". §7(free action)");
-            handleLeadSelect(-1);
-            sendSync();
-            refreshHighlights();
-            return;
-        }
-
+        // are fair game. performAllyWalk does that validation.
         if (performAllyWalk(ally, targetTile, true)) {
             // Clear the glow once the walk starts.
             handleLeadSelect(-1);
