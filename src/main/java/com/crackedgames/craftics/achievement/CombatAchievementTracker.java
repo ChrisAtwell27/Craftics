@@ -39,7 +39,6 @@ public class CombatAchievementTracker {
     private int maxShockwaveTargets = 0;
     private int maxPierceTargets = 0;
     private int maxCoralFanTargets = 0;
-    private int maxSpearPierceTargets = 0;
 
     // Execution tracking
     private boolean suddenDeathWin;
@@ -185,10 +184,6 @@ public class CombatAchievementTracker {
         if (count > maxCoralFanTargets) maxCoralFanTargets = count;
     }
 
-    public void recordSpearPierceTargets(int count) {
-        if (count > maxSpearPierceTargets) maxSpearPierceTargets = count;
-    }
-
     public void recordExecutionKill() {
         executionKill = true;
     }
@@ -291,7 +286,6 @@ public class CombatAchievementTracker {
     public int getMaxShockwaveTargets() { return maxShockwaveTargets; }
     public int getMaxPierceTargets() { return maxPierceTargets; }
     public int getMaxCoralFanTargets() { return maxCoralFanTargets; }
-    public int getMaxSpearPierceTargets() { return maxSpearPierceTargets; }
     public boolean hasExecutionKill() { return executionKill; }
     /** Won a fight that had already tipped into sudden death. */
     public boolean hasSuddenDeathWin() { return suddenDeathWin; }

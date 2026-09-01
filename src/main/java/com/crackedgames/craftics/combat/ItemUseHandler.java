@@ -1606,7 +1606,15 @@ public class ItemUseHandler {
     private static String useMilkBucket(ServerPlayerEntity player, ItemStack stack) {
         stack.decrement(1);
         player.getInventory().insertStack(new ItemStack(Items.BUCKET));
-        CombatEffects effects = CombatManager.getActiveCombat(player.getUuid()).getCombatEffects();
+        CombatManager milkCm = CombatManager.getActiveCombat(player.getUuid());
+        CombatEffects effects = milkCm.getCombatEffects();
+        // Counted BEFORE the clear, which is the only moment the number exists: milk wipes the
+        // whole set, so afterwards there is nothing left to count.
+        int debuffsCleared = 0;
+        for (CombatEffects.EffectType type : effects.getAll().keySet()) {
+            if (CombatEffects.isDebuff(type)) debuffsCleared++;
+        }
+        milkCm.recordMilkCleanse(debuffsCleared);
         effects.clear();
         player.clearStatusEffects();
         return "§fDrank milk! All effects cleared.";
@@ -2028,6 +2036,15 @@ public class ItemUseHandler {
         GridTile tile = arena.getTile(targetTile);
         if (tile == null || !tile.isWater()) return "§cThat's not a water tile!";
 
+        // Not out of a bucket. A water bucket is reusable and a poured tile costs nothing to
+        // make, so fishing one was an unlimited loot tap that only cost turns - and turns were
+        // free too, until Sudden Death. Arena water is still fishable; you just cannot bring
+        // your own pond.
+        CombatManager fishCm = CombatManager.getActiveCombat(player.getUuid());
+        if (fishCm != null && fishCm.isBucketWater(targetTile)) {
+            return "§cNothing lives in a puddle you poured yourself.";
+        }
+
         // No fishing in a cleared/safe room. With no hostile enemies present the
         // player can't be interrupted, so fishing a placed water tile turns into
         // infinite free loot. Require at least one living enemy on the grid.
@@ -2049,13 +2066,28 @@ public class ItemUseHandler {
             stack.setDamage(stack.getDamage() + 1);
         }
 
-        // Random fishing loot
+        // What came up, and how good it is allowed to be. Both answers come from
+        // FishingTable, where the odds can actually be checked.
         java.util.Random rng = new java.util.Random();
-        int roll = rng.nextInt(100);
+        int ordinal = fishCm != null ? fishCm.getCurrentBiomeOrdinal() : 0;
+        FishingTable.Catch result = FishingTable.resolve(rng.nextInt(100), ordinal);
+
+        if (result == FishingTable.Catch.NOTHING) {
+            return FISHING_PREFIX + "§7The line comes back empty.";
+        }
+        if (result == FishingTable.Catch.DROWNED) {
+            // Something bit back. It surfaces on or beside the tile that was cast at, already
+            // part of the fight - which is the point: fishing is no longer free of risk.
+            if (fishCm != null && fishCm.spawnFishedDrowned(targetTile)) {
+                return FISHING_PREFIX + "§2Something grabs the line - a §aDrowned §2surfaces!";
+            }
+            return FISHING_PREFIX + "§7Something heavy tugs the line, then lets go.";
+        }
+
         Item loot;
         int count = 1;
         String rarity;
-        if (roll < 50) {
+        if (result == FishingTable.Catch.COMMON_FISH) {
             // Common fish (50%)
             loot = switch (rng.nextInt(4)) {
                 case 0 -> Items.PUFFERFISH;
@@ -2064,8 +2096,7 @@ public class ItemUseHandler {
                 default -> Items.COD;
             };
             rarity = "§7";
-        } else if (roll < 75) {
-            // Useful items (25%)
+        } else if (result == FishingTable.Catch.USEFUL_ITEM) {
             int usefulRoll = rng.nextInt(11);
             loot = switch (usefulRoll) {
                 case 0 -> Items.BONE;
@@ -2082,8 +2113,7 @@ public class ItemUseHandler {
                 default -> Items.TURTLE_EGG;
             };
             rarity = "§a";
-        } else if (roll < 90) {
-            // Good items (15%)
+        } else if (result == FishingTable.Catch.GOOD_ITEM) {
             int goodRoll = rng.nextInt(23);
             loot = switch (goodRoll) {
                 case 0 -> Items.NAME_TAG;
@@ -2113,7 +2143,6 @@ public class ItemUseHandler {
             };
             rarity = "§b";
         } else {
-            // Rare treasure (10%)
             loot = switch (rng.nextInt(8)) {
                 case 0 -> Items.DIAMOND;
                 case 1 -> Items.EMERALD;
@@ -2126,6 +2155,8 @@ public class ItemUseHandler {
                 default -> Items.HEART_OF_THE_SEA;
             };
             rarity = "§d";
+            // The top tier is the "rare item" Fisherman's Luck is asking for.
+            if (fishCm != null) fishCm.recordFishingTreasure();
         }
 
         // Enchanted books need a random stored enchantment applied, otherwise fishing
@@ -2136,8 +2167,11 @@ public class ItemUseHandler {
         ItemStack caught = loot == Items.ENCHANTED_BOOK
             ? RandomEvents.createRandomEnchantedBook(player, new java.util.Random())
             : new ItemStack(loot, count);
-        LootDelivery.deliver(player, caught);
+        // Named BEFORE delivery. deliver() hands the stack to the inventory, and an inserted
+        // stack is emptied in place - so reading the name afterwards described whatever was left,
+        // which is nothing: every catch announced itself as "Air".
         String lootName = caught.getName().getString();
+        LootDelivery.deliver(player, caught);
         return FISHING_PREFIX + rarity + "Caught: " + lootName + "!";
     }
 

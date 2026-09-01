@@ -552,6 +552,31 @@ public class CombatEffects {
         };
     }
 
+    /**
+     * True if {@code type} is a beneficial effect.
+     *
+     * <p>Deliberately a whitelist rather than {@code !isDebuff(type)}. Not every effect is one or
+     * the other - AIRTIME is a positional state, not something a player is buffed by - and with a
+     * negation the next neutral effect added to the enum would silently start counting as a buff
+     * and hand out the Alchemist feat for standing in the air.
+     */
+    public static boolean isBuff(EffectType type) {
+        return switch (type) {
+            case SPEED, STRENGTH, RESISTANCE, REGENERATION, FIRE_RESISTANCE, INVISIBILITY,
+                 ABSORPTION, LUCK, SLOW_FALLING, HASTE, WATER_BREATHING -> true;
+            default -> false;
+        };
+    }
+
+    /** How many distinct buffs are active right now. The Alchemist feat counts this. */
+    public int countActiveBuffs() {
+        int n = 0;
+        for (EffectType type : effects.keySet()) {
+            if (isBuff(type)) n++;
+        }
+        return n;
+    }
+
     public Map<EffectType, ActiveEffect> getAll() {
         return effects;
     }

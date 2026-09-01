@@ -31,8 +31,16 @@ public final class ArmorSetEffects {
 
     /** Fraction of a resisted hit that Wooden armor's padding absorbs. */
     public static final double WOODEN_TYPE_RESIST = 0.30;
-    /** Chance a worn Wooden or Bone piece shatters when its wearer is hit. */
-    public static final double FRAGILE_BREAK_CHANCE = 0.05;
+    /** Chance a worn Wooden piece shatters when its wearer is hit. */
+    public static final double WOODEN_BREAK_CHANCE = 0.05;
+    /**
+     * Chance a worn Bone piece shatters when its wearer is hit.
+     *
+     * <p>A fifth of Wooden's. Bone is an archer's set built around a quiver that does not empty,
+     * so it is worn for whole runs rather than replaced between them, and losing pieces at
+     * Wooden's rate made its own perk hard to ever benefit from. Brittle, but not disposable.
+     */
+    public static final double BONE_BREAK_CHANCE = 0.01;
     /** How much each point of Luck shaves off that shatter roll. */
     public static final double LUCK_BREAK_REDUCTION = 0.005;
     /** The shatter roll never falls below this - luck steadies gear, it does not bless it. */
@@ -149,9 +157,17 @@ public final class ArmorSetEffects {
      * unbreakable.
      */
     public static double fragileBreakChance(String armorSet, int luckPoints) {
-        if (!isFragile(armorSet)) return 0.0;
-        double reduced = FRAGILE_BREAK_CHANCE - Math.max(0, luckPoints) * LUCK_BREAK_REDUCTION;
+        double base = fragileBreakChance(armorSet);
+        if (base <= 0) return 0.0;
+        double reduced = base - Math.max(0, luckPoints) * LUCK_BREAK_REDUCTION;
         return Math.max(FRAGILE_BREAK_FLOOR, reduced);
+    }
+
+    /** The unmodified shatter chance for a set, before Luck. 0 for anything not brittle. */
+    public static double fragileBreakChance(String armorSet) {
+        if (WOODEN.equals(armorSet)) return WOODEN_BREAK_CHANCE;
+        if (BONE.equals(armorSet)) return BONE_BREAK_CHANCE;
+        return 0.0;
     }
 
     // =========================================================================

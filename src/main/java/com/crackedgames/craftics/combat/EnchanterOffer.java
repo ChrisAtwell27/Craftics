@@ -48,4 +48,57 @@ public final class EnchanterOffer {
         if (maxLevel > 0) level = Math.min(level, maxLevel);
         return Math.max(1, level);
     }
+
+    /**
+     * Enchantments that make the weapon carrying them worse.
+     *
+     * <p>Hilt quarters your damage and Dull halves it. They are meant to exist - the enchanter is
+     * a gamble, and a gamble with no losing face is just a reward - but they sat in the pool at
+     * exactly the same odds as Sharpness, which on a sword meant roughly one roll in ten turned a
+     * good weapon into a worse one. That is too often for something the player cannot undo.
+     *
+     * <p>Matched on the bare path, the same string the pools and the apply path use.
+     */
+    public static final java.util.Set<String> DOWNSIDE_ENCHANTS = java.util.Set.of("hilt", "dull");
+
+    /** What a downside enchantment weighs against {@link #STANDARD_WEIGHT}. */
+    public static final int DOWNSIDE_WEIGHT = 1;
+
+    /** What everything else weighs. */
+    public static final int STANDARD_WEIGHT = 6;
+
+    /** How likely this enchantment is to be the one that lands, relative to the rest of the pool. */
+    public static int weightOf(String key) {
+        return DOWNSIDE_ENCHANTS.contains(key) ? DOWNSIDE_WEIGHT : STANDARD_WEIGHT;
+    }
+
+    /** The sum every roll is drawn against. Never 0 for a non-empty pool, so the caller can divide. */
+    public static int totalWeight(java.util.List<String> keys) {
+        int total = 0;
+        for (String key : keys) total += weightOf(key);
+        return total;
+    }
+
+    /**
+     * The enchantment a roll lands on, weighted so the downside pair comes up a sixth as often.
+     *
+     * <p>This deliberately does NOT change what the shortlist can show. Hilt and Dull stay just as
+     * visible as possibilities the item might take, because the shortlist is the warning, and a
+     * warning about something that never happens stops being read. Only the odds of actually
+     * getting one move.
+     *
+     * @param keys the eligible pool, never empty
+     * @param roll 0 to {@code totalWeight(keys) - 1}
+     */
+    public static String weightedPick(java.util.List<String> keys, int roll) {
+        if (keys.isEmpty()) throw new IllegalArgumentException("no eligible enchantments to pick from");
+        // A roll outside the range is a caller bug, but returning something valid beats throwing
+        // in the middle of an event the player is already looking at.
+        int cursor = Math.max(0, roll);
+        for (String key : keys) {
+            cursor -= weightOf(key);
+            if (cursor < 0) return key;
+        }
+        return keys.get(keys.size() - 1);
+    }
 }
