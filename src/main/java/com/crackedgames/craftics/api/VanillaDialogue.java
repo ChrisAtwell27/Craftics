@@ -79,6 +79,19 @@ public final class VanillaDialogue {
                     new DialogueChoice("Enhance armor", "enchanter:armor"),
                     new DialogueChoice("Decline", "enchanter:decline"))));
 
+        // The Disenchanter - step 1. Every line is written to be impossible to mistake for the
+        // enchanter's: this one only ever REMOVES. The event is otherwise staged identically,
+        // right down to the villager in the same room, so the words are the only thing standing
+        // between a player and losing an enchantment they meant to keep.
+        DialogueRegistry.register(new DialogueDefinition(
+            "craftics:disenchanter_intro", "minecraft:villager", "disenchanter_intro",
+            List.of("\"You have come to the wrong table if you want power.\"",
+                    "\"I am no enchanter. I STRIP enchantments away.\"",
+                    "§cAnything you choose here is REMOVED from your gear, for good.",
+                    "\"Show me what you carry, and I will show you what clings to it.\""),
+            List.of(new DialogueChoice("§cShow my enchanted gear", "disenchanter:items"),
+                    new DialogueChoice("Leave", "disenchanter:decline"))));
+
         // Per-biome boss intros, one per vanilla biome. CombatManager looks
         // these up by biomeId; mod biomes without a registered intro simply
         // skip the dialogue (no generic placeholder).

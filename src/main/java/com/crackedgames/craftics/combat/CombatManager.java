@@ -1123,6 +1123,11 @@ public class CombatManager {
      * the transition never fires for the remaining online members.
      */
     private void clearEventPendingForDisconnect(java.util.UUID memberUuid) {
+        // A disconnect during the disenchanter drops that player's open item and marks. They are
+        // keyed by uuid, so a reconnecting player would otherwise resume a menu whose item may no
+        // longer be in the slot it was picked from.
+        clearDisenchantPick(memberUuid);
+        perPlayerDisenchantSlots.remove(memberUuid);
         // Drop the leaver from the cinematic so they never block the arrived/finished gates.
         if (activeCinematic != null) activeCinematic.removePlayer(memberUuid);
         if (traderPendingPlayers.remove(memberUuid)) {
@@ -1230,6 +1235,7 @@ public class CombatManager {
                     case "shrine"        -> finalizeShrineEvent(ref);
                     case "traveler"      -> finalizeTravelerEvent(ref);
                     case "enchanter"     -> finalizeEnchanterEvent(ref);
+                    case "disenchanter"  -> finalizeDisenchanterEvent(ref);
                     case "vault"         -> finalizeVaultEvent(ref);
                     case "piglin_barter" -> finalizeBarterEvent(ref);
                     default              -> { /* shiny/trial finalize themselves above */ }
@@ -3585,6 +3591,8 @@ public class CombatManager {
     private GridPos indirectAimTile = null;
     private boolean suppressDirectHit = false;
 
+    /** Ethereal trim set: its share of the avoidance stack. */
+    private static final double ETHEREAL_DODGE_CHANCE = 0.20;
     private static final double SHIELD_BLOCK_CHANCE = 0.25;
 
     /** RNG for the incoming-damage AC dodge roll. */
@@ -3738,35 +3746,91 @@ public class CombatManager {
         int bossCap = (mitigable && attacker != null && attacker.isBoss())
             ? com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAttack() + difficultyBonus : 0;
         int rawDamage = (bossCap > 0) ? Math.min(scaledRaw, bossCap) : scaledRaw;
-        // AC dodge roll -only enemy attacks roll. Environmental/self damage
-        // (attacker == null) and DoT ticks bypass the roll and apply directly.
-        // The attack's resolved damage (rawDamage) doubles as the enemy's
-        // effective attack value fed to the dodge formula.
-        if (mitigable && attacker != null) {
-            // Banner-aura defense must read the player actually being hit. In MP
-            // this.player is swapped to the real victim, but arena.getPlayerGridPos()
-            // still holds the last-acting player's tile, so gridPosOf(player) is
-            // used to anchor the aura lookup on the victim's true position.
-            int ac = PlayerCombatStats.getArmorClass(player, combatEffects, activeTrimScan,
-                getProgDefenseBonus(),
-                BannerEffects.defenseBonusAt(gridPosOf(player), tileEffects)
-                    + walkingBannerBonusAt(gridPosOf(player))
-                    + phalanxBonusFor(player) + beaconBonusFor(player));
-            // A shield swapped in after a shieldless attack this turn grants no AC.
-            if (attackedWithoutShieldThisTurn && PlayerCombatStats.hasShield(player)) {
-                ac = Math.max(0, ac - PlayerCombatStats.SHIELD_PASSIVE_AC);
+        // Everything that can shrug an attack off entirely, added up and rolled ONCE.
+        //
+        // These were four rolls in a row, each returning early on success. That is a product, not
+        // a sum: a tank stacking all four read 120% on their tooltips and avoided 79.6% of hits,
+        // and every layer was worth less the more of them you had. Now they add, so the gear says
+        // what it does - see Avoidance.
+        //
+        // Environmental and self damage (attacker == null) still bypasses the roll entirely, and
+        // DoT ticks apply directly, exactly as before.
+        if (mitigable) {
+            java.util.List<Avoidance.Layer> avoidLayers = new java.util.ArrayList<>();
+
+            if (attacker != null) {
+                // Banner-aura defense must read the player actually being hit. In MP
+                // this.player is swapped to the real victim, but arena.getPlayerGridPos()
+                // still holds the last-acting player's tile, so gridPosOf(player) is
+                // used to anchor the aura lookup on the victim's true position.
+                int ac = PlayerCombatStats.getArmorClass(player, combatEffects, activeTrimScan,
+                    getProgDefenseBonus(),
+                    BannerEffects.defenseBonusAt(gridPosOf(player), tileEffects)
+                        + walkingBannerBonusAt(gridPosOf(player))
+                        + phalanxBonusFor(player) + beaconBonusFor(player));
+                // A shield swapped in after a shieldless attack this turn grants no AC.
+                if (attackedWithoutShieldThisTurn && PlayerCombatStats.hasShield(player)) {
+                    ac = Math.max(0, ac - PlayerCombatStats.SHIELD_PASSIVE_AC);
+                }
+                // The only contested layer: its chance depends on this attacker's damage.
+                avoidLayers.add(new Avoidance.Layer(Avoidance.Source.ARMOR_CLASS,
+                    DodgeRoll.dodgePercent(ac, rawDamage) / 100.0));
             }
-            DodgeRoll.DodgeResult dodge = DodgeRoll.roll(ac, rawDamage, combatRng);
-            if (dodge.dodged()) {
-                playDodgeFeedback("§b§l✦ DEFLECTED!",
-                    "§b§l✦ Deflected!§r §7You slipped past the " + attacker.getDisplayName() + "'s attack.");
-                // AC deflect gets a heavy metallic clang (like the anvil drop) so a
-                // pure armor-class deflect reads as the hit ringing off your armor.
-                player.getWorld().playSound(null, player.getBlockPos(),
-                    net.minecraft.sound.SoundEvents.BLOCK_ANVIL_LAND,
-                    net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 1.2f);
-                fireEffectHook(h -> h.onDodge(effectContext, attacker));
-                hybridSentinelRiposte(attacker);
+            if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.ETHEREAL) {
+                avoidLayers.add(new Avoidance.Layer(Avoidance.Source.ETHEREAL, ETHEREAL_DODGE_CHANCE));
+            }
+            if (PlayerCombatStats.hasShield(player) && !attackedWithoutShieldThisTurn) {
+                avoidLayers.add(new Avoidance.Layer(Avoidance.Source.SHIELD, SHIELD_BLOCK_CHANCE));
+            }
+            if (attacker != null && activeHybridEffect() == HybridEffect.GILDED_GUARD) {
+                avoidLayers.add(new Avoidance.Layer(Avoidance.Source.GILDED_GUARD,
+                    HybridSetEffects.GILDED_GUARD_CHANCE));
+            }
+
+            // combatRng for both rolls so an avoided hit stays seedable and reproducible.
+            Avoidance.Result avoided = Avoidance.resolve(
+                avoidLayers, combatRng.nextDouble(), combatRng.nextDouble());
+            if (avoided.avoided()) {
+                // Which layer takes the credit decides the message and the side effects. They are
+                // not interchangeable: only a shield spends durability, and only a genuine dodge
+                // (AC or Ethereal) counts as one for the addon hook and the Sentinel riposte.
+                switch (avoided.by()) {
+                    case ARMOR_CLASS -> {
+                        playDodgeFeedback("§b§l✦ DEFLECTED!",
+                            "§b§l✦ Deflected!§r §7You slipped past the "
+                                + attacker.getDisplayName() + "'s attack.");
+                        // A heavy metallic clang, so a pure armor-class deflect reads as the hit
+                        // ringing off your armor.
+                        player.getWorld().playSound(null, player.getBlockPos(),
+                            net.minecraft.sound.SoundEvents.BLOCK_ANVIL_LAND,
+                            net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 1.2f);
+                        fireEffectHook(h -> h.onDodge(effectContext, attacker));
+                        hybridSentinelRiposte(attacker);
+                    }
+                    case ETHEREAL -> {
+                        playDodgeFeedback("§b§l✦ ETHEREAL!",
+                            "§b§l✦ Ethereal!§r §7The attack phased through you!");
+                        fireEffectHook(h -> h.onDodge(effectContext, attacker));
+                        hybridSentinelRiposte(attacker);
+                    }
+                    case SHIELD -> {
+                        playDodgeFeedback("§9§l✦ BLOCKED!",
+                            "§9§l✦ Shield blocked!§r §7Attack deflected!");
+                        fireEffectHook(h -> h.onBlocked(effectContext, attacker, rawDamage));
+                        // Only a real block spends the shield.
+                        ItemStack shieldStack =
+                            player.getEquippedStack(net.minecraft.entity.EquipmentSlot.OFFHAND);
+                        if (!shieldStack.isEmpty()) {
+                            shieldStack.damage(1, player, net.minecraft.entity.EquipmentSlot.OFFHAND);
+                        }
+                    }
+                    case GILDED_GUARD -> {
+                        playDodgeFeedback("§6§l✦ GILDED GUARD!",
+                            "§6§l✦ Gilded Guard!§r §7The "
+                                + attacker.getDisplayName() + "'s hit glanced off your gilding.");
+                        fireEffectHook(h -> h.onBlocked(effectContext, attacker, rawDamage));
+                    }
+                }
                 matadorExpose(attacker);
                 undertowPull(attacker);
                 lastHitAvoided = true;
@@ -3774,51 +3838,9 @@ public class CombatManager {
             }
         }
 
-        // ETHEREAL set bonus: an extra 20% dodge layer, independent of AC.
-        if (mitigable && activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.ETHEREAL) {
-            if (Math.random() < 0.20) {
-                playDodgeFeedback("§b§l✦ ETHEREAL!",
-                    "§b§l✦ Ethereal!§r §7The attack phased through you!");
-                fireEffectHook(h -> h.onDodge(effectContext, attacker));
-                hybridSentinelRiposte(attacker);
-                matadorExpose(attacker);
-                undertowPull(attacker);
-                lastHitAvoided = true;
-                return 0;
-            }
-        }
-
-        // Shield passive: 25% chance to fully block the attack. The shield must have been up
-        // when the player attacked this turn -swapping one in after a dual-wield strike blocks nothing.
-        if (mitigable && PlayerCombatStats.hasShield(player) && !attackedWithoutShieldThisTurn
-                && Math.random() < SHIELD_BLOCK_CHANCE) {
-            playDodgeFeedback("§9§l✦ BLOCKED!",
-                "§9§l✦ Shield blocked!§r §7Attack deflected!");
-            fireEffectHook(h -> h.onBlocked(effectContext, attacker, rawDamage));
-            // Successful block consumes shield durability
-            ItemStack shieldStack = player.getEquippedStack(net.minecraft.entity.EquipmentSlot.OFFHAND);
-            if (!shieldStack.isEmpty()) {
-                shieldStack.damage(1, player, net.minecraft.entity.EquipmentSlot.OFFHAND);
-            }
-            matadorExpose(attacker);
-            undertowPull(attacker);
-            lastHitAvoided = true;
-            return 0;
-        }
-
-        // Gilded Guard hybrid: a flat chance to fully negate an incoming enemy hit.
-        if (mitigable && attacker != null && activeHybridEffect() == HybridEffect.GILDED_GUARD
-                && Math.random() < HybridSetEffects.GILDED_GUARD_CHANCE) {
-            playDodgeFeedback("§6§l✦ GILDED GUARD!",
-                "§6§l✦ Gilded Guard!§r §7The " + attacker.getDisplayName() + "'s hit glanced off your gilding.");
-            fireEffectHook(h -> h.onBlocked(effectContext, attacker, rawDamage));
-            matadorExpose(attacker);
-            undertowPull(attacker);
-            lastHitAvoided = true;
-            return 0;
-        }
-
-        // Divine armor: the first enemy hit of the battle is turned aside entirely.
+        // Divine armor: a once-per-fight GUARANTEE rather than a chance, so it stays out of the
+        // additive stack above - and after it, so a hit the layers would have turned aside anyway
+        // does not burn the one free deflect of the fight.
         if (mitigable && attacker != null && !divineDeflectUsed.contains(player.getUuid())
                 && ArmorSetEffects.hasDivineDeflect(PlayerCombatStats.getArmorSet(player))) {
             divineDeflectUsed.add(player.getUuid());
@@ -4028,7 +4050,6 @@ public class CombatManager {
     static final int PROG_DEFENSE_PER_POINT = 2;     // +2 Armor Class per point (was +1)
     static final int PROG_VITALITY_HP_PER_POINT = 8; // +8 max HP per Vitality point
     static final int PROG_RESOURCEFUL_PER_POINT = 2; // +2 emeralds/level per point (was +1)
-    static final double PROG_LUCK_CRIT_PER_POINT = 0.08; // +8% crit per point (was +5%)
 
     private int getProgMeleeBonus() {
         if (player == null) return 0;
@@ -7859,49 +7880,53 @@ public class CombatManager {
         // Eagle Eye set bonus: ranged attacks always have a crit source
         boolean hasEagleEye = isRangedWeapon && activeTrimScan != null
             && activeTrimScan.setBonus() == TrimEffects.SetBonus.ALL_SEEING;
-        int luckEffectLevel = combatEffects.getLuckBonus(); // Luck status effect: +5% crit per level
-        boolean hasAnyCritSource = luckPoints > 0 || PlayerCombatStats.hasGoldSet(player) || trimLuck > 0
-            || hasEagleEye || luckEffectLevel > 0;
-        boolean luckCrit = false;
-        if (hasAnyCritSource) {
-            // Eagle Eye set bonus: +30% crit chance for ranged attacks
-            if (!luckCrit && hasEagleEye) luckCrit = Math.random() < 0.30;
-            // Luck stat: 5% per point
-            if (!luckCrit && luckPoints > 0) luckCrit = Math.random() < (luckPoints * PROG_LUCK_CRIT_PER_POINT);
-            // Luck status effect: 5% per level (potions, Luck sherd, Artifacts)
-            if (!luckCrit && luckEffectLevel > 0) luckCrit = Math.random() < (luckEffectLevel * 0.05);
-            // Gold set: flat 15% crit
-            if (!luckCrit && PlayerCombatStats.hasGoldSet(player)) luckCrit = Math.random() < 0.15;
-            // Trim luck bonus: 3% per piece
-            if (!luckCrit && trimLuck > 0) luckCrit = Math.random() < (trimLuck * 0.03);
-            // Config-based critical hit chance (only if player has a crit source)
-            if (!luckCrit && CrafticsMod.CONFIG.criticalHitChance() > 0) {
-                luckCrit = Math.random() < CrafticsMod.CONFIG.criticalHitChance();
-            }
-        }
-        // Hybrid armor-set crit sources -independent of the vanilla sources above.
-        if (!luckCrit && activeHybrid == HybridEffect.AMBUSH && !hybridFirstAttackUsed) {
-            // Ambush: the first attack of the combat is a guaranteed critical.
-            luckCrit = true;
-            hybridFirstAttackUsed = true;
-        }
-        if (!luckCrit && activeHybrid == HybridEffect.LUCKY_STREAK) {
-            luckCrit = Math.random() < HybridSetEffects.luckyStreakCritChance(hybridLuckyStreak);
-        }
-        if (!luckCrit && activeHybrid == HybridEffect.BERSERKER) {
-            luckCrit = Math.random()
-                < HybridSetEffects.berserkerCritChance(player.getHealth(), player.getMaxHealth());
+        int luckEffectLevel = combatEffects.getLuckBonus();
+
+        // Hybrid sets contribute a chance like anything else. Lucky Streak and Berserker are
+        // mutually exclusive - a player wears one hybrid set - so at most one is non-zero.
+        double hybridCrit = 0.0;
+        if (activeHybrid == HybridEffect.LUCKY_STREAK) {
+            hybridCrit = HybridSetEffects.luckyStreakCritChance(hybridLuckyStreak);
+        } else if (activeHybrid == HybridEffect.BERSERKER) {
+            hybridCrit = HybridSetEffects.berserkerCritChance(player.getHealth(), player.getMaxHealth());
         }
         // Rogue (Chainmail) set: bonus crit chance with light (1-AP) weapons.
-        if (!luckCrit && lightWeapon) {
-            int rogueCrit = PlayerCombatStats.getSetLightWeaponCrit(player);
-            if (rogueCrit > 0) luckCrit = Math.random() < (rogueCrit / 100.0);
+        double lightWeaponCrit = lightWeapon
+            ? PlayerCombatStats.getSetLightWeaponCrit(player) / 100.0 : 0.0;
+
+        // One number, one roll. Every source above is an addend rather than its own separate
+        // roll: stacking two 30% sources now means 60%, which is what the numbers say and what
+        // a player reading their sheet expects.
+        CritChance.Sources critSources = new CritChance.Sources(
+            luckPoints, luckEffectLevel, trimLuck,
+            PlayerCombatStats.hasGoldSet(player), hasEagleEye,
+            CrafticsMod.CONFIG.criticalHitChance(), hybridCrit, lightWeaponCrit);
+        // Every whole 100% is a guaranteed tier and the remainder is a roll for one more, so a
+        // build at 248% lands two tiers for certain with a 48% shot at a third.
+        int critTiers = CritChance.rollTiers(critSources, Math.random());
+        boolean luckCrit = critTiers >= 1;
+
+        // Ambush stays outside the sum: it is a guarantee, not a chance, and it is spent on the
+        // first attack of the fight. Checked after the roll so a crit the player would have got
+        // anyway does not burn it.
+        if (!luckCrit && activeHybrid == HybridEffect.AMBUSH && !hybridFirstAttackUsed) {
+            luckCrit = true;
+            critTiers = 1; // a guaranteed crit, not a guaranteed Overcrit
+            hybridFirstAttackUsed = true;
         }
         if (luckCrit) {
             // Gladiator: critical hits deal +50% extra damage (2.0x in place of 1.5x).
-            double critMult = activeHybrid == HybridEffect.GLADIATOR
+            double baseCritMult = activeHybrid == HybridEffect.GLADIATOR
                 ? HybridSetEffects.GLADIATOR_CRIT_MULT : HybridSetEffects.NORMAL_CRIT_MULT;
-            baseDamage = (int)(baseDamage * critMult);
+            // Overcrit: each whole 100% of crit chance past the first is another crit stacked on
+            // this swing. Zero tiers for anyone under 100%, so an ordinary build is untouched.
+            int overcrits = CritChance.overcritTiers(critTiers);
+            baseDamage = (int) (baseDamage * CritChance.critMultiplier(baseCritMult, overcrits));
+            if (overcrits > 0) {
+                sendMessageToActor("§6\u2726 " + CritChance.overcritName(overcrits)
+                    + "! §f" + String.format("%.2f", CritChance.critMultiplier(baseCritMult, overcrits))
+                    + "x damage.");
+            }
         }
 
         // Signature tier-weapon multipliers. These used to live in swordAbility
@@ -30492,7 +30517,11 @@ public class CombatManager {
                     float cVault = cTraveler + CrafticsMod.CONFIG.vaultChance() * pityScale;
                     float cDigSite = cVault + CrafticsMod.CONFIG.digSiteChance() * pityScale;
                     float cEnchanter = cDigSite + 0.06f * pityScale; // 6% enchanter chance
-                    float cTrader = cEnchanter + CrafticsMod.CONFIG.traderSpawnChance() * pityScale;
+                    // The disenchanter is rarer than the enchanter: it only ever takes something
+                    // away, so meeting one should feel like an unlucky draw rather than a regular
+                    // stop. Hardcoded next to the enchanter it mirrors, which is hardcoded too.
+                    float cDisenchanter = cEnchanter + 0.03f * pityScale; // 3% disenchanter chance
+                    float cTrader = cDisenchanter + CrafticsMod.CONFIG.traderSpawnChance() * pityScale;
 
                     boolean isNetherRegion = "nether".equals(
                         java.util.Optional.ofNullable(
@@ -30657,6 +30686,13 @@ public class CombatManager {
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         offerEnchanter(savedPlayer);
+                    } else if (forced != null ? forced.equals("disenchanter") : (eventRoll < cDisenchanter)) {
+                        // Disenchanter -strip enchantments off a weapon or armor piece
+                        ld.levelsSinceLastEvent = 0; // reset pity timer on event
+                        data.markDirty();
+                        pendingNextLevelDef = nextLevelDef;
+                        pendingBiome = biome;
+                        offerDisenchanter(savedPlayer);
                     } else if (forced != null ? (forced.equals("trader") || forced.equals("piglin_barter")) : (eventRoll < cTrader)) {
                         // Configurable chance: Wandering Trader (Overworld/End) or Piglin Barter (Nether)
                         ld.levelsSinceLastEvent = 0; // reset pity timer on event
@@ -30934,7 +30970,7 @@ public class CombatManager {
 
     // ---- Interactive event rooms (shrine, traveler, vault, enchanter, shiny, trial) ----
     private boolean eventRoomPending = false;
-    private String eventRoomType = null; // "shrine", "traveler", "vault", "enchanter", "shiny", "trial"
+    private String eventRoomType = null; // "shrine", "traveler", "vault", "enchanter", "disenchanter", "shiny", "trial"
     private int pendingEventBiomeOrdinal = 0; // biome ordinal when the current event started
     private net.minecraft.entity.passive.VillagerEntity spawnedTraveler;
 
@@ -30989,6 +31025,34 @@ public class CombatManager {
     // Per-player event tracking. Each player gets their own chance to participate.
     private final java.util.Set<java.util.UUID> eventPendingPlayers = new java.util.HashSet<>();
     private final java.util.Map<java.util.UUID, java.util.List<int[]>> perPlayerEnchanterSlots = new java.util.HashMap<>();
+
+    /** Most enchanted items one disenchanter menu lists, so the choice rows stay on screen. */
+    private static final int MAX_DISENCHANT_ITEMS = 6;
+
+    /** Disenchanter: the enchanted items each player was offered, as {slotId, isArmor}. */
+    private final java.util.Map<java.util.UUID, java.util.List<int[]>> perPlayerDisenchantSlots =
+        new java.util.HashMap<>();
+    /** Disenchanter: which item each player is currently looking inside. */
+    private final java.util.Map<java.util.UUID, Integer> perPlayerDisenchantPick =
+        new java.util.HashMap<>();
+    /**
+     * Disenchanter: the positions each player has ticked for removal.
+     *
+     * <p>Positions into {@link #enchantmentsOn}'s sorted list, which is why that sort has to be
+     * stable: the menu is rebuilt on every toggle, and a shifting order would move the ticks onto
+     * different enchantments between the click and the confirm.
+     */
+    private final java.util.Map<java.util.UUID, java.util.Set<Integer>> perPlayerDisenchantPicked =
+        new java.util.HashMap<>();
+    /**
+     * Disenchanter: what the open menu was drawn from, so a changed item is noticed.
+     *
+     * <p>Taken when the item is opened and re-checked on every click. Without it a list that
+     * shifted underneath the player would move their ticks onto different enchantments, and the
+     * removal is not reversible.
+     */
+    private final java.util.Map<java.util.UUID, String> perPlayerDisenchantPrint =
+        new java.util.HashMap<>();
 
     /**
      * A decided enchanter outcome, plus the shortlist the player was shown for it.
@@ -32173,6 +32237,137 @@ public class CombatManager {
 
     // ---- Enchanter Event ----
 
+    /**
+     * The Disenchanter: the enchanter's opposite number, in the same room.
+     *
+     * <p>Shares the enchanter's staging - shrine room, walkway, villager, cinematic - because it
+     * is the same kind of scene. What it does not share is a single word of its script: every
+     * line this event speaks is about TAKING runes off, because an event that reads like the
+     * enchanter and behaves like its opposite would cost players gear before they understood it.
+     */
+    private void offerDisenchanter(ServerPlayerEntity savedPlayer) {
+        List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+        }
+
+        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
+        eventRoomPending = true;
+        eventRoomType = "disenchanter";
+
+        eventPendingPlayers.clear();
+        perPlayerDisenchantSlots.clear();
+        perPlayerDisenchantPick.clear();
+        perPlayerDisenchantPicked.clear();
+        for (ServerPlayerEntity p : members) {
+            eventPendingPlayers.add(p.getUuid());
+        }
+
+        BlockPos origin = getEventRoomOrigin(savedPlayer);
+        buildShrineArea(world, origin, true);
+
+        {
+            int margin = 32;
+            int minCX = (origin.getX() - margin) >> 4;
+            int maxCX = (origin.getX() + 9 + margin) >> 4;
+            int minCZ = (origin.getZ() - 8 - 1 - margin) >> 4;
+            int maxCZ = (origin.getZ() + 9 + margin) >> 4;
+            for (int cx = minCX; cx <= maxCX; cx++) {
+                for (int cz = minCZ; cz <= maxCZ; cz++) {
+                    world.setChunkForced(cx, cz, true);
+                    forcedChunks.add(new net.minecraft.util.math.ChunkPos(cx, cz));
+                }
+            }
+        }
+
+        clearStrayEventNpcs(world, origin);
+        spawnedTraveler = (net.minecraft.entity.passive.VillagerEntity)
+            net.minecraft.entity.EntityType.VILLAGER.spawn(world, origin.up(), net.minecraft.entity.SpawnReason.EVENT);
+        if (spawnedTraveler != null) {
+            spawnedTraveler.refreshPositionAndAngles(
+                origin.getX() + 4.5, origin.getY() + 1, origin.getZ() + 6.5, 180f, 0f);
+            spawnedTraveler.setAiDisabled(true);
+            spawnedTraveler.setInvulnerable(true);
+            spawnedTraveler.setBaby(false);
+            world.spawnEntity(spawnedTraveler);
+        }
+
+        final int WALKWAY_LEN = 8;
+        for (ServerPlayerEntity p : members) {
+            p.requestTeleport(
+                origin.getX() + 4.5, origin.getY() + 1, origin.getZ() - WALKWAY_LEN + 0.5);
+            // All three angles, or the model renders bent for the rest of the session.
+            p.setYaw(0f);
+            p.setHeadYaw(0f);
+            p.setBodyYaw(0f);
+        }
+
+        for (ServerPlayerEntity p : members) {
+            perPlayerDisenchantSlots.put(p.getUuid(), buildDisenchantSlotsFor(p));
+        }
+
+        java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
+        for (ServerPlayerEntity p : members) partyUuids.add(p.getUuid());
+
+        final ServerPlayerEntity ref = savedPlayer;
+        this.activeWalkers.clear();
+        this.activeCinematic = new EventCinematic(partyUuids,
+            () -> {
+                var intro = com.crackedgames.craftics.combat.dialogue.DialogueRegistry
+                    .get("craftics:disenchanter_intro");
+                for (ServerPlayerEntity p : getOnlinePartyMembers(ref)) {
+                    sendDialogue(p, intro);
+                }
+            },
+            () -> { /* finished per player via eventPendingPlayers */ });
+
+        final double WALK_SPEED = 1.0 / getMoveTicks();
+        final double npcX = origin.getX() + 4.5;
+        final double npcZ = origin.getZ() + 6.5;
+        int idx = 0;
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.EnterEventCinematicPayload());
+            double tx = origin.getX() + 3.5 + (idx % 3);
+            double ty = origin.getY() + 1;
+            double tz = origin.getZ() + 3.5;
+            double walkDist = Math.hypot(tx - p.getX(), tz - p.getZ());
+            int walkTicks = Math.max(1, (int) Math.round(walkDist / WALK_SPEED));
+            final ServerPlayerEntity fp = p;
+            EntityWalker.Mover mover = (x, y, z, yaw) -> {
+                fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
+                //? if <=1.21.4 {
+                fp.prevX = fp.getX();
+                fp.prevY = fp.getY();
+                fp.prevZ = fp.getZ();
+                //?} else {
+                /*fp.lastX = fp.getX();
+                fp.lastY = fp.getY();
+                fp.lastZ = fp.getZ();
+                *///?}
+                double dx = x - fp.getX(), dz = z - fp.getZ();
+                double len = Math.sqrt(dx * dx + dz * dz);
+                if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
+                fp.setPosition(x, y, z);
+                fp.networkHandler.requestTeleport(x, y, z, yaw, 0f);
+                broadcastPlayerPositionToOthers(fp);
+            };
+            final java.util.UUID fu = p.getUuid();
+            final double ftx = tx, ftz = tz;
+            activeWalkers.add(new EntityWalker(mover,
+                p.getX(), p.getY(), p.getZ(), tx, ty, tz, walkTicks,
+                () -> {
+                    float faceYaw = (float) Math.toDegrees(Math.atan2(-(npcX - ftx), npcZ - ftz));
+                    fp.setYaw(faceYaw); fp.setHeadYaw(faceYaw); fp.setBodyYaw(faceYaw);
+                    fp.networkHandler.requestTeleport(fp.getX(), fp.getY(), fp.getZ(), faceYaw, 0f);
+                    // Without this the cinematic never counts anyone as arrived, so its
+                    // onArrive never runs and the intro dialogue is never sent: the party
+                    // stands in the room with no way to interact and no way out.
+                    activeCinematic.markArrived(fu);
+                }));
+            idx++;
+        }
+    }
+
     private void offerEnchanter(ServerPlayerEntity savedPlayer) {
         List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
         for (ServerPlayerEntity p : members) {
@@ -32603,6 +32798,42 @@ public class CombatManager {
 
     /** Resolve the live ItemStack for an enchanter slotId (0..size = inventory,
      *  100..103 = armor in FEET/LEGS/CHEST/HEAD order). */
+    /**
+     * Every enchantment on a stack, sorted by registry id.
+     *
+     * <p>Sorted, and not merely listed: the component's own iteration order is not something to
+     * rely on across separate reads, and the disenchanter addresses enchantments BY POSITION
+     * across three separate renders. An order that shuffled between the tick and the confirm
+     * would strip something the player did not choose - and it would read as the event being
+     * cruel rather than broken.
+     *
+     * @return pairs of {bare enchantment path, level}, empty for an unenchanted stack
+     */
+    private static java.util.List<Object[]> enchantmentsOn(ItemStack stack) {
+        java.util.List<Object[]> out = new java.util.ArrayList<>();
+        if (stack == null || stack.isEmpty()) return out;
+        ItemEnchantmentsComponent enchants =
+            stack.getOrDefault(DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT);
+        for (var entry : enchants.getEnchantments()) {
+            var key = entry.getKey();
+            if (key.isEmpty()) continue;
+            out.add(new Object[]{key.get().getValue().getPath(), enchants.getLevel(entry), entry});
+        }
+        out.sort(java.util.Comparator.comparing(a -> (String) a[0]));
+        return out;
+    }
+
+    /** The fingerprint of a stack's enchantments right now. See {@link DisenchantRules#fingerprint}. */
+    private static String disenchantPrint(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return DisenchantRules.fingerprint("empty", java.util.List.of());
+        java.util.List<String> keys = new java.util.ArrayList<>();
+        for (Object[] e : enchantmentsOn(stack)) {
+            keys.add(DisenchantRules.entryKey((String) e[0], (Integer) e[1]));
+        }
+        return DisenchantRules.fingerprint(
+            net.minecraft.registry.Registries.ITEM.getId(stack.getItem()).toString(), keys);
+    }
+
     private static ItemStack lookupEnchanterStack(ServerPlayerEntity player, int slotId) {
         if (slotId >= 100) {
             //? if <=1.21.4 {
@@ -32620,6 +32851,197 @@ public class CombatManager {
         }
         if (slotId < 0 || slotId >= player.getInventory().size()) return ItemStack.EMPTY;
         return player.getInventory().getStack(slotId);
+    }
+
+    // === Disenchanter =======================================================
+
+    /**
+     * Every enchanted item a player is carrying or wearing.
+     *
+     * <p>Only enchanted ones. The disenchanter's whole job is removal, so listing a bare sword
+     * would offer the player a pick that cannot do anything - and worse, would blur what the
+     * event is for. Anything with nothing on it simply is not shown.
+     */
+    private java.util.List<int[]> buildDisenchantSlotsFor(ServerPlayerEntity p) {
+        java.util.List<int[]> out = new java.util.ArrayList<>();
+        for (int i = 0; i < p.getInventory().size(); i++) {
+            ItemStack stack = p.getInventory().getStack(i);
+            if (stack.isEmpty()) continue;
+            Item item = stack.getItem();
+            if (item == com.crackedgames.craftics.item.ModItems.MOVE_ITEM
+                || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
+            if (enchantmentsOn(stack).isEmpty()) continue;
+            out.add(new int[]{i, 0});
+        }
+        //? if <=1.21.4 {
+        for (int i = 0; i < p.getInventory().armor.size(); i++) {
+            ItemStack armor = p.getInventory().armor.get(i);
+            if (!armor.isEmpty() && !enchantmentsOn(armor).isEmpty()) out.add(new int[]{100 + i, 1});
+        }
+        //?} else {
+        /*net.minecraft.entity.EquipmentSlot[] armorOrder = {
+                net.minecraft.entity.EquipmentSlot.FEET, net.minecraft.entity.EquipmentSlot.LEGS,
+                net.minecraft.entity.EquipmentSlot.CHEST, net.minecraft.entity.EquipmentSlot.HEAD};
+        for (int i = 0; i < 4; i++) {
+            ItemStack armor = p.getEquippedStack(armorOrder[i]);
+            if (!armor.isEmpty() && !enchantmentsOn(armor).isEmpty()) out.add(new int[]{100 + i, 1});
+        }
+        *///?}
+        return out;
+    }
+
+    /** Hover text for an item row: everything currently on it, so the pick is informed. */
+    private String disenchantItemTooltip(ItemStack stack) {
+        java.util.List<Object[]> list = enchantmentsOn(stack);
+        if (list.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("§7Currently carries:");
+        for (Object[] e : list) {
+            sb.append(com.crackedgames.craftics.network.DialoguePayload.TOOLTIP_LINE)
+              .append("§f  ").append(com.crackedgames.craftics.combat.EnchanterPreview.label(
+                  (String) e[0], (Integer) e[1]));
+        }
+        return sb.toString();
+    }
+
+    /** Step 2: which enchanted item to open. Only enchanted gear appears. */
+    private com.crackedgames.craftics.combat.dialogue.DialogueDefinition
+            buildDisenchantItemDialogue(ServerPlayerEntity p) {
+        return buildDisenchantItemDialogue(p, null);
+    }
+
+    /** As above, with a line explaining why the player was sent back here. */
+    private com.crackedgames.craftics.combat.dialogue.DialogueDefinition
+            buildDisenchantItemDialogue(ServerPlayerEntity p, String notice) {
+        java.util.List<int[]> slots =
+            perPlayerDisenchantSlots.getOrDefault(p.getUuid(), java.util.List.of());
+
+        // Re-read every slot live rather than trusting the list built when the event opened: a
+        // slot can have been emptied, swapped, or stripped by an earlier pick since then.
+        java.util.List<int[]> live = new java.util.ArrayList<>();
+        for (int[] slot : slots) {
+            ItemStack stack = lookupEnchanterStack(p, slot[0]);
+            if (!stack.isEmpty() && !enchantmentsOn(stack).isEmpty()) live.add(slot);
+        }
+
+        java.util.List<com.crackedgames.craftics.combat.dialogue.DialogueChoice> choices =
+            new java.util.ArrayList<>();
+        int added = Math.min(live.size(), MAX_DISENCHANT_ITEMS);
+        for (int i = 0; i < added; i++) {
+            ItemStack stack = lookupEnchanterStack(p, live.get(i)[0]);
+            String label = stack.getName().getString()
+                + " §8(" + enchantmentsOn(stack).size() + ")";
+            choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+                label, "disenchanter:pick:" + live.get(i)[0], disenchantItemTooltip(stack)));
+        }
+        choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+            "Never mind", "disenchanter:decline"));
+
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        if (notice != null && !notice.isEmpty()) lines.add(notice);
+        if (added == 0) {
+            lines.add("\"Nothing you carry bears an enchantment.\"");
+            lines.add("\"I strip runes away. I cannot give you one.\"");
+        } else {
+            lines.add("\"I do not grant enchantments. I TAKE them.\"");
+            lines.add("\"Choose a piece and I will show you what is bound to it.\"");
+            lines.add("\"Whatever you mark, I tear out. It does not come back.\"");
+            if (live.size() > added) {
+                lines.add("§eOnly " + added + " of your " + live.size()
+                    + " enchanted pieces fit on this table.");
+            }
+        }
+        return new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+            "craftics:disenchanter_items", "minecraft:villager", "disenchanter_items",
+            lines, choices);
+    }
+
+    /**
+     * Step 3: the chosen item's enchantments, each a toggle, then a confirm.
+     *
+     * <p>Rebuilt from the item on every click, so the ticks are re-read rather than remembered by
+     * the client. That keeps the menu honest if the item changes underneath it, and it is why
+     * {@link #enchantmentsOn} sorts.
+     */
+    private com.crackedgames.craftics.combat.dialogue.DialogueDefinition
+            buildDisenchantEnchantDialogue(ServerPlayerEntity p, int slotId) {
+        ItemStack stack = lookupEnchanterStack(p, slotId);
+        java.util.List<Object[]> list = enchantmentsOn(stack);
+        java.util.Set<Integer> picked =
+            perPlayerDisenchantPicked.getOrDefault(p.getUuid(), java.util.Set.of());
+
+        java.util.List<com.crackedgames.craftics.combat.dialogue.DialogueChoice> choices =
+            new java.util.ArrayList<>();
+        int shown = Math.min(list.size(), DisenchantRules.MAX_LISTED);
+        for (int i = 0; i < shown; i++) {
+            String name = com.crackedgames.craftics.combat.EnchanterPreview.label(
+                (String) list.get(i)[0], (Integer) list.get(i)[1]);
+            boolean ticked = picked.contains(i);
+            choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+                DisenchantRules.rowLabel(name, ticked),
+                "disenchanter:toggle:" + i,
+                ticked ? "§cMarked for removal. Click again to keep it."
+                       : "§7Click to mark this for removal."));
+        }
+        choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+            DisenchantRules.confirmLabel(picked.size()), "disenchanter:confirm",
+            picked.isEmpty() ? "§7Mark at least one enchantment first."
+                             : "§cThis cannot be undone."));
+        choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+            "Back", "disenchanter:back"));
+
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        lines.add("\"" + stack.getName().getString() + " carries these runes.\"");
+        lines.add("\"Mark every one you want TORN OUT, then confirm.\"");
+        if (list.size() > shown) {
+            // Say so rather than quietly showing a partial list: a player who cannot find
+            // Mending needs to know it exists and is not on offer, not assume the menu is broken.
+            lines.add("§eOnly the first " + shown + " of " + list.size() + " are shown.");
+        }
+        if (DisenchantRules.stripsEverything(list, picked)) {
+            lines.add("§cThat will leave the piece completely bare.");
+        }
+        return new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+            "craftics:disenchanter_runes", "minecraft:villager", "disenchanter_runes",
+            lines, choices);
+    }
+
+    /**
+     * Strip the ticked enchantments off the item.
+     *
+     * <p>Rebuilds the component from what SURVIVES rather than deleting entries one at a time: a
+     * removal loop that walks positions while those positions shift underneath it is the exact
+     * mistake this event cannot afford, because what it destroys does not come back.
+     *
+     * @return the names of what was removed, for the result line
+     */
+    private java.util.List<String> applyDisenchant(ServerPlayerEntity p, int slotId,
+                                                   java.util.Set<Integer> picked) {
+        ItemStack stack = lookupEnchanterStack(p, slotId);
+        java.util.List<Object[]> list = enchantmentsOn(stack);
+        java.util.List<Object[]> keep = DisenchantRules.kept(list, picked);
+        java.util.List<Object[]> drop = DisenchantRules.removed(list, picked);
+        if (drop.isEmpty()) return java.util.List.of();
+
+        ItemEnchantmentsComponent.Builder builder =
+            new ItemEnchantmentsComponent.Builder(ItemEnchantmentsComponent.DEFAULT);
+        for (Object[] e : keep) {
+            @SuppressWarnings("unchecked")
+            var entry =
+                (net.minecraft.registry.entry.RegistryEntry<net.minecraft.enchantment.Enchantment>) e[2];
+            builder.add(entry, (Integer) e[1]);
+        }
+        stack.set(DataComponentTypes.ENCHANTMENTS, builder.build());
+        // Nothing left to glow about.
+        if (keep.isEmpty()) {
+            stack.remove(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE);
+        }
+
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (Object[] e : drop) {
+            names.add(com.crackedgames.craftics.combat.EnchanterPreview.label(
+                (String) e[0], (Integer) e[1]));
+        }
+        return names;
     }
 
     /** Apply a random enhancement based on offer type (armor can be trim or enchant). */
@@ -33611,6 +34033,10 @@ public class CombatManager {
             handleEnchanterDialogueChoice(player, action);
             return;
         }
+        if (eventRoomPending && "disenchanter".equals(eventRoomType)) {
+            handleDisenchanterDialogueChoice(player, action);
+            return;
+        }
         if (eventRoomPending && "vault".equals(eventRoomType)) {
             handleVaultDialogueChoice(player, action);
             return;
@@ -34461,6 +34887,179 @@ public class CombatManager {
             case 3 -> new ItemStack(Items.EMERALD, 8);
             default -> randomEnchantedBook(world, 1, null);
         };
+    }
+
+    /**
+     * Drive the disenchanter off a dialogue choice.
+     *
+     * <p>Actions are {@code disenchanter:items}, {@code :decline}, {@code :back},
+     * {@code :pick:<slotId>}, {@code :toggle:<index>} and {@code :confirm}.
+     *
+     * <p>Every one of them re-reads the item and rebuilds the menu rather than trusting what the
+     * client last drew. A toggle is a round trip on purpose: the ticks live on the server, so a
+     * stale or hand-sent packet cannot mark something the player never saw.
+     */
+    private void handleDisenchanterDialogueChoice(ServerPlayerEntity player, String action) {
+        if (com.crackedgames.craftics.network.DialogueChoicePayload.ACTION_DISMISS.equals(action)) {
+            finishDisenchanterPlayer(player);
+            return;
+        }
+        if (action == null || !action.startsWith("disenchanter:")) {
+            finishDisenchanterPlayer(player);
+            return;
+        }
+        String rest = action.substring("disenchanter:".length());
+
+        if ("decline".equals(rest)) {
+            var leave = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+                "craftics:disenchanter_decline", "", "disenchanter_decline",
+                java.util.List.of("You leave your enchantments where they are."),
+                java.util.List.of());
+            sendDialogue(player, leave);
+            return;
+        }
+        if ("items".equals(rest) || "back".equals(rest)) {
+            // Back drops the pick AND the ticks. Half-finished marks carried onto the next item
+            // would tick positions the player never chose on a list they never saw.
+            clearDisenchantPick(player.getUuid());
+            sendDialogue(player, buildDisenchantItemDialogue(player));
+            return;
+        }
+
+        if (rest.startsWith("pick:")) {
+            int slotId;
+            try { slotId = Integer.parseInt(rest.substring("pick:".length())); }
+            catch (NumberFormatException e) { sendDialogue(player, buildDisenchantItemDialogue(player)); return; }
+
+            boolean offered = false;
+            for (int[] slot : perPlayerDisenchantSlots.getOrDefault(player.getUuid(), java.util.List.of())) {
+                if (slot[0] == slotId) { offered = true; break; }
+            }
+            ItemStack stack = lookupEnchanterStack(player, slotId);
+            if (!offered || stack.isEmpty() || enchantmentsOn(stack).isEmpty()) {
+                sendDialogue(player, buildDisenchantItemDialogue(player));
+                return;
+            }
+            perPlayerDisenchantPick.put(player.getUuid(), slotId);
+            perPlayerDisenchantPicked.put(player.getUuid(), new java.util.LinkedHashSet<>());
+            perPlayerDisenchantPrint.put(player.getUuid(), disenchantPrint(stack));
+            sendDialogue(player, buildDisenchantEnchantDialogue(player, slotId));
+            return;
+        }
+
+        // Everything past here needs an open item. A toggle or confirm without one is a click
+        // that arrived after the pick was already resolved - a double-click on confirm, or a
+        // packet from a menu that is no longer on screen.
+        Integer open = perPlayerDisenchantPick.get(player.getUuid());
+        if (open == null) {
+            sendDialogue(player, buildDisenchantItemDialogue(player));
+            return;
+        }
+        ItemStack stack = lookupEnchanterStack(player, open);
+        java.util.List<Object[]> list = enchantmentsOn(stack);
+        if (stack.isEmpty() || list.isEmpty()) {
+            clearDisenchantPick(player.getUuid());
+            sendDialogue(player, buildDisenchantItemDialogue(player,
+                "§eThat piece is no longer there to work on."));
+            return;
+        }
+        // The item has to be the same item, carrying the same runes, as when the list was drawn.
+        // Otherwise the positions the player ticked point at different enchantments now, and this
+        // event destroys what it touches.
+        if (!DisenchantRules.stillMatches(perPlayerDisenchantPrint.get(player.getUuid()),
+                                          disenchantPrint(stack))) {
+            clearDisenchantPick(player.getUuid());
+            sendDialogue(player, buildDisenchantItemDialogue(player,
+                "§eThat piece changed while you were deciding. Start again."));
+            return;
+        }
+
+        if (rest.startsWith("toggle:")) {
+            int index;
+            try { index = Integer.parseInt(rest.substring("toggle:".length())); }
+            catch (NumberFormatException e) { index = -1; }
+            int listed = Math.min(list.size(), DisenchantRules.MAX_LISTED);
+            perPlayerDisenchantPicked.put(player.getUuid(), DisenchantRules.toggle(
+                perPlayerDisenchantPicked.get(player.getUuid()), index, listed));
+            sendDialogue(player, buildDisenchantEnchantDialogue(player, open));
+            return;
+        }
+
+        if ("confirm".equals(rest)) {
+            java.util.Set<Integer> picked =
+                perPlayerDisenchantPicked.getOrDefault(player.getUuid(), java.util.Set.of());
+            if (!DisenchantRules.canConfirm(picked)) {
+                // Nothing marked. Re-show the same menu rather than consuming the pick on a
+                // confirm that would do nothing.
+                sendDialogue(player, buildDisenchantEnchantDialogue(player, open));
+                return;
+            }
+            java.util.List<String> removed = applyDisenchant(player, open, picked);
+            // Nothing actually came off. Reachable only if the marks and the list disagreed, which
+            // the fingerprint check above should already have caught - but showing a result line
+            // reading "Removed:" with nothing after it would be worse than going back.
+            if (removed.isEmpty()) {
+                clearDisenchantPick(player.getUuid());
+                sendDialogue(player, buildDisenchantItemDialogue(player,
+                    "§eNothing came away. Choose again."));
+                return;
+            }
+            clearDisenchantPick(player.getUuid());
+
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+            BlockPos origin = getEventRoomOrigin(player);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
+                origin.getX() + 4.5, origin.getY() + 2.5, origin.getZ() + 4.5,
+                40, 0.5, 1.0, 0.5, 0.02);
+            world.playSound(null, origin,
+                net.minecraft.sound.SoundEvents.BLOCK_GRINDSTONE_USE,
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.7f);
+
+            java.util.List<String> lines = new java.util.ArrayList<>();
+            lines.add("\"It is torn out. Do not ask for it back.\"");
+            lines.add("§cRemoved: §f" + DisenchantRules.removedSummary(removed));
+            var resultDef = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+                "craftics:disenchanter_result", "minecraft:villager", "disenchanter_result",
+                lines, java.util.List.of());
+            sendDialogue(player, resultDef);
+            return;
+        }
+
+        sendDialogue(player, buildDisenchantEnchantDialogue(player, open));
+    }
+
+    /** Drop one player's open item, marks and fingerprint together - they only mean anything as a set. */
+    private void clearDisenchantPick(java.util.UUID uuid) {
+        perPlayerDisenchantPick.remove(uuid);
+        perPlayerDisenchantPicked.remove(uuid);
+        perPlayerDisenchantPrint.remove(uuid);
+    }
+
+    /**
+     * Mark one player done with the disenchanter and finalize once everyone has.
+     *
+     * <p>Guarded against being run twice for the same player. A dismissed result line and a
+     * disconnect can both land here, and in a party the LAST of those calls is the one that ends
+     * the event for everybody - so a second pass would finalize an event that is already over and
+     * start the transition into the next level twice.
+     */
+    private void finishDisenchanterPlayer(ServerPlayerEntity player) {
+        if (!eventRoomPending || !"disenchanter".equals(eventRoomType)) return;
+        clearDisenchantPick(player.getUuid());
+        if (!eventPendingPlayers.remove(player.getUuid())) return;
+        ServerPlayNetworking.send(player,
+            new com.crackedgames.craftics.network.ExitEventCinematicPayload());
+        if (!eventPendingPlayers.isEmpty()) return;
+        finalizeDisenchanterEvent(player);
+    }
+
+    /** Tear down disenchanter state and head back into the run. */
+    private void finalizeDisenchanterEvent(ServerPlayerEntity referencePlayer) {
+        perPlayerDisenchantSlots.clear();
+        perPlayerDisenchantPick.clear();
+        perPlayerDisenchantPicked.clear();
+        perPlayerDisenchantPrint.clear();
+        finalizeEnchanterEvent(referencePlayer);
     }
 
     /** Drive the wandering-enchanter event off a dialogue choice. Actions are

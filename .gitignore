@@ -56,3 +56,10 @@ docs/superpowers/plans/2026-04-13-stonecutter-multi-version.md
 CHANGELOG.md
 
 .superpowers/
+versions/1.21.1/logs/latest.log
+versions/1.21.3/logs/latest.log
+versions/1.21.4/logs/latest.log
+/versions/1.21.5/logs
+/versions/1.21.4/logs
+/versions/1.21.3/logs
+/versions/1.21.1/logs

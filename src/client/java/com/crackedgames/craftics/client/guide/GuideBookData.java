@@ -1386,17 +1386,17 @@ public class GuideBookData {
                     "Full Set: Feral - 1.3x kill streak damage."),
                 new Box("minecraft:wayfinder_armor_trim_smithing_template", "Wayfinder", "+1 Speed /piece",
                     "Full Set: Pathfinder - ignore obstacles."),
-                new Box("minecraft:shaper_armor_trim_smithing_template", "Shaper", "+1 AC /piece",
+                new Box("minecraft:shaper_armor_trim_smithing_template", "Shaper", "+2 AC /piece",
                     "Full Set: Earthshatter - move 3+ tiles to deal 2 damage around your destination."))),
             new Page("Overworld Trims (3)", "", List.of(
                 new Box("minecraft:raiser_armor_trim_smithing_template", "Raiser", "+1 ally dmg /piece",
-                    "Full Set: Rally - allies +2 Speed, +1 Attack."),
+                    "Full Set: Rally - allies +1 Attack."),
                 new Box("minecraft:host_armor_trim_smithing_template", "Host", "+4 max HP /piece",
                     "Full Set: Symbiote - heal 1 HP per kill."),
                 new Box("minecraft:tide_armor_trim_smithing_template", "Tide", "+1 regen /2 turns",
                     "Full Set: Ocean's Blessing - emergency heal."))),
             new Page("Nether Trims", "", List.of(
-                new Box("minecraft:ward_armor_trim_smithing_template", "Ward", "+1 AC /piece",
+                new Box("minecraft:ward_armor_trim_smithing_template", "Ward", "+2 AC /piece",
                     "Full Set: Fortress - 50% less damage while stationary."),
                 new Box("minecraft:snout_armor_trim_smithing_template", "Snout", "+1 Cleaving /piece",
                     "Full Set: Brute Force - splash damage."),
@@ -1418,7 +1418,7 @@ public class GuideBookData {
                     "Full Set: Thunderstrike - crits stun."))),
             new Page("Trim Materials",
                 "The MATERIAL you apply a trim with also grants a per-piece bonus.", List.of(
-                new Box("minecraft:iron_ingot", "Iron", "", "+1 Armor Class per piece."),
+                new Box("minecraft:iron_ingot", "Iron", "", "+2 Armor Class per piece."),
                 new Box("minecraft:copper_ingot", "Copper", "", "+1 Speed per piece."),
                 new Box("minecraft:gold_ingot", "Gold", "", "+1 Luck per piece."),
                 new Box("minecraft:lapis_lazuli", "Lapis", "", "+1 Special Power per piece."))),
@@ -1685,6 +1685,17 @@ public class GuideBookData {
                 "- Enchant your held weapon\n" +
                 "- Enhance a worn armor piece\n\n" +
                 "A cheaper gamble than the Shrine, and it upgrades gear you already love.")
+        )));
+        events.add(new Entry("The Disenchanter", "minecraft:grindstone", List.of(
+            new Page("Runes Torn Out",
+                "~3% chance between levels.\n\n" +
+                "The enchanter's opposite. This one does not GIVE enchantments - it TAKES them.\n\n" +
+                "Only gear that is already enchanted is shown. Pick a piece, and every enchantment bound to it is listed.")
+            ,
+            new Page("Choose Carefully",
+                "Mark each enchantment you want removed, then confirm. Marks toggle, so you can change your mind before confirming.\n\n" +
+                "What you confirm is GONE. There is no refund and nothing is given back in exchange.\n\n" +
+                "You can walk away without removing anything.")
         )));
         events.add(new Entry("Treasure Vault", "minecraft:vault", List.of(
             new Page("Hidden Riches",

@@ -736,76 +736,26 @@ public class CombatTooltips implements ItemTooltipCallback {
         return null;
     }
 
+    // The three lookups below intentionally hold no table of their own. Every pattern's
+    // per-piece bonus, set bonus name and set bonus text lives in TrimPatternRegistry
+    // (seeded by VanillaContent, extended by addons and datapacks), and a parallel copy
+    // here silently drifts from the mechanics the server actually runs -the Eye tooltip
+    // advertised "See all enemy stats" long after the set bonus became a ranged crit
+    // buff. Reading the registry also means addon patterns get tooltips for free.
+
     private static String getTrimPerPieceDescription(String patternId) {
-        return switch (patternId) {
-            case "sentry"    -> "+1 Ranged Power per piece";
-            case "dune"      -> "+1 Blunt Power per piece";
-            case "coast"     -> "+1 Water Power per piece";
-            case "wild"      -> "+1 AP per piece";
-            case "ward"      -> "+1 Armor Class per piece";
-            case "eye"       -> "+1 Attack Range per piece";
-            case "vex"       -> "Ignore 1 enemy DEF per piece";
-            case "tide"      -> "+1 HP regen per 2 turns per piece";
-            case "snout"     -> "+1 Cleaving Power per piece";
-            case "rib"       -> "+1 Special Power per piece";
-            case "spire"     -> "+1 Luck per piece";
-            case "wayfinder" -> "+1 Speed per piece";
-            case "shaper"    -> "+1 Armor Class per piece";
-            case "silence"   -> "+1 stealth range per piece";
-            case "raiser"    -> "+1 ally damage per piece";
-            case "host"      -> "+4 max HP per piece";
-            case "flow"      -> "+1 Speed per piece";
-            case "bolt"      -> "+1 Slashing Power per piece";
-            default -> "";
-        };
+        return com.crackedgames.craftics.api.registry.TrimPatternRegistry
+            .getPerPieceDescription(patternId);
     }
 
     private static String getTrimSetBonusName(String patternId) {
-        return switch (patternId) {
-            case "sentry"    -> "Overwatch";
-            case "dune"      -> "Sandstorm";
-            case "coast"     -> "Tidal";
-            case "wild"      -> "Feral";
-            case "ward"      -> "Fortress";
-            case "eye"       -> "All-Seeing";
-            case "vex"       -> "Ethereal";
-            case "tide"      -> "Ocean's Blessing";
-            case "snout"     -> "Brute Force";
-            case "rib"       -> "Infernal";
-            case "spire"     -> "Fortune's Peak";
-            case "wayfinder" -> "Pathfinder";
-            case "shaper"    -> "Terraformer";
-            case "silence"   -> "Phantom";
-            case "raiser"    -> "Rally";
-            case "host"      -> "Symbiote";
-            case "flow"      -> "Current";
-            case "bolt"      -> "Thunderstrike";
-            default -> "";
-        };
+        return com.crackedgames.craftics.api.registry.TrimPatternRegistry
+            .getSetBonusName(patternId);
     }
 
     private static String getTrimSetBonusDescription(String patternId) {
-        return switch (patternId) {
-            case "sentry"    -> "Counter-attack ranged enemies that hit you";
-            case "dune"      -> "Enemies within 2 tiles lose 1 Speed";
-            case "coast"     -> "Water tiles heal 1 HP/turn";
-            case "wild"      -> "Kill streak: 1.3x damage per streak level";
-            case "ward"      -> "50% less damage when you didn't move this turn";
-            case "eye"       -> "See all enemy stats and their next action";
-            case "vex"       -> "20% chance to deflect incoming attacks";
-            case "tide"      -> "Full heal when dropping below 25% HP (once per combat)";
-            case "snout"     -> "Melee attacks splash to adjacent enemies";
-            case "rib"       -> "Fire attacks deal +3 bonus damage";
-            case "spire"     -> "Double emerald rewards";
-            case "wayfinder" -> "Movement ignores obstacle tiles";
-            case "shaper"    -> "Place a free barrier block each turn";
-            case "silence"   -> "Invisible for first 2 turns (enemies don't act)";
-            case "raiser"    -> "Tamed allies get +1 Attack";
-            case "host"      -> "Heal 1 HP for each enemy killed";
-            case "flow"      -> "Killing an enemy refunds 1 AP";
-            case "bolt"      -> "Critical hits stun the target for 1 turn";
-            default -> "";
-        };
+        return com.crackedgames.craftics.api.registry.TrimPatternRegistry
+            .getSetBonusDescription(patternId);
     }
 
     /**
