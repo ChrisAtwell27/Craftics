@@ -132,6 +132,21 @@ public final class DisenchantRules {
         return String.join(sep, head) + "§7 and " + (names.size() - MAX_NAMED) + " more";
     }
 
+    /**
+     * The confirm button's hover text.
+     *
+     * <p>This is where the permanence warning lives once the opening line is gone. The button is
+     * on screen for the whole menu, so a warning attached to it cannot be clicked past the way a
+     * line of dialogue can.
+     */
+    public static List<String> confirmTooltip(int selectedCount, boolean stripsEverything) {
+        if (selectedCount <= 0) return List.of("§7Mark at least one enchantment first.");
+        List<String> out = new ArrayList<>();
+        out.add("§cRemoved for good. There is no way to put it back.");
+        if (stripsEverything) out.add("§cThis leaves the piece completely bare.");
+        return out;
+    }
+
     /** One row's text: ticked or not, then the enchantment. */
     public static String rowLabel(String enchantName, boolean ticked) {
         return ticked ? "\u00a7c\u2714 " + enchantName : "\u00a77\u2610 " + enchantName;

@@ -85,10 +85,8 @@ public final class VanillaDialogue {
         // between a player and losing an enchantment they meant to keep.
         DialogueRegistry.register(new DialogueDefinition(
             "craftics:disenchanter_intro", "minecraft:villager", "disenchanter_intro",
-            List.of("\"You have come to the wrong table if you want power.\"",
-                    "\"I am no enchanter. I STRIP enchantments away.\"",
-                    "§cAnything you choose here is REMOVED from your gear, for good.",
-                    "\"Show me what you carry, and I will show you what clings to it.\""),
+            List.of("\"I am no enchanter. I STRIP enchantments away.\"",
+                    "§cWhatever you choose is REMOVED from your gear, permanently."),
             List.of(new DialogueChoice("§cShow my enchanted gear", "disenchanter:items"),
                     new DialogueChoice("Leave", "disenchanter:decline"))));
 

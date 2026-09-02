@@ -1091,7 +1091,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             return weaponStatLine(item) + "\n\u00a73\u2716 Splash: \u00a77Hits target + 1 tile directly behind it (pierce)";
 
         // ── Utility Items ──
-        if (item == Items.SHIELD) return "\u00a79Passive: \u00a77+1 AC when in offhand\n\u00a79Block: \u00a7725% chance to fully block an attack\n\u00a77No AP cost \u2014 equip in offhand slot";
+        if (item == Items.SHIELD) return "\u00a79Passive: \u00a77+1 AC when in offhand\n\u00a79Block: \u00a7720% chance to fully block an attack\n\u00a77No AP cost \u2014 equip in offhand slot";
         if (item == Items.TOTEM_OF_UNDYING) return "\u00a76Passive: \u00a77Auto-activates on fatal hit\n\u00a77Restores 50% HP + Regen II\n\u00a77Consumed from inventory automatically";
         if (item == Items.MILK_BUCKET) return "\u00a7f3 AP \u00a77- Clears ALL status effects (good and bad)\n\u00a77Drink it yourself, or feed an adjacent ally. Returns the bucket.";
         if (item == Items.TNT) return "\u00a7c2 AP \u00a77- Place TNT on target tile\n\u00a7eExplodes next round!\n\u00a7c8/5/3 + 24/15/9% max HP \u00a77in AoE (distance-based)\n\u00a7cSelf-damage 6/4/2 if within 2 tiles!";

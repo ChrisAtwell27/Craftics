@@ -1,5 +1,65 @@
 ﻿Changelog
 
+0.4.6
+
+Mounts Work In A Party
+
+Mount state was five plain fields on the combat manager, and in a party that manager is shared - it swaps between members as the turn passes. So every mount in the fight was really one mount, belonging to whoever got there first.
+
+- **Fixed a second player's mount never mounting them.** The auto-mount was gated on "is anybody already mounted", so once one player was riding, everyone else's saddled animal walked on as an ordinary ally
+- **Fixed a passenger being dragged onto the mount when their turn began.** A per-tick safety net re-seated whoever was holding the turn, reading a mount flag that belonged to the whole party - so a teammate standing on the ground was teleported onto somebody else's animal the moment their turn started
+- **Fixed passengers being unable to get off.** Shift-to-dismount checked the mount YOU own rather than the animal you are ON, so every rider but the owner was told "you are not riding anything" and stayed stuck for the rest of the fight. Combined with the re-seating above, a teammate who got on could not act again
+- **A mount is mounted by its OWNER**, not by whoever happens to be holding the turn - which in a party is usually somebody else
+- **Nobody is pulled off their own mount** to be a passenger on someone else's
+- **Fixed the animal you ride being a blank one of its species.** The arena mob was built from the entity type alone, so your saddled, armoured, named horse fought as an unsaddled stranger - and if the game went down mid-run you were left sitting on that blank one. It now wears its own gear
+- **Leaving a fight takes your animals with you.** Walking out with `/home` left your mount standing in the arena still carrying a rider who was no longer in the dimension, and the rest of your party mobs taking turns for a player who had gone. They are returned to their owner's island now - routed by the animal's owner, so a guest's wolf goes to the guest's island
+- Every player's mount, its type, its rider and the netherite golem's furnace timer are now per player, the same way status effects already were
+
+Loader
+
+- Built against Fabric Loader 0.19.0
+
+Defence Adds Up Too
+
+The four ways an attack can be shrugged off entirely - Armor Class, Ethereal, a shield block, Gilded Guard - each rolled separately, one after another. Same problem crit had: that is a product, not a sum. A tank wearing all four read 120% on their tooltips and avoided 79.6% of hits.
+
+- **Every avoidance layer is now an addend, rolled once.** A tank can read their gear and know what it does
+- **A layer is worth its face value whatever else you have on.** Gilded Guard's advertised 15% used to be worth +3.6% on a build that already had the other three, because it only ever rolled on the hits everything else had already let through
+- **Stacking caps at 90%**, so a tank build reaches a real wall without becoming untouchable. An enemy that can never land a hit stops being a fight, and everything else the mod applies pressure with assumes chip damage eventually gets through
+- **The layer that gets the credit is picked in proportion to what it contributed**, so a shield covering a quarter of your defence takes the durability hit on about a quarter of avoided attacks. The layers are not interchangeable: only a shield spends durability, and only Armor Class or Ethereal count as a dodge for the Sentinel riposte
+- Divine armour's once-per-fight deflect is a guarantee rather than a chance, so it stays out of the stack - and after it, so a hit the layers would have turned aside anyway does not burn it
+- Percentages are exact now. Adding 40% and 20% in floating point came to 60.00000000000001%, so a "60%" stack was avoiding a hit rolled at exactly 60%
+
+**This is a substantial buff to defensive builds.** AC 30% with a shield goes from 47.5% to 55%; add Ethereal and it goes from 58% to 75%. Any build with three or four layers now reaches the 90% wall. A single layer on its own is unchanged - a shield alone is 20% (now)
+
+Crit Chance Adds Up, And Overcrit
+
+Crit sources used to be separate sequential rolls: each one rolled in turn, first success wins. That is not addition, and it never behaved like the numbers said. Three 30% sources read as 90% and behaved as 65.7%.
+
+- **Every crit source is now a straight addend, rolled once.** 30 + 30 + 30 is 90. Your sheet is your crit rate
+- **A bonus is worth its face value whatever else you have on.** Under the old rolls a source late in the chain was only ever rolled on the hits everything before it had already missed, so "+15% crit" from a set was worth LESS the more crit you already had. That is now simply +15%
+- **Nothing is capped. Every whole 100% wraps the counter round again as an Overcrit.** 100% is a guaranteed crit. 200% is a guaranteed crit AND a guaranteed Overcrit. 300% is a guaranteed Double Overcrit, 400% a Triple, and so on
+- **Whatever is left over is a roll for one more tier.** At 248% you land two tiers for certain with a 48% shot at a third. At 44% you land nothing for certain with a 44% shot at one - which is an ordinary critical hit, exactly as it has always worked
+- **An Overcrit is another crit.** Each one multiplies again: a crit is 1.5x, one Overcrit 2.25x, a Double Overcrit 3.38x, a Triple 5.06x
+- Gladiator's +50% crit damage stays a proportional bonus at every tier rather than compounding into an exponential one, so a Gladiator Double Overcrit is 4.5x against an ordinary 3.38x - half again, the same as it is on a plain crit
+- Ambush is unchanged and still guarantees the first attack of a fight, still spent only when the roll would not have crit anyway. It grants exactly one tier: a guaranteed crit, never a free Overcrit
+- The server-wide baseline crit chance still only applies to players with a crit source of their own, exactly as before
+
+**This is a buff at every level of investment**, because addition beats the old product. Gold set plus full Luck trims goes from 38.6% to 44%; add five Luck points and it goes from 63.2% to 84%. With full Luck gear a guaranteed crit arrives at 7 Luck points where it used to take 13, a guaranteed Overcrit at 20, and a guaranteed Double Overcrit at 32. Luck stat on its own is unchanged: 5 points was 40% and still is, and a build under 100% behaves exactly as it always did.
+
+New Event: The Disenchanter
+
+The enchanter's opposite number, in the same room, with none of the same words. It only ever takes enchantments off.
+
+- **~3% chance between levels**, rarer than the enchanter it mirrors, because meeting one should read as a lucky draw rather than a regular stop
+- **Only enchanted gear is listed.** A bare sword is not shown at all: offering it would be a pick that cannot do anything, and would blur what the event is for. Each row says how many enchantments the piece carries, and hovering lists them
+- **A second menu opens on the piece you choose**, listing every enchantment bound to it. Click to mark one for removal, click again to unmark, then confirm. The confirm button always names how many will go, and the screen warns you when your marks would leave the piece completely bare
+- **Every line the disenchanter speaks is about removal** - it opens by saying it is not an enchanter and that anything chosen is gone for good. The staging is deliberately identical to the enchanter's, so the words are the only thing between a player and losing something they meant to keep
+- You can back out at any point, and backing out of a piece clears your marks rather than carrying them onto the next one
+- **The menu refuses to act on a list that changed underneath it.** Marks are positions, and the list is redrawn from the live item on every click - so if the piece gains, loses or levels an enchantment between opening the list and confirming it, the event says so and starts you over rather than tearing out whatever now sits in that position
+- Every player's picks, marks and open menu are their own, cleared together when they back out, disconnect or finish. Confirming twice, clicking a menu that has moved on, or a stale click arriving after the event ended all resolve to a re-render rather than a second removal
+- Truncation is stated rather than hidden: the item list and the rune list both say how many did not fit, and the result line counts the overflow instead of running off the side of the box
+
 0.4.5
 
 Addon API: Selection, Targeting and Grid Highlights
@@ -50,47 +110,6 @@ Fishing Is A Gamble Again
 - **The table scales with progress.** On the first biome it is mostly plain fish and treasure is a real surprise; deeper in, the good tiers open up. Both are capped, so even the longest run still pulls up cod
 - **You cannot fish water you poured yourself.** A water bucket is reusable and a poured tile costs nothing, so a fishable puddle on demand was an unlimited loot tap that only cost turns. Arena water is still fair game - you just cannot bring your own pond
 - The odds live in one place with tests that count every possible roll, because "about a third of casts catch nothing" is a claim about a distribution and not something you can check by reading the branches
-
-Defence Adds Up Too
-
-The four ways an attack can be shrugged off entirely - Armor Class, Ethereal, a shield block, Gilded Guard - each rolled separately, one after another. Same problem crit had: that is a product, not a sum. A tank wearing all four read 120% on their tooltips and avoided 79.6% of hits.
-
-- **Every avoidance layer is now an addend, rolled once.** A tank can read their gear and know what it does
-- **A layer is worth its face value whatever else you have on.** Gilded Guard's advertised 15% used to be worth +3.6% on a build that already had the other three, because it only ever rolled on the hits everything else had already let through
-- **Stacking caps at 90%**, so a tank build reaches a real wall without becoming untouchable. An enemy that can never land a hit stops being a fight, and everything else the mod applies pressure with assumes chip damage eventually gets through
-- **The layer that gets the credit is picked in proportion to what it contributed**, so a shield covering a quarter of your defence takes the durability hit on about a quarter of avoided attacks. The layers are not interchangeable: only a shield spends durability, and only Armor Class or Ethereal count as a dodge for the Sentinel riposte
-- Divine armour's once-per-fight deflect is a guarantee rather than a chance, so it stays out of the stack - and after it, so a hit the layers would have turned aside anyway does not burn it
-- Percentages are exact now. Adding 40% and 20% in floating point came to 60.00000000000001%, so a "60%" stack was avoiding a hit rolled at exactly 60%
-
-**This is a substantial buff to defensive builds.** AC 30% with a shield goes from 47.5% to 55%; add Ethereal and it goes from 58% to 75%. Any build with three or four layers now reaches the 90% wall. A single layer on its own is unchanged - a shield alone was 25% and still is.
-
-Crit Chance Adds Up, And Overcrit
-
-Crit sources used to be separate sequential rolls: each one rolled in turn, first success wins. That is not addition, and it never behaved like the numbers said. Three 30% sources read as 90% and behaved as 65.7%.
-
-- **Every crit source is now a straight addend, rolled once.** 30 + 30 + 30 is 90. Your sheet is your crit rate
-- **A bonus is worth its face value whatever else you have on.** Under the old rolls a source late in the chain was only ever rolled on the hits everything before it had already missed, so "+15% crit" from a set was worth LESS the more crit you already had. That is now simply +15%
-- **Nothing is capped. Every whole 100% wraps the counter round again as an Overcrit.** 100% is a guaranteed crit. 200% is a guaranteed crit AND a guaranteed Overcrit. 300% is a guaranteed Double Overcrit, 400% a Triple, and so on
-- **Whatever is left over is a roll for one more tier.** At 248% you land two tiers for certain with a 48% shot at a third. At 44% you land nothing for certain with a 44% shot at one - which is an ordinary critical hit, exactly as it has always worked
-- **An Overcrit is another crit.** Each one multiplies again: a crit is 1.5x, one Overcrit 2.25x, a Double Overcrit 3.38x, a Triple 5.06x
-- Gladiator's +50% crit damage stays a proportional bonus at every tier rather than compounding into an exponential one, so a Gladiator Double Overcrit is 4.5x against an ordinary 3.38x - half again, the same as it is on a plain crit
-- Ambush is unchanged and still guarantees the first attack of a fight, still spent only when the roll would not have crit anyway. It grants exactly one tier: a guaranteed crit, never a free Overcrit
-- The server-wide baseline crit chance still only applies to players with a crit source of their own, exactly as before
-
-**This is a buff at every level of investment**, because addition beats the old product. Gold set plus full Luck trims goes from 38.6% to 44%; add five Luck points and it goes from 63.2% to 84%. With full Luck gear a guaranteed crit arrives at 7 Luck points where it used to take 13, a guaranteed Overcrit at 20, and a guaranteed Double Overcrit at 32. Luck stat on its own is unchanged: 5 points was 40% and still is, and a build under 100% behaves exactly as it always did.
-
-New Event: The Disenchanter
-
-The enchanter's opposite number, in the same room, with none of the same words. It only ever takes enchantments off.
-
-- **~3% chance between levels**, rarer than the enchanter it mirrors, because meeting one should read as an unlucky draw rather than a regular stop
-- **Only enchanted gear is listed.** A bare sword is not shown at all: offering it would be a pick that cannot do anything, and would blur what the event is for. Each row says how many enchantments the piece carries, and hovering lists them
-- **A second menu opens on the piece you choose**, listing every enchantment bound to it. Click to mark one for removal, click again to unmark, then confirm. The confirm button always names how many will go, and the screen warns you when your marks would leave the piece completely bare
-- **Every line the disenchanter speaks is about removal** - it opens by saying it is not an enchanter and that anything chosen is gone for good. The staging is deliberately identical to the enchanter's, so the words are the only thing between a player and losing something they meant to keep
-- You can back out at any point, and backing out of a piece clears your marks rather than carrying them onto the next one
-- **The menu refuses to act on a list that changed underneath it.** Marks are positions, and the list is redrawn from the live item on every click - so if the piece gains, loses or levels an enchantment between opening the list and confirming it, the event says so and starts you over rather than tearing out whatever now sits in that position
-- Every player's picks, marks and open menu are their own, cleared together when they back out, disconnect or finish. Confirming twice, clicking a menu that has moved on, or a stale click arriving after the event ended all resolve to a re-render rather than a second removal
-- Truncation is stated rather than hidden: the item list and the rune list both say how many did not fit, and the result line counts the overflow instead of running off the side of the box
 
 Bone Armor Is No Longer Disposable
 

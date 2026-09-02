@@ -139,4 +139,31 @@ class DisenchantRulesTest {
         assertEquals(RUNES, DisenchantRules.kept(RUNES, null));
         assertEquals(List.of(), DisenchantRules.removed(RUNES, null));
     }
+
+    @Test
+    @DisplayName("the confirm button always warns that removal is permanent")
+    void theWarningLivesOnTheButton() {
+        // The opening line is shown once and then never again, so the warning has to live
+        // somewhere the player cannot click past. The button is on screen the whole time.
+        java.util.List<String> tip = DisenchantRules.confirmTooltip(2, false);
+        assertTrue(tip.stream().anyMatch(l -> l.toLowerCase().contains("for good")),
+            "the confirm tooltip must say the removal is permanent: " + tip);
+    }
+
+    @Test
+    @DisplayName("stripping a piece bare is called out on the button too")
+    void theBareWarningIsOnTheButton() {
+        java.util.List<String> normal = DisenchantRules.confirmTooltip(1, false);
+        java.util.List<String> bare = DisenchantRules.confirmTooltip(1, true);
+        assertTrue(bare.size() > normal.size(), "a full strip should add a warning line");
+        assertTrue(bare.stream().anyMatch(l -> l.toLowerCase().contains("bare")));
+    }
+
+    @Test
+    @DisplayName("with nothing marked the button explains itself instead of warning")
+    void anEmptySelectionGetsAPrompt() {
+        java.util.List<String> tip = DisenchantRules.confirmTooltip(0, false);
+        assertEquals(1, tip.size());
+        assertTrue(tip.get(0).toLowerCase().contains("mark"));
+    }
 }

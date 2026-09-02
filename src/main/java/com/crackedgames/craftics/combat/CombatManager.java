@@ -826,6 +826,10 @@ public class CombatManager {
         // could kill a teammate immediately after a death handoff. The
         // computeIfAbsent / `new` lambda guarantees a unique instance per UUID.
         this.combatEffects = playerCombatEffects.computeIfAbsent(uuid, k -> new CombatEffects());
+        // The mount follows the player for the same reason the effects do: in a party this
+        // manager is the leader's, and reading the turn-holder's mount while resolving a hit
+        // on somebody else would put the wrong animal under the wrong rider.
+        this.mount = playerMounts.computeIfAbsent(uuid, k -> new MountState());
         // The defensive trim/set bonuses read by damagePlayer (AC, ETHEREAL
         // dodge, FORTRESS reduction, OCEAN_BLESSING heal) come from
         // activeTrimScan. When an enemy hit swaps this.player to a non-turn
@@ -1314,6 +1318,10 @@ public class CombatManager {
 
         deadPartyMembers.remove(leaverUuid);
         removePartyMember(leaverUuid);
+        // Their animals go home with them. Walking out mid-fight used to leave a player's
+        // mount standing in the arena still carrying their now-teleported rider, and the rest
+        // of their party mobs fighting on for a party they had left.
+        returnDepartingPlayersAnimals(leaver);
         sendMessage("§e" + leaver.getName().getString() + " left the battle.");
 
         if (player != null && player.getUuid().equals(leaverUuid)) {
@@ -2263,10 +2271,37 @@ public class CombatManager {
         com.crackedgames.craftics.world.HubTeleports.toHub(p);
     }
 
-    private boolean playerMounted = false;
-    private MobEntity mountMob = null;
-    /** Who the mount belongs to. They cannot step off it; everyone else can. */
-    private java.util.UUID mountOwnerUuid = null;
+    /**
+     * One player's mount, in a party where this manager serves everybody.
+     *
+     * <p>These were five plain fields on the manager, and the manager is shared: {@code
+     * this.player} is swapped to each member in turn. So the first player to mount set the
+     * flag for the WHOLE party - the second player's saddled animal saw {@code mounted}
+     * already true, skipped mounting entirely and walked on as an ordinary ally, while both
+     * players were seated on the first player's animal.
+     */
+    private static final class MountState {
+        boolean mounted = false;
+        MobEntity mob = null;
+        /** Who the mount belongs to. They cannot step off it; everyone else can. */
+        java.util.UUID ownerUuid = null;
+        /** Ally type id of the mount (e.g. golemoverhaul:netherite_golem), or null. */
+        String typeId = null;
+        /** Ticks the netherite golem's furnace glow stays lit. 0 = off. */
+        int furnaceTicks = 0;
+    }
+
+    /** Per-player mount state, mirroring {@link #playerCombatEffects}. */
+    private final java.util.Map<java.util.UUID, MountState> playerMounts = new java.util.HashMap<>();
+
+    /**
+     * The mount belonging to whoever {@code this.player} currently is.
+     *
+     * <p>Repointed by {@link #retargetEffectsToCurrentPlayer()} at every {@code this.player}
+     * reassignment, exactly the way {@code combatEffects} is, so the existing call sites read
+     * and write the right player's mount without any of them having to know about the map.
+     */
+    private MountState mount = new MountState();
     /**
      * True while an AREA attack is being resolved across its victims.
      *
@@ -2276,17 +2311,7 @@ public class CombatManager {
      * or whether the whole party wears it.
      */
     private boolean resolvingAreaDamage = false;
-    /** Ally type id of the current mount (e.g. golemoverhaul:netherite_golem), or null. */
-    private String mountTypeId = null;
     private static final int MOUNT_SPEED_BONUS = 3;
-    /**
-     * Ticks remaining that the netherite golem mount's furnace glow ("charged" state)
-     * stays lit. Set by {@link #chargeMountFurnace} when the mount moves, summons, or
-     * fires its lava bonus; counted down (and re-asserted) each tick in {@link #tick()}
-     * so the mod's own AI can't snuff it mid-action. 0 = furnace off.
-     */
-    private int mountFurnaceTicks = 0;
-
     // Netherite golem mount 1×3 wall: a sentinel occupant placed on the two tiles
     // perpendicular to the rider's facing so enemies can't path through or stand beside
     // the mount. Built at the start of the enemy turn and cleared on the player's turn
@@ -3593,7 +3618,14 @@ public class CombatManager {
 
     /** Ethereal trim set: its share of the avoidance stack. */
     private static final double ETHEREAL_DODGE_CHANCE = 0.20;
-    private static final double SHIELD_BLOCK_CHANCE = 0.25;
+    /**
+     * Shield passive: its share of the avoidance stack.
+     *
+     * <p>Public because the tooltip and the guide book quote it. They used to spell "25%" out by
+     * hand in three places, which is exactly how a number ends up meaning one thing in the code
+     * and another on screen.
+     */
+    public static final double SHIELD_BLOCK_CHANCE = 0.20;
 
     /** RNG for the incoming-damage AC dodge roll. */
     private final java.util.Random combatRng = new java.util.Random();
@@ -3703,7 +3735,7 @@ public class CombatManager {
         // path, because a creeper going off under the camel catches everyone standing on it -
         // resolvingAreaDamage is what separates the two.
         if (mitigable && attacker != null && !resolvingAreaDamage
-                && playerMounted && mountMob != null && player != null && player.hasVehicle()) {
+                && mount.mounted && mount.mob != null && player != null && player.hasVehicle()) {
             CombatEntity mount = findMountEntity();
             if (mount != null && mount.isAlive()) {
                 // The animal is the defender here, not the rider, so effectiveness is worked
@@ -4560,10 +4592,10 @@ public class CombatManager {
         ((ServerWorld) player.getWorld()).getGameRules()
             .get(net.minecraft.world.GameRules.DO_FIRE_TICK).set(false, player.getServer());
 
-        this.playerMounted = false;
-        this.mountMob = null;
-        this.mountTypeId = null;
-        this.mountFurnaceTicks = 0;
+        // Every player's mount, not just the current view - a stale entry would re-seat a
+        // rider on an animal from the previous fight.
+        this.playerMounts.clear();
+        this.mount = new MountState();
         this.mountWallEntity = null;
         this.mountWallTiles = java.util.List.of();
         this.mountFaceDx = 0;
@@ -5938,7 +5970,7 @@ public class CombatManager {
      */
     public void handleMountAbility(java.util.UUID senderUuid) {
         if (!active || phase != CombatPhase.PLAYER_TURN || player == null || arena == null) return;
-        if (!playerMounted || !"golemoverhaul:netherite_golem".equals(mountTypeId)) {
+        if (!mount.mounted || !"golemoverhaul:netherite_golem".equals(mount.typeId)) {
             sendMessage("§7Mount ability: you must be riding the Netherite Golem.");
             return;
         }
@@ -6072,7 +6104,7 @@ public class CombatManager {
 
     /** True while the player is riding the netherite golem (its speed-lock + abilities apply). */
     private boolean isNetheriteMount() {
-        return playerMounted && "golemoverhaul:netherite_golem".equals(mountTypeId);
+        return mount.mounted && "golemoverhaul:netherite_golem".equals(mount.typeId);
     }
 
     /**
@@ -6082,9 +6114,9 @@ public class CombatManager {
      * {@link #tick()}. No-op unless riding the netherite golem.
      */
     private void chargeMountFurnace(int ticks) {
-        if (!isNetheriteMount() || mountMob == null) return;
-        mountFurnaceTicks = Math.max(mountFurnaceTicks, ticks);
-        com.crackedgames.craftics.compat.golemoverhaul.NetheriteMountState.setCharged(mountMob, true);
+        if (!isNetheriteMount() || mount.mob == null) return;
+        mount.furnaceTicks = Math.max(mount.furnaceTicks, ticks);
+        com.crackedgames.craftics.compat.golemoverhaul.NetheriteMountState.setCharged(mount.mob, true);
     }
 
     /**
@@ -6096,7 +6128,7 @@ public class CombatManager {
      */
     private int baseSpeedStat(PlayerProgression.PlayerStats stats) {
         if (isNetheriteMount()) return 1;
-        return stats.getEffective(PlayerProgression.Stat.SPEED) + (playerMounted ? MOUNT_SPEED_BONUS : 0);
+        return stats.getEffective(PlayerProgression.Stat.SPEED) + (mount.mounted ? MOUNT_SPEED_BONUS : 0);
     }
 
     /**
@@ -6641,7 +6673,7 @@ public class CombatManager {
         }
 
         // If entering water: already in a boat = stay protected, otherwise try to consume one
-        if (playerMounted) {
+        if (mount.mounted) {
             // Mounted: the player rides above water -no Soaked, and don't waste a boat.
             moveBoatProtected = false;
         } else if (boatOf(player) != null) {
@@ -7654,7 +7686,7 @@ public class CombatManager {
         // struck tile as a bonus (the player's normal weapon attack still resolves
         // below). Placed after range/LOS/AP validation so a rejected click can't flood
         // the arena with free lava.
-        if (playerMounted && "golemoverhaul:netherite_golem".equals(mountTypeId)) {
+        if (mount.mounted && "golemoverhaul:netherite_golem".equals(mount.typeId)) {
             eruptMountLavaLine(pPos, tPos);
         }
 
@@ -7972,7 +8004,8 @@ public class CombatManager {
         // off. Rolled before the resistance math because a blocked shot isn't a resisted
         // hit - nothing landed. On-hit riders (burn procs, enchant effects) never fire
         // because the early return skips everything downstream, which is the point of a
-        // shield. Same 25%-class mechanic as the player's own offhand shield.
+        // shield. Same shape as the player's own offhand shield, but its own per-enemy
+        // chance rather than SHIELD_BLOCK_CHANCE.
         if (baseDamage > 0 && damageType == DamageType.RANGED
                 && target.getRangedBlockChance() > 0
                 && Math.random() < target.getRangedBlockChance()) {
@@ -13923,7 +13956,7 @@ public class CombatManager {
         // tile, so lava and powder snow can't reach them (see mount immunity).
         GridTile turnTile = arena.getTile(arena.getPlayerGridPos());
         if (turnTile != null) {
-            if (turnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !playerMounted
+            if (turnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !mount.mounted
                     && !combatEffects.hasFireResistance()
                     && !PlayerCombatStats.wearsHead(player, Items.PIGLIN_HEAD)) {
                 int lavaDmg = damagePlayerFromTile(10, null);
@@ -13938,7 +13971,7 @@ public class CombatManager {
             }
 
             if (turnTile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW
-                    && !hasLeatherBoots() && !playerMounted) {
+                    && !hasLeatherBoots() && !mount.mounted) {
                 powderSnowTurns++;
                 int freezeDmg = (int) Math.pow(2, powderSnowTurns - 1); // 1, 2, 4, 8, 16...
                 int actual = damagePlayerFromTile(freezeDmg, null);
@@ -14850,13 +14883,13 @@ public class CombatManager {
         // Netherite mount furnace glow: while charged, re-assert the "charged" state each
         // tick (the mod's AI may try to reset it) and decay the timer; turn it off on the
         // final tick. Cheap -setCharged only re-sends when the value actually changes.
-        if (mountFurnaceTicks > 0) {
-            mountFurnaceTicks--;
-            if (isNetheriteMount() && mountMob != null) {
+        if (mount.furnaceTicks > 0) {
+            mount.furnaceTicks--;
+            if (isNetheriteMount() && mount.mob != null) {
                 com.crackedgames.craftics.compat.golemoverhaul.NetheriteMountState
-                    .setCharged(mountMob, mountFurnaceTicks > 0);
+                    .setCharged(mount.mob, mount.furnaceTicks > 0);
             } else {
-                mountFurnaceTicks = 0;
+                mount.furnaceTicks = 0;
             }
         }
 
@@ -14939,16 +14972,16 @@ public class CombatManager {
             }
         }
         // Mount cleanup + re-attach safety net.
-        if (playerMounted && mountMob != null) {
-            if (mountMob.isRemoved() || !mountMob.isAlive()) {
-                mountFurnaceTicks = 0; // mount gone -stop the furnace glow timer
+        if (mount.mounted && mount.mob != null) {
+            if (mount.mob.isRemoved() || !mount.mob.isAlive()) {
+                mount.furnaceTicks = 0; // mount gone -stop the furnace glow timer
                 clearMountWall(); // mount died mid-combat -drop its wall
                 // Everyone riding it needs their own tile back. Clearing the fields without
                 // this left passengers attached to a corpse with no legal square to act from.
                 dismountAllRiders();
                 sendMessage("§7The mount falls - everyone hits the ground.");
             } else if (player != null && !player.hasVehicle()) {
-                player.startRiding(mountMob, true);
+                player.startRiding(mount.mob, true);
             }
         }
 
@@ -15468,7 +15501,7 @@ public class CombatManager {
             GridTile landingTile = arena.getTile(finalPos);
             boolean onWaterNow = landingTile != null
                 && landingTile.getType() == com.crackedgames.craftics.core.TileType.WATER;
-            if (onWaterNow && !playerMounted) {
+            if (onWaterNow && !mount.mounted) {
                 if (moveBoatProtected) {
                     net.minecraft.entity.vehicle.BoatEntity boat = boatOf(player);
                     // Spawn a visual boat if we don't have one
@@ -15520,7 +15553,7 @@ public class CombatManager {
                 GridTile crossedTile = arena.getTile(crossed);
                 if (crossedTile == null) continue;
                 if (crossedTile.getType() == com.crackedgames.craftics.core.TileType.LAVA
-                        && !playerMounted && !combatEffects.hasFireResistance()) {
+                        && !mount.mounted && !combatEffects.hasFireResistance()) {
                     int lavaDmg = damagePlayerFromTile(10, null);
                     sendMessage("§6  Stepped in lava for " + lavaDmg + " damage!");
                     if (getPlayerHp() <= 0) {
@@ -15544,7 +15577,7 @@ public class CombatManager {
             // until now nothing applied anything and the tile was pure decoration.
             if (landingTile != null
                     && landingTile.getType() == com.crackedgames.craftics.core.TileType.FROST
-                    && !hasLeatherBoots() && !playerMounted) {
+                    && !hasLeatherBoots() && !mount.mounted) {
                 addEffectHooked(CombatEffects.EffectType.SLOWNESS, 1, 0);
                 player.setFrozenTicks(Math.max(player.getFrozenTicks(), 80));
                 sendMessage("§b  Rime underfoot - you slip and slow down.");
@@ -15649,18 +15682,18 @@ public class CombatManager {
         }
         double z = lerpStartZ + (endZ - lerpStartZ) * progress;
 
-        if (playerMounted && mountMob != null) {
+        if (mount.mounted && mount.mob != null) {
             // Mounted ride: drive the mount via requestTeleport so the
             // server broadcasts the new position immediately. The rider
             // (player) renders at the mount's tracked position.
-            mountMob.setYaw(playerMoveYaw);
-            mountMob.setHeadYaw(playerMoveYaw);
-            mountMob.setBodyYaw(playerMoveYaw);
-            mountMob.setOnGround(true);
-            mountMob.requestTeleport(x, y, z);
+            mount.mob.setYaw(playerMoveYaw);
+            mount.mob.setHeadYaw(playerMoveYaw);
+            mount.mob.setBodyYaw(playerMoveYaw);
+            mount.mob.setOnGround(true);
+            mount.mob.requestTeleport(x, y, z);
             // Re-attach the rider if vanilla silently dropped the link.
-            if (!player.hasVehicle() && !mountMob.isRemoved()) {
-                player.startRiding(mountMob, true);
+            if (!player.hasVehicle() && !mount.mob.isRemoved()) {
+                player.startRiding(mount.mob, true);
             }
         } else {
             player.setYaw(playerMoveYaw);
@@ -16536,7 +16569,7 @@ public class CombatManager {
             // Hazard tile damage at turn start (must match startPlayerTurn logic)
             GridTile qTurnTile = arena.getTile(arena.getPlayerGridPos());
             if (qTurnTile != null) {
-                if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !playerMounted
+                if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !mount.mounted
                         && !combatEffects.hasFireResistance()
                         && !PlayerCombatStats.wearsHead(player, Items.PIGLIN_HEAD)) {
                     int lavaDmg = damagePlayerFromTile(10, null);
@@ -16548,7 +16581,7 @@ public class CombatManager {
                     applyFireTileBurnToPlayer(qTurnTile.getType());
                 }
                 if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW
-                        && !hasLeatherBoots() && !playerMounted) {
+                        && !hasLeatherBoots() && !mount.mounted) {
                     powderSnowTurns++;
                     int freezeDmg = (int) Math.pow(2, powderSnowTurns - 1);
                     int actual = damagePlayerFromTile(freezeDmg, null);
@@ -19688,7 +19721,7 @@ public class CombatManager {
         }
         // The mount is standing in the blast too. Caught once for the whole area effect, not
         // once per rider, so a camel carrying four people is not hit four times by one bomb.
-        if (playerMounted && mountMob != null && damage > 0) {
+        if (mount.mounted && mount.mob != null && damage > 0) {
             CombatEntity mount = findMountEntity();
             if (mount != null && mount.isAlive()) {
                 int dealt = mount.takeDamage(damage);
@@ -19704,9 +19737,9 @@ public class CombatManager {
 
     /** The mount's grid entity, matched by the ridden mob's id. Null if it is gone. */
     private CombatEntity findMountEntity() {
-        if (mountMob == null) return null;
+        if (mount.mob == null) return null;
         for (CombatEntity e : enemies) {
-            if (e.getEntityId() == mountMob.getId()) return e;
+            if (e.getEntityId() == mount.mob.getId()) return e;
         }
         return null;
     }
@@ -32940,11 +32973,8 @@ public class CombatManager {
         if (notice != null && !notice.isEmpty()) lines.add(notice);
         if (added == 0) {
             lines.add("\"Nothing you carry bears an enchantment.\"");
-            lines.add("\"I strip runes away. I cannot give you one.\"");
         } else {
-            lines.add("\"I do not grant enchantments. I TAKE them.\"");
-            lines.add("\"Choose a piece and I will show you what is bound to it.\"");
-            lines.add("\"Whatever you mark, I tear out. It does not come back.\"");
+            lines.add("\"Which piece shall I strip?\"");
             if (live.size() > added) {
                 lines.add("§eOnly " + added + " of your " + live.size()
                     + " enchanted pieces fit on this table.");
@@ -32964,6 +32994,19 @@ public class CombatManager {
      */
     private com.crackedgames.craftics.combat.dialogue.DialogueDefinition
             buildDisenchantEnchantDialogue(ServerPlayerEntity p, int slotId) {
+        return buildDisenchantEnchantDialogue(p, slotId, true);
+    }
+
+    /**
+     * As above. {@code speak} is false for a redraw after a toggle.
+     *
+     * <p>A dialogue with no lines shows its buttons immediately, so ticking a rune just redraws
+     * the rows instead of replaying the whole speech. The permanence warning does not go with it:
+     * it moves to the confirm button's hover text, which is on screen the entire time and cannot
+     * be clicked past.
+     */
+    private com.crackedgames.craftics.combat.dialogue.DialogueDefinition
+            buildDisenchantEnchantDialogue(ServerPlayerEntity p, int slotId, boolean speak) {
         ItemStack stack = lookupEnchanterStack(p, slotId);
         java.util.List<Object[]> list = enchantmentsOn(stack);
         java.util.Set<Integer> picked =
@@ -32984,21 +33027,21 @@ public class CombatManager {
         }
         choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
             DisenchantRules.confirmLabel(picked.size()), "disenchanter:confirm",
-            picked.isEmpty() ? "§7Mark at least one enchantment first."
-                             : "§cThis cannot be undone."));
+            String.join(com.crackedgames.craftics.network.DialoguePayload.TOOLTIP_LINE,
+                DisenchantRules.confirmTooltip(picked.size(),
+                    DisenchantRules.stripsEverything(list, picked)))));
         choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
             "Back", "disenchanter:back"));
 
         java.util.List<String> lines = new java.util.ArrayList<>();
-        lines.add("\"" + stack.getName().getString() + " carries these runes.\"");
-        lines.add("\"Mark every one you want TORN OUT, then confirm.\"");
-        if (list.size() > shown) {
-            // Say so rather than quietly showing a partial list: a player who cannot find
-            // Mending needs to know it exists and is not on offer, not assume the menu is broken.
-            lines.add("§eOnly the first " + shown + " of " + list.size() + " are shown.");
-        }
-        if (DisenchantRules.stripsEverything(list, picked)) {
-            lines.add("§cThat will leave the piece completely bare.");
+        if (speak) {
+            lines.add("§cMark what to tear from " + stack.getName().getString()
+                + ". Removal is permanent.");
+            if (list.size() > shown) {
+                // Say so rather than quietly showing a partial list: a player who cannot find
+                // Mending needs to know it exists and is not on offer, not that the menu is broken.
+                lines.add("§eOnly the first " + shown + " of " + list.size() + " are shown.");
+            }
         }
         return new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
             "craftics:disenchanter_runes", "minecraft:villager", "disenchanter_runes",
@@ -34981,7 +35024,8 @@ public class CombatManager {
             int listed = Math.min(list.size(), DisenchantRules.MAX_LISTED);
             perPlayerDisenchantPicked.put(player.getUuid(), DisenchantRules.toggle(
                 perPlayerDisenchantPicked.get(player.getUuid()), index, listed));
-            sendDialogue(player, buildDisenchantEnchantDialogue(player, open));
+            // Silent redraw - the rows change, the speech does not repeat.
+            sendDialogue(player, buildDisenchantEnchantDialogue(player, open, false));
             return;
         }
 
@@ -34989,9 +35033,9 @@ public class CombatManager {
             java.util.Set<Integer> picked =
                 perPlayerDisenchantPicked.getOrDefault(player.getUuid(), java.util.Set.of());
             if (!DisenchantRules.canConfirm(picked)) {
-                // Nothing marked. Re-show the same menu rather than consuming the pick on a
-                // confirm that would do nothing.
-                sendDialogue(player, buildDisenchantEnchantDialogue(player, open));
+                // Nothing marked. Redraw rather than consuming the pick on a confirm that would
+                // do nothing - and silently, since the player has already heard the speech.
+                sendDialogue(player, buildDisenchantEnchantDialogue(player, open, false));
                 return;
             }
             java.util.List<String> removed = applyDisenchant(player, open, picked);
@@ -35016,8 +35060,7 @@ public class CombatManager {
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.7f);
 
             java.util.List<String> lines = new java.util.ArrayList<>();
-            lines.add("\"It is torn out. Do not ask for it back.\"");
-            lines.add("§cRemoved: §f" + DisenchantRules.removedSummary(removed));
+            lines.add("§cTorn out: §f" + DisenchantRules.removedSummary(removed));
             var resultDef = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
                 "craftics:disenchanter_result", "minecraft:villager", "disenchanter_result",
                 lines, java.util.List.of());
@@ -36130,19 +36173,19 @@ public class CombatManager {
 
         // Dismount and discard mount mob
         try {
-            if (playerMounted && mountMob != null) {
+            if (mount.mounted && mount.mob != null) {
                 if (player != null) player.stopRiding();
-                mountMob.discard();
-                playerMounted = false;
-                mountMob = null;
+                mount.mob.discard();
+                mount.mounted = false;
+                mount.mob = null;
             }
         } catch (Exception e) {
             CrafticsMod.LOGGER.warn("endCombat: mount cleanup failed: {}", e.getMessage());
-            playerMounted = false;
-            mountMob = null;
+            mount.mounted = false;
+            mount.mob = null;
         }
-        mountTypeId = null;
-        mountFurnaceTicks = 0;
+        mount.typeId = null;
+        mount.furnaceTicks = 0;
         clearMountWall(); // drop the mount wall sentinel on combat end
 
         // Discard remaining arena mobs (and any cosmetic stack passengers
@@ -36432,45 +36475,154 @@ public class CombatManager {
      * smooth: the mount has gravity/AI off and is driven directly each tick.
      * Grants the mount-speed buff and removes the mount from the arena grid.
      */
+    /**
+     * Send a departing player's mount and party animals back to their own hub.
+     *
+     * <p>Called when someone leaves a fight in progress - {@code /home}, mostly. The fight
+     * carries on for everyone else, so their animals cannot simply be left in it: the mount
+     * would stand in the arena with a rider who is no longer in the dimension, and the rest
+     * would keep taking turns for a party member who has gone.
+     *
+     * <p>Each animal is restored through the same path a won fight uses, which routes by the
+     * animal's OWNER rather than by whoever triggered this - so a guest's wolf goes to the
+     * guest's island, not the leader's.
+     */
+    private void returnDepartingPlayersAnimals(ServerPlayerEntity leaver) {
+        if (leaver == null) return;
+        java.util.UUID uuid = leaver.getUuid();
+
+        // Off the mount first, while they are still in the same world as it. A rider carried
+        // across dimensions by the teleport is dropped by vanilla wherever they land, and the
+        // animal is left behind holding a passenger list that names somebody who is gone.
+        MountState theirMount = playerMounts.remove(uuid);
+        if (theirMount != null) {
+            if (leaver.hasVehicle()) leaver.stopRiding();
+            if (this.player != null && uuid.equals(this.player.getUuid())) {
+                this.mount = new MountState();
+            }
+        }
+
+        if (enemies == null) return;
+        java.util.List<HubPetCollector.PetData> theirs = new java.util.ArrayList<>();
+        java.util.List<CombatEntity> departing = new java.util.ArrayList<>();
+        for (CombatEntity e : enemies) {
+            // Temporary allies never came from a hub, so putting one "back" would mint a
+            // creature that should not exist there - the same rule every other rescue uses.
+            if (e == null || !e.isAlive() || !e.isAlly() || e.isTemporaryAlly()) continue;
+            if (!uuid.equals(e.getOwnerUuid())) continue;
+            theirs.add(HubPetCollector.PetData.fromCombatEntity(e, e.getOriginalHubNbt()));
+            departing.add(e);
+        }
+        if (theirs.isEmpty()) return;
+
+        try {
+            ServerWorld w = (ServerWorld) leaver.getEntityWorld();
+            HubPetCollector.restorePetsToHub(w, leaver, theirs, CrafticsSavedData.get(w));
+        } catch (Exception ex) {
+            CrafticsMod.LOGGER.warn("Could not send {}'s animals home on leave: {}",
+                leaver.getName().getString(), ex.getMessage());
+            return; // Leave them in the fight rather than discarding animals we failed to save.
+        }
+        for (CombatEntity e : departing) {
+            if (e.getMobEntity() != null) e.getMobEntity().discard();
+            if (arena != null) arena.removeEntity(e);
+            enemies.remove(e);
+        }
+        CrafticsMod.LOGGER.info("Sent {} animal(s) home with {}.",
+            departing.size(), leaver.getName().getString());
+    }
+
+    /**
+     * The mount state for the animal {@code vehicle} is, or null when it is not a combat mount.
+     *
+     * <p>Keyed off the ANIMAL rather than the rider, because a shared mount has one owner and
+     * any number of passengers, and a passenger has no mount entry of their own.
+     */
+    private MountState mountStateForVehicle(net.minecraft.entity.Entity vehicle) {
+        if (vehicle == null) return null;
+        for (MountState state : playerMounts.values()) {
+            if (state.mounted && state.mob != null && state.mob == vehicle) return state;
+        }
+        return null;
+    }
+
+    /** A combat participant by uuid, or null when they are gone or not in this fight. */
+    private ServerPlayerEntity combatPlayerByUuid(java.util.UUID uuid) {
+        if (uuid == null) return null;
+        for (ServerPlayerEntity m : allCombatPlayers()) {
+            if (m != null && !m.isRemoved() && uuid.equals(m.getUuid())) return m;
+        }
+        return null;
+    }
+
+    /** One player's mount state, without disturbing whoever {@code this.player} is. */
+    private MountState mountOf(ServerPlayerEntity who) {
+        if (who == null) return new MountState();
+        return playerMounts.computeIfAbsent(who.getUuid(), k -> new MountState());
+    }
+
+    /**
+     * Run {@code body} with {@code this.player} pointed at {@code who}, then put it back.
+     *
+     * <p>The swap-and-restore this file uses everywhere a party member other than the turn
+     * holder has to be acted on. Restores in a finally so a throw cannot strand the manager
+     * pointed at the wrong player - which would silently misattribute everything after it.
+     */
+    private void withPlayer(ServerPlayerEntity who, Runnable body) {
+        if (who == null) { body.run(); return; }
+        ServerPlayerEntity previous = this.player;
+        try {
+            this.player = who;
+            retargetEffectsToCurrentPlayer();
+            body.run();
+        } finally {
+            this.player = previous;
+            retargetEffectsToCurrentPlayer();
+        }
+    }
+
     private void mountPlayerOn(CombatEntity e) {
         e.setMounted(true);
-        playerMounted = true;
+        mount.mounted = true;
         // The pet's owner, not whoever happens to be holding the turn: a party member must
         // not be able to dismount the animal out from under the person who brought it.
-        mountOwnerUuid = e.getOwnerUuid() != null ? e.getOwnerUuid()
+        mount.ownerUuid = e.getOwnerUuid() != null ? e.getOwnerUuid()
             : (player != null ? player.getUuid() : null);
-        mountTypeId = e.getEntityTypeId();
-        mountMob = e.getMobEntity();
-        if (mountMob != null) {
-            mountMob.setGlowing(false);
-            mountMob.setAiDisabled(true);
-            mountMob.setNoGravity(true);
-            mountMob.setInvulnerable(true);
-            mountMob.setSilent(true);
+        mount.typeId = e.getEntityTypeId();
+        mount.mob = e.getMobEntity();
+        if (mount.mob != null) {
+            mount.mob.setGlowing(false);
+            mount.mob.setAiDisabled(true);
+            mount.mob.setNoGravity(true);
+            mount.mob.setInvulnerable(true);
+            mount.mob.setSilent(true);
             // The craftics_arena_mount tag opts the mob out of the vanilla
             // controlling-passenger system (see CombatMountMixin). Without
             // that, the client steers the mount from the rider's input and
             // overrides the server's tile-by-tile movement, slingshotting
             // it back to the rider's predicted position each tick.
-            mountMob.addCommandTag("craftics_arena_mount");
+            mount.mob.addCommandTag("craftics_arena_mount");
             if (player.hasVehicle()) player.stopRiding();
-            mountMob.refreshPositionAndAngles(
+            mount.mob.refreshPositionAndAngles(
                 player.getX(), player.getY(), player.getZ(),
                 player.getYaw(), 0f);
-            player.startRiding(mountMob, true);
+            player.startRiding(mount.mob, true);
 
-            // Everyone boards NOW, at the start, rather than being collected one at a time.
-            // The per-tick safety net further down re-attaches whoever is holding the turn if
-            // they are not riding, and with the party mounting lazily that meant the mount
-            // travelled to each member as the turn passed to them - the camel doing a circuit
-            // of the arena picking people up. Seating the whole party up front removes the
-            // trip entirely; the safety net stays as a net rather than as the way they board.
+            // The whole party boards NOW, at the start. Riding together is the point of a
+            // shared mount, and boarding lazily meant the animal did a circuit of the arena
+            // collecting people as the turn passed to them.
+            //
+            // Forced, because vanilla's capacity check would turn most of the party away - a
+            // horse admits one. Craftics seats them itself (see CombatMountMixin), so the
+            // limit that matters is the one it draws, not the one the species declares.
             for (ServerPlayerEntity member : allCombatPlayers()) {
                 if (member == null || member == player) continue;
                 if (member.isRemoved() || member.isDisconnected()) continue;
                 if (deadPartyMembers.contains(member.getUuid())) continue;
+                // Never pull somebody off their OWN mount to be a passenger on this one.
+                if (mountOf(member).mounted) continue;
                 if (member.hasVehicle()) member.stopRiding();
-                member.startRiding(mountMob, true);
+                member.startRiding(mount.mob, true);
             }
         }
         arena.removeEntity(e);
@@ -36549,11 +36701,16 @@ public class CombatManager {
      */
     private void handleDismount() {
         if (player == null || arena == null) return;
-        if (!playerMounted || mountMob == null || !player.hasVehicle()) {
+        // Read the animal they are ON, not the one they OWN. A passenger riding a teammate's
+        // mount has no mount state of their own, so checking their own state refused them with
+        // "you are not riding anything" - and since the party boards at the start, that was
+        // every rider but one, stuck on for the rest of the fight.
+        MountState ridden = mountStateForVehicle(player.getVehicle());
+        if (ridden == null || !player.hasVehicle()) {
             sendMessage("§cYou are not riding anything.");
             return;
         }
-        if (mountOwnerUuid != null && mountOwnerUuid.equals(player.getUuid())) {
+        if (ridden.ownerUuid != null && ridden.ownerUuid.equals(player.getUuid())) {
             sendMessage("§cIt is your mount - you are not getting off it.");
             return;
         }
@@ -36572,7 +36729,7 @@ public class CombatManager {
         BlockPos bp = arena.gridToBlockPos(landing);
         player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
         arena.setPlayerGridPos(landing);
-        sendMessage("§7You slide down off " + mountMob.getName().getString() + ".");
+        sendMessage("§7You slide down off " + ridden.mob.getName().getString() + ".");
         sendSync();
         refreshHighlights();
     }
@@ -36785,10 +36942,10 @@ public class CombatManager {
             // Claimed so the next rider searching from the same origin cannot pick it too.
             arena.setAllPlayerGridPositions(java.util.List.of(landing));
         }
-        playerMounted = false;
-        mountMob = null;
-        mountTypeId = null;
-        mountOwnerUuid = null;
+        mount.mounted = false;
+        mount.mob = null;
+        mount.typeId = null;
+        mount.ownerUuid = null;
         refreshAllPlayerGridPositions();
         sendSync();
     }
@@ -37066,9 +37223,14 @@ public class CombatManager {
                 continue;
             }
 
-            if (snapshot.saddledMount() && !playerMounted) {
-                // A saddled rideable party mob auto-mounts the player for the run.
-                mountPlayerOn(ce);
+            // The animal belongs to whoever brought it, which in a party is often not the
+            // player holding the turn. Seat its OWNER: reading this.player here mounted the
+            // leader on everyone's animals and left the actual owners walking.
+            ServerPlayerEntity mountRider = snapshot.saddledMount()
+                ? combatPlayerByUuid(snapshot.playerUuid()) : null;
+            if (mountRider != null && !mountOf(mountRider).mounted) {
+                // A saddled rideable party mob auto-mounts its owner for the run.
+                withPlayer(mountRider, () -> mountPlayerOn(ce));
             } else {
                 sendMessage("\u00a7a" + ce.getDisplayName() + " joins the fight!");
             }
@@ -37137,6 +37299,41 @@ public class CombatManager {
         var rawEntity = entityType.create(world, null, blockPos,
             net.minecraft.entity.SpawnReason.MOB_SUMMONED, false, false);
         if (!(rawEntity instanceof net.minecraft.entity.mob.MobEntity mob)) return null;
+
+        // Wear the animal the player actually owns, not a blank one of the same species.
+        //
+        // This built the arena mob from the entity type alone and kept the snapshot NBT only
+        // for putting the animal back afterwards. So the horse you rode into battle had no
+        // saddle, no armour, no variant, no collar and no name - a stranger's horse wearing
+        // your horse's stat block. On a clean exit the real one came back and nobody noticed;
+        // on a crash you were left sitting on the blank one.
+        //
+        // Applied BEFORE the arena flags below, so those still win: the NBT carries the
+        // animal's hub state (AI on, gravity on, vulnerable) and would otherwise switch the
+        // combat rules back off.
+        if (snapshot.fullEntityNbt() != null) {
+            try {
+                net.minecraft.nbt.NbtCompound worn = snapshot.fullEntityNbt().copy();
+                // Position and motion come from the arena, never from where it stood at home.
+                worn.remove("Pos");
+                worn.remove("Motion");
+                worn.remove("Rotation");
+                // Its hub tags are not arena tags; the arena tag is added below.
+                worn.remove("Tags");
+                mob.readNbt(worn);
+                // The hub original was discarded when the party was collected, so its id is
+                // normally free - but a second copy in the world would be dropped by vanilla
+                // with only a log line, taking the animal with it.
+                if (world.getEntity(mob.getUuid()) != null) {
+                    mob.setUuid(java.util.UUID.randomUUID());
+                }
+            } catch (Exception nbtFail) {
+                // A snapshot that will not read back is not worth losing the ally over - it
+                // fights as a plain one of its species, exactly as it did before.
+                CrafticsMod.LOGGER.warn("Could not dress arena ally {} in its own gear: {}",
+                    snapshot.entityTypeId(), nbtFail.getMessage());
+            }
+        }
 
         mob.refreshPositionAndAngles(
             blockPos.getX() + 0.5, blockPos.getY(), blockPos.getZ() + 0.5, 0, 0);

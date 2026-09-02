@@ -1067,7 +1067,7 @@ public class GuideBookData {
                 "§7Counterpuncher. Let them hit you, hit harder back.\n\n" +
                 "Hybrid: Leather+Iron (Counterpuncher): 50% chance to instantly attack back when hit.\n\n" +
                 "Vitality + Defense stats. The more attacks you eat the more free retaliations you get.\n\n" +
-                "Pair with: Shield in offhand (+1 AC, 25% block) and Thorns armor for reflection on top."),
+                "Pair with: Shield in offhand (+1 AC, 20% block) and Thorns armor for reflection on top."),
             new Page("Lucky Streak",
                 "§7Lucky Streak. Crit ramp until you die.\n\n" +
                 "Hybrid: Leather+Gold (Lucky Streak): +10% crit per kill, resets when hit.\n\n" +
@@ -1160,7 +1160,7 @@ public class GuideBookData {
             new Page("Shield Mechanics",
                 "Equip a shield in your OFFHAND slot.\n\n" +
                 "Passive: +1 Armor Class at all times.\n\n" +
-                "Block: 25% chance to completely block an incoming attack, negating all damage.\n\n" +
+                "Block: 20% chance to completely block an incoming attack, negating all damage.\n\n" +
                 "No AP cost - purely passive! Equip and fight normally.")
         )));
         equipment.add(new Entry("Mob Heads", "minecraft:creeper_head", List.of(

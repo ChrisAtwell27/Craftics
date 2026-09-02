@@ -557,7 +557,9 @@ public class ItemUseHandler {
         } else if (item == Items.COBWEB) {
             return useCobweb(player, arena, targetTile, held);
         } else if (item == Items.SHIELD) {
-            return "§9Shield is passive! Equip in offhand for +1 AC and 25% chance to block attacks.";
+            return "§9Shield is passive! Equip in offhand for +1 AC and "
+                + Math.round(CombatManager.SHIELD_BLOCK_CHANCE * 100)
+                + "% chance to block attacks.";
         } else if (item == Items.FLINT_AND_STEEL) {
             return useFlintAndSteel(player, arena, targetTile, held);
         } else if (item == Items.TOTEM_OF_UNDYING) {
