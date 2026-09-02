@@ -68,6 +68,30 @@ public class CombatManager {
 
     // Clear between world loads so singleplayer doesn't leak state across saves
     public static void clearAll() {
+        // Server shutdown. Every OTHER way out of a fight runs endCombat(), whose safety net
+        // puts the party's collected pets back in the hub; this one used to drop INSTANCES on
+        // the floor and rescue nothing.
+        //
+        // That is fatal rather than untidy, because a collected pet has no copy anywhere else:
+        // HubPetCollector discards the real animal from the hub world the moment the run begins
+        // and hands the run an in-memory snapshot, and that snapshot is never written to disk.
+        // So a restart with runs in flight destroyed every animal in every one of them, forever
+        // - the whole party at once for anyone who fields more than a wolf.
+        //
+        // Two states have pets to lose, and they need different handling. A live fight holds
+        // them as ally CombatEntities, which is what endCombat()'s net reads. A run parked in an
+        // event interlude has active=false - endCombat() returns at its !active guard before the
+        // net ever runs - and holds the whole party in savedPets instead. Both are covered here.
+        for (CombatManager cm : new java.util.ArrayList<>(INSTANCES.values())) {
+            try {
+                if (cm.active) cm.endCombat();
+                // Also after endCombat: its net rescues live allies out of `enemies`, and says
+                // nothing about a party already parked in savedPets from an earlier level.
+                cm.rescueSavedPetsToHubFallback(null);
+            } catch (Throwable t) {
+                CrafticsMod.LOGGER.error("Shutdown pet rescue failed for a live combat", t);
+            }
+        }
         INSTANCES.clear();
         PARTY_COMBAT_LEADER.clear();
     }
@@ -30258,8 +30282,23 @@ public class CombatManager {
             sendMessage("§7Returning to hub...");
             // Restore surviving pets back into the hub world using their original NBT snapshots.
             if (!savedPets.isEmpty()) {
-                HubPetCollector.restorePetsToHub(world, savedPlayer, savedPets, data);
-                sendMessage("§aYour surviving pets returned to the hub.");
+                // Read the count. restorePetsToHub fails silently on purpose - a lost animal
+                // must never cost someone their run - so announcing a homecoming without
+                // checking told players their party was waiting for them when nothing had
+                // arrived, and turned a bug that leaves a trail in the log into one nobody
+                // reports until their army is already gone.
+                int expected = savedPets.size();
+                int sent = HubPetCollector.restorePetsToHub(world, savedPlayer, savedPets, data);
+                if (sent >= expected) {
+                    sendMessage("§aYour surviving pets returned to the hub.");
+                } else {
+                    sendMessage("§c" + (expected - sent) + " of your " + expected
+                        + " surviving pets did not make it back to the hub. Tell an admin"
+                        + " - the server log names each one.");
+                    CrafticsMod.LOGGER.error(
+                        "Hub restore incomplete for {}: {} of {} pet(s) reached a hub",
+                        savedPlayer.getName().getString(), sent, expected);
+                }
                 savedPets.clear();
             }
             // Read through the live predicate, not the raw flag: a parked run also has
@@ -36227,10 +36266,25 @@ public class CombatManager {
         CrafticsMod.LOGGER.info("Re-spawning {} carried-over pet(s) into the arena.", savedPets.size());
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         GridPos playerStart = arena.getPlayerGridPos();
+        // Pets this level could not field. The list is drained at the end of the method, so a
+        // pet that fell out of the loop below used to be destroyed by that clear - and since its
+        // hub animal was discarded when the run began, destroyed for good. spawnHubPets has
+        // always parked its failures with keepForLater; this path just dropped them. Carried
+        // forward instead: the next level tries again, and if the run ends first the end-of-run
+        // restore reads savedPets and sends them home.
+        java.util.List<HubPetCollector.PetData> couldNotField = new ArrayList<>();
 
         for (HubPetCollector.PetData pet : savedPets) {
             // Spawn each pet independently -a failure on one (e.g. a mount re-mount that
             // throws) must not abort the rest, or the whole party would vanish for the level.
+            //
+            // Tracks whether this pet made it into `enemies`, because the catch below is wider
+            // than the spawn: mountPlayerOn runs inside it and can throw with the combatant
+            // already on the grid. Carrying a snapshot of a pet that is ALSO fighting would
+            // send two animals home at the end of the run - the live one through savePets and
+            // the carried one through savedPets - so only a pet that never took the field is
+            // carried.
+            boolean fielded = false;
             try {
             // Find a safe tile near the player start (wide outward search so the
             // pet isn't silently dropped when the adjacent tiles are taken).
@@ -36249,7 +36303,12 @@ public class CombatManager {
             BlockPos blockPos = arena.gridToBlockPos(spawnPos);
             var rawEntity = entityType.create(world, null, blockPos,
                 net.minecraft.entity.SpawnReason.MOB_SUMMONED, false, false);
-            if (!(rawEntity instanceof net.minecraft.entity.mob.MobEntity mob)) continue;
+            if (!(rawEntity instanceof net.minecraft.entity.mob.MobEntity mob)) {
+                CrafticsMod.LOGGER.warn("Carried-over pet {} produced no mob - carrying it rather than losing it",
+                    pet.entityType());
+                couldNotField.add(pet);
+                continue;
+            }
 
             // Stand the pet on the floor -same Y as the player, enemies, and
             // spawnHubPets. gridToBlockPos already returns the standing Y; the
@@ -36310,6 +36369,7 @@ public class CombatManager {
             ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(
                 pet.aiKey() != null ? pet.aiKey() : pet.entityType()));
             enemies.add(ce);
+            fielded = true;
             arena.placeEntity(ce);
 
             if (pet.mounted()) {
@@ -36319,11 +36379,15 @@ public class CombatManager {
                 sendMessage("\u00a7a" + ce.getDisplayName() + " rejoins the fight!");
             }
             } catch (Throwable t) {
-                CrafticsMod.LOGGER.error("Failed to re-spawn carried-over pet {} - skipping it",
-                    pet.entityType(), t);
+                CrafticsMod.LOGGER.error("Failed to re-spawn carried-over pet {}{}",
+                    pet.entityType(),
+                    fielded ? " after it reached the grid - leaving it in the fight"
+                            : " - carrying it to the next level", t);
+                if (!fielded) couldNotField.add(pet);
             }
         }
         savedPets.clear();
+        savedPets.addAll(couldNotField);
     }
 
     /**
