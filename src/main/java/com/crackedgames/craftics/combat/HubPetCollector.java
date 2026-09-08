@@ -287,39 +287,99 @@ public class HubPetCollector {
     }
 
     /**
-     * Landing Y of the hub ANCHOR column (the spawn plate the player teleports to):
-     * the HIGHEST solid block with air above. Delegates to the shared
-     * {@code CrafticsMod.hubLandingY}, so pets land on the exact same top surface the
-     * returning player does (and never inside a hollow island or under it).
+     * The anchor a returning pet is placed around: a spot on this island that is verified
+     * standable, never a coordinate that merely used to be one.
+     *
+     * <p>This is the whole void-spawn fix. It used to probe the hub column alone via
+     * {@code hubLandingY} and, when that found nothing, hand back the raw stored {@code
+     * hub.getY()} - a number, not a floor. That is the exact shape of the bug: a stored hub
+     * anchor sits at the height islands are GENERATED at, so an island built higher than that
+     * leaves the anchor pointing into open air, the single-column probe reports "no ground",
+     * and the fallback then spawns the animal at the very coordinate that was just proven
+     * empty. It falls out of the world.
+     *
+     * <p>So it now runs the same outward ring search the returning PLAYER does
+     * ({@link CrafticsMod#findLandingSpot}), which finds the island wherever the player has
+     * actually built it, and when even that comes back empty it lays the same single rescue
+     * block {@code HubTeleports.toHub} lays rather than inventing a height. One policy, both
+     * paths - a pet and its owner always come home to the same floor.
      */
-    private static int findAnchorLandingY(ServerWorld world, BlockPos hub) {
-        int y = com.crackedgames.craftics.CrafticsMod.hubLandingY(world, hub.getX(), hub.getZ(), hub.getY());
-        return y != Integer.MIN_VALUE ? y : hub.getY();
+    private static BlockPos findAnchorLanding(ServerWorld world, BlockPos hub, UUID ownerId) {
+        BlockPos anchor = CrafticsMod.findLandingSpot(world, hub.getX(), hub.getZ(), hub.getY());
+        if (anchor != null) return anchor;
+        CrafticsMod.placeRescueFloor(world, hub, ownerId);
+        return hub;
     }
 
     /**
-     * Landing spot {x, y, z} for a restored pet. Pets used to run the full
-     * 60-up/40-down anchor scan on their own OFFSET column, which had two ways
-     * to kill them: a tree canopy or roof over the offset column won the
-     * up-scan (pet placed high, walks off and falls), and a column past the
-     * island edge found nothing at all and silently returned hub.y - a midair
-     * spawn over the void. Now the anchor's landing is resolved first (the
-     * floor the player lands on), the pet's offset column is only accepted
-     * when it has a floor within a few blocks of that height, and a column
-     * with no such floor falls back to the anchor column itself.
+     * Landing spot {x, y, z} for a restored pet, always on verified ground.
+     *
+     * <p>Pets used to run the anchor scan on their own OFFSET column, which had two ways to
+     * kill them: a tree canopy or roof over the offset column won the up-scan (pet placed
+     * high, walks off and falls), and a column past the island edge found nothing at all and
+     * silently returned hub.y - a midair spawn over the void. The anchor's landing is
+     * resolved first (the floor the player lands on), the pet's offset column is only
+     * accepted when it has a floor within a few blocks of that height, and a column with no
+     * such floor falls back to the anchor itself - see {@link #findAnchorLanding} for why the
+     * anchor can no longer be a coordinate nobody checked.
      */
-    private static double[] findPetLanding(ServerWorld world, BlockPos hub, int offset) {
-        int anchorY = findAnchorLandingY(world, hub);
-        BlockPos.Mutable probe = new BlockPos.Mutable(hub.getX() + offset, anchorY, hub.getZ());
+    /**
+     * The entity type for a stored id, or null when that id cannot be trusted to rebuild the
+     * animal.
+     *
+     * <p>{@code Registries.ENTITY_TYPE} is a DEFAULTED registry: an id it does not know comes
+     * back as {@code minecraft:pig} rather than as null. Every restore path used to call it
+     * bare, so a party mob whose id no longer resolves - a modded animal on a server that has
+     * since dropped or renamed that mod, the exact shape of "modded pets do not come back" -
+     * was rebuilt as a PIG, spawned onto the island, and counted as a successful homecoming.
+     * The player loses the animal, gains livestock, and the loss detector sees nothing wrong.
+     *
+     * <p>Comparing the resolved type's own id back against the one asked for is what tells the
+     * substitution from a real pig. {@code Identifier.of} can also throw outright on a
+     * malformed id, which is a different way to lose the same animal and is caught here so it
+     * is reported against the pet rather than as a bare stack trace.
+     */
+    @org.jetbrains.annotations.Nullable
+    private static net.minecraft.entity.EntityType<?> resolveType(String entityTypeId) {
+        Identifier id;
+        try {
+            id = Identifier.of(entityTypeId);
+        } catch (Exception malformed) {
+            CrafticsMod.LOGGER.error("Hub restore FAILED for {} - not a valid entity id: {}",
+                entityTypeId, malformed.getMessage());
+            return null;
+        }
+        var type = Registries.ENTITY_TYPE.get(id);
+        Identifier resolved = Registries.ENTITY_TYPE.getId(type);
+        if (!id.equals(resolved)) {
+            CrafticsMod.LOGGER.error(
+                "Hub restore FAILED for {} - that entity type is not registered on this server "
+                + "(the registry substituted {}). The animal is NOT being replaced with one of those.",
+                entityTypeId, resolved);
+            return null;
+        }
+        return type;
+    }
+
+    private static double[] findPetLanding(ServerWorld world, BlockPos hub, int offset,
+                                           UUID ownerId) {
+        BlockPos anchor = findAnchorLanding(world, hub, ownerId);
+        int anchorY = anchor.getY();
+        // Offsets are measured from the ANCHOR, not from the stored hub coordinate. When the
+        // ring search moved the anchor (because the hub column itself was empty), spreading
+        // the pets around the old coordinate would walk them straight back off the island.
+        BlockPos.Mutable probe = new BlockPos.Mutable(anchor.getX() + offset, anchorY, anchor.getZ());
         for (int landY = anchorY + 6; landY >= anchorY - 6; landY--) {
             probe.setY(landY - 1);
             var floor = world.getBlockState(probe);
             var at = world.getBlockState(probe.up());
             if (!floor.isAir() && floor.isSolidBlock(world, probe) && at.isAir()) {
-                return new double[]{hub.getX() + offset + 0.5, landY, hub.getZ() + 0.5};
+                return new double[]{anchor.getX() + offset + 0.5, landY, anchor.getZ() + 0.5};
             }
         }
-        return new double[]{hub.getX() + 0.5, anchorY, hub.getZ() + 0.5};
+        // The offset column has no floor near the anchor's height - stack this one on the
+        // anchor itself, which is the one spot already known to be solid.
+        return new double[]{anchor.getX() + 0.5, anchorY, anchor.getZ() + 0.5};
     }
 
     /**
@@ -384,7 +444,7 @@ public class HubPetCollector {
                     // Restore from original NBT (preserves collar color, armor, name, variant, UUID)
                     NbtCompound nbt = pet.originalNbt().copy();
                     // Override position to a verified landing near the hub anchor
-                    double[] landing = findPetLanding(world0, hubPos, offset);
+                    double[] landing = findPetLanding(world0, hubPos, offset, ownerId);
                     double px = landing[0];
                     double py = landing[1];
                     double pz = landing[2];
@@ -399,11 +459,25 @@ public class HubPetCollector {
                     nbt.putBoolean("Silent", false);
                     nbt.remove("Tags");
 
-                    var entityType = Registries.ENTITY_TYPE.get(Identifier.of(pet.entityType()));
+                    var entityType = resolveType(pet.entityType());
+                    if (entityType == null) continue;   // resolveType already logged the reason
                     Entity restored = entityType.create(world0, null, BlockPos.ofFloored(px, py, pz),
                         SpawnReason.MOB_SUMMONED, false, false);
 
-                    if (restored != null) {
+                    if (restored == null) {
+                        // Had no else at all: an entity type that refuses to build - which a
+                        // modded type may do for reasons of its own, where a vanilla animal
+                        // never does - dropped the animal here without a single line in the
+                        // log. Silent by design is right for the RUN (a lost pet must not cost
+                        // someone their progress) but wrong for the SERVER, which is the only
+                        // place anyone can find out this happened.
+                        CrafticsMod.LOGGER.error(
+                            "Hub restore FAILED for {} - its entity type refused to create at ({}, {}, {}) in {}",
+                            pet.entityType(), (int) px, (int) py, (int) pz,
+                            world0.getRegistryKey().getValue());
+                        continue;
+                    }
+                    {
                         restored.readNbt(nbt);
                         // The UUID in that snapshot may still belong to a mob standing in the
                         // arena. An animal TAMED in combat is snapshotted from the live arena
@@ -435,12 +509,19 @@ public class HubPetCollector {
                     }
                 } else {
                     // Fallback: create a fresh entity (no NBT to restore)
-                    var entityType = Registries.ENTITY_TYPE.get(Identifier.of(pet.entityType()));
-                    double[] landing = findPetLanding(world0, hubPos, offset);
+                    var entityType = resolveType(pet.entityType());
+                    if (entityType == null) continue;   // resolveType already logged the reason
+                    double[] landing = findPetLanding(world0, hubPos, offset, ownerId);
                     var rawEntity = entityType.create(world0, null,
                         BlockPos.ofFloored(landing[0], landing[1], landing[2]),
                         SpawnReason.MOB_SUMMONED, false, false);
-                    if (rawEntity instanceof net.minecraft.entity.mob.MobEntity mob) {
+                    if (!(rawEntity instanceof net.minecraft.entity.mob.MobEntity mob)) {
+                        CrafticsMod.LOGGER.error(
+                            "Hub restore FAILED for {} - its entity type produced {} rather than a mob",
+                            pet.entityType(), rawEntity == null ? "nothing" : rawEntity.getClass().getSimpleName());
+                        continue;
+                    }
+                    {
                         mob.setPersistent();
                         mob.setAiDisabled(false);
                         // Try to set tamed state
@@ -457,7 +538,15 @@ public class HubPetCollector {
                             /*horse.setOwner(owner0);*/
                             horse.bondWithPlayer(owner0);
                         }
-                        if (world0.spawnEntity(mob)) restoredCount++;
+                        if (world0.spawnEntity(mob)) {
+                            restoredCount++;
+                            CrafticsMod.LOGGER.info("Restored pet to hub (no snapshot): {} in {}",
+                                pet.entityType(), world0.getRegistryKey().getValue());
+                        } else {
+                            CrafticsMod.LOGGER.error(
+                                "Hub restore REFUSED for {} - the world rejected the spawn (no-snapshot path)",
+                                pet.entityType());
+                        }
                     }
                 }
             } catch (Exception e) {

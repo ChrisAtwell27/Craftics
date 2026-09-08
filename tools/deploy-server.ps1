@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Push the most recent local Craftics build to the live server. Nothing else.
 
@@ -203,8 +203,14 @@ if ($age -gt 60) {
       crackedlobby  - the Fabric identity mod, built from the CrackedGamesLobbyPlugin repo and
                       deployed by ITS script. It is server-only and never appears in a client
                       instance, but excluding it by name documents that it is deliberate.
+  configured    - a client-side config GUI. Its server half exists only so clients can edit
+                  server configs in-game, and on 1.21.1 it fails to encode its own
+                  `configured:session_data` payload during the configuration phase - which
+                  kicks every joining player with an EncoderException before they reach the
+                  world. It declares environment "*", so the environment check above ships it
+                  by default; nothing in the pack needs it server-side.
 #>
-$SKIP_IDS = @("craftics", "crackedlobby")
+$SKIP_IDS = @("craftics", "crackedlobby", "configured")
 
 function Get-InstanceMods {
     param([Parameter(Mandatory)] [string] $Dir)

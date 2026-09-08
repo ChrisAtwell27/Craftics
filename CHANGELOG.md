@@ -1,5 +1,35 @@
 ﻿Changelog
 
+0.4.7
+
+Graves Survive Their Own Fire
+
+Y+1 is a shared slot. Flames, obstacles, rubble and block-backed objects - graves, hives, war banners, egg sacs, vases - all write the same block position above a tile, and nothing told them apart. A tile change simply wrote over whatever was standing there. So the Revenant's own Gravefire Grid ate the Revenant's own graves: the grid entry survived and the block did not, leaving a grave you could still hit and still loot with nothing visible on the tile.
+
+- **A tile carrying a block object is no longer painted over.** Flames, obstacles and rubble all leave its slot alone. The tile keeps its type; only the picture is withheld, because the object already is the picture on that tile
+- **Fire cannot catch on a tile that holds one.** Ignition clears the two blocks above the floor to burn away whatever fuel was standing there, which on a grave tile meant destroying the grave on the way past. Refused now in the same breath as permanent walls: ground that cannot hold a flame
+- **Terrain changes skip those tiles entirely**, not just their paint. Retyping the ground under a grave to fire strands the object on terrain that no longer matches what it is standing on
+- **A repair sweep puts back anything that still gets through**, once per turn, and forgets the claim when the object dies. Y+1 is written from dozens of places - golem charges, warps, projectile impacts, miniboss mechanics, biome effects - and a fix that depended on every one of them remembering to ask first would have been broken again by the next one added
+- This was never specific to fire, or to graves. Every block object shared the slot with every tile paint
+
+Pets Come Home To Solid Ground
+
+The pet return resolved its landing height from a stored hub coordinate, then trusted that coordinate when the lookup failed. Stored anchors default to the height islands are generated at, so an island built higher than that had an anchor pointing into open air - and the animal was spawned at the very coordinate that had just been proven empty.
+
+- **Fixed pets being returned into the void on islands built above the generated height.** The column scan only looked in a window around the stored anchor, so once the real floor was further from it than that, a perfectly ordinary island read as having no ground at all
+- **The landing scan now falls back to the full height of the world** instead of a window around a guess. How high someone built is no longer something the landing code can be wrong about - this covers the join handler and the party-disconnect return too
+- **Pets use the same outward ring search their owner does**, so they find the island wherever it was actually built rather than probing one column and giving up
+- **A pet is never placed on an unverified coordinate.** Where the whole island really is empty, it gets the same single rescue block the returning player gets - one policy, shared by both, so an animal and its owner always come home to the same floor
+- Pets are spread around the resolved landing rather than the stored coordinate. When the search moved the anchor, spacing them around the old one walked them straight back off the island
+
+Material Crates Hand Out Materials
+
+The material pools are built by sweeping the item registry for id substrings and by reading item tags, and both are only as clean as the mods feeding them. Armor named after a stone type - deepslate, prismarine - matched the stone sweep. Material sections then roll a quantity of 16 to 48, and because armor does not stack the reward splits into that many single stacks.
+
+- **Fixed a Material Crate paying out around thirty modded armor pieces.** One leaked chestplate became thirty chestplates
+- **Swept pools now only accept things that behave like bulk material**: it stacks, it takes no damage, and its id is not an armor id. Hand-written pools are unaffected, so the Supplies section still hands out buckets on purpose
+- **A non-stacking reward can no longer fan out past sixteen stacks**, set to what the Supplies section already advertises - so a pool that leaks one in future pays a small price instead of emptying a 48-count section
+
 0.4.6
 
 Mounts Work In A Party

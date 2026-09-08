@@ -141,6 +141,10 @@ public final class LootboxManager {
      *  Hilt or Mending never rolls higher than I. */
     private static final int MAX_ENCHANT_LEVEL = 5;
 
+    /** How many single stacks a non-stacking material reward may ever fan out into. Set to the
+     *  Supplies section's own maximum so the bucket rewards it advertises are unaffected. */
+    private static final int MAX_NONSTACKING_PARTS = 16;
+
     /**
      * Simply Bows uniques - the rare boss-drop tier of that mod, whose item paths nest one level
      * deep. Listed by hand because Simply Bows has no equivalent of the live registration list
@@ -1055,7 +1059,7 @@ public final class LootboxManager {
             // Slabs, stairs, walls and buttons are builds, not raw material.
             if (match && !path.endsWith("_slab") && !path.endsWith("_stairs")
                     && !path.endsWith("_wall") && !path.endsWith("_button")
-                    && !path.endsWith("_pressure_plate")) {
+                    && !path.endsWith("_pressure_plate") && isBulkMaterial(item)) {
                 pool.add(new ItemStack(item));
             }
         }
@@ -1080,7 +1084,7 @@ public final class LootboxManager {
                     || path.equals("lapis_lazuli") || path.equals("redstone")
                     || path.equals("quartz") || path.equals("amethyst_shard")
                     || path.equals("copper_ingot")) {
-                pool.add(new ItemStack(item));
+                if (isBulkMaterial(item)) pool.add(new ItemStack(item));
             }
         }
         if (pool.isEmpty()) pool.add(new ItemStack(Items.IRON_INGOT));
@@ -1125,12 +1129,34 @@ public final class LootboxManager {
             new ItemStack(Items.HEART_OF_THE_SEA), new ItemStack(Items.ANCIENT_DEBRIS));
     }
 
+    /**
+     * Whether an item belongs in a swept material pool at all.
+     *
+     * <p>The material pools are built by sweeping the registry for id substrings and by reading
+     * item tags, and both of those are only as clean as the mods feeding them: an armor set
+     * named after a stone type ("deepslate_helmet", "prismarine_boots") matches the stone
+     * needles, and a badly tagged set lands in {@code #LOGS} or {@code #PLANKS}. Material
+     * sections then roll a 16-48 quantity for whatever they picked, and because armor does not
+     * stack the reward splits into that many single stacks - one leaked chestplate becomes
+     * thirty chestplates.
+     *
+     * <p>So a swept item has to look like bulk material: it stacks, it takes no damage, and its
+     * id is not an armor id. Hand-written pools skip this check on purpose - {@link
+     * #miscMaterialPool()} hands out buckets, which stack to one by design.
+     */
+    private static boolean isBulkMaterial(Item item) {
+        ItemStack probe = new ItemStack(item);
+        if (probe.getMaxCount() <= 1) return false;
+        if (probe.isDamageable()) return false;
+        return armorSlotOf(probe) == null;
+    }
+
     /** Add one stack per item in a tag, skipping the tag entirely if nothing is bound to it. */
     private static void addTagged(List<ItemStack> pool,
                                   net.minecraft.registry.tag.TagKey<Item> tag) {
         for (net.minecraft.registry.entry.RegistryEntry<Item> entry : Registries.ITEM.iterateEntries(tag)) {
             Item item = entry.value();
-            if (item != Items.AIR) pool.add(new ItemStack(item));
+            if (item != Items.AIR && isBulkMaterial(item)) pool.add(new ItemStack(item));
         }
     }
 
@@ -1397,6 +1423,10 @@ public final class LootboxManager {
                     // stack (buckets are the common case), so hand those over as several
                     // single stacks rather than silently clamping the reward down to one.
                     int perStack = Math.max(1, rolled.getMaxCount());
+                    // Second line of defence behind isBulkMaterial: cap how many separate
+                    // stacks a non-stacking item can fan out into, so a pool that leaks one
+                    // in future pays a small price instead of dumping a 48-count section.
+                    if (perStack == 1) want = Math.min(want, MAX_NONSTACKING_PARTS);
                     while (want > 0) {
                         ItemStack part = rolled.copy();
                         part.setCount(Math.min(perStack, want));

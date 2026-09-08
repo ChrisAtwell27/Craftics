@@ -537,6 +537,26 @@ public class CombatManager {
     // graves) through MinibossContext.spawnBlockObject, which needs its own id range so it never
     // collides with the boss-driven grave/war-banner counters above.
     private int minibossBlockIdCounter = 40000;
+    /**
+     * Tiles whose Y+1 slot belongs to a block-backed object - a grave, hive, war banner, egg
+     * sac, vase - mapped to the block that is supposed to be standing there.
+     *
+     * <p>Y+1 is a SHARED slot. Flames, obstacles, rubble, wall overlays and block objects all
+     * write the same block position ({@code arena.gridToBlockPos} and {@code tileFloorPos().up(1)}
+     * are the same coordinate), and until this existed nothing told them apart. A tile change
+     * simply wrote over whatever was there, so the Revenant's own fire ate the Revenant's own
+     * graves: the grid entry survived, the block did not, and what was left was a grave you
+     * could still hit and loot with nothing visible on the tile.
+     *
+     * <p>That was never specific to fire or to graves. Every block object shares the slot with
+     * every tile paint, so this is the ownership record all of them consult - see
+     * {@link #holdsBlockObject}, and {@link #repairBlockObjectBlocks} for the sweep that puts
+     * back anything that got through anyway.
+     */
+    private final java.util.Map<GridPos, net.minecraft.block.Block> blockObjectTiles =
+        new java.util.HashMap<>();
+    /** Turn the block-object repair sweep last ran on. Edge-triggered, like the resume snapshot. */
+    private int lastBlockObjectRepairTurn = -1;
     // Tuning: high enough that tearing a banner down is a real investment, low enough to be
     // worth doing against a 45 HP boss.
     private static final int WAR_BANNER_HP = 20;
@@ -14839,6 +14859,14 @@ public class CombatManager {
             captureResumeSnapshot();
         }
 
+        // Same edge trigger, same reason: hooking this into each of the many places that write
+        // a block at Y+1 would only work until the next one was written. See
+        // repairBlockObjectBlocks.
+        if (phase == CombatPhase.PLAYER_TURN && turnNumber != lastBlockObjectRepairTurn) {
+            lastBlockObjectRepairTurn = turnNumber;
+            repairBlockObjectBlocks();
+        }
+
         // AFK turn watchdog (CrafticsConfig.turnTimerEnabled, off by default): if the current
         // player does nothing for turnTimerSeconds, auto-end their turn so an AFK player can't
         // stall a multiplayer fight. The idle counter is reset on every action (handleAction)
@@ -21904,6 +21932,14 @@ public class CombatManager {
      */
     private void paintTileBlock(ServerWorld world, GridPos pos, GridTile tile) {
         BlockPos floor = tileFloorPos(pos);
+        // Flames, obstacles and rubble all paint into Y+1, which is the slot a block object
+        // stands in. Painting there would delete the object's block and leave its grid entry
+        // behind - the invisible grave. The tile keeps its type either way; only the picture
+        // is withheld, because the object is already the picture on that tile.
+        if ((tile.getType().isFlames() || tile.getType() == TileType.OBSTACLE
+                || tile.getType() == TileType.RUBBLE) && holdsBlockObject(pos)) {
+            return;
+        }
         if (tile.getType().isFlames()) {
             ensureSoulBase(world, floor, tile.getType());
             world.setBlockState(floor.up(1), tile.getBlockType().getDefaultState(),
@@ -22002,6 +22038,11 @@ public class CombatManager {
         if (fireproofTiles.containsKey(pos)) return false;   // still cooling down
         GridTile tile = arena.getTile(pos);
         if (tile == null) return false;
+        // A tile with a block object on it cannot catch. The ignition below clears Y+1 and Y+2
+        // to burn away whatever fuel was standing there and then puts the flame in that slot,
+        // which on a grave tile means destroying the grave's block on the way past. Refused in
+        // the same breath as permanent walls: ground that cannot hold a flame.
+        if (holdsBlockObject(pos)) return false;
 
         boolean fuel = FlammableTiles.isFlammable(tile);
         if (!fuel) {
@@ -22455,6 +22496,13 @@ public class CombatManager {
                 crushed++;
                 continue;
             }
+
+            // A tile carrying a block object is left alone entirely - not just its Y+1 paint.
+            // This is the Revenant's own Gravefire Grid arriving on its own graves, and the
+            // type change matters as much as the block: retyping the tile under a grave to
+            // fire (or to anything the grid treats as no longer solid ground) strands the
+            // object on terrain that no longer matches what it is standing on.
+            if (holdsBlockObject(pos)) continue;
 
             // Clearing a tile that carries a pillar goes through the pillar's own removal, or
             // only the bottom block of it would come out and the rest would be left hanging.
@@ -25086,7 +25134,60 @@ public class CombatManager {
         BlockPos bp = arena.gridToBlockPos(pos);
         world.setBlockState(bp, block.getDefaultState(),
             net.minecraft.block.Block.NOTIFY_ALL);
+        // Claim the tile's Y+1 slot so tile paints route around it. Every block object in the
+        // game comes through here (the miniboss/compat spawnBlockObject hook included), so this
+        // is the one place the claim has to be made.
+        blockObjectTiles.put(pos, block);
         return obj;
+    }
+
+    /**
+     * Does a block-backed object own this tile's above-floor slot?
+     *
+     * <p>Asked by everything that paints at Y+1. Deliberately a lookup against the placement
+     * record rather than a read of the world block: the whole failure being fixed is the world
+     * block already being gone, so a world read would agree that the tile is free at exactly
+     * the moment it is not.
+     */
+    private boolean holdsBlockObject(GridPos pos) {
+        return pos != null && blockObjectTiles.containsKey(pos);
+    }
+
+    /** A live block object standing on this tile, i.e. the claim is still real. */
+    private boolean hasLiveBlockObjectAt(GridPos pos) {
+        for (CombatEntity e : enemies) {
+            if (e.isAlive() && e.isInertObject() && pos.equals(e.getGridPos())) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Put back any block-object block that something overwrote, and drop claims whose object
+     * is dead.
+     *
+     * <p>The guards on {@link #paintTileBlock}, {@link #igniteTile} and the terrain resolver
+     * cover the paths that are known to collide. This covers the ones that are not: Y+1 is
+     * written from dozens of places in this file - golem charges, warps, projectile impacts,
+     * miniboss mechanics, biome effects - and a fix that depended on every one of them
+     * remembering to ask first would be broken again by the next one added. Prunes by liveness
+     * rather than by hooking each death path, for the same reason.
+     *
+     * <p>Once per turn on the same edge trigger the resume snapshot uses: the arena is only
+     * ever looked at during a player's turn, so anything torn up while the enemies were acting
+     * is back before it can be seen.
+     */
+    private void repairBlockObjectBlocks() {
+        if (arena == null || player == null || blockObjectTiles.isEmpty()) return;
+        blockObjectTiles.keySet().removeIf(pos -> !hasLiveBlockObjectAt(pos));
+        if (blockObjectTiles.isEmpty()) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        for (java.util.Map.Entry<GridPos, net.minecraft.block.Block> claim
+                : blockObjectTiles.entrySet()) {
+            BlockPos bp = arena.gridToBlockPos(claim.getKey());
+            if (world.getBlockState(bp).isOf(claim.getValue())) continue;
+            world.setBlockState(bp, claim.getValue().getDefaultState(),
+                net.minecraft.block.Block.NOTIFY_ALL);
+        }
     }
 
     /**
@@ -36353,6 +36454,7 @@ public class CombatManager {
         }
         burningTiles.clear();
         fireproofTiles.clear();
+        blockObjectTiles.clear();
         turnStartGridPos.clear();
         echoReturnArmed.clear();
 
@@ -36431,7 +36533,23 @@ public class CombatManager {
             // rideable mob persists for the whole run, not just one level.
             // Temporary allies (spawn-egg summons) fight only this battle and are
             // never carried over or returned to the hub -skip them.
-            if (e.isAlive() && e.isAlly() && !e.isTemporaryAlly()) {
+            //
+            // isAlly() alone is too wide. Craftics fields its own allied things that were never
+            // anybody's animal: a player-placed beehive or decoy stand (HIVE_ALLY_ID /
+            // DECOY_ID), which live in `enemies` under a fake negative entity id with no mob at
+            // all, and an allied raid bee. All three set setAlly(true) and none is temporary, so
+            // each was becoming a "surviving pet": restorePetsToHub took the no-snapshot branch,
+            // the defaulted registry turned craftics:bee_hive into minecraft:pig, and a PIG was
+            // spawned onto the island and counted as an animal that made it home.
+            //
+            // The counting is the damaging half. The go-home path compares `sent` against
+            // `expected` to decide whether to warn the player that animals are missing, and junk
+            // that succeeds on both sides of that comparison absorbs a real animal's failure -
+            // which is why a genuine loss can happen with no warning and no log line.
+            //
+            // A real pet always has a live world mob behind it. That is the test: props and
+            // bench entries do not, and no animal that was ever collected from a hub fails it.
+            if (e.isAlive() && e.isAlly() && !e.isTemporaryAlly() && e.getMobEntity() != null) {
                 HubPetCollector.PetData data = HubPetCollector.PetData.fromCombatEntity(
                     e, e.getOriginalHubNbt());
                 if (e.isTamedInCombat()) {
@@ -36515,13 +36633,33 @@ public class CombatManager {
         }
         if (theirs.isEmpty()) return;
 
+        int sentHome;
         try {
             ServerWorld w = (ServerWorld) leaver.getEntityWorld();
-            HubPetCollector.restorePetsToHub(w, leaver, theirs, CrafticsSavedData.get(w));
+            sentHome = HubPetCollector.restorePetsToHub(w, leaver, theirs, CrafticsSavedData.get(w));
         } catch (Exception ex) {
             CrafticsMod.LOGGER.warn("Could not send {}'s animals home on leave: {}",
                 leaver.getName().getString(), ex.getMessage());
             return; // Leave them in the fight rather than discarding animals we failed to save.
+        }
+        // The catch above states the rule - never discard an animal we failed to save - but only
+        // a THROW was being treated as failure. Every per-pet failure inside restorePetsToHub is
+        // silent and returns normally, so a skipped animal fell straight through to the discard
+        // loop below and was destroyed, its hub original having been discarded when the run
+        // began. The count is the only signal that distinguishes the two, and it was being
+        // thrown away.
+        //
+        // Falling short means leaving the whole group in the fight, because the count says how
+        // many arrived and not which ones. That is the same trade the catch already makes: an
+        // ally still standing on the grid belongs to a player who has left, which is untidy for
+        // one battle, and the end-of-run restore gets another attempt at it. A destroyed animal
+        // gets nothing.
+        if (sentHome < theirs.size()) {
+            CrafticsMod.LOGGER.error(
+                "Only {} of {} animal(s) reached a hub for departing player {} - keeping them in "
+                + "the fight rather than destroying the ones that did not arrive",
+                sentHome, theirs.size(), leaver.getName().getString());
+            return;
         }
         for (CombatEntity e : departing) {
             if (e.getMobEntity() != null) e.getMobEntity().discard();

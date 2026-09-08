@@ -3979,12 +3979,43 @@ public class CrafticsMod implements ModInitializer {
         }
     }
 
+    /**
+     * The highest place something can stand in this column, or {@link Integer#MIN_VALUE} when
+     * the column has no floor at all.
+     *
+     * <p>Two passes, because the fallback Y this is handed is a HINT and not a promise. The
+     * near pass looks in a window around it, which is what keeps the answer on the floor
+     * nearest the coordinate the caller was aiming for rather than on a treetop sixty blocks
+     * up. The full pass only runs when the near one found nothing, and covers the whole build
+     * height of the world.
+     *
+     * <p>The full pass is what stops a high island from reading as void. Every stored anchor
+     * in this mod defaults to the generated island's own height (the hub constants sit at
+     * y 62-68, and {@code getHubTeleportPos} falls back to a flat y 65), so a player whose
+     * base is built well above that has a hint pointing at empty air. The window is +96/-64
+     * around the hint, so once the real floor is further from it than that, a single-window
+     * scan returns MIN_VALUE - "no ground here" - for an island that is plainly standing
+     * there. Callers then fall back to the raw hint, which is open air over the void. Bounding
+     * the retry by the world instead of by the hint means how HIGH someone built stops being
+     * something the landing code can be wrong about.
+     */
     public static int hubLandingY(ServerWorld world, int x, int z, int fallbackY) {
+        int worldBottom = world.getBottomY();
+        int worldTop = worldTopInclusive(world);
+        int nearTop = Math.min(worldTop, fallbackY + 96);      // around the hinted height
+        int nearBottom = Math.max(worldBottom - 1, fallbackY - 64);
+        int near = scanColumnDown(world, x, z, nearTop, nearBottom);
+        if (near != Integer.MIN_VALUE) return near;
+        // The hint was wrong about the height, not about the column. Ask the world.
+        return scanColumnDown(world, x, z, worldTop, worldBottom - 1);
+    }
+
+    /** Highest standable Y in {@code (top, exclusiveBottom]}, or MIN_VALUE for none. */
+    private static int scanColumnDown(ServerWorld world, int x, int z,
+                                      int top, int exclusiveBottom) {
         net.minecraft.util.math.BlockPos.Mutable probe =
-            new net.minecraft.util.math.BlockPos.Mutable(x, fallbackY, z);
-        int top = fallbackY + 96;     // comfortably above any hub island top
-        int bottom = fallbackY - 64;  // and below it
-        for (int yy = top; yy > bottom; yy--) {
+            new net.minecraft.util.math.BlockPos.Mutable(x, top, z);
+        for (int yy = top; yy > exclusiveBottom; yy--) {
             probe.setY(yy);
             net.minecraft.block.BlockState st = world.getBlockState(probe);
             if (st.isAir() || !st.isSolidBlock(world, probe)) continue;
@@ -3997,6 +4028,15 @@ public class CrafticsMod implements ModInitializer {
             }
         }
         return Integer.MIN_VALUE;
+    }
+
+    /** Top build height of a world, inclusive. The accessor was renamed after 1.21.1. */
+    private static int worldTopInclusive(ServerWorld world) {
+        //? if <=1.21.1 {
+        return world.getTopY() - 1;
+        //?} else {
+        /*return world.getTopYInclusive();
+        *///?}
     }
 
     /**
@@ -4055,6 +4095,28 @@ public class CrafticsMod implements ModInitializer {
                                                                  int x, int z, int fallbackY) {
         int y = hubLandingY(world, x, z, fallbackY);
         return y == Integer.MIN_VALUE ? null : new net.minecraft.util.math.BlockPos(x, y, z);
+    }
+
+    /**
+     * Lay ONE block under {@code anchor} so there is something to stand on, for the case where
+     * {@link #findLandingSpot} came back null and the island genuinely has no ground left.
+     *
+     * <p>Deliberately a single block and not a rebuilt hub room: the island is theirs, and an
+     * empty site is a decision as often as it is an accident - somebody clearing space to
+     * build should not come home to the starter room stamped back over their plot. All this
+     * owes them is a foothold; what they do from there is theirs.
+     *
+     * <p>Shared by the player return ({@code HubTeleports.toHub}) and the pet return
+     * ({@code HubPetCollector}) so the two cannot drift into different answers for the same
+     * island. A pet has no death screen to recover from being dropped into the void, so the
+     * one that used to skip this check was the one that could least afford to.
+     */
+    public static void placeRescueFloor(ServerWorld world, net.minecraft.util.math.BlockPos anchor,
+                                        Object who) {
+        LOGGER.warn("Island of {} has no ground within {} blocks of {}; "
+            + "placing a single rescue block underneath it.", who, LANDING_SEARCH_RADIUS, anchor);
+        world.setBlockState(anchor.down(),
+            net.minecraft.block.Blocks.SMOOTH_STONE.getDefaultState());
     }
 
     // teleportToHub(player, island, hub) and its non-void-world fallback

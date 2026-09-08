@@ -75,11 +75,9 @@ public final class HubTeleports {
         // to build should not come home to the starter room stamped back over their plot. All
         // this owes them is a foothold on their own island; what they do from there is theirs.
         if (CrafticsMod.findLandingSpot(island, hub.getX(), hub.getZ(), hub.getY()) == null) {
-            CrafticsMod.LOGGER.warn("Island of {} has no ground within {} blocks of its hub; "
-                + "placing a single rescue block under the spawn at {}.",
-                owner, CrafticsMod.LANDING_SEARCH_RADIUS, hub);
-            island.setBlockState(hub.down(),
-                net.minecraft.block.Blocks.SMOOTH_STONE.getDefaultState());
+            // Same call the pet return makes, so an island with no floor gets one answer
+            // rather than one per caller.
+            CrafticsMod.placeRescueFloor(island, hub, owner);
             p.sendMessage(net.minecraft.text.Text.literal(
                 "§eThere was nothing to stand on, so a block was placed at your spawn point."), false);
         }
