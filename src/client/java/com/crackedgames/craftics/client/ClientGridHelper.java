@@ -355,6 +355,11 @@ public class ClientGridHelper {
      * ally HP map). Used by the path preview to mirror the server rule that
      * the player can move THROUGH allies but not stop on them.
      */
+    /** Public face of {@link #getAllyGridPositions}, for the sherd range indicator. */
+    public static Set<GridPos> getAllyGridPositionsPublic(MinecraftClient client) {
+        return getAllyGridPositions(client);
+    }
+
     private static Set<GridPos> getAllyGridPositions(MinecraftClient client) {
         Set<GridPos> positions = new HashSet<>();
         if (client.world == null) return positions;

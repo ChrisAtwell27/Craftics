@@ -37,6 +37,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playC2S().register(EnterScenePayload.ID, EnterScenePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(SceneClickPayload.ID, SceneClickPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(LeaveScenePayload.ID, LeaveScenePayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(NewGamePlusPayload.ID, NewGamePlusPayload.CODEC);
 
         // Register S2C payload types
         PayloadTypeRegistry.playS2C().register(EnterCombatPayload.ID, EnterCombatPayload.CODEC);
@@ -85,6 +86,12 @@ public class ModNetworking {
             // RunInviteManager). The owner has no special status - they're a regular joiner.
             com.crackedgames.craftics.combat.RunInviteManager.requestStart(
                 context.player(), payload.biomeId());
+        });
+
+        // The level select block's New Game+ button. One-way and island-wide, so it is
+        // gated here rather than trusted from the screen that sent it.
+        ServerPlayNetworking.registerGlobalReceiver(NewGamePlusPayload.ID, (payload, context) -> {
+            handleNewGamePlus(context.player());
         });
 
         // Handle a player's answer to a run-join invite (the Yes/No popup)
@@ -510,6 +517,71 @@ public class ModNetworking {
             com.crackedgames.craftics.combat.PingRelay.handle(
                 context.player(), payload.gridX(), payload.gridZ(), payload.type());
         });
+    }
+
+    /**
+     * Advance this player's island one New Game+ cycle, on request from the level select block.
+     *
+     * <p>Anyone on the island may press it - the campaign belongs to the island, not to whoever
+     * happens to be leading the party, and making the owner the only one who can start the next
+     * cycle would strand a group whose owner is offline. It is one-way, so the refusals below
+     * matter more than the usual button: the client's confirm dialog can be skipped by a
+     * hand-made packet, and every one of these is re-checked here.
+     *
+     * <p>Refused when the offer is not open (nobody has cleared the campaign since the last
+     * cycle), when the sender is only visiting someone else's island, or when the island has a
+     * run in progress - {@code startNewGamePlus} clears the run cursor and relocks the biomes,
+     * which mid-run would silently delete the run its party is standing in.
+     */
+    private static void handleNewGamePlus(ServerPlayerEntity player) {
+        if (com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(player)) {
+            player.sendMessage(net.minecraft.text.Text.literal(
+                "§cYou cannot start New Game+ while visiting."), false);
+            return;
+        }
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        java.util.UUID island = data.getEffectiveWorldOwner(player.getUuid());
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(island);
+
+        if (!pd.campaignCompleted) {
+            player.sendMessage(net.minecraft.text.Text.literal(
+                "§cNew Game+ unlocks once this island has beaten the final boss."), false);
+            return;
+        }
+        for (java.util.UUID member : data.getPartyMemberUuids(player.getUuid())) {
+            if (CombatManager.isEngaged(member)) {
+                player.sendMessage(net.minecraft.text.Text.literal(
+                    "§cFinish the run in progress before starting New Game+."), false);
+                return;
+            }
+        }
+        if (pd.isInBiomeRun()) {
+            player.sendMessage(net.minecraft.text.Text.literal(
+                "§cThis island has a run paused. Finish or abandon it before starting New Game+."), false);
+            return;
+        }
+
+        pd.startNewGamePlus();
+        data.markDirty();
+        CrafticsMod.updateWorldIcon(player.getServer(), pd);
+
+        // Announce to everyone the island resolves for, not just the presser: their unlocks
+        // just vanished too, and finding that out by opening the level select block is a
+        // worse way to learn it than being told.
+        String starter = player.getName().getString();
+        for (java.util.UUID member : data.getPartyMemberUuids(player.getUuid())) {
+            ServerPlayerEntity p = player.getServer().getPlayerManager().getPlayer(member);
+            if (p == null) continue;
+            p.sendMessage(net.minecraft.text.Text.literal(
+                "§6§l★ NEW GAME+ " + pd.ngPlusLevel + " STARTED! ★"), false);
+            p.sendMessage(net.minecraft.text.Text.literal(
+                "§7Started by §e" + starter
+                    + "§7. All biomes reset. Enemies are stronger. Your stats carry over."), false);
+            com.crackedgames.craftics.achievement.AchievementManager.checkNewGamePlus(p, pd.ngPlusLevel);
+        }
+        CrafticsMod.LOGGER.info("Island {} advanced to NG+{} (started by {})",
+            island, pd.ngPlusLevel, starter);
     }
 
     /**

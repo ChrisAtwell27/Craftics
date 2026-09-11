@@ -212,7 +212,17 @@ public class CombatTooltips implements ItemTooltipCallback {
         int armorAC = com.crackedgames.craftics.combat.ArmorClassTable.getPieceAC(item);
 
         // Plain loot feathers should not get a tooltip - only the Move item does.
-        String tip = (item == net.minecraft.item.Items.FEATHER) ? null : getTooltipFor(item);
+        // Sherds resolve from the STACK: the Scribe writes inscriptions onto one sherd, so two
+        // of the same item can differ in cost, range and what they do, and an item-keyed
+        // tooltip would describe the plain version of a sherd the player has had modified.
+        String tip;
+        if (item == net.minecraft.item.Items.FEATHER) {
+            tip = null;
+        } else if (com.crackedgames.craftics.combat.PotterySherdSpells.isPotterySherd(item)) {
+            tip = com.crackedgames.craftics.combat.sherd.SherdModifiers.tooltipFor(stack);
+        } else {
+            tip = getTooltipFor(item);
+        }
         // Raw food a campfire can cook says so once, here, instead of nine times in the
         // food table. Kelp has no combat tooltip of its own, so this is all it gets.
         boolean cookable = com.crackedgames.craftics.combat.ItemUseHandler.isCampfireCookable(item);

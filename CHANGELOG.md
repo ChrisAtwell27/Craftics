@@ -1,5 +1,85 @@
 ﻿Changelog
 
+0.4.8
+
+Hemorrhage Actually Fires
+
+The enchantment reads "knocking back a Bleeding enemy detonates its Bleed stacks", but it was gated on holding the enchanted sword at the instant of the knockback. Nearly every knockback in the game comes from an item you have to be holding to use, so the sword was almost never in hand - in practice Hemorrhage could only fire off that same sword's own Knockback shockwave.
+
+- **Hemorrhage now reads the sword from your inventory** rather than requiring it in hand. This is the distinction from Crater beside it: Crater amplifies the push itself, so the weapon making the push has to be the one held; Hemorrhage is the target's bleed reacting to being moved
+- **Fixed snowballs and the Pocket Piston moving enemies without the game noticing.** Both pushed the mob by hand instead of going through the shared knockback path, so they skipped wall slams, cactus, hazards, ice skidding, Trapper traps and Hemorrhage alike
+- Those two now knock back like everything else, which also means a snowball can shove an enemy into a wall, a hazard or a trap
+- The Pocket Piston's flat +3 collision is replaced by the shared slam damage, which scales with the push, so a blocked piston shove now hurts slightly more instead of being charged twice
+
+
+Everyone Gets Paid
+
+Per-mob drops went to whoever landed the killing blow. Mob drops are the bulk of what a level pays out, so in a party that was not a share but a winner-takes-all: the player who swung hardest took nearly everything and the rest left with only the completion bonus. Playtesters reported it as "only the leader gets loot", and they were describing the design rather than a glitch.
+
+- **Every participant now rolls every loot table**, independently. Same table, same odds, own dice - so two players who fought the same wave get comparable but not identical hauls
+- **Luck is read per player.** It used to be measured once from whichever player the manager was pointing at and applied to everybody's rolls, which made the stat worthless to everyone else and gave that one player's investment away for free
+- **Resourceful is read per player too.** The emerald payout took the LEADER's Resourceful and paid every member that same number, so points spent on it did nothing unless you were leading
+- **Mob equipment, heads, sherds, spawn eggs, totems and legendary weapons are rolled per player** rather than one roll copied to the party. A trophy everyone receives at once is a handout, not a rare drop
+- **Rare-drop announcements go to the player who actually got one.** With shared rolls the whole party was told about a drop only one of them received, and the trim drop announced one name while handing out a different trim to each player
+- Loot chat is now per player, listing what you actually received
+- Rolls that stay shared - the spawn egg's pet-affinity bonus, the boss trim gate - read the party's BEST rather than the leader's, so whoever invested widens the pipeline for everyone
+
+Ghost Teammates
+
+A teammate could stop seeing the arena entirely - no tiles, no enemies, nothing on the map - and stop receiving rewards, while the server believed it was still talking to them.
+
+- **Fixed a party member going blind and unpaid after reconnecting.** The fight stored player objects, and the server replaces that object when someone reconnects; the stale one answers "removed", so every packet was dropped and every reward was handed to an entity no longer in the world
+- References are now re-resolved by UUID at the single point the roster is handed out, which repairs tile sync, combat sync and loot together. A genuinely offline member is still skipped, as before
+
+
+New Game+ Is A Choice
+
+Beating the final boss called the reset on the spot. Every biome relocked, the branch rerolled, discovered biomes cleared - while the victory banner was still on screen, with no warning and no way back. The party never agreed to it, and a group that wanted to replay a biome they had just fought through found it locked behind a campaign they had to run again.
+
+- **Clearing the campaign no longer resets anything.** It raises a standing offer instead: the island keeps every biome it opened, all of it replayable, until somebody chooses to advance
+- **A New Game+ button on the level select block takes the cycle**, behind a confirmation that says plainly that it cannot be undone and that it affects everyone on the island
+- **Anyone on the island can press it**, not just the owner - the campaign belongs to the island, and a group whose owner is offline would otherwise be stuck
+- **The offer survives being declined.** It is stored on the island rather than inferred from the victory, so a party can sit at NG+0 as long as they like, replay the final boss as often as they like, and take the cycle whenever they actually want it
+- **Refused while a run is engaged or paused.** The reset clears the run cursor and relocks the biomes, which mid-run would rewrite the run its party is standing in
+- **Fixed the level select showing the wrong cycle number.** It divided the unlock frontier by the campaign length, and a cycle resets that frontier to 1 - so the title read NG+0 for the whole of every NG+ run. The real count now comes from the server
+- Existing saves are untouched: an island already at NG+3 stays at NG+3, and gets the choice at its next clear
+
+Rolling A Cycle Back
+
+- **`/craftics ngplus_rollback [restore_progress] [player]`** steps an island back one cycle and leaves the next one on offer, for the players the old flow force-advanced before they had a say
+- Passing `true` also re-opens the campaign. Off by default, because the original unlock state is gone - it reconstructs a campaign-complete island from the branch the player is on now, which an admin should opt into knowingly
+- Resolves the island rather than the named player's own record, since for someone in a party that record is not the one anything reads
+
+Sherds Are Built From Parts Now
+
+Every sherd was a method. Twenty-three of them, each holding its own targeting, damage, status effects, particle choreography and chat line in one block, plus four separate if-chains listing costs, ranges, self-cast flags and tooltips. Nothing could be shared: cleave, splash, chain lightning, the tidal knockback and the petsplosion were five hand-written loops that all did the same job, and none could be moved to another sherd without being rewritten. Adding one capability to one sherd meant editing code.
+
+- **A sherd is now data.** Targeting, area, chains, effects, visuals, cost, range and break chance are fields on one definition, so changing any aspect of any sherd is editing one block
+- **Effects are a shared vocabulary.** Damage, burn, wither, stun, knockback, pull, execute, heal, buffs, summons, teleports and item grants are written once and attachable to anything - giving chain lightning a burn, or an area, or knockback, or an execute threshold, is a line each
+- **A sherd can do several unrelated things.** Steps run in order with their own targets, so one cast can hit an enemy, heal every pet and buff the caster without any of the three knowing the others exist
+- **Fixed the five-list drift.** Membership, cost, range, targeting and tooltip were five hand-maintained lists that had already come apart at least once. A sherd that exists now has a cost by construction
+- **Multi-tile enemies are hit correctly by every area effect.** The old loops measured to a mob's anchor tile, so a large enemy could stand in a blast and be missed
+- All twenty-three sherds keep their existing numbers, ranges and costs
+
+Sherds Show Their Range
+
+Holding a sherd painted the WEAPON's attack tiles, because the highlight builder only ever asked what the sword could reach. A player holding a range-3 Corrode saw their melee ring; one holding the range-1 Phantom Slash saw a bow's. The single highlight on screen was actively describing the wrong item, and clicking a red tile out of the sherd's reach was silently refused.
+
+- **A violet range ring for every sherd that targets anything**, showing exactly the tiles it may be aimed at. Built from the cast validator itself, so a highlighted tile is a tile the cast provably accepts
+- **Self-cast sherds show the ground they cover** instead of nothing - the tidal surge's two-tile sweep, the petsplosion's blast around each pet
+- **The weapon's attack ring is hidden while a sherd is held.** A click with a sherd in hand casts the sherd, so the red ring was describing a swing that was never going to happen
+- **Hovering previews what the sherd would hit** - area, splash and chain reach - alongside the instrument and enchantment previews that already worked this way
+- **Tooltips now state the range** and what the tile has to contain, which no sherd tooltip ever said
+- Inscribed sherds show their real reach: the indicator, the tooltip and the preview all read the individual sherd, and swapping between two sherds of the same item now refreshes
+
+
+The Scribe
+
+- **A new between-level event.** A villager who writes a new behaviour onto a pottery sherd you are carrying - thirteen inscriptions, three offered per visit, up to three on one sherd
+- **Turn up with no sherd and you are given one**, with a nudge to go and learn what it already does. An event that modifies sherds should not skip the players who have not started using them
+- **Inscriptions live on the sherd, not the item type.** Two Burn sherds in one inventory can differ, and cost, range, tooltip and break chance all follow the individual sherd
+- Reachable with `/craftics force_event scribe`
+
 0.4.7
 
 Graves Survive Their Own Fire

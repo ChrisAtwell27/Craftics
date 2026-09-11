@@ -327,6 +327,27 @@ public class TileOverlayRenderer {
                 lighten(r), lighten(g), lighten(b), 0.85f);
         }
 
+        // Sherd range indicator (violet): the tiles the held sherd may be aimed at, or the
+        // ground a self-cast one covers. Drawn under the hover preview and without a fill on
+        // the attack layer, so it reads as reach rather than as a hit - it answers "where can
+        // I point this", and the amber hover preview then answers "what would that do".
+        //
+        // A perimeter outline rather than per-tile borders: the set is a solid diamond around
+        // the player, and outlining every tile inside it would be a grid of lines instead of
+        // a ring.
+        Set<GridPos> castTiles = CombatState.getCastTiles();
+        if (!castTiles.isEmpty()) {
+            float r = colorblind ? 0.55f : 0.72f;
+            float g = colorblind ? 0.45f : 0.35f;
+            float b = colorblind ? 0.95f : 1.0f;
+            for (GridPos tile : castTiles) {
+                fillTile(out, world, ox, oy, oz, tile, 0.003f, r, g, b, 0.16f);
+                fillTile(xray, world, ox, oy, oz, tile, 0.003f, r, g, b, 0.07f);
+            }
+            outlineRegion(out, world, ox, oy, oz, castTiles, 0.0110f,
+                lighten(r), lighten(g), lighten(b), 0.75f);
+        }
+
         // Danger tiles (orange).
         for (GridPos tile : CombatState.getDangerTiles()) {
             fillTile(out, world, ox, oy, oz, tile, 0f, 1.0f, 0.6f, 0.1f, 0.25f);

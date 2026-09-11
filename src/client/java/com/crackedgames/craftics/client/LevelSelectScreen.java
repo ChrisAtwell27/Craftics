@@ -373,6 +373,25 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             this.addDrawableChild(barterStationBtn);
         }
 
+        // Above infinite mode: take the next NG+ cycle. Shown ONLY while the island has a
+        // standing offer (final boss beaten, cycle not yet taken), which is also why beating
+        // the campaign no longer resets anything on its own - the reset waits here for someone
+        // to ask for it. Server re-checks the offer; this button just asks.
+        if (handler.isNgPlusAvailable()) {
+            int nextCycle = handler.getNgPlusLevel() + 1;
+            ButtonWidget ngPlusBtn = ButtonWidget.builder(
+                    Text.literal("§6§l★ New Game+" + nextCycle),
+                    b -> promptNewGamePlus(nextCycle))
+                .dimensions(this.width - 128, buttonY - 24, 120, 20).build();
+            ngPlusBtn.setTooltip(net.minecraft.client.gui.tooltip.Tooltip.of(
+                Text.literal("§6Campaign complete!\n"
+                    + "§7Start New Game+" + nextCycle
+                    + ": every biome relocks and enemies get stronger.\n"
+                    + "§7Your levels, stats and items carry over.\n"
+                    + "§cThis cannot be undone. Replay any biome first if you want to.")));
+            this.addDrawableChild(ngPlusBtn);
+        }
+
         // Bottom-right: infinite mode. Rides the normal run-start flow under a
         // sentinel biome id; the server handles the party prompt + fresh-start rules.
         ButtonWidget infiniteBtn = ButtonWidget.builder(
@@ -387,6 +406,35 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
                 })
             .dimensions(this.width - 128, buttonY, 120, 20).build();
         this.addDrawableChild(infiniteBtn);
+    }
+
+    /**
+     * Two-step confirm for New Game+. It relocks every biome on the island for everyone on it
+     * and there is no way back, so it does not happen on a single click of a button that sits
+     * one row above the one people press to start a run.
+     */
+    private void promptNewGamePlus(int nextCycle) {
+        if (this.client == null) return;
+        this.client.setScreen(new net.minecraft.client.gui.screen.ConfirmScreen(
+            confirmed -> {
+                if (!confirmed) {
+                    // Back to the level select, unchanged.
+                    if (this.client != null) this.client.setScreen(this);
+                    return;
+                }
+                ClientPlayNetworking.send(
+                    new com.crackedgames.craftics.network.NewGamePlusPayload());
+                if (this.client != null && this.client.player != null) {
+                    this.client.player.closeHandledScreen();
+                }
+            },
+            Text.literal("§6§lStart New Game+" + nextCycle + "?"),
+            Text.literal("§fEvery biome on this island relocks and enemies get stronger.\n"
+                + "§7Your levels, stats and items carry over.\n\n"
+                + "§c§lThis cannot be undone, and it affects everyone on the island.\n"
+                + "§7Replay any biome you still want to see before starting."),
+            Text.literal("§cStart New Game+" + nextCycle),
+            Text.literal("Not yet")));
     }
 
     private void scrollBiome(int dir) {
@@ -490,9 +538,10 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
         // button on tall windows).
         float focusAmp = 0.05f;
 
-        // NG+ title
-        int totalBiomes = CampaignManager.totalBiomes();
-        int ngPlus = totalBiomes > 0 ? Math.max(0, (highestUnlocked - 1) / totalBiomes) : 0;
+        // NG+ title. The cycle count comes from the server, not from dividing the frontier by
+        // the campaign length: that estimate read 0 for the whole of every NG+ run (a cycle
+        // resets the frontier to 1), and read a finished-but-not-yet-advanced NG+0 island as 1.
+        int ngPlus = handler.getNgPlusLevel();
         String title = ngPlus > 0
             ? "\u00a7l\u00a76\u2605 CRAFTICS \u2605 \u00a7c(NG+" + ngPlus + ")"
             : "\u00a7l\u00a76\u2605 CRAFTICS \u2605";

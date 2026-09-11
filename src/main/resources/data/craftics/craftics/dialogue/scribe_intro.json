@@ -1,0 +1,13 @@
+{
+  "id": "craftics:scribe_intro",
+  "speaker": "minecraft:villager",
+  "group": "scribe_intro",
+  "lines": [
+    "\"Ah. You carry old clay.\"",
+    "\"Every sherd remembers a shape. I can teach it another.\""
+  ],
+  "choices": [
+    { "label": "Inscribe a sherd", "action": "scribe:sherds" },
+    { "label": "Decline", "action": "scribe:decline" }
+  ]
+}

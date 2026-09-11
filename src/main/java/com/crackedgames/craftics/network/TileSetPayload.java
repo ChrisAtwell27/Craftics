@@ -19,7 +19,13 @@ public record TileSetPayload(
     int[] mountTiles,    // flat: [x1, z1, ...] - netherite mount 1×3 footprint side tiles
     int[] warningArrows, // flat: [x, z, dx, dz, ...] - directional telegraph arrow glyphs
     int[] forecastPath,  // flat: [x1, z1, ...] - tiles enemies will walk next turn (Steampunk radar)
-    int[] forecastStrike // flat: [x1, z1, ...] - tiles that will be struck next turn (Steampunk radar)
+    int[] forecastStrike,// flat: [x1, z1, ...] - tiles that will be struck next turn (Steampunk radar)
+    int[] castTiles      // flat: [x1, z1, ...] - where the held sherd may be aimed, or the area
+                         //       a self-cast one covers. Its own layer rather than reusing
+                         //       attackTiles: those mean "swing here", and a hex trap's legal
+                         //       ground or a blink's landing tiles are not attacks. Sharing the
+                         //       list would also have made the range ring vanish the moment a
+                         //       weapon range recomputed.
 ) implements CustomPayload {
 
     public static final Id<TileSetPayload> ID =
@@ -39,8 +45,9 @@ public record TileSetPayload(
         int[] arrows = readIntArray(buf);
         int[] forecastPath = readIntArray(buf);
         int[] forecastStrike = readIntArray(buf);
+        int[] cast = readIntArray(buf);
         return new TileSetPayload(move, attack, danger, warning, enemy, types, mount, arrows,
-            forecastPath, forecastStrike);
+            forecastPath, forecastStrike, cast);
     }
 
     private void encode(RegistryByteBuf buf) {
@@ -54,6 +61,7 @@ public record TileSetPayload(
         writeIntArray(buf, warningArrows);
         writeIntArray(buf, forecastPath);
         writeIntArray(buf, forecastStrike);
+        writeIntArray(buf, castTiles);
     }
 
     private static void writeIntArray(RegistryByteBuf buf, int[] arr) {

@@ -721,7 +721,8 @@ public class CrafticsClient implements ClientModInitializer {
                     CombatState.updateTileSets(payload.moveTiles(), payload.attackTiles(),
                         payload.dangerTiles(), payload.warningTiles(), payload.enemyMap(), payload.enemyTypes(),
                         payload.mountTiles(), payload.warningArrows(),
-                        payload.forecastPath(), payload.forecastStrike());
+                        payload.forecastPath(), payload.forecastStrike(),
+                        payload.castTiles());
                 });
             });
 

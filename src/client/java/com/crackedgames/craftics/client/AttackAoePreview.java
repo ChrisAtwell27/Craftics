@@ -27,6 +27,16 @@ public final class AttackAoePreview {
 
     private AttackAoePreview() {}
 
+    /**
+     * How many chain links the preview draws for an unbounded chain.
+     *
+     * <p>Chain lightning has no hop cap - it walks every enemy it can reach - so drawing its
+     * true reach would light up the whole arena and say nothing. Two links is the honest
+     * middle: it shows the mechanic exists and roughly how far it carries, without the ring
+     * swallowing the board.
+     */
+    private static final int CHAIN_PREVIEW_HOPS = 2;
+
     /** The two tile layers to highlight. */
     public record Preview(Set<GridPos> damageTiles, Set<GridPos> effectTiles) {
         static Preview empty() {
@@ -71,6 +81,59 @@ public final class AttackAoePreview {
             Set<GridPos> dest = instr.role() == com.crackedgames.craftics.compat.instruments.InstrumentDef.Role.ATTACK
                 ? damage : effect;
             dest.addAll(shape);
+            return finish(damage, effect);
+        }
+
+        // Sherds: preview what the spell would actually touch from this aim point. Derived
+        // from the resolved spell rather than a per-sherd table, so a sherd whose radius or
+        // chain the Scribe changed previews its real shape, and a sherd added later previews
+        // without anyone remembering to add it here.
+        //
+        // Geometry only - it asks where the steps reach, not who is standing there. Resolving
+        // a chain properly needs the live enemy graph the server holds, so the preview shows
+        // the reach of each hop as a radius instead of pretending to know which bodies it will
+        // find. Over-showing reach is the honest failure here; under-showing it would hide hits
+        // the cast really does land.
+        com.crackedgames.craftics.combat.sherd.SherdSpell spell =
+            com.crackedgames.craftics.combat.sherd.SherdModifiers.resolve(held);
+        if (spell != null) {
+            for (com.crackedgames.craftics.combat.sherd.SpellStep step : spell.steps()) {
+                var selector = step.selector();
+                // An ally- or caster-facing step paints the cyan effect layer; anything that
+                // can reach an enemy paints amber.
+                Set<GridPos> dest = selector.side()
+                    == com.crackedgames.craftics.combat.sherd.Selector.Side.ENEMY ? damage : effect;
+
+                List<GridPos> centres = new java.util.ArrayList<>();
+                switch (selector.origin()) {
+                    case TARGET_TILE -> centres.add(hover);
+                    case CASTER -> centres.add(player);
+                    case EACH_PET -> centres.addAll(ClientGridHelper.getAllyGridPositionsPublic(client));
+                }
+                int radius = selector.radius();
+                for (GridPos centre : centres) {
+                    dest.add(centre);
+                    for (int dx = -radius; dx <= radius; dx++) {
+                        for (int dz = -radius; dz <= radius; dz++) {
+                            if (Math.abs(dx) + Math.abs(dz) > radius) continue;
+                            dest.add(new GridPos(centre.x() + dx, centre.z() + dz));
+                        }
+                    }
+                    // Chain reach, as a wider ring per hop. Capped so an unbounded chain
+                    // (lightning walks the whole graph) does not paint the entire arena.
+                    var chain = selector.chain();
+                    if (chain != null) {
+                        int hops = Math.min(chain.maxHops(), CHAIN_PREVIEW_HOPS);
+                        int reach = radius + hops * chain.hopRange();
+                        for (int dx = -reach; dx <= reach; dx++) {
+                            for (int dz = -reach; dz <= reach; dz++) {
+                                if (Math.abs(dx) + Math.abs(dz) > reach) continue;
+                                effect.add(new GridPos(centre.x() + dx, centre.z() + dz));
+                            }
+                        }
+                    }
+                }
+            }
             return finish(damage, effect);
         }
 

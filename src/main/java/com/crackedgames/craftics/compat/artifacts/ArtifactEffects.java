@@ -518,6 +518,24 @@ public final class ArtifactEffects {
             int dx = Integer.signum(start.x() - player.x());
             int dz = Integer.signum(start.z() - player.z());
             if (dx == 0 && dz == 0) return CombatResult.unchanged(damage);
+
+            // Push through the SHARED knockback path rather than moving the mob by hand. The
+            // hand-rolled loop below used to skip every consequence of being shoved - wall
+            // slam, cactus, hazards, ice skidding, Trapper traps and the Hemorrhage
+            // detonation - so a piston shove was the only knockback in the game that nothing
+            // else in the game could see.
+            com.crackedgames.craftics.combat.CombatManager combat =
+                com.crackedgames.craftics.combat.CombatManager.getActiveCombat(ctx.getPlayer().getUuid());
+            if (combat != null && combat.isActive()) {
+                combat.knockbackFromEffect(target, dx, dz, 2);
+                syncIfPossible(ctx);
+                // The shared path already applies its own slam damage, scaled to the push, so
+                // the flat +3 would be a second charge for one collision.
+                return CombatResult.unchanged(damage);
+            }
+
+            // No live fight to route through (an addon calling this outside combat): fall back
+            // to the original inline push so the artifact still does something.
             GridPos current = start;
             int moved = 0;
             boolean collided = false;

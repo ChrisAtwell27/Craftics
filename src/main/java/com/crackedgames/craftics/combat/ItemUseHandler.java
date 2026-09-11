@@ -364,6 +364,12 @@ public class ItemUseHandler {
             // cheaper number here would let an unnamed horn undercut every real one.
             return GoatHornEffects.HORN_AP_COST;
         }
+        // A sherd is priced from the stack for the same reason a horn is: an inscription can
+        // change what it costs, so two sherds of one item need not agree. Without this branch
+        // a Fluent sherd would be charged the base price and cast at the cheaper one.
+        if (PotterySherdSpells.isPotterySherd(stack.getItem())) {
+            return PotterySherdSpells.getSherdApCost(stack);
+        }
         return getApCost(stack.getItem());
     }
 
@@ -1126,22 +1132,20 @@ public class ItemUseHandler {
         consumeSpecialItem(player, stack);
         int dealt = applyTypedDamage(player, enemy, 1, DamageType.SPECIAL);
 
-        // Knockback: push enemy 1 tile away from player
+        // Knockback: push enemy 1 tile away from player, through the SHARED push path.
+        // This used to move the mob by hand, which skipped every consequence of being shoved -
+        // wall slam, cactus, hazards, ice skidding, Trapper traps and the Hemorrhage
+        // detonation. A snowball is a knockback like any other and should read as one.
         GridPos playerPos = arena.getPlayerGridPos();
         int dx = Integer.signum(enemy.getGridPos().x() - playerPos.x());
         int dz = Integer.signum(enemy.getGridPos().z() - playerPos.z());
-        GridPos knockbackPos = new GridPos(enemy.getGridPos().x() + dx, enemy.getGridPos().z() + dz);
-
-        if (arena.isInBounds(knockbackPos) && !arena.isOccupied(knockbackPos)) {
-            var tile = arena.getTile(knockbackPos);
-            if (tile != null && tile.isWalkable()) {
-                arena.moveEntity(enemy, knockbackPos);
-                if (enemy.getMobEntity() != null) {
-                    var bp = arena.gridToBlockPos(knockbackPos);
-                    enemy.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
-                }
-                return "§bSnowball hit! " + enemy.getDisplayName() + " took " + dealt + " Special damage and was knocked back!";
-            }
+        GridPos before = enemy.getGridPos();
+        CombatManager snowballCombat = CombatManager.getActiveCombat(player.getUuid());
+        if (snowballCombat != null && snowballCombat.isActive()) {
+            snowballCombat.knockbackFromEffect(enemy, dx, dz, 1);
+        }
+        if (!enemy.getGridPos().equals(before)) {
+            return "§bSnowball hit! " + enemy.getDisplayName() + " took " + dealt + " Special damage and was knocked back!";
         }
         return "§bSnowball hit " + enemy.getDisplayName() + " for " + dealt + " Special damage! (no knockback room)";
     }

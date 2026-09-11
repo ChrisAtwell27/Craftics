@@ -19,6 +19,8 @@ public class WorldDataComponent implements Component {
     public int branchChoice = -1;
     public String discoveredBiomes = "";
     public int ngPlusLevel = 0;
+    /** Final biome cleared, NG+ offered but not yet taken. See {@code CrafticsSavedData.PlayerData}. */
+    public boolean campaignCompleted = false;
 
     // --- Convenience methods (same API as CrafticsSavedData) ---
 
@@ -74,6 +76,7 @@ public class WorldDataComponent implements Component {
 
     public void startNewGamePlus() {
         ngPlusLevel++;
+        campaignCompleted = false;
         highestBiomeUnlocked = 1;
         discoveredBiomes = "";
         activeBiomeId = "";
@@ -103,6 +106,7 @@ public class WorldDataComponent implements Component {
         discoveredBiomes = tag.getString("discoveredBiomes");
         if (discoveredBiomes == null) discoveredBiomes = "";
         ngPlusLevel = tag.getInt("ngPlusLevel");
+        campaignCompleted = tag.getBoolean("campaignCompleted");
         //?} else {
         /*hubBuilt = tag.getBoolean("hubBuilt", false);
         hubVersion = tag.getInt("hubVersion", 0);
@@ -115,6 +119,7 @@ public class WorldDataComponent implements Component {
         if (branchChoice == 0 && !tag.contains("branchChoice")) branchChoice = -1;
         discoveredBiomes = tag.getString("discoveredBiomes", "");
         ngPlusLevel = tag.getInt("ngPlusLevel", 0);
+        campaignCompleted = tag.getBoolean("campaignCompleted", false);
         *///?}
     }
 
@@ -129,5 +134,6 @@ public class WorldDataComponent implements Component {
         tag.putInt("branchChoice", branchChoice);
         tag.putString("discoveredBiomes", discoveredBiomes);
         tag.putInt("ngPlusLevel", ngPlusLevel);
+        tag.putBoolean("campaignCompleted", campaignCompleted);
     }
 }

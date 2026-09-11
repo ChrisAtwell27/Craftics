@@ -1259,6 +1259,7 @@ public class CombatManager {
                     case "shrine"        -> finalizeShrineEvent(ref);
                     case "traveler"      -> finalizeTravelerEvent(ref);
                     case "enchanter"     -> finalizeEnchanterEvent(ref);
+                    case "scribe"        -> finalizeScribeEvent(ref);
                     case "disenchanter"  -> finalizeDisenchanterEvent(ref);
                     case "vault"         -> finalizeVaultEvent(ref);
                     case "piglin_barter" -> finalizeBarterEvent(ref);
@@ -1439,9 +1440,53 @@ public class CombatManager {
         return partyPlayers.stream().anyMatch(p -> p.getUuid().equals(uuid));
     }
 
+    /**
+     * Everyone in this fight, with stale entity references healed first.
+     *
+     * <p>{@code partyPlayers} stores {@link ServerPlayerEntity} objects, and the server
+     * replaces that object whenever a player reconnects. The old one stays in the list
+     * answering {@code isRemoved()}, and every consumer skips it: {@code sendToAllParty} drops
+     * the packet, so that player's arena stops updating and enemies stop rendering, and the
+     * victory payout hands their loot to an entity that is no longer in the world. One dead
+     * reference is enough to make a teammate a ghost - no tiles, no enemies, no rewards - while
+     * the server believes it is still talking to them.
+     *
+     * <p>Re-resolving by UUID here fixes every consumer at once, because this is the only place
+     * the roster is handed out. The list is healed in place rather than copied, so the direct
+     * {@code partyPlayers} readers elsewhere get the live objects too.
+     */
     private List<ServerPlayerEntity> getAllParticipants() {
-        if (!partyPlayers.isEmpty()) return partyPlayers;
+        if (!partyPlayers.isEmpty()) {
+            healStaleParticipantRefs();
+            return partyPlayers;
+        }
         return player != null ? List.of(player) : List.of();
+    }
+
+    /**
+     * Swap any dead {@link ServerPlayerEntity} reference for the live one with the same UUID.
+     *
+     * <p>A member who is genuinely offline is left alone: their reference stays stale and the
+     * existing {@code isRemoved()/isDisconnected()} guards keep skipping them, which is the
+     * correct behaviour for somebody who is not there. This only repairs the case where the
+     * player IS online and the manager is simply holding the wrong object for them.
+     */
+    private void healStaleParticipantRefs() {
+        net.minecraft.server.MinecraftServer server = null;
+        for (int i = 0; i < partyPlayers.size(); i++) {
+            ServerPlayerEntity member = partyPlayers.get(i);
+            if (member == null) continue;
+            if (!member.isRemoved() && !member.isDisconnected()) continue;
+            if (server == null) {
+                server = member.getServer();
+                if (server == null && player != null) server = player.getServer();
+                if (server == null) return;
+            }
+            ServerPlayerEntity live = server.getPlayerManager().getPlayer(member.getUuid());
+            if (live != null && live != member) {
+                partyPlayers.set(i, live);
+            }
+        }
     }
 
     private static final int FLASH_DAMAGE_COLOR = 0xFFBF1A;   // amber (matches AoE preview damage)
@@ -2627,7 +2672,7 @@ public class CombatManager {
         sendToAllParty(new com.crackedgames.craftics.network.TileSetPayload(
             new int[0], new int[0], new int[0],
             warnList.stream().mapToInt(Integer::intValue).toArray(),
-            new int[0], "", new int[0], new int[0], new int[0], new int[0]));
+            new int[0], "", new int[0], new int[0], new int[0], new int[0], new int[0]));
     }
 
     /** Plays a sound to the whole party, positioned at the arena's centre tile. Used by
@@ -4441,6 +4486,15 @@ public class CombatManager {
     private boolean attackAnimSwung;
 
     private net.minecraft.item.Item lastHeldItem = null;
+    /**
+     * Hotbar slot the held-item watcher last saw.
+     *
+     * <p>Tracked alongside the item because two stacks of the SAME item can now behave
+     * differently: the Scribe inscribes a stack, so a plain Burn sherd and a Farsighted one are
+     * both {@code BURN_POTTERY_SHERD}. Swapping between them changes the range indicator and
+     * the AP cost while the item comparison sees no change at all.
+     */
+    private int lastHeldSlot = -1;
     private int tickCounter;
 
     public boolean isActive() { return active; }
@@ -10936,10 +10990,14 @@ public class CombatManager {
             net.minecraft.entity.EquipmentSlot.FEET
         };
 
-        // Per-mob loot: credit the killer only, not the whole party. Falls back
-        // to all participants if we somehow lost the killer reference (offline,
-        // disconnected) so the gear never disappears entirely.
-        List<ServerPlayerEntity> recipients = resolveKillerRecipients(enemy);
+        // Everyone who fought gets a shot at the gear, not just whoever landed the last hit.
+        //
+        // The rest of this method was always written for a party - one roll per slot shared by
+        // every recipient, a per-recipient threshold so Luck still varies the result, and a
+        // re-rolled trim "so two players who both win the same armor piece get visually
+        // different trims". Crediting the killer alone collapsed all of that to one player and
+        // made the surrounding code read as dead weight.
+        List<ServerPlayerEntity> recipients = getAllParticipants();
         if (recipients.isEmpty()) return;
 
         ServerWorld world = (ServerWorld) mob.getEntityWorld();
@@ -11025,18 +11083,21 @@ public class CombatManager {
         Item headItem = getMobHeadForType(enemy.getEntityTypeId());
         if (headItem == null) return;
 
-        // Per-mob loot -killer-only; see rollMobEquipmentDrops for rationale.
-        List<ServerPlayerEntity> recipients = resolveKillerRecipients(enemy);
+        // Party-wide, with a per-player roll; see rollMobEquipmentDrops for rationale.
+        List<ServerPlayerEntity> recipients = getAllParticipants();
         if (recipients.isEmpty()) return;
 
         double headChance = enemy.isBonusLootRoll() ? 0.05 : 0.01;
-        if (Math.random() >= headChance) return;
-
-        ItemStack head = new ItemStack(headItem, 1);
+        // One roll each, not one roll copied to everyone: a trophy the whole party receives
+        // simultaneously is not a rare drop, it is a handout.
         for (ServerPlayerEntity recipient : recipients) {
-            LootDelivery.deliver(recipient, head.copy());
+            if (recipient == null) continue;
+            if (Math.random() >= headChance) continue;
+            ItemStack head = new ItemStack(headItem, 1);
+            String headName = head.getName().getString();
+            LootDelivery.deliver(recipient, head);
+            sendMessageTo(recipient, "§d§l★ RARE DROP: " + headName);
         }
-        sendMessage("§d§l★ RARE DROP: " + head.getName().getString());
     }
 
     /** Maps a mob entity type ID to the matching vanilla skull item, or null if none. */
@@ -13230,13 +13291,69 @@ public class CombatManager {
     /** True while a Performative encore is replaying a sherd, so the encore can't itself echo. */
     private boolean sherdEncoreInProgress = false;
 
+    /**
+     * Carry out every directive a sherd cast handed back, and return what is left to say.
+     *
+     * <p>Three things a spell cannot do for itself - registering a tile effect, putting entities
+     * on the grid, and arming the next attack - are returned as {@code PREFIX + payload + "|"}
+     * ahead of the message. This peels them in order until the head of the string is ordinary
+     * text.
+     *
+     * <p>Looping matters now that sherds compose. Previously exactly one sherd emitted exactly
+     * one directive each, so an if/else chain was sufficient; a Scribe-inscribed sherd that both
+     * places a trap and summons seekers emits two, and the old shape would have executed the
+     * first and printed the second to chat verbatim.
+     *
+     * <p>Text a directive generates (the seeker volley's own line) is collected separately
+     * rather than pushed back onto the front, so it cannot be mistaken for another directive on
+     * the next pass.
+     */
+    private String applySherdDirectives(String result) {
+        StringBuilder generated = new StringBuilder();
+        String remaining = result;
+
+        while (true) {
+            if (remaining.startsWith(PotterySherdSpells.HEX_TRAP_PREFIX)) {
+                String[] parts = remaining.substring(
+                    PotterySherdSpells.HEX_TRAP_PREFIX.length()).split("\\|", 2);
+                String[] tileInfo = parts[0].split(":");
+                int tx = Integer.parseInt(tileInfo[1]);
+                int tz = Integer.parseInt(tileInfo[2]);
+                tileEffects.put(new GridPos(tx, tz), tileInfo[0]);
+                hexTrapTurnsRemaining = 5;
+                remaining = parts.length > 1 ? parts[1] : "";
+            } else if (remaining.startsWith(PotterySherdSpells.SEEKERS_PREFIX)) {
+                String[] parts = remaining.substring(
+                    PotterySherdSpells.SEEKERS_PREFIX.length()).split("\\|", 2);
+                String[] seekerInfo = parts[0].split(":");
+                int seekerCount = Integer.parseInt(seekerInfo[0]);
+                int seekerDamage = Integer.parseInt(seekerInfo[1]);
+                generated.append(castSpectralSeekers(player, seekerCount, seekerDamage));
+                remaining = parts.length > 1 ? parts[1] : "";
+            } else if (remaining.startsWith(PotterySherdSpells.DOUBLE_NEXT_PREFIX)) {
+                String[] parts = remaining.substring(
+                    PotterySherdSpells.DOUBLE_NEXT_PREFIX.length()).split("\\|", 2);
+                doubleDamageNextAttack = true;
+                remaining = parts.length > 1 ? parts[1] : "";
+            } else {
+                break;
+            }
+        }
+        return generated.length() > 0 ? generated + remaining : remaining;
+    }
+
     /** Handle pottery sherd spell usage -called from handleUseItem when held item is a sherd. */
     private void handleSherdSpell(GridPos targetTile, Item sherdItem, int apCost) {
+        // Resolved from the STACK, not the item: the Scribe writes inscriptions per stack, so
+        // this player's Burn sherd may legitimately reach further than another one of the same
+        // item. Pricing already happened upstream against the same stack.
+        ItemStack sherdStack = player.getMainHandStack();
+
         // Self-cast spells don't need a target tile
-        GridPos effectiveTarget = PotterySherdSpells.isSelfCast(sherdItem) ? null : targetTile;
+        GridPos effectiveTarget = PotterySherdSpells.isSelfCast(sherdStack) ? null : targetTile;
 
         // Validate range and target
-        String error = PotterySherdSpells.validateSherd(sherdItem, arena, effectiveTarget, enemies);
+        String error = PotterySherdSpells.validateSherd(sherdStack, arena, effectiveTarget, enemies);
         if (error != null) {
             sendMessage(error);
             sendSync();
@@ -13274,46 +13391,11 @@ public class CombatManager {
 
         // Process prefix-based results from spells
 
-        // Tile effects (hex_trap from Danger sherd). Matched with startsWith, like the other
-        // tile-effect parser: the sherd puts the prefix at the head of its result, so contains
-        // only added the chance of firing on the prefix appearing inside a message body.
-        if (result.startsWith(PotterySherdSpells.HEX_TRAP_PREFIX)) {
-            String afterPrefix = result.substring(PotterySherdSpells.HEX_TRAP_PREFIX.length());
-            String[] parts = afterPrefix.split("\\|", 2);
-            String tileData = parts[0];
-            String[] tileInfo = tileData.split(":");
-            String effectType = tileInfo[0];
-            int tx = Integer.parseInt(tileInfo[1]);
-            int tz = Integer.parseInt(tileInfo[2]);
-            tileEffects.put(new GridPos(tx, tz), effectType);
-            hexTrapTurnsRemaining = 5;
-            if (parts.length > 1) sendMessage(parts[1]);
-        }
-        // Seeker volley (Archer sherd). Spawning grid entities is the manager's job, so
-        // the sherd hands back a "count:damage" instruction instead of doing it itself.
-        else if (result.contains(PotterySherdSpells.SEEKERS_PREFIX)) {
-            String afterPrefix = result.substring(result.indexOf(PotterySherdSpells.SEEKERS_PREFIX)
-                + PotterySherdSpells.SEEKERS_PREFIX.length());
-            // Split the payload off the trailing text first: useSherd appends the
-            // "(The sherd shattered.)" suffix to whatever the spell returned, and it
-            // would otherwise land inside the number we're about to parse.
-            String[] parts = afterPrefix.split("\\|", 2);
-            String[] seekerInfo = parts[0].split(":");
-            int seekerCount = Integer.parseInt(seekerInfo[0]);
-            int seekerDamage = Integer.parseInt(seekerInfo[1]);
-            String volley = castSpectralSeekers(player, seekerCount, seekerDamage);
-            sendMessage(parts.length > 1 ? volley + parts[1] : volley);
-        }
-        // Double damage next attack (Prize sherd)
-        else if (result.contains(PotterySherdSpells.DOUBLE_NEXT_PREFIX)) {
-            String afterPrefix = result.substring(result.indexOf(PotterySherdSpells.DOUBLE_NEXT_PREFIX) + PotterySherdSpells.DOUBLE_NEXT_PREFIX.length());
-            String[] parts = afterPrefix.split("\\|", 2);
-            doubleDamageNextAttack = true;
-            if (parts.length > 1) sendMessage(parts[1]);
-        }
-        else {
-            sendMessage(result);
-        }
+        // Work the sherd could not carry out itself, peeled off the front of the result.
+        // Loops where this used to be an if/else chain that handled exactly one: a composed
+        // sherd can now emit more than one directive, and the old shape would have silently
+        // printed the second as chat text.
+        sendMessage(applySherdDirectives(result));
 
         List<CombatEntity> deadEnemies = enemies.stream()
             .filter(e -> !e.isAlive() && e.getMobEntity() != null && e.getMobEntity().isAlive())
@@ -15383,8 +15465,15 @@ public class CombatManager {
         // panel's attack/range readout tracks the weapon currently in hand.
         if (player != null) {
             var currentItem = player.getMainHandStack().getItem();
-            if (currentItem != lastHeldItem) {
+            // selectedSlot went private in 1.21.5; same split the other readers use.
+            int currentSlot;
+            //? if <=1.21.4 {
+            currentSlot = player.getInventory().selectedSlot;
+            //?} else
+            /*currentSlot = player.getInventory().getSelectedSlot();*/
+            if (currentItem != lastHeldItem || currentSlot != lastHeldSlot) {
                 lastHeldItem = currentItem;
+                lastHeldSlot = currentSlot;
                 if (phase == CombatPhase.PLAYER_TURN) refreshHighlights();
                 sendSync();
             }
@@ -27368,6 +27457,26 @@ public class CombatManager {
         };
     }
 
+    /**
+     * Knock an enemy back from something that is not a weapon swing - a thrown item, an
+     * artifact proc, an addon effect.
+     *
+     * <p>Exists because those used to push enemies by calling {@code arena.moveEntity}
+     * themselves. That moves the mob and nothing else: no wall slam, no cactus, no hazard
+     * check, no ice skid, no Trapper trap springing under it, and no Hemorrhage detonation.
+     * Every consequence of being shoved lives in {@link #knockEnemyBack}, so a push that
+     * bypasses it is a push the rest of the game never hears about.
+     *
+     * @return where the enemy ended up, or its current tile when there is no live fight
+     */
+    public GridPos knockbackFromEffect(CombatEntity enemy, int dx, int dz, int tiles) {
+        if (!active || enemy == null || arena == null) {
+            return enemy != null ? enemy.getGridPos() : null;
+        }
+        if (dx == 0 && dz == 0) return enemy.getGridPos();
+        return knockEnemyBack(enemy, dx, dz, tiles);
+    }
+
     private GridPos knockEnemyBack(CombatEntity enemy, int dx, int dz, int tiles) {
         // Crater enchant: knockback the player causes flies 1 tile further, and slamming into
         // anything hurts and Stuns. Gated on the PLAYER_TURN phase so an enemy-driven push (the
@@ -27531,9 +27640,16 @@ public class CombatManager {
         // Hemorrhage enchant (sword): being knocked around detonates the target's Bleed - the
         // stacks convert to one burst and clear. Player-turn gated like Crater, so an enemy
         // shove never triggers it.
+        // Read from the INVENTORY, not the held stack. Hemorrhage is about the target's bleed
+        // reacting to being moved, not about the weapon doing the moving - which is the
+        // distinction from Crater directly above, where the push itself is the weapon's own and
+        // the held check is correct. Nearly every source of knockback in this game is an item
+        // you must be holding to use (a snowball, a wind charge, a piston artifact), so gating
+        // on the sword being in hand meant the enchantment could effectively only fire off that
+        // same sword's Knockback shockwave, and playtesters reported it as simply not working.
         if (phase == CombatPhase.PLAYER_TURN && player != null
                 && enemy.isAlive() && enemy.getBleedStacks() > 0
-                && CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.HEMORRHAGE) > 0) {
+                && CrafticsEnchantments.level(player, CrafticsEnchantments.HEMORRHAGE) > 0) {
             int stacks = enemy.getBleedStacks();
             enemy.setBleedStacks(0);
             int burst = enemy.takeDamage(stacks * SwordAxeEnchantEffects.HEMORRHAGE_DAMAGE_PER_STACK);
@@ -29122,6 +29238,39 @@ public class CombatManager {
      * Delivers a loot stack to a recipient; any portion that did not fit is
      * recorded in {@code overflow} keyed by the recipient's UUID.
      */
+    /**
+     * Extra loot rolls {@code recipient} has earned: their own Luck, plus the miniboss bonus.
+     *
+     * <p>Per player on purpose. The victory path used to compute this once from whichever
+     * player the manager was pointing at and apply it to everyone's rolls, which made the Luck
+     * stat worthless to four players out of five and gave the fifth's investment away for free.
+     */
+    private int luckBonusItemsFor(ServerPlayerEntity recipient) {
+        if (recipient == null) return 0;
+        int luck = PlayerProgression.get((ServerWorld) recipient.getEntityWorld())
+            .getStats(recipient).getPoints(PlayerProgression.Stat.LUCK);
+        if (activeMiniboss != null) luck += 1; // miniboss bonus: one extra loot roll
+        return luck;
+    }
+
+    /**
+     * The best Luck in the party, for rolls that happen once for the whole group.
+     *
+     * <p>A single shared roll cannot use a per-player number, and picking the leader's would
+     * make the party's luckiest member irrelevant. Reading the best matches how the spawn-egg
+     * roll already treats Pet affinity: whoever invested widens the pipeline for everyone
+     * standing with them.
+     */
+    private int bestLuckBonusItems(List<ServerPlayerEntity> recipients) {
+        int best = 0;
+        for (ServerPlayerEntity p : recipients) {
+            best = Math.max(best, luckBonusItemsFor(p));
+        }
+        // Solo, or an empty list after a wipe: still honour the miniboss bonus.
+        if (recipients.isEmpty() && activeMiniboss != null) best = 1;
+        return best;
+    }
+
     private static void deliverLoot(ServerPlayerEntity recipient, ItemStack stack,
                                     java.util.Map<java.util.UUID, List<ItemStack>> overflow) {
         ItemStack leftover = LootDelivery.deliver(recipient, stack);
@@ -29305,19 +29454,30 @@ public class CombatManager {
                     + " emeralds - and a map marking the road to their Bastille.");
         }
 
-        // Per-mob loot now routes to the killer only, not every party member.
-        // Arena/level-completion bonuses below still go to everyone -that's
-        // the shared "you beat the wave" reward and shouldn't be one-player.
+        // Every participant rolls the same loot tables, independently.
+        //
+        // Per-mob drops used to go to the KILLER alone. In a party that is not a share, it is a
+        // winner-takes-all: mob drops are the bulk of what a level pays out, and whoever swings
+        // hardest or acts most takes nearly all of it while everyone else leaves with only the
+        // completion bonus. Playtesters reported it as "only the leader gets loot", and they
+        // were describing the design rather than a glitch.
+        //
+        // Rolled per player rather than rolled once and copied: a shared roll would hand out
+        // identical bags, which erases the reason to invest in Luck at all. Same table, same
+        // odds, own dice - so two players who fought the same wave get comparable but not equal
+        // hauls, and the one who built for Luck sees it pay.
         java.util.Map<java.util.UUID, List<ItemStack>> lootOverflow = new java.util.HashMap<>();
-        int luckBonusItems = PlayerProgression.get((ServerWorld) player.getEntityWorld())
-            .getStats(player).getPoints(PlayerProgression.Stat.LUCK);
-        if (activeMiniboss != null) {
-            luckBonusItems += 1; // miniboss bonus: one extra loot roll
+        List<ServerPlayerEntity> rewardRecipients = getAllParticipants();
+
+        // One merged chat line per distinct item, PER PLAYER. Announcing each stack as it
+        // rolled printed "+ 1x Bone" once per skeleton; the burst is delivered in one breath,
+        // so it reads as one. Per player because the rolls now differ - broadcasting one
+        // player's haul to everyone would tell four people they received things they did not.
+        java.util.Map<java.util.UUID, List<ItemStack>> lootSummaries = new java.util.LinkedHashMap<>();
+        for (ServerPlayerEntity p : rewardRecipients) {
+            if (p != null) lootSummaries.put(p.getUuid(), new ArrayList<>());
         }
-        // One merged chat line per distinct item for the whole victory burst.
-        // Announcing each stack as it rolled printed "+ 1x Bone" once per
-        // skeleton; the burst is delivered in one breath, so it reads as one.
-        List<ItemStack> lootChatSummary = new ArrayList<>();
+
         for (CombatEntity enemy : enemies) {
             // The enemies list also holds the player's allies. A *surviving*
             // ally is not loot (a bee ally that lives must not award honey).
@@ -29325,49 +29485,35 @@ public class CombatManager {
             if (enemy.isAlly() && enemy.isAlive()) continue;
             // Skip drops for creepers that self-exploded (rewards killing them properly)
             if (enemy.isSelfExploded()) continue;
-            List<ServerPlayerEntity> killerOnly = resolveKillerRecipients(enemy);
-            List<ItemStack> displayDrops = null;
-            for (ServerPlayerEntity recipient : killerOnly) {
+            for (ServerPlayerEntity recipient : rewardRecipients) {
+                if (recipient == null) continue;
+                int recipientLuck = luckBonusItemsFor(recipient);
                 List<ItemStack> drops = getMobDrops(enemy.getEntityTypeId());
                 // Burned to death = already cooked. Applied per roll so the meat that
                 // actually lands in the bag is the meat announced in chat.
                 if (enemy.wasBurningOnDeath()) drops = cookDropsOverFire(drops);
-                // Snapshot copies: deliverLoot consumes the stacks it is handed.
-                if (displayDrops == null) {
-                    displayDrops = new ArrayList<>();
-                    for (ItemStack d : drops) displayDrops.add(d.copy());
-                }
+                List<ItemStack> summary = lootSummaries.get(recipient.getUuid());
                 for (ItemStack drop : drops) {
                     if (drop.isEmpty() || drop.getCount() <= 0) continue;
-                    if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
+                    if (recipientLuck > 0 && Math.random() < (recipientLuck * 0.20)) {
                         drop.setCount(drop.getCount() + 1);
                     }
+                    // Snapshot before delivery: deliverLoot consumes the stack it is handed,
+                    // so reading the count afterwards would report zero.
+                    if (summary != null) mergeLootChatLine(summary, drop.copy());
                     deliverLoot(recipient, drop, lootOverflow);
                 }
-            }
-            // Broadcast a representative message (leader's perspective). Reuses the FIRST
-            // recipient's actual roll: rolling a fresh set here announced items nobody was
-            // given, and would have advertised raw meat for a kill that handed out cooked.
-            if (displayDrops == null) displayDrops = getMobDrops(enemy.getEntityTypeId());
-            for (ItemStack drop : displayDrops) {
-                if (drop.isEmpty() || drop.getCount() <= 0) continue;
-                mergeLootChatLine(lootChatSummary, drop);
-            }
-            // Rare goat horn drop -per-mob, killer-only.
-            if ("minecraft:goat".equals(enemy.getEntityTypeId())) {
-                for (ServerPlayerEntity recipient : killerOnly) {
-                    if (Math.random() < CrafticsMod.CONFIG.goatHornDropChance() + luckBonusItems * 0.02) {
-                        ItemStack horn = GoatHornEffects.createRandomHorn(player.getRegistryManager());
-                        if (horn != null) {
-                            deliverLoot(recipient, horn, lootOverflow);
-                            sendMessageTo(recipient, "§6§l+ Goat Horn! " + horn.getName().getString());
-                        }
+                // Rare goat horn drop - per-mob, rolled per player like everything else.
+                if ("minecraft:goat".equals(enemy.getEntityTypeId())
+                        && Math.random() < CrafticsMod.CONFIG.goatHornDropChance() + recipientLuck * 0.02) {
+                    ItemStack horn = GoatHornEffects.createRandomHorn(player.getRegistryManager());
+                    if (horn != null) {
+                        deliverLoot(recipient, horn, lootOverflow);
+                        sendMessageTo(recipient, "§6§l+ Goat Horn! " + horn.getName().getString());
                     }
                 }
             }
         }
-        // Shared list used by arena/completion loot below -that stays party-wide.
-        List<ServerPlayerEntity> rewardRecipients = getAllParticipants();
 
         // Give level completion loot to each party participant individually
         if (levelDef != null) {
@@ -29377,58 +29523,78 @@ public class CombatManager {
                 lootBiome = gld.getBiomeTemplate();
             }
             final com.crackedgames.craftics.level.BiomeTemplate finalLootBiome = lootBiome;
-            // Each player rolls their own completion loot (Luck boosts item counts)
+            // Each player rolls their own completion loot, with their OWN Luck applied. It used
+            // to read one player's Luck and apply it to everybody's rolls, so the stat only ever
+            // worked for whoever the manager happened to be pointing at.
             for (ServerPlayerEntity recipient : rewardRecipients) {
+                if (recipient == null) continue;
+                int recipientLuck = luckBonusItemsFor(recipient);
                 java.util.List<ItemStack> lootItems = new java.util.ArrayList<>(levelDef.rollCompletionLoot(lootWorld));
                 fireEffectHook(h -> h.onLootRoll(effectContext, lootItems));
                 List<ItemStack> loot = new ArrayList<>();
                 for (ItemStack stack : lootItems) {
                     loot.add(stack.isOf(Items.ENCHANTED_BOOK) ? randomEnchantedBook(lootWorld, stack.getCount(), finalLootBiome) : stack);
                 }
+                List<ItemStack> summary = lootSummaries.get(recipient.getUuid());
                 for (ItemStack item : loot) {
                     if (item.isEmpty() || item.getCount() <= 0) continue; // skip empty/air rolls
-                    if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
+                    if (recipientLuck > 0 && Math.random() < (recipientLuck * 0.20)) {
                         item.setCount(item.getCount() + 1);
                     }
+                    if (summary != null) mergeLootChatLine(summary, item.copy());
                     deliverLoot(recipient, item, lootOverflow);
                 }
             }
-            // Show a representative loot message
-            List<ItemStack> displayLoot = levelDef.rollCompletionLoot(lootWorld);
-            for (ItemStack item : displayLoot) {
-                if (item.isEmpty() || item.getCount() <= 0) continue; // never show "0x Air"
-                mergeLootChatLine(lootChatSummary, item);
-            }
-        }
-        for (ItemStack line : lootChatSummary) {
-            sendMessage("§e+ " + line.getCount() + "x " + line.getName().getString());
         }
 
-        // Rare pottery sherd drop (Luck boosts chance)
-        float sherdChance = CrafticsMod.CONFIG.potterySherdDropChance() + luckBonusItems * 0.01f;
-        if (sherdChance > 0 && Math.random() < sherdChance) {
-            var sherdList = new ArrayList<>(PotterySherdSpells.POTTERY_SHERDS);
-            Item sherdItem = sherdList.get(new java.util.Random().nextInt(sherdList.size()));
-            ItemStack sherdStack = new ItemStack(sherdItem);
-            for (ServerPlayerEntity recipient : rewardRecipients) {
-                deliverLoot(recipient, sherdStack.copy(), lootOverflow);
+        // Tell each player what THEY actually received.
+        for (ServerPlayerEntity recipient : rewardRecipients) {
+            if (recipient == null) continue;
+            List<ItemStack> summary = lootSummaries.get(recipient.getUuid());
+            if (summary == null) continue;
+            for (ItemStack line : summary) {
+                sendMessageTo(recipient, "§e+ " + line.getCount() + "x " + line.getName().getString());
             }
-            sendMessage("§d§l✦ RARE DROP: " + sherdStack.getName().getString() + "!");
+        }
+
+        // Party-wide luck, for the shared rare-drop rolls below. Those are one roll for the
+        // whole group, so they read the party's best rather than one member's - the same
+        // "whoever invested widens the pipeline for everyone" rule the spawn egg already used.
+        int luckBonusItems = bestLuckBonusItems(rewardRecipients);
+
+        // Rare pottery sherd drop (Luck boosts chance)
+        // Rolled per player, with their own Luck, and a sherd chosen per winner. One shared
+        // roll handing the SAME sherd to everybody made Luck irrelevant and the drop identical;
+        // independent rolls give equal odds and different outcomes.
+        var sherdList = new ArrayList<>(PotterySherdSpells.POTTERY_SHERDS);
+        for (ServerPlayerEntity recipient : rewardRecipients) {
+            if (recipient == null) continue;
+            float sherdChance = CrafticsMod.CONFIG.potterySherdDropChance()
+                + luckBonusItemsFor(recipient) * 0.01f;
+            if (sherdChance <= 0 || Math.random() >= sherdChance) continue;
+            ItemStack sherdStack = new ItemStack(
+                sherdList.get(new java.util.Random().nextInt(sherdList.size())));
+            deliverLoot(recipient, sherdStack.copy(), lootOverflow);
+            sendMessageTo(recipient,
+                "§d§l✦ RARE DROP: " + sherdStack.getName().getString() + "!");
         }
 
         // Rare spawn egg drop (Luck and Pet affinity boost the chance) -summons a temporary
         // ally in combat. The roll is one shared roll for the whole party, so it reads the
         // party's best beastmaster rather than the leader alone: whoever invested in Pet
         // widens the pipeline for everyone standing with them.
-        float eggChance = 0.04f + luckBonusItems * 0.01f
-            + bestPetAffinity(rewardRecipients) * PET_AFFINITY_EGG_CHANCE_PER_POINT;
-        if (eggChance > 0 && Math.random() < eggChance) {
-            Item eggItem = SPAWN_EGG_DROP_POOL[new java.util.Random().nextInt(SPAWN_EGG_DROP_POOL.length)];
-            ItemStack eggStack = new ItemStack(eggItem);
-            for (ServerPlayerEntity recipient : rewardRecipients) {
-                deliverLoot(recipient, eggStack.copy(), lootOverflow);
-            }
-            sendMessage("§e§l✦ RARE DROP: " + eggStack.getName().getString() + "!");
+        // The party's best beastmaster still widens the pipeline for everyone, but each player
+        // rolls their own egg rather than receiving a copy of one shared roll.
+        float sharedPetBonus = bestPetAffinity(rewardRecipients) * PET_AFFINITY_EGG_CHANCE_PER_POINT;
+        for (ServerPlayerEntity recipient : rewardRecipients) {
+            if (recipient == null) continue;
+            float eggChance = 0.04f + luckBonusItemsFor(recipient) * 0.01f + sharedPetBonus;
+            if (eggChance <= 0 || Math.random() >= eggChance) continue;
+            ItemStack eggStack = new ItemStack(
+                SPAWN_EGG_DROP_POOL[new java.util.Random().nextInt(SPAWN_EGG_DROP_POOL.length)]);
+            deliverLoot(recipient, eggStack.copy(), lootOverflow);
+            sendMessageTo(recipient,
+                "§e§l✦ RARE DROP: " + eggStack.getName().getString() + "!");
         }
 
         // Award emeralds (scales with biome progression)
@@ -29478,15 +29644,18 @@ public class CombatManager {
         // Rare MoreTotems totem drop -boss kills only (Luck boosts chance). No-op when the
         // mod is absent (rollOne returns EMPTY).
         if (isBoss) {
-            float totemChance = (float) CrafticsMod.CONFIG.totemDropChance() + luckBonusItems * 0.01f;
-            if (Math.random() < totemChance) {
+            // One roll each, and a totem rolled per winner - a shared roll copied to the party
+            // handed everybody the same totem and ignored all but one of their Luck scores.
+            for (ServerPlayerEntity recipient : rewardRecipients) {
+                if (recipient == null) continue;
+                float totemChance = (float) CrafticsMod.CONFIG.totemDropChance()
+                    + luckBonusItemsFor(recipient) * 0.01f;
+                if (Math.random() >= totemChance) continue;
                 ItemStack totemDrop = com.crackedgames.craftics.compat.moretotems.MoreTotemsLootRoller.rollOne();
-                if (!totemDrop.isEmpty()) {
-                    for (ServerPlayerEntity recipient : rewardRecipients) {
-                        deliverLoot(recipient, totemDrop.copy(), lootOverflow);
-                    }
-                    sendMessage("§d§l✦ RARE DROP: " + totemDrop.getName().getString() + "!");
-                }
+                if (totemDrop.isEmpty()) continue;
+                String totemName = totemDrop.getName().getString();
+                deliverLoot(recipient, totemDrop, lootOverflow);
+                sendMessageTo(recipient, "§d§l✦ RARE DROP: " + totemName + "!");
             }
         }
         // Rare unique weapon drop -boss kills only (Luck boosts chance). Each recipient
@@ -29495,20 +29664,25 @@ public class CombatManager {
         // both mods installed widens the pool without doubling how often it pays out.
         // No-op when neither mod is present (each roller returns EMPTY).
         if (isBoss) {
-            float uniqueChance = (float) CrafticsMod.CONFIG.uniqueWeaponDropChance() + luckBonusItems * 0.01f;
-            if (Math.random() < uniqueChance) {
-                for (ServerPlayerEntity recipient : rewardRecipients) {
-                    ItemStack uniqueDrop = rollUniqueWeapon(recipient);
-                    if (!uniqueDrop.isEmpty()) {
-                        deliverLoot(recipient, uniqueDrop.copy(), lootOverflow);
-                        sendMessage("§6§l⚔ LEGENDARY DROP: " + uniqueDrop.getName().getString() + "!");
-                    }
-                }
+            // The item was already rolled per recipient; the CHANCE is now per recipient too,
+            // so one unlucky shared roll no longer denies everyone at once.
+            for (ServerPlayerEntity recipient : rewardRecipients) {
+                if (recipient == null) continue;
+                float uniqueChance = (float) CrafticsMod.CONFIG.uniqueWeaponDropChance()
+                    + luckBonusItemsFor(recipient) * 0.01f;
+                if (Math.random() >= uniqueChance) continue;
+                ItemStack uniqueDrop = rollUniqueWeapon(recipient);
+                if (uniqueDrop.isEmpty()) continue;
+                String uniqueName = uniqueDrop.getName().getString();
+                deliverLoot(recipient, uniqueDrop, lootOverflow);
+                sendMessageTo(recipient, "§6§l⚔ LEGENDARY DROP: " + uniqueName + "!");
             }
         }
-        // Resourceful stat: +1 emerald per point (uses leader's stat)
+        // Resourceful is applied per player further down, not folded into the shared base.
+        // It used to read the LEADER's stat and pay every member that same number, so a player
+        // who spent points on Resourceful earned nothing from them unless they happened to be
+        // leading - and a leader's points were quietly handed to the whole party.
         PlayerProgression victoryProg = PlayerProgression.get(world);
-        int resourcefulBonus = victoryProg.getStats(player).getPoints(PlayerProgression.Stat.RESOURCEFUL) * PROG_RESOURCEFUL_PER_POINT;
         // The base emerald reward scales with how many enemies this level had, so a few-enemy
         // early level pays less than a full late one. Boss levels keep their flat reward (their
         // small add-crew shouldn't shrink the payout). Resourceful is a flat player bonus on top.
@@ -29521,7 +29695,7 @@ public class CombatManager {
         if (activeMiniboss != null) {
             baseEmeralds += 3; // miniboss bonus emeralds
         }
-        int emeraldsEarned = baseEmeralds + (isBoss ? 3 : 0) + resourcefulBonus;
+        int emeraldsEarned = baseEmeralds + (isBoss ? 3 : 0);
         // FORTUNE_PEAK set bonus: double emerald rewards
         if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.FORTUNE_PEAK) {
             emeraldsEarned *= 2;
@@ -29529,13 +29703,20 @@ public class CombatManager {
         }
         // Addon combat effects: modify emerald gain
         emeraldsEarned = fireEffectHookChained(emeraldsEarned, (h, amt) -> h.onEmeraldGain(effectContext, amt));
-        // Award emeralds to all party members via per-player data
+        // Award emeralds to all party members via per-player data, each with their OWN
+        // Resourceful bonus on top of the shared base.
+        final int sharedEmeralds = emeraldsEarned;
         for (ServerPlayerEntity recipient : rewardRecipients) {
+            if (recipient == null) continue;
+            int ownBonus = victoryProg.getStats(recipient)
+                .getPoints(PlayerProgression.Stat.RESOURCEFUL) * PROG_RESOURCEFUL_PER_POINT;
+            int total = sharedEmeralds + ownBonus;
             CrafticsSavedData.PlayerData pd = data.getPlayerData(recipient.getUuid());
-            pd.addEmeralds(emeraldsEarned);
+            pd.addEmeralds(total);
+            sendMessageTo(recipient, "§a+ " + total + " Emeralds"
+                + (ownBonus > 0 ? " §2(+" + ownBonus + " Resourceful)" : ""));
         }
         data.markDirty();
-        sendMessage("§a+ " + emeraldsEarned + " Emeralds");
 
         // Per-island boss-kill scaling: record this defeat so the NEXT encounter
         // with the same boss on this island spawns with +bossKillHpScale HP.
@@ -29572,17 +29753,18 @@ public class CombatManager {
                     for (net.minecraft.item.Item t : trimPool) candidates.add(t);
                 }
                 java.util.Random trimRng = new java.util.Random();
-                String lastName = null;
+                // Each recipient already gets a DIFFERENT trim, so the announcement has to be
+                // per player. Broadcasting one name told everybody else they had received
+                // something they had not.
                 for (ServerPlayerEntity recipient : rewardRecipients) {
+                    if (recipient == null) continue;
                     net.minecraft.item.Item trimItem =
                         candidates.get(trimRng.nextInt(candidates.size()));
                     lastDroppedTrim = trimItem; // best-effort anti-repeat across drops
                     ItemStack trimStack = new ItemStack(trimItem);
-                    deliverLoot(recipient, trimStack.copy(), lootOverflow);
-                    lastName = trimStack.getName().getString();
-                }
-                if (lastName != null) {
-                    sendMessage("\u00a7b\u00a7l\u2726 RARE DROP: " + lastName + "!");
+                    String trimName = trimStack.getName().getString();
+                    deliverLoot(recipient, trimStack, lootOverflow);
+                    sendMessageTo(recipient, "\u00a7b\u00a7l\u2726 RARE DROP: " + trimName + "!");
                 }
 
                 // Unlock "How Trims Work" guide entry for all recipients
@@ -29694,8 +29876,6 @@ public class CombatManager {
         CrafticsSavedData data = CrafticsSavedData.get(world);
         java.util.Map<java.util.UUID, List<ItemStack>> lootOverflow = new java.util.HashMap<>();
         java.util.Random rng = new java.util.Random();
-        int luckBonusItems = PlayerProgression.get(world)
-            .getStats(player).getPoints(PlayerProgression.Stat.LUCK);
         List<ServerPlayerEntity> rewardedOnline = new ArrayList<>();
 
         // Spec 6.1: a server-wide broadcast naming the boss and its survivors - not
@@ -29744,29 +29924,38 @@ public class CombatManager {
         // These rolls are shared at the raid instance level (matching the normal
         // boss path's single roll gate), then distributed to each rewarded player.
         if (!rewardedOnline.isEmpty()) {
-            float totemChance = (float) CrafticsMod.CONFIG.totemDropChance() + luckBonusItems * 0.01f;
-            if (Math.random() < totemChance) {
+            // One roll each, and a totem rolled per winner - a shared roll copied to the party
+            // handed everybody the same totem and ignored all but one of their Luck scores.
+            for (ServerPlayerEntity recipient : rewardedOnline) {
+                if (recipient == null) continue;
+                float totemChance = (float) CrafticsMod.CONFIG.totemDropChance()
+                    + luckBonusItemsFor(recipient) * 0.01f;
+                if (Math.random() >= totemChance) continue;
                 ItemStack totemDrop = com.crackedgames.craftics.compat.moretotems.MoreTotemsLootRoller.rollOne();
-                if (!totemDrop.isEmpty()) {
-                    for (ServerPlayerEntity recipient : rewardedOnline) {
-                        deliverLoot(recipient, totemDrop.copy(), lootOverflow);
-                    }
-                    sendMessage("§d§l✦ RARE DROP: " + totemDrop.getName().getString() + "!");
-                }
+                if (totemDrop.isEmpty()) continue;
+                String totemName = totemDrop.getName().getString();
+                deliverLoot(recipient, totemDrop, lootOverflow);
+                sendMessageTo(recipient, "§d§l✦ RARE DROP: " + totemName + "!");
             }
 
-            float uniqueChance = (float) CrafticsMod.CONFIG.uniqueWeaponDropChance() + luckBonusItems * 0.01f;
-            if (Math.random() < uniqueChance) {
-                for (ServerPlayerEntity recipient : rewardedOnline) {
-                    ItemStack uniqueDrop = rollUniqueWeapon(recipient);
-                    if (!uniqueDrop.isEmpty()) {
-                        deliverLoot(recipient, uniqueDrop.copy(), lootOverflow);
-                        sendMessageTo(recipient, "§6§l⚔ LEGENDARY DROP: " + uniqueDrop.getName().getString() + "!");
-                    }
-                }
+            // The item was already rolled per recipient; the CHANCE is now per recipient too,
+            // so one unlucky shared roll no longer denies everyone at once.
+            for (ServerPlayerEntity recipient : rewardedOnline) {
+                if (recipient == null) continue;
+                float uniqueChance = (float) CrafticsMod.CONFIG.uniqueWeaponDropChance()
+                    + luckBonusItemsFor(recipient) * 0.01f;
+                if (Math.random() >= uniqueChance) continue;
+                ItemStack uniqueDrop = rollUniqueWeapon(recipient);
+                if (uniqueDrop.isEmpty()) continue;
+                String uniqueName = uniqueDrop.getName().getString();
+                deliverLoot(recipient, uniqueDrop, lootOverflow);
+                sendMessageTo(recipient, "§6§l⚔ LEGENDARY DROP: " + uniqueName + "!");
             }
 
-            if (Math.random() < CrafticsMod.CONFIG.trimDropChance() + luckBonusItems * 0.02) {
+            // Party-best luck: this is one shared roll for the whole instance, so reading a
+            // single member's would make everyone else's investment invisible.
+            if (Math.random() < CrafticsMod.CONFIG.trimDropChance()
+                    + bestLuckBonusItems(rewardedOnline) * 0.02) {
                 String dimension = raidTrimDimension(def.environmentId());
                 net.minecraft.item.Item[] trimPool = TrimEffects.getBossDropTrims(dimension);
                 if (trimPool.length > 0) {
@@ -29964,6 +30153,17 @@ public class CombatManager {
             // Boss defeated -biome complete! Unlock next biome, go home
             sendMessage("§6§l*** BIOME COMPLETE! ***");
             int currentBiomeOrder = biomeOrdinal + 1;
+            // Resolved out here, not inside the unlock branch below: the NG+ offer past that
+            // branch needs the just-cleared biome id even on a REPLAY of the final boss, when
+            // the island's frontier is already past it and no unlock advances.
+            int branch = Math.max(0, ld.branchChoice);
+            java.util.List<String> campaignOrder = com.crackedgames.craftics.level.campaign.CampaignManager
+                .orderedBiomeIds(branch);
+            String justClearedBiomeId = biomeTemplate != null ? biomeTemplate.biomeId : ld.activeBiomeId;
+            if (justClearedBiomeId == null
+                    && biomeOrdinal >= 0 && biomeOrdinal < campaignOrder.size()) {
+                justClearedBiomeId = campaignOrder.get(biomeOrdinal);
+            }
             if (ld.highestBiomeUnlocked <= currentBiomeOrder) {
                 ld.highestBiomeUnlocked = currentBiomeOrder + 1;
                 data.markDirty();
@@ -29987,14 +30187,6 @@ public class CombatManager {
                 // Region-boundary "unlocked" banner -campaign-driven. Resolve the
                 // just-cleared biome id, then announce the NEXT region (if any) when the
                 // next biome in flattened campaign order belongs to a different region.
-                int branch = Math.max(0, ld.branchChoice);
-                java.util.List<String> campaignOrder = com.crackedgames.craftics.level.campaign.CampaignManager
-                    .orderedBiomeIds(branch);
-                String justClearedBiomeId = biomeTemplate != null ? biomeTemplate.biomeId : ld.activeBiomeId;
-                if (justClearedBiomeId == null
-                        && biomeOrdinal >= 0 && biomeOrdinal < campaignOrder.size()) {
-                    justClearedBiomeId = campaignOrder.get(biomeOrdinal);
-                }
                 String nextBiomeId = (biomeOrdinal + 1 < campaignOrder.size())
                     ? campaignOrder.get(biomeOrdinal + 1) : null;
                 if (nextBiomeId != null) {
@@ -30008,13 +30200,30 @@ public class CombatManager {
                             + nextRegion.icon());
                     }
                 }
-                // Final node of the final region (any campaign, any size) - trigger NG+.
-                if (com.crackedgames.craftics.level.campaign.CampaignManager
-                        .isFinalBiome(justClearedBiomeId, branch)) {
-                    ld.startNewGamePlus();
-                    sendMessage("§6§l★ NEW GAME+ " + ld.ngPlusLevel + " UNLOCKED! ★");
-                    sendMessage("§eAll biomes reset. Enemies are now stronger. Your stats carry over.");
+            }
+            // Final node of the final region (any campaign, any size) - OFFER NG+.
+            //
+            // Deliberately does not start it. Clearing the campaign used to reset the island
+            // on the spot: unlocks gone, biomes relocked, branch rerolled, all while the
+            // victory banner was still on screen. The party never agreed to that and could not
+            // undo it. Now the clear only raises the offer and the island keeps every biome it
+            // opened, until somebody takes the button at the level select block (see
+            // ModNetworking's NewGamePlusPayload receiver).
+            //
+            // Outside the unlock branch above on purpose: a party that declines NG+ and then
+            // replays the final boss is past their frontier, so that branch never runs - and
+            // an offer that only ever fires on the FIRST clear would be lost for good to any
+            // island whose frontier had moved on for any other reason.
+            if (com.crackedgames.craftics.level.campaign.CampaignManager
+                    .isFinalBiome(justClearedBiomeId, branch)) {
+                if (!ld.campaignCompleted) {
+                    ld.campaignCompleted = true;
+                    data.markDirty();
                 }
+                sendMessage("§6§l★ CAMPAIGN COMPLETE! ★");
+                sendMessage("§eNEW GAME+ " + (ld.ngPlusLevel + 1)
+                    + " is available at the level select block whenever you want it.");
+                sendMessage("§7Until then nothing changes - every biome stays unlocked to replay.");
             }
             ld.endBiomeRun();
             ld.inCombat = false;
@@ -30655,7 +30864,11 @@ public class CombatManager {
                     // away, so meeting one should feel like an unlucky draw rather than a regular
                     // stop. Hardcoded next to the enchanter it mirrors, which is hardcoded too.
                     float cDisenchanter = cEnchanter + 0.03f * pityScale; // 3% disenchanter chance
-                    float cTrader = cDisenchanter + CrafticsMod.CONFIG.traderSpawnChance() * pityScale;
+                    // The Scribe, at the enchanter's rate: it is the same kind of stop (one
+                    // permanent upgrade to something you already carry), and a player with no
+                    // sherd is handed one rather than turned away, so it is never a dead draw.
+                    float cScribe = cDisenchanter + 0.06f * pityScale; // 6% scribe chance
+                    float cTrader = cScribe + CrafticsMod.CONFIG.traderSpawnChance() * pityScale;
 
                     boolean isNetherRegion = "nether".equals(
                         java.util.Optional.ofNullable(
@@ -30827,6 +31040,13 @@ public class CombatManager {
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         offerDisenchanter(savedPlayer);
+                    } else if (forced != null ? forced.equals("scribe") : (eventRoll < cScribe)) {
+                        // Scribe -inscribe a new behaviour onto a pottery sherd
+                        ld.levelsSinceLastEvent = 0; // reset pity timer on event
+                        data.markDirty();
+                        pendingNextLevelDef = nextLevelDef;
+                        pendingBiome = biome;
+                        offerScribe(savedPlayer);
                     } else if (forced != null ? (forced.equals("trader") || forced.equals("piglin_barter")) : (eventRoll < cTrader)) {
                         // Configurable chance: Wandering Trader (Overworld/End) or Piglin Barter (Nether)
                         ld.levelsSinceLastEvent = 0; // reset pity timer on event
@@ -31158,6 +31378,21 @@ public class CombatManager {
 
     // Per-player event tracking. Each player gets their own chance to participate.
     private final java.util.Set<java.util.UUID> eventPendingPlayers = new java.util.HashSet<>();
+    /** Scribe: the inventory slots holding a sherd each player was offered. */
+    private final java.util.Map<java.util.UUID, java.util.List<Integer>> perPlayerScribeSlots = new java.util.HashMap<>();
+    /**
+     * Scribe: the inscriptions each player was offered, decided when the offer was built.
+     *
+     * <p>Rolled once, up front, rather than at the moment of choosing. A player picking a sherd
+     * and then seeing a different set of options than the ones they were weighing would read as
+     * the villager cheating them, and re-rolling per click would also let someone back out and
+     * retry until they got the inscription they wanted.
+     */
+    private final java.util.Map<java.util.UUID, java.util.List<com.crackedgames.craftics.combat.sherd.SherdInscription>>
+        perPlayerScribeOffers = new java.util.HashMap<>();
+    /** Scribe: the sherd slot each player is currently choosing an inscription for. */
+    private final java.util.Map<java.util.UUID, Integer> perPlayerScribePick = new java.util.HashMap<>();
+
     private final java.util.Map<java.util.UUID, java.util.List<int[]>> perPlayerEnchanterSlots = new java.util.HashMap<>();
 
     /** Most enchanted items one disenchanter menu lists, so the choice rows stay on screen. */
@@ -34177,6 +34412,10 @@ public class CombatManager {
             handleEnchanterDialogueChoice(player, action);
             return;
         }
+        if (eventRoomPending && "scribe".equals(eventRoomType)) {
+            handleScribeDialogueChoice(player, action);
+            return;
+        }
         if (eventRoomPending && "disenchanter".equals(eventRoomType)) {
             handleDisenchanterDialogueChoice(player, action);
             return;
@@ -35286,6 +35525,403 @@ public class CombatManager {
             java.util.List.of());
         sendDialogue(player, resultDef);
         // DISMISS on click-through routes back here → finishEnchanterPlayer.
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // The Scribe - inscribes a sherd, or hands you one to practise with
+    // ─────────────────────────────────────────────────────────────────────
+
+    /** How many inscriptions the Scribe offers to choose between. */
+    private static final int SCRIBE_OFFER_COUNT = 3;
+
+    /**
+     * Run the Scribe event: a villager who adds a behaviour to a pottery sherd.
+     *
+     * <p>Structurally the enchanter, pointed at sherds. What differs is the empty-handed case:
+     * the enchanter tells a player with no weapon that it has nothing to work with and the
+     * event is wasted on them, whereas the Scribe hands over a random sherd and sends them away
+     * to learn it. A player who does not yet use sherds is exactly the player worth giving one
+     * to, and an event that punished them for not already owning the thing it modifies would
+     * only ever reward the players who need it least.
+     */
+    private void offerScribe(ServerPlayerEntity savedPlayer) {
+        List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+        }
+
+        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
+        eventRoomPending = true;
+        eventRoomType = "scribe";
+
+        eventPendingPlayers.clear();
+        perPlayerScribeSlots.clear();
+        perPlayerScribeOffers.clear();
+        perPlayerScribePick.clear();
+        for (ServerPlayerEntity p : members) {
+            eventPendingPlayers.add(p.getUuid());
+        }
+
+        BlockPos origin = getEventRoomOrigin(savedPlayer);
+        buildShrineArea(world, origin, true);
+
+        // Force-load the room + approach walkway so the villager and cinematic can't desync
+        // on a chunk unload. Released in finalizeScribeEvent.
+        {
+            int margin = 32;
+            int minCX = (origin.getX() - margin) >> 4;
+            int maxCX = (origin.getX() + 9 + margin) >> 4;
+            int minCZ = (origin.getZ() - 8 - 1 - margin) >> 4;
+            int maxCZ = (origin.getZ() + 9 + margin) >> 4;
+            for (int cx = minCX; cx <= maxCX; cx++) {
+                for (int cz = minCZ; cz <= maxCZ; cz++) {
+                    world.setChunkForced(cx, cz, true);
+                    forcedChunks.add(new net.minecraft.util.math.ChunkPos(cx, cz));
+                }
+            }
+        }
+
+        clearStrayEventNpcs(world, origin);
+        spawnedTraveler = (net.minecraft.entity.passive.VillagerEntity)
+            net.minecraft.entity.EntityType.VILLAGER.spawn(world, origin.up(), net.minecraft.entity.SpawnReason.EVENT);
+        if (spawnedTraveler != null) {
+            spawnedTraveler.refreshPositionAndAngles(
+                origin.getX() + 4.5, origin.getY() + 1, origin.getZ() + 6.5, 180f, 0f);
+            spawnedTraveler.setAiDisabled(true);
+            spawnedTraveler.setInvulnerable(true);
+            spawnedTraveler.setBaby(false);
+            world.spawnEntity(spawnedTraveler);
+        }
+
+        final int WALKWAY_LEN = 8;
+        for (ServerPlayerEntity p : members) {
+            p.requestTeleport(origin.getX() + 4.5, origin.getY() + 1,
+                origin.getZ() - WALKWAY_LEN + 0.5);
+            p.setYaw(0f);
+            p.setHeadYaw(0f);
+            p.setBodyYaw(0f);
+        }
+
+        // Decide each player's sherds and inscription offer now, so the list they weigh is the
+        // list they get. See perPlayerScribeOffers.
+        java.util.Random rng = new java.util.Random();
+        for (ServerPlayerEntity p : members) {
+            perPlayerScribeSlots.put(p.getUuid(), findInscribableSherdSlots(p));
+            perPlayerScribeOffers.put(p.getUuid(), rollScribeOffers(rng));
+        }
+
+        java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
+        for (ServerPlayerEntity p : members) partyUuids.add(p.getUuid());
+
+        final ServerPlayerEntity ref = savedPlayer;
+        this.activeWalkers.clear();
+        this.activeCinematic = new EventCinematic(partyUuids,
+            () -> {
+                for (ServerPlayerEntity p : getOnlinePartyMembers(ref)) {
+                    sendDialogue(p, buildScribeOpeningDialogue(p));
+                }
+            },
+            () -> { /* completion tracked via eventPendingPlayers/finalizeScribeEvent */ });
+
+        final double WALK_SPEED = 1.0 / getMoveTicks();
+        final double npcX = origin.getX() + 4.5;
+        final double npcZ = origin.getZ() + 6.5;
+        int idx = 0;
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.EnterEventCinematicPayload());
+            double tx = origin.getX() + 3.5 + (idx % 3);
+            double ty = origin.getY() + 1;
+            double tz = origin.getZ() + 3.5;
+            double walkDist = Math.hypot(tx - p.getX(), tz - p.getZ());
+            int walkTicks = Math.max(1, (int) Math.round(walkDist / WALK_SPEED));
+            final ServerPlayerEntity fp = p;
+            EntityWalker.Mover mover = (x, y, z, yaw) -> {
+                fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
+                //? if <=1.21.4 {
+                fp.prevX = fp.getX();
+                fp.prevY = fp.getY();
+                fp.prevZ = fp.getZ();
+                //?} else {
+                /*fp.lastX = fp.getX();
+                fp.lastY = fp.getY();
+                fp.lastZ = fp.getZ();
+                *///?}
+                double dx = x - fp.getX(), dz = z - fp.getZ();
+                double len = Math.sqrt(dx * dx + dz * dz);
+                if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
+                fp.setPosition(x, y, z);
+                fp.networkHandler.requestTeleport(x, y, z, yaw, 0f);
+                broadcastPlayerPositionToOthers(fp);
+            };
+            final java.util.UUID fu = p.getUuid();
+            final double ftx = tx, ftz = tz;
+            activeWalkers.add(new EntityWalker(mover,
+                p.getX(), p.getY(), p.getZ(), tx, ty, tz, walkTicks,
+                () -> {
+                    float faceYaw = (float) Math.toDegrees(Math.atan2(-(npcX - ftx), npcZ - ftz));
+                    fp.setYaw(faceYaw); fp.setHeadYaw(faceYaw); fp.setBodyYaw(faceYaw);
+                    fp.networkHandler.requestTeleport(fp.getX(), fp.getY(), fp.getZ(), faceYaw, 0f);
+                    activeCinematic.markArrived(fu);
+                }));
+            idx++;
+        }
+    }
+
+    /**
+     * Inventory slots holding a sherd that still has room for another inscription.
+     *
+     * <p>A full sherd is left out rather than shown and refused: the visit is worth one pick,
+     * and spending it on something that cannot change is the same wasted click the enchanter
+     * already learned to avoid by dropping un-enchantable weapons from its list.
+     */
+    private java.util.List<Integer> findInscribableSherdSlots(ServerPlayerEntity p) {
+        java.util.List<Integer> slots = new java.util.ArrayList<>();
+        for (int i = 0; i < p.getInventory().size(); i++) {
+            ItemStack stack = p.getInventory().getStack(i);
+            if (stack.isEmpty()) continue;
+            if (!PotterySherdSpells.isPotterySherd(stack.getItem())) continue;
+            if (com.crackedgames.craftics.combat.sherd.SherdModifiers.read(stack).size()
+                    >= com.crackedgames.craftics.combat.sherd.SherdModifiers.MAX_INSCRIPTIONS) continue;
+            slots.add(i);
+        }
+        return slots;
+    }
+
+    /** Pick the inscriptions this player may choose between on this visit. */
+    private java.util.List<com.crackedgames.craftics.combat.sherd.SherdInscription> rollScribeOffers(
+            java.util.Random rng) {
+        java.util.List<com.crackedgames.craftics.combat.sherd.SherdInscription> pool =
+            new java.util.ArrayList<>(java.util.Arrays.asList(
+                com.crackedgames.craftics.combat.sherd.SherdInscription.values()));
+        java.util.Collections.shuffle(pool, rng);
+        return new java.util.ArrayList<>(pool.subList(0, Math.min(SCRIBE_OFFER_COUNT, pool.size())));
+    }
+
+    /**
+     * The line the Scribe opens with: the normal offer, or the gift for someone with no sherd.
+     *
+     * <p>The gift is handed over as the line is built rather than behind a choice, so a player
+     * who has never used a sherd leaves with one even if they immediately click away.
+     */
+    private com.crackedgames.craftics.combat.dialogue.DialogueDefinition buildScribeOpeningDialogue(
+            ServerPlayerEntity p) {
+        java.util.List<Integer> slots = perPlayerScribeSlots.getOrDefault(p.getUuid(), java.util.List.of());
+        if (!slots.isEmpty()) {
+            return com.crackedgames.craftics.combat.dialogue.DialogueRegistry.get("craftics:scribe_intro");
+        }
+
+        java.util.List<Item> sherds = new java.util.ArrayList<>(PotterySherdSpells.POTTERY_SHERDS);
+        Item gift = sherds.get(new java.util.Random().nextInt(sherds.size()));
+        ItemStack stack = new ItemStack(gift);
+        String giftName = stack.getName().getString();
+        if (!p.getInventory().insertStack(stack)) p.dropItem(stack, false);
+
+        return new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+            "craftics:scribe_gift", "minecraft:villager", "scribe_gift",
+            java.util.List.of(
+                "\"You carry no clay for me to write on.\"",
+                "\"Take this one. Learn what it already says.\"",
+                "\"When you know its voice, come back and I will teach it another.\"",
+                "§7Received §e" + giftName),
+            java.util.List.of());
+    }
+
+    /** Sherd-select dialogue: one row per inscribable sherd, plus Back. */
+    private com.crackedgames.craftics.combat.dialogue.DialogueDefinition buildScribeSherdDialogue(
+            ServerPlayerEntity p) {
+        java.util.List<Integer> slots = perPlayerScribeSlots.getOrDefault(p.getUuid(), java.util.List.of());
+        java.util.List<com.crackedgames.craftics.combat.dialogue.DialogueChoice> choices =
+            new java.util.ArrayList<>();
+        int added = 0;
+        for (int slot : slots) {
+            ItemStack stack = p.getInventory().getStack(slot);
+            if (stack.isEmpty() || !PotterySherdSpells.isPotterySherd(stack.getItem())) continue;
+            int existing = com.crackedgames.craftics.combat.sherd.SherdModifiers.read(stack).size();
+            String suffix = existing == 0 ? "" : " §7(" + existing + "/"
+                + com.crackedgames.craftics.combat.sherd.SherdModifiers.MAX_INSCRIPTIONS + ")";
+            choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+                stack.getName().getString() + suffix, "scribe:pick:" + slot,
+                com.crackedgames.craftics.combat.sherd.SherdModifiers.tooltipFor(stack)));
+            if (++added >= 5) break;
+        }
+        choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice("Back", "scribe:back"));
+        java.util.List<String> lines = added == 0
+            ? java.util.List.of("\"Nothing you carry will take another mark.\"")
+            : java.util.List.of("\"Which sherd shall I write on?\"",
+                                "\"Hover, and I will read you what it already says.\"");
+        return new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+            "craftics:scribe_sherds", "minecraft:villager", "scribe_sherds", lines, choices);
+    }
+
+    /** Inscription-select dialogue for the sherd the player picked. */
+    private com.crackedgames.craftics.combat.dialogue.DialogueDefinition buildScribeInscriptionDialogue(
+            ServerPlayerEntity p, int slot) {
+        ItemStack stack = p.getInventory().getStack(slot);
+        java.util.List<com.crackedgames.craftics.combat.sherd.SherdInscription> offers =
+            perPlayerScribeOffers.getOrDefault(p.getUuid(), java.util.List.of());
+        java.util.List<com.crackedgames.craftics.combat.sherd.SherdModifiers.Entry> existing =
+            com.crackedgames.craftics.combat.sherd.SherdModifiers.read(stack);
+
+        java.util.List<com.crackedgames.craftics.combat.dialogue.DialogueChoice> choices =
+            new java.util.ArrayList<>();
+        int added = 0;
+        for (com.crackedgames.craftics.combat.sherd.SherdInscription inscription : offers) {
+            // An inscription already on this sherd would be refused by inscribe(); leaving it
+            // on the list would offer the player a choice that silently does nothing.
+            boolean already = false;
+            for (com.crackedgames.craftics.combat.sherd.SherdModifiers.Entry entry : existing) {
+                if (entry.inscription() == inscription) { already = true; break; }
+            }
+            if (already) continue;
+            int magnitude = inscription.defaultMagnitude();
+            choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+                inscription.color() + inscription.displayName(),
+                "scribe:write:" + inscription.name() + ":" + magnitude,
+                inscription.describe(magnitude)));
+            added++;
+        }
+        choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice("Back", "scribe:sherds"));
+
+        String sherdName = stack.isEmpty() ? "it" : stack.getName().getString();
+        java.util.List<String> lines = added == 0
+            ? java.util.List.of("\"This one already knows everything I could teach it.\"")
+            : java.util.List.of("\"What shall §e" + sherdName + "§f learn?\"");
+        return new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+            "craftics:scribe_inscriptions", "minecraft:villager", "scribe_inscriptions", lines, choices);
+    }
+
+    /**
+     * Drive the Scribe off a dialogue choice. Actions are {@code scribe:sherds},
+     * {@code scribe:back}, {@code scribe:decline}, {@code scribe:pick:<slot>} and
+     * {@code scribe:write:<INSCRIPTION>:<magnitude>}.
+     */
+    private void handleScribeDialogueChoice(ServerPlayerEntity player, String action) {
+        if (com.crackedgames.craftics.network.DialogueChoicePayload.ACTION_DISMISS.equals(action)) {
+            finishScribePlayer(player);
+            return;
+        }
+        if (action == null || !action.startsWith("scribe:")) {
+            finishScribePlayer(player);
+            return;
+        }
+        String rest = action.substring("scribe:".length());
+        switch (rest) {
+            case "sherds" -> {
+                sendDialogue(player, buildScribeSherdDialogue(player));
+                return;
+            }
+            case "back" -> {
+                sendDialogue(player, buildScribeOpeningDialogue(player));
+                return;
+            }
+            case "decline" -> {
+                sendDialogue(player, new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+                    "craftics:scribe_decline", "", "scribe_decline",
+                    java.util.List.of("You leave the Scribe to their work."),
+                    java.util.List.of()));
+                return;
+            }
+            default -> { /* pick: / write: handled below */ }
+        }
+
+        if (rest.startsWith("pick:")) {
+            int slot;
+            try { slot = Integer.parseInt(rest.substring("pick:".length())); }
+            catch (NumberFormatException e) { finishScribePlayer(player); return; }
+            // Re-validated against the offer rather than trusted: a stale or spoofed slot id
+            // must re-offer the list, never write to whatever happens to sit there now.
+            if (!perPlayerScribeSlots.getOrDefault(player.getUuid(), java.util.List.of()).contains(slot)) {
+                sendDialogue(player, buildScribeSherdDialogue(player));
+                return;
+            }
+            perPlayerScribePick.put(player.getUuid(), slot);
+            sendDialogue(player, buildScribeInscriptionDialogue(player, slot));
+            return;
+        }
+
+        if (!rest.startsWith("write:")) {
+            finishScribePlayer(player);
+            return;
+        }
+        String[] parts = rest.substring("write:".length()).split(":", 2);
+        com.crackedgames.craftics.combat.sherd.SherdInscription inscription =
+            com.crackedgames.craftics.combat.sherd.SherdInscription.byName(parts[0]);
+        Integer slot = perPlayerScribePick.get(player.getUuid());
+        if (inscription == null || slot == null) {
+            sendDialogue(player, buildScribeSherdDialogue(player));
+            return;
+        }
+        // Only an inscription this player was actually offered. The action string is client
+        // input; without this it alone would let any client write any inscription.
+        if (!perPlayerScribeOffers.getOrDefault(player.getUuid(), java.util.List.of()).contains(inscription)) {
+            sendDialogue(player, buildScribeSherdDialogue(player));
+            return;
+        }
+        int magnitude = inscription.defaultMagnitude();
+        if (parts.length > 1) {
+            try { magnitude = Integer.parseInt(parts[1]); }
+            catch (NumberFormatException ignored) { /* keep the default */ }
+        }
+        // And never above the strength it was offered at, for the same reason.
+        magnitude = Math.min(magnitude, inscription.defaultMagnitude());
+
+        ItemStack stack = player.getInventory().getStack(slot);
+        boolean written = com.crackedgames.craftics.combat.sherd.SherdModifiers
+            .inscribe(stack, inscription, magnitude);
+        if (!written) {
+            sendDialogue(player, buildScribeSherdDialogue(player));
+            return;
+        }
+        // One inscription per visit: the pick is spent.
+        perPlayerScribeSlots.put(player.getUuid(), java.util.List.of());
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos origin = getEventRoomOrigin(player);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANT,
+            origin.getX() + 4.5, origin.getY() + 2.5, origin.getZ() + 4.5, 40, 0.5, 1.0, 0.5, 0.1);
+
+        sendDialogue(player, new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+            "craftics:scribe_result", "minecraft:villager", "scribe_result",
+            java.util.List.of(
+                "\"It is written. The clay will remember.\"",
+                "§7" + stack.getName().getString() + "§7 is now "
+                    + inscription.color() + inscription.displayName()),
+            java.util.List.of()));
+        // DISMISS on click-through routes back here -> finishScribePlayer.
+    }
+
+    /** Mark one player done with the Scribe, exit their cinematic, finalize when all are done. */
+    private void finishScribePlayer(ServerPlayerEntity player) {
+        eventPendingPlayers.remove(player.getUuid());
+        ServerPlayNetworking.send(player,
+            new com.crackedgames.craftics.network.ExitEventCinematicPayload());
+        if (!eventPendingPlayers.isEmpty()) return;
+        finalizeScribeEvent(player);
+    }
+
+    /** Tear down Scribe state, release force-loaded chunks, transition back into battle. */
+    private void finalizeScribeEvent(ServerPlayerEntity referencePlayer) {
+        eventRoomPending = false;
+        eventRoomType = null;
+        this.activeCinematic = null;
+        this.activeWalkers.clear();
+        if (spawnedTraveler != null && spawnedTraveler.isAlive()) {
+            spawnedTraveler.discard();
+            spawnedTraveler = null;
+        }
+        perPlayerScribeSlots.clear();
+        perPlayerScribeOffers.clear();
+        perPlayerScribePick.clear();
+
+        if (!forcedChunks.isEmpty() && referencePlayer != null) {
+            ServerWorld cw = (ServerWorld) referencePlayer.getEntityWorld();
+            for (net.minecraft.util.math.ChunkPos cp : forcedChunks) {
+                cw.setChunkForced(cp.x, cp.z, false);
+            }
+            forcedChunks.clear();
+        }
+
+        scheduleEventReturnTransition(referencePlayer);
     }
 
     /** Mark one player done with the enchanter event, exit their cinematic
@@ -37654,6 +38290,14 @@ public class CombatManager {
                     moveList.add(shown.z());
                 }
             }
+        } else if (PotterySherdSpells.isPotterySherd(player.getMainHandStack().getItem())) {
+            // Holding a sherd: the cast-tile ring below is the whole truth, so the weapon's
+            // attack tiles are deliberately left empty.
+            //
+            // A click with a sherd in hand casts the sherd - getActionMode routes sherds to
+            // USE_ITEM - so red tiles outside the sherd's reach were offering a click the
+            // server then refused, and red tiles inside it described a swing that was never
+            // going to happen. Two rings disagreeing about one item is worse than one ring.
         } else {
             // --- Build attack tiles ---
             int range = getEffectiveWeaponRange();
@@ -37910,9 +38554,13 @@ public class CombatManager {
         // means to strike. Empty for everyone not wearing the set.
         EnemyForecast forecast = buildEnemyForecast();
 
+        // Sherd range indicator: where the held sherd may be aimed, or the ground a self-cast
+        // one covers. Empty whenever a sherd isn't held.
+        int[] castArr = buildSherdCastTiles();
+
         sendToAllParty(new TileSetPayload(
             moveArr, attackArr, dangerArr, warningArr, enemyMapArr, enemyTypesBuilder.toString(), mountArr,
-            warningArrowArr, forecast.pathTiles(), forecast.strikeTiles()
+            warningArrowArr, forecast.pathTiles(), forecast.strikeTiles(), castArr
         ));
 
         // Auto-end turn when AP is depleted (configurable)
@@ -37954,6 +38602,43 @@ public class CombatManager {
                 endTurnHintSent = true;
             }
         }
+    }
+
+    /**
+     * The sherd range indicator: every tile the held sherd may be aimed at, or for a self-cast
+     * one, the ground it covers.
+     *
+     * <p>Holding a sherd used to paint the WEAPON's attack tiles, because the highlight builder
+     * only ever asked what the sword could reach. A player holding a range-3 Corrode saw their
+     * melee ring, and a player holding the range-1 Phantom Slash saw a bow's - so the one
+     * highlight on screen was actively lying about the thing in their hand.
+     *
+     * <p>Resolved from the STACK, so an inscribed sherd shows the range it actually has rather
+     * than the range its item type started with.
+     *
+     * <p>Server-side rather than predicted on the client for the reason the attack tiles are:
+     * the set comes from the validator itself ({@link SpellEngine#targetableTiles}), so a
+     * highlighted tile is a tile the cast provably accepts.
+     */
+    private int[] buildSherdCastTiles() {
+        if (player == null) return new int[0];
+        ItemStack held = player.getMainHandStack();
+        if (held.isEmpty() || !PotterySherdSpells.isPotterySherd(held.getItem())) return new int[0];
+        var spell = com.crackedgames.craftics.combat.sherd.SherdModifiers.resolve(held);
+        if (spell == null) return new int[0];
+
+        java.util.Set<GridPos> tiles = spell.isSelfCast()
+            ? com.crackedgames.craftics.combat.sherd.SpellEngine.affectedAreaTiles(spell, arena, enemies)
+            : com.crackedgames.craftics.combat.sherd.SpellEngine.targetableTiles(spell, arena);
+
+        java.util.List<Integer> flat = new java.util.ArrayList<>(tiles.size() * 2);
+        for (GridPos tile : tiles) {
+            flat.add(tile.x());
+            flat.add(tile.z());
+        }
+        int[] out = new int[flat.size()];
+        for (int i = 0; i < out.length; i++) out[i] = flat.get(i);
+        return out;
     }
 
     /** Flattened tile lists for the Steampunk radar overlay. */
@@ -38146,7 +38831,7 @@ public class CombatManager {
     private void clearHighlights() {
         sendToAllParty(new TileSetPayload(
             new int[0], new int[0], new int[0], new int[0], new int[0], "", new int[0], new int[0],
-            new int[0], new int[0]
+            new int[0], new int[0], new int[0]
         ));
     }
 
@@ -38212,7 +38897,7 @@ public class CombatManager {
             warnList.stream().mapToInt(Integer::intValue).toArray(),
             new int[0], "", new int[0],
             arrowList.stream().mapToInt(Integer::intValue).toArray(),
-            new int[0], new int[0]));
+            new int[0], new int[0], new int[0]));
     }
 
     /**

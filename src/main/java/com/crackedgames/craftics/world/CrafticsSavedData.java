@@ -143,6 +143,19 @@ public class CrafticsSavedData extends PersistentState {
         public int branchChoice = -1;
         public String discoveredBiomes = "";
         public int ngPlusLevel = 0;
+        /**
+         * True once this island has cleared the campaign's final biome and has NOT yet
+         * chosen to take the next NG+ cycle.
+         *
+         * <p>Beating the final boss used to call {@link #startNewGamePlus()} on the spot, which
+         * wiped every unlock the party had just spent the campaign earning - no warning, no
+         * choice, and no way back to the biomes they wanted to replay. Now the clear only raises
+         * this flag: the island stays exactly as it was, every biome still unlocked and
+         * replayable, until somebody opts in at the level select block. The flag is what makes
+         * the NG+ button appear there, and {@link #startNewGamePlus()} clears it, so the offer
+         * is consumed by the cycle it starts and re-earned by the next campaign clear.
+         */
+        public boolean campaignCompleted = false;
         public boolean inCombat = false;
         public boolean starterGuideGranted = false;
         public int worldSlot = -1;
@@ -550,6 +563,8 @@ public class CrafticsSavedData extends PersistentState {
 
         public void startNewGamePlus() {
             ngPlusLevel++;
+            // The offer is consumed by the cycle it starts: the next campaign clear raises it again.
+            campaignCompleted = false;
             highestBiomeUnlocked = 1;
             discoveredBiomes = "";
             activeBiomeId = "";
@@ -596,6 +611,7 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putInt("branchChoice", branchChoice);
             nbt.putString("discoveredBiomes", discoveredBiomes);
             nbt.putInt("ngPlusLevel", ngPlusLevel);
+            nbt.putBoolean("campaignCompleted", campaignCompleted);
             nbt.putBoolean("inCombat", inCombat);
             nbt.putBoolean("starterGuideGranted", starterGuideGranted);
             nbt.putInt("worldSlot", worldSlot);
@@ -686,6 +702,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.branchChoice = nbt.contains("branchChoice") ? nbt.getInt("branchChoice") : -1;
             pd.discoveredBiomes = nbt.contains("discoveredBiomes") ? nbt.getString("discoveredBiomes") : "";
             pd.ngPlusLevel = nbt.contains("ngPlusLevel") ? nbt.getInt("ngPlusLevel") : 0;
+            pd.campaignCompleted = nbt.contains("campaignCompleted") && nbt.getBoolean("campaignCompleted");
             pd.inCombat = nbt.contains("inCombat") && nbt.getBoolean("inCombat");
             pd.starterGuideGranted = nbt.contains("starterGuideGranted") && nbt.getBoolean("starterGuideGranted");
             pd.worldSlot = nbt.contains("worldSlot") ? nbt.getInt("worldSlot") : -1;
@@ -819,6 +836,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.branchChoice = nbt.getInt("branchChoice", -1);
             pd.discoveredBiomes = nbt.getString("discoveredBiomes", "");
             pd.ngPlusLevel = nbt.getInt("ngPlusLevel", 0);
+            pd.campaignCompleted = nbt.getBoolean("campaignCompleted", false);
             pd.inCombat = nbt.getBoolean("inCombat", false);
             pd.starterGuideGranted = nbt.getBoolean("starterGuideGranted", false);
             pd.worldSlot = nbt.getInt("worldSlot", -1);

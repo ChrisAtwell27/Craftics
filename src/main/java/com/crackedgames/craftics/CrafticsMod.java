@@ -2188,7 +2188,10 @@ public class CrafticsMod implements ModInitializer {
                     "§6--- Craftics Debug Info ---\n" +
                     "§fBiomes unlocked: §e" + pd.highestBiomeUnlocked + "\n" +
                     "§fEmeralds: §a" + pd.emeralds + "\n" +
-                    "§fNG+ level: §d" + pd.ngPlusLevel + "\n" +
+                    "§fNG+ level: §d" + pd.ngPlusLevel
+                        + (pd.campaignCompleted
+                            ? " §a(NG+" + (pd.ngPlusLevel + 1) + " offered, not taken)" : "")
+                        + "\n" +
                     "§fBranch choice: §b" + pd.branchChoice + "\n" +
                     "§fActive biome: §c" + (pd.activeBiomeId.isEmpty() ? "none" : pd.activeBiomeId) + "\n" +
                     "§fDiscovered: §7" + (pd.discoveredBiomes.isEmpty() ? "none" : pd.discoveredBiomes)
@@ -2298,6 +2301,97 @@ public class CrafticsMod implements ModInitializer {
                     .executes(setNgplusExec)
                     .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
                         .executes(setNgplusExec))));
+
+            // /craftics ngplus_rollback [restore_progress] [player]: step an island back one
+            // NG+ cycle and leave the next one on offer at the level select block.
+            //
+            // Exists for the players the OLD victory flow force-advanced. Beating the final
+            // boss used to call startNewGamePlus() on the spot, so anyone who cleared the
+            // campaign before this build woke up a cycle higher with their unlocks wiped and
+            // no say in it. This build stops that happening again but cannot undo what already
+            // happened, because the reset overwrote the record it would have to read back.
+            // So: hand the difficulty back, and hand the CHOICE back with it.
+            //
+            // restore_progress (default false) also re-opens the campaign, for the
+            // case where the wipe is the part being undone rather than the difficulty. It is
+            // off by default because the honest answer is that the old unlock state is gone -
+            // this reconstructs a campaign-complete island from the CURRENT branch rather than
+            // restoring what was actually there, and an admin should opt into that knowingly.
+            var ngplusRollbackExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                ServerCommandSource src = ctx.getSource();
+                ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                boolean restoreProgress;
+                try {
+                    restoreProgress = com.mojang.brigadier.arguments.BoolArgumentType
+                        .getBool(ctx, "restore_progress");
+                } catch (IllegalArgumentException noArg) {
+                    restoreProgress = false;
+                }
+                CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
+                // NG+ is island state, so resolve the island rather than writing the target's
+                // own record - for a player in a party that record is not the one anything reads.
+                java.util.UUID island = data.getEffectiveWorldOwner(targetPlayer.getUuid());
+                CrafticsSavedData.PlayerData pd = data.getPlayerData(island);
+                String targetName = targetPlayer.getName().getString();
+
+                for (java.util.UUID member : data.getPartyMemberUuids(targetPlayer.getUuid())) {
+                    if (com.crackedgames.craftics.combat.CombatManager.isEngaged(member)) {
+                        src.sendError(Text.literal("§cSomeone on that island is mid-run."
+                            + " Rolling the cycle back now would rewrite the run under them."));
+                        return 0;
+                    }
+                }
+                if (pd.ngPlusLevel <= 0) {
+                    src.sendError(Text.literal("§c" + targetName + "'s island is already at NG+0"
+                        + " - there is no cycle to roll back. Use §eset_ngplus§c to set a level outright."));
+                    return 0;
+                }
+
+                int from = pd.ngPlusLevel;
+                pd.ngPlusLevel = from - 1;
+                // The whole point: they land on the old difficulty with the button still there,
+                // free to take the cycle again whenever they actually want it.
+                pd.campaignCompleted = true;
+
+                int restoredBiomes = 0;
+                if (restoreProgress) {
+                    java.util.List<String> order = com.crackedgames.craftics.level.campaign.CampaignManager
+                        .orderedBiomeIds(Math.max(0, pd.branchChoice));
+                    for (String biomeId : order) pd.discoverBiome(biomeId);
+                    // A cleared campaign sits one past the last biome - never step BACKWARDS,
+                    // in case this is run on an island that is already further along.
+                    pd.highestBiomeUnlocked = Math.max(pd.highestBiomeUnlocked, order.size() + 1);
+                    restoredBiomes = order.size();
+                }
+                data.markDirty();
+                updateWorldIcon(src.getServer(), pd);
+
+                final int to = pd.ngPlusLevel;
+                final int restored = restoredBiomes;
+                src.sendFeedback(() -> Text.literal("§aRolled " + targetName + "'s island back from NG+"
+                    + from + " to NG+" + to + ". NG+" + from + " is on offer at the level select block."
+                    + (restored > 0 ? " Restored " + restored + " biomes." : "")), true);
+
+                // Tell the island, not just the admin who typed it: their difficulty and
+                // (optionally) their unlocks just changed under them.
+                for (java.util.UUID member : data.getPartyMemberUuids(targetPlayer.getUuid())) {
+                    ServerPlayerEntity p = src.getServer().getPlayerManager().getPlayer(member);
+                    if (p == null) continue;
+                    p.sendMessage(Text.literal("§6Your island has been moved back to §eNG+" + to
+                        + "§6 by an admin."), false);
+                    p.sendMessage(Text.literal("§7NG+" + from
+                        + " is waiting at the level select block whenever you want it."), false);
+                }
+                return 1;
+            };
+            root.then(CommandManager.literal("ngplus_rollback")
+                .requires(CrafticsPermissions.require("command.ngplus_rollback"))
+                .executes(ngplusRollbackExec)
+                .then(CommandManager.argument("restore_progress",
+                        com.mojang.brigadier.arguments.BoolArgumentType.bool())
+                    .executes(ngplusRollbackExec)
+                    .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                        .executes(ngplusRollbackExec))));
 
             // /craftics set_stat <stat> <value>: set a specific stat's allocated points
             root.then(CommandManager.literal("set_stat").requires(CrafticsPermissions.require("command.set_stat"))
@@ -2458,7 +2552,7 @@ public class CrafticsMod implements ModInitializer {
             // CombatManager.rollEvent compares against. Must match the
             // {@code forced.equals("...")} arms over there exactly.
             java.util.List<String> eventNames = new java.util.ArrayList<>(java.util.List.of(
-                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "disenchanter", "trader", "piglin_barter", "none",
+                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "disenchanter", "scribe", "trader", "piglin_barter", "none",
                 // Also a roll-chain branch, and was missing here since it shipped - the
                 // raid was forceable in the chain but unreachable from the command.
                 "raid"
