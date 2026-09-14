@@ -423,7 +423,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
                     return;
                 }
                 ClientPlayNetworking.send(
-                    new com.crackedgames.craftics.network.NewGamePlusPayload());
+                    new com.crackedgames.craftics.network.NewGamePlusPayload(nextCycle));
                 if (this.client != null && this.client.player != null) {
                     this.client.player.closeHandledScreen();
                 }

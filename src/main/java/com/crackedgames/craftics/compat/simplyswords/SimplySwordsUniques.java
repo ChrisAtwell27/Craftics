@@ -152,7 +152,11 @@ public final class SimplySwordsUniques {
         any |= u("ribboncleaver", DamageType.CLEAVING, sword(0), 1, 1, ribboncleaver());
         any |= u("twisted_blade", DamageType.SLASHING, sword(0), 1, 1, twistedBlade());
         any |= u("harbinger", DamageType.BLUNT, axe(2), 3, 1, harbinger());
-        any |= u("sword_on_a_stick", DamageType.PHYSICAL, sword(-2), 1, 2, swordOnAStick());
+        // A cheap joke craft, so it hits like a stone sword with a point shaved off for its reach.
+        // It used to read netherite sword damage like the real boss-drop uniques, which made a
+        // 13-damage, 1 AP, reach-2 weapon available in the first biome.
+        any |= u("sword_on_a_stick", DamageType.PHYSICAL,
+            () -> Math.max(1, CrafticsMod.CONFIG.dmgStoneSword() - 1), 1, 2, swordOnAStick());
 
         // -- Added in Simply Swords 1.70 --
         // AP and range follow the standard-weapon conventions in SimplySwordsCompat for each

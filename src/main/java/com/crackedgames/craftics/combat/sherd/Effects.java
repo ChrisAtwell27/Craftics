@@ -242,6 +242,18 @@ public final class Effects {
         };
     }
 
+    /** Heal the target for a share of its own max HP (at least 1). */
+    public static SpellEffect healTargetPercent(double percent) {
+        return (ctx, target, report) -> {
+            if (!target.hasEntity() || !target.entity().isAlive()) return;
+            CombatEntity ally = target.entity();
+            int healed = Math.max(1, (int) Math.round(ally.getEffectiveMaxHp() * percent));
+            ally.heal(healed);
+            report.hit(target.tile());
+            report.say("§a" + ally.getDisplayName() + " healed " + healed + " HP");
+        };
+    }
+
     public static SpellEffect buffTargetAttack(int bonus, int turns) {
         return (ctx, target, report) -> {
             if (!target.hasEntity() || !target.entity().isAlive()) return;

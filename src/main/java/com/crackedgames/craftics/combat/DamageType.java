@@ -142,12 +142,16 @@ public enum DamageType {
     public static final int DAMAGE_PER_AFFINITY_POINT = 3;
 
     /**
-     * Max HP each level of Pet affinity grants to every gear-scaling ally the player
-     * owns - 5 hearts per level. Unlike {@link #DAMAGE_PER_AFFINITY_POINT} this comes
-     * from levelled Pet affinity only, not from gear affinity points, so armour that
-     * happens to carry Pet affinity boosts ally damage without inflating ally HP.
+     * Share of an ally's base max HP each level of Pet affinity adds, for every gear-scaling
+     * ally the player owns. Unlike {@link #DAMAGE_PER_AFFINITY_POINT} this comes from levelled
+     * Pet affinity only, not from gear affinity points, so armour that happens to carry Pet
+     * affinity boosts ally damage without inflating ally HP.
+     *
+     * <p>A percentage rather than a flat amount: a flat +10 per level swamped the base stat, so
+     * by a few levels every pet had about the same HP and an iron golem was a big coal golem.
+     * 0.35 keeps an iron golem (30 base) at roughly the old +10 per level.
      */
-    public static final int ALLY_HP_PER_PET_AFFINITY_LEVEL = 10;
+    public static final double ALLY_HP_PERCENT_PER_PET_AFFINITY_LEVEL = 0.35;
 
     /**
      * Total damage bonus from gear sources: per-piece armor affinity + trims + potion
@@ -165,9 +169,16 @@ public enum DamageType {
     public static int getTotalBonus(ServerPlayerEntity player, TrimEffects.TrimScan trimScan,
                                      CombatEffects effects, DamageType type,
                                      PlayerProgression.PlayerStats playerStats) {
+        return getTotalBonus(player, trimScan, effects, type, playerStats, DAMAGE_PER_AFFINITY_POINT);
+    }
+
+    /** As above, at an explicit damage-per-point rate (see {@link WeaponCostScaling}). */
+    public static int getTotalBonus(ServerPlayerEntity player, TrimEffects.TrimScan trimScan,
+                                     CombatEffects effects, DamageType type,
+                                     PlayerProgression.PlayerStats playerStats, int damagePerPoint) {
         // Armor affinity is per-piece in half-points: multiply by the damage rate then
-        // halve, so a lone piece (1 half-point) still yields floor(3/2) = 1 damage.
-        int armorDamage = getArmorAffinityHalfPoints(player, type) * DAMAGE_PER_AFFINITY_POINT / 2;
+        // halve, so a lone piece (1 half-point) still yields floor(rate/2) damage.
+        int armorDamage = getArmorAffinityHalfPoints(player, type) * damagePerPoint / 2;
         // Trims, potion effects, and level-up choices are whole affinity points.
         int wholePoints = getTrimBonus(trimScan, type) + getEffectBonus(effects, type);
         // Warden set "Echo": +2 to whichever type the player carries most, recomputed
@@ -180,7 +191,7 @@ public enum DamageType {
                 wholePoints += playerStats.getAffinityPoints(affinity);
             }
         }
-        return armorDamage + wholePoints * DAMAGE_PER_AFFINITY_POINT;
+        return armorDamage + wholePoints * damagePerPoint;
     }
 
     /**
@@ -191,16 +202,21 @@ public enum DamageType {
      *
      * <p>Both the armor/trim/level-up bonus and the mob-head bonus are folded in, so this
      * is the single number an attack adds to its base damage.
+     *
+     * <p>{@code apCost} is the weapon's registered cost, before any set or enchant discount:
+     * a point is worth more on a heavier swing (see {@link WeaponCostScaling}), and a
+     * discount must not also shrink the bonus the swing was balanced around.
      */
     public static int getWeaponAffinityBonus(ServerPlayerEntity player, TrimEffects.TrimScan trimScan,
                                              CombatEffects effects, PlayerProgression.PlayerStats playerStats,
-                                             DamageType primary, DamageType secondary) {
+                                             DamageType primary, DamageType secondary, int apCost) {
+        int perPoint = WeaponCostScaling.damagePerAffinityPoint(apCost);
         ItemStack helmet = player.getEquippedStack(EquipmentSlot.HEAD);
-        int bonus = getTotalBonus(player, trimScan, effects, primary, playerStats)
-            + getMobHeadBonus(helmet, primary);
+        int bonus = getTotalBonus(player, trimScan, effects, primary, playerStats, perPoint)
+            + getMobHeadAffinityPoints(helmet, primary) * perPoint;
         if (secondary != null && secondary != primary) {
-            int second = getTotalBonus(player, trimScan, effects, secondary, playerStats)
-                + getMobHeadBonus(helmet, secondary);
+            int second = getTotalBonus(player, trimScan, effects, secondary, playerStats, perPoint)
+                + getMobHeadAffinityPoints(helmet, secondary) * perPoint;
             bonus += second / 2;
         }
         return bonus;

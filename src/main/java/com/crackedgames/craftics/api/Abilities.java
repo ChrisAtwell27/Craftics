@@ -7,6 +7,7 @@ import com.crackedgames.craftics.combat.PlayerCombatStats;
 import com.crackedgames.craftics.combat.PlayerProgression;
 import com.crackedgames.craftics.combat.SwordAxeEnchantEffects;
 import com.crackedgames.craftics.combat.WeaponAbility;
+import com.crackedgames.craftics.combat.WeaponCostScaling;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 
@@ -38,16 +39,27 @@ public final class Abilities {
     // it besides a JSON datapack keyword (see WeaponJsonLoader, which now treats "bleed" as a
     // documented no-op instead) and these doc examples, so removing it costs nothing real.
 
+    /** Registered AP cost of the weapon in the player's main hand. */
+    private static int heldApCost(net.minecraft.server.network.ServerPlayerEntity player) {
+        return com.crackedgames.craftics.api.registry.WeaponRegistry.getApCost(
+            player.getMainHandStack().getItem());
+    }
+
     /**
      * Affinity-scaled chance to hit one adjacent enemy for half base damage.
-     * Chance = baseChance + (SLASHING affinity points * bonusPerPoint) + (luckPoints * 0.02).
+     * Chance = baseChance + (SLASHING affinity points * per-point rate) + (luckPoints * 0.02).
+     *
+     * <p>The per-point rate comes from the held weapon's AP cost (3/5/7% for 1/2/3 AP, see
+     * {@link WeaponCostScaling}), so every weapon is scaled by the same rule. {@code bonusPerPoint}
+     * is kept for source compatibility with existing callers and addons but is no longer read.
      */
     public static WeaponAbilityHandler sweepAdjacent(double baseChance, double bonusPerPoint) {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
             List<String> messages = new ArrayList<>();
             List<CombatEntity> extraTargets = new ArrayList<>();
             int slashingPts = stats != null ? stats.getAffinityPoints(PlayerProgression.Affinity.SLASHING) : 0;
-            double chance = baseChance + (slashingPts * bonusPerPoint) + (luckPoints * 0.02);
+            double perPoint = WeaponCostScaling.sweepPerAffinityPoint(heldApCost(player));
+            double chance = baseChance + (slashingPts * perPoint) + (luckPoints * 0.02);
             if (Math.random() < chance) {
                 List<CombatEntity> adjacent = findAdjacentEnemies(arena, target, 1);
                 for (CombatEntity sweepTarget : adjacent) {
@@ -66,14 +78,16 @@ public final class Abilities {
      * The destroyed defense is also dealt as bonus damage in the same swing: the axe
      * doesn't just bypass armor, it shatters it for the rest of the fight.
      * Uses CLEAVING affinity.
-     * Chance = baseChance + (CLEAVING affinity points * bonusPerPoint) + (luckPoints * 0.02).
+     * Chance = baseChance + (CLEAVING affinity points * per-point rate) + (luckPoints * 0.02),
+     * the rate being 2/4/6% by held weapon AP cost; {@code bonusPerPoint} is no longer read.
      * Destroyed amount = min(current defense, 2 + CLEAVING affinity points).
      */
     public static WeaponAbilityHandler armorIgnore(double baseChance, double bonusPerPoint) {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
             List<String> messages = new ArrayList<>();
             int cleavingPts = stats != null ? stats.getAffinityPoints(PlayerProgression.Affinity.CLEAVING) : 0;
-            double chance = baseChance + (cleavingPts * bonusPerPoint) + (luckPoints * 0.02);
+            double perPoint = WeaponCostScaling.procPerAffinityPoint(heldApCost(player));
+            double chance = baseChance + (cleavingPts * perPoint) + (luckPoints * 0.02);
             int totalDamage = baseDamage;
             if (Math.random() < chance) {
                 int def = target.getDefense();
@@ -96,13 +110,15 @@ public final class Abilities {
     /**
      * Affinity-scaled chance to stun the target for one turn.
      * Uses BLUNT affinity.
-     * Chance = baseChance + (BLUNT affinity points * bonusPerPoint) + (luckPoints * 0.02).
+     * Chance = baseChance + (BLUNT affinity points * per-point rate) + (luckPoints * 0.02),
+     * the rate being 2/4/6% by held weapon AP cost; {@code bonusPerPoint} is no longer read.
      */
     public static WeaponAbilityHandler stun(double baseChance, double bonusPerPoint) {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
             List<String> messages = new ArrayList<>();
             int bluntPts = stats != null ? stats.getAffinityPoints(PlayerProgression.Affinity.BLUNT) : 0;
-            double chance = baseChance + (bluntPts * bonusPerPoint) + (luckPoints * 0.02);
+            double perPoint = WeaponCostScaling.procPerAffinityPoint(heldApCost(player));
+            double chance = baseChance + (bluntPts * perPoint) + (luckPoints * 0.02);
             if (Math.random() < chance) {
                 target.setStunned(true);
                 messages.add("§8STUNNED! " + target.getDisplayName() + " can't move next turn.");

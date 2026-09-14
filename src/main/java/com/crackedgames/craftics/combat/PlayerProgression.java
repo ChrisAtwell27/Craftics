@@ -42,14 +42,14 @@ public class PlayerProgression extends PersistentState {
     }
 
     public enum Affinity {
-        SLASHING("Slashing", "\u00a7c\u2694", "+3 dmg, +5% sweep chance"),
-        CLEAVING("Cleaving", "\u00a76\u2716", "+3 dmg, +3% armor shatter"),
-        BLUNT("Blunt", "\u00a78\u2B24", "+3 dmg, +3% stun chance"),
-        RANGED("Ranged", "\u00a7b\u27B3", "+3 ranged dmg, +5% ricochet chain chance"),
-        WATER("Water", "\u00a73\u2248", "+3 dmg, +3% knockback & Wet"),
-        SPECIAL("Special", "\u00a7d\u2728", "+3 dmg, +3% free AP, +10% conserve consumable"),
-        PET("Pet", "\u00a7a\uD83D\uDC3E", "+3 dmg, +10 HP to allies, +1% spawn egg drops"),
-        PHYSICAL("Physical", "\u00a77\u270A", "+3 dmg, +3% counterattack");
+        SLASHING("Slashing", "\u00a7c\u2694", "+2/3/4 dmg, +3/5/7% sweep (1/2/3 AP weapon)"),
+        CLEAVING("Cleaving", "\u00a76\u2716", "+2/3/4 dmg, +2/4/6% armor shatter (1/2/3 AP weapon)"),
+        BLUNT("Blunt", "\u00a78\u2B24", "+2/3/4 dmg, +2/4/6% stun (1/2/3 AP weapon)"),
+        RANGED("Ranged", "\u00a7b\u27B3", "+2/3/4 ranged dmg (1/2/3 AP weapon), +5% ricochet chain chance"),
+        WATER("Water", "\u00a73\u2248", "+2/3/4 dmg, +2/4/6% knockback & Wet (1/2/3 AP weapon)"),
+        SPECIAL("Special", "\u00a7d\u2728", "+2/3/4 dmg, +2/4/6% free AP (1/2/3 AP weapon), +10% conserve consumable"),
+        PET("Pet", "\u00a7a\uD83D\uDC3E", "+3 dmg, +35% HP to allies, +1% spawn egg drops"),
+        PHYSICAL("Physical", "\u00a77\u270A", "+2/3/4 dmg (1/2/3 AP weapon), +3% counterattack");
 
         public final String displayName;
         public final String icon;

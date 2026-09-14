@@ -91,7 +91,7 @@ public class ModNetworking {
         // The level select block's New Game+ button. One-way and island-wide, so it is
         // gated here rather than trusted from the screen that sent it.
         ServerPlayNetworking.registerGlobalReceiver(NewGamePlusPayload.ID, (payload, context) -> {
-            handleNewGamePlus(context.player());
+            handleNewGamePlus(context.player(), payload.cycle());
         });
 
         // Handle a player's answer to a run-join invite (the Yes/No popup)
@@ -528,15 +528,28 @@ public class ModNetworking {
      * matter more than the usual button: the client's confirm dialog can be skipped by a
      * hand-made packet, and every one of these is re-checked here.
      *
-     * <p>Refused when the offer is not open (nobody has cleared the campaign since the last
-     * cycle), when the sender is only visiting someone else's island, or when the island has a
-     * run in progress - {@code startNewGamePlus} clears the run cursor and relocks the biomes,
-     * which mid-run would silently delete the run its party is standing in.
+     * <p>Refused when the sender is only visiting, when the level select screen is not open,
+     * when the offer is not open (nobody has cleared the campaign since the last cycle), when
+     * {@code requestedCycle} is not the island's next cycle (a stale dialog), when a run lobby is
+     * gathering the party, or when a run is live on the island - {@code startNewGamePlus} clears
+     * the run cursor and relocks the biomes, which mid-run would silently delete the run its
+     * party is standing in.
+     *
+     * <p>Runs on the server thread, like every Fabric play payload handler, so two presses
+     * cannot interleave: the first consumes the offer and the second finds it closed.
      */
-    private static void handleNewGamePlus(ServerPlayerEntity player) {
+    private static void handleNewGamePlus(ServerPlayerEntity player, int requestedCycle) {
         if (com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(player)) {
             player.sendMessage(net.minecraft.text.Text.literal(
                 "§cYou cannot start New Game+ while visiting."), false);
+            return;
+        }
+        // Only from an open level select screen. The confirm dialog sits on top of that screen
+        // without closing it, so a real press always arrives with it open; a packet sent from
+        // anywhere else is not somebody pressing the button.
+        if (!(player.currentScreenHandler instanceof com.crackedgames.craftics.block.LevelSelectScreenHandler)) {
+            player.sendMessage(net.minecraft.text.Text.literal(
+                "§cOpen the level select block to start New Game+."), false);
             return;
         }
         ServerWorld world = (ServerWorld) player.getEntityWorld();
@@ -549,18 +562,29 @@ public class ModNetworking {
                 "§cNew Game+ unlocks once this island has beaten the final boss."), false);
             return;
         }
-        for (java.util.UUID member : data.getPartyMemberUuids(player.getUuid())) {
-            if (CombatManager.isEngaged(member)) {
-                player.sendMessage(net.minecraft.text.Text.literal(
-                    "§cFinish the run in progress before starting New Game+."), false);
-                return;
-            }
-        }
-        if (pd.isInBiomeRun()) {
+        // The dialog named a cycle. If that is no longer the island's next one (a teammate took
+        // it first, an admin rolled it back), the player agreed to something that has changed.
+        if (requestedCycle != pd.ngPlusLevel + 1) {
             player.sendMessage(net.minecraft.text.Text.literal(
-                "§cThis island has a run paused. Finish or abandon it before starting New Game+."), false);
+                "§cThat New Game+ prompt is out of date. This island is on NG+" + pd.ngPlusLevel
+                    + " now, reopen the level select block."), false);
             return;
         }
+        // A lobby gathering the party validated its biome against the unlocks about to relock.
+        if (com.crackedgames.craftics.combat.RunInviteManager.hasPendingLobby(island)) {
+            player.sendMessage(net.minecraft.text.Text.literal(
+                "§cA run is starting on this island. Start New Game+ once it is over."), false);
+            return;
+        }
+        if (islandHasLiveRun(data, island, player.getUuid())) {
+            player.sendMessage(net.minecraft.text.Text.literal(
+                "§cFinish the run in progress before starting New Game+."), false);
+            return;
+        }
+        // Deliberately no refusal for a leftover biome cursor on the island record. Outside a
+        // live run nothing resumes from one (Go Home and the rejoin cleanup both end it), and
+        // startNewGamePlus clears it. Refusing on it left islands unable to take NG+ with no
+        // action available to clear the cursor.
 
         pd.startNewGamePlus();
         data.markDirty();
@@ -582,6 +606,34 @@ public class ModNetworking {
         }
         CrafticsMod.LOGGER.info("Island {} advanced to NG+{} (started by {})",
             island, pd.ngPlusLevel, starter);
+    }
+
+    /**
+     * Whether a run is being played on this island right now: a party member mid-fight or
+     * parked at a between-level gate, or an infinite run that is live rather than parked.
+     *
+     * <p>A parked infinite run is not a live one. Its cursor was moved off the shared fields
+     * when it was suspended, so relocking the campaign cannot disturb it.
+     */
+    private static boolean islandHasLiveRun(CrafticsSavedData data, java.util.UUID island,
+                                            java.util.UUID presser) {
+        for (java.util.UUID member : data.getPartyMemberUuids(presser)) {
+            if (CombatManager.isEngaged(member)
+                    || com.crackedgames.craftics.combat.InfiniteRunManager.isInLiveRun(data, member)) {
+                return true;
+            }
+        }
+        if (com.crackedgames.craftics.combat.InfiniteRunManager.isInLiveRun(data, island)) return true;
+        String hostRef = data.getPlayerData(island).infiniteHostRef;
+        if (hostRef != null && !hostRef.isEmpty()) {
+            try {
+                return com.crackedgames.craftics.combat.InfiniteRunManager
+                    .isInLiveRun(data, java.util.UUID.fromString(hostRef));
+            } catch (IllegalArgumentException ignored) {
+                // A malformed ref points at no run.
+            }
+        }
+        return false;
     }
 
     /**

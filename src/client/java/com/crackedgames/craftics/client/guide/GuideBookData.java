@@ -346,7 +346,7 @@ public class GuideBookData {
                 new Box("minecraft:leather", "Physical", "", "Bare fists."))),
             new Page("Affinity",
                 "Each damage type has an AFFINITY track. Points come from odd-numbered level-ups and gear.\n\n" +
-                "Every affinity point adds +3 damage of that type, plus a per-type perk (see Affinities in Leveling & Stats).\n\n" +
+                "Every affinity point adds +2, +3 or +4 damage of that type for a 1, 2 or 3 AP weapon, plus a per-type perk (see Affinities in Leveling & Stats).\n\n" +
                 "Armor contributes too: every armor piece grants half an affinity point of its material's type - even in mixed sets. Mob-head helmets grant a full point.")
         )));
         basics.add(new Entry("Stacked Enemies", "minecraft:slime_ball", List.of(
@@ -874,18 +874,18 @@ public class GuideBookData {
         )));
         progression.add(new Entry("Affinities", "minecraft:enchanting_table", List.of(
             new Page("Affinity Points",
-                "Odd-numbered level-ups grant Affinity Points. Each point in a damage type gives +3 damage of that type AND stacks its perk:\n\n" +
+                "Odd-numbered level-ups grant Affinity Points. Each point in a damage type gives +2/+3/+4 damage of that type on a 1/2/3 AP weapon AND stacks its perk. Perk chances grow with weapon cost too:\n\n" +
                 "Slashing - bleed builds\n" +
                 "Cleaving - armor-crush builds\n" +
                 "Blunt - AoE/stun builds\n" +
                 "Ranged - 5% chain-ricochet chance per point\n" +
                 "Water - soak/lightning builds\n" +
-                "Special - 3% chance per point for ANY attack to cost 0 AP\n" +
-                "Pet - +10 ally HP per point, +1 party size per point\n" +
+                "Special - 2/4/6% chance per point for an attack to cost 0 AP\n" +
+                "Pet - +35% ally base HP per point, +1 party size per point\n" +
                 "Physical - 3% counter-attack chance per point\n\n" +
                 "Press J to respec affinities. Gear adds more: armor pieces give half a point of their material's type, mob heads a full point."),
             new Page("Picking a Lane",
-                "Affinity rewards commitment - +3 damage per point snowballs fast on cheap 1-AP weapons.\n\n" +
+                "Affinity rewards commitment. A point is worth more on a heavier swing, so a 3 AP weapon gets double what a 1 AP weapon gets from each point.\n\n" +
                 "Match your affinity to your loadout (see the Loadout entries below), then pick armor, trims and a mob head that feed the same type.\n\n" +
                 "Splashing 1-2 points into Pet for the bigger battle party is always solid.")
         )));
@@ -1165,7 +1165,7 @@ public class GuideBookData {
         )));
         equipment.add(new Entry("Mob Heads", "minecraft:creeper_head", List.of(
             new Page("Head Slot Power",
-                "Wear a mob head instead of a helmet for +1 affinity point (= +3 damage) of its type.", List.of(
+                "Wear a mob head instead of a helmet for +1 affinity point (+2 to +4 damage by weapon AP) of its type.", List.of(
                 new Box("minecraft:zombie_head", "Zombie Head", "+1 Physical",
                     "Bare-fist and Physical-hit builds."),
                 new Box("minecraft:skeleton_skull", "Skeleton Skull", "+1 Ranged",

@@ -38,9 +38,10 @@ public final class BasicWeaponsCompat {
     static final String[] TYPES = {"dagger", "spear", "quarterstaff", "club", "hammer", "glaive"};
 
     // === Craftics balance tuning (daggers and spears) ===
-    /** Off-hand dagger second hit fraction of the OFF-hand dagger's own base damage
-     *  (main hit at 1.0 + off hit at 0.75 of the offhand ~= 1.75x with matched tiers). */
-    public static final double DAGGER_OFFHAND_MULT = 0.75;
+    /** Off-hand dagger second hit, as a fraction of the full swing re-based on the OFF-hand
+     *  dagger (main hit at 1.0 + off hit at 0.5 ~= 1.5x with matched tiers). Lower than the old
+     *  0.75 because the off hit now carries every stat bonus instead of the bare dagger base. */
+    public static final double DAGGER_OFFHAND_MULT = 0.5;
     /**
      * Spear bonus added per tile walked before attacking this turn. Shared by every
      * spear Craftics knows - Basic Weapons and Simply Swords alike - so no mod's spear
@@ -299,12 +300,13 @@ public final class BasicWeaponsCompat {
             if (!isDualDagger(main, off)) {
                 return new WeaponAbility.AttackResult(baseDamage, List.of(), List.of());
             }
-            // The second hit scales off the OFF-hand dagger's own base damage, not the main
-            // hand's. Otherwise an iron main + wooden off would swing the wooden dagger for
-            // iron-tier damage - offhanding a cheap dagger with an expensive main was a free
-            // damage bump. Now the offhand pays its own weight.
-            int offBase = daggerBaseDamage(off);
-            int offHit = Math.max(1, (int) Math.round(offBase * DAGGER_OFFHAND_MULT) - 1);
+            // baseDamage is the whole swing: the main dagger's base plus affinity, strength,
+            // enchants, crits and every other bonus. The off hit used to read only the bare
+            // offhand base, so it stopped mattering once stats grew. Swap the main dagger's base
+            // for the offhand's instead: the stats carry over, but an iron main + wooden off
+            // still swings the wooden dagger at wooden-tier weight.
+            int offSwing = Math.max(1, baseDamage - daggerBaseDamage(main) + daggerBaseDamage(off));
+            int offHit = Math.max(1, (int) Math.round(offSwing * DAGGER_OFFHAND_MULT));
             int second = target.takeDamage(offHit);
             // The off hand did real work, so it wears like the main hand does (handleAttack
             // charges the MAIN weapon's durability; without this the offhand dagger was free).
@@ -327,7 +329,10 @@ public final class BasicWeaponsCompat {
                 msgs.add("§b✦ Might! +" + bonus + " damage.");
             }
             int bluntPts = stats != null ? stats.getAffinityPoints(PlayerProgression.Affinity.BLUNT) : 0;
-            double slowChance = 0.05 + (bluntPts * 0.03) + (luckPoints * 0.02) + mightStun(player);
+            double slowChance = 0.05
+                + bluntPts * com.crackedgames.craftics.combat.WeaponCostScaling.procPerAffinityPoint(
+                    WeaponRegistry.getApCost(player.getMainHandStack().getItem()))
+                + (luckPoints * 0.02) + mightStun(player);
             if (Math.random() < slowChance) {
                 target.stackSlowness(2, 1);
                 msgs.add("§7✦ Slowed! " + target.getDisplayName() + " is slowed for 2 turns.");
