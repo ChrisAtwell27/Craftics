@@ -7814,7 +7814,10 @@ public class CombatManager {
                 (ServerWorld) player.getEntityWorld()).getStats(player);
             int specialPts = specialStats.getAffinityPoints(PlayerProgression.Affinity.SPECIAL);
             int specialLuck = specialStats.getPoints(PlayerProgression.Stat.LUCK);
-            double freeApChance = specialPts * 0.03 + specialLuck * 0.02; // 3% per affinity + 2% per luck
+            // 2/4/6% per affinity point by weapon AP cost, + 2% per luck
+            double freeApChance = specialPts * WeaponCostScaling.procPerAffinityPoint(
+                    com.crackedgames.craftics.api.registry.WeaponRegistry.getApCost(weapon))
+                + specialLuck * 0.02;
             if (freeApChance > 0 && Math.random() < freeApChance) {
                 freeApProc = true;
                 sendMessage("\u00a7d\u2728 Magic Surge! Attack costs no AP!");
@@ -7952,7 +7955,8 @@ public class CombatManager {
         PlayerProgression.PlayerStats attackerStats = PlayerProgression.get(
             (ServerWorld) player.getEntityWorld()).getStats(player);
         int damageTypeBonus = DamageType.getWeaponAffinityBonus(
-            player, activeTrimScan, combatEffects, attackerStats, damageType, secondaryType);
+            player, activeTrimScan, combatEffects, attackerStats, damageType, secondaryType,
+            com.crackedgames.craftics.api.registry.WeaponRegistry.getApCost(weapon));
         // Warrior armor: the wearer's own wounds sharpen every swing.
         int warriorRage = ArmorSetEffects.missingHealthDamage(
             PlayerCombatStats.getArmorSet(player), player.getHealth(), player.getMaxHealth());
@@ -12728,7 +12732,7 @@ public class CombatManager {
                     // folded in at spawn like the other ally paths. The damage bonus is applied
                     // per-attack via DamageType.getTotalBonus on the PET damage type, so there
                     // is deliberately no ATK boost here -that would double-count it.
-                    int hpBoost = computeAllyPetHpBonus(e.getEntityTypeId(), player.getUuid());
+                    int hpBoost = computeAllyPetHpBonus(e.getEntityTypeId(), player.getUuid(), e.getMaxHp());
                     if (hpBoost > 0) {
                         e.addMaxHpReduction(-hpBoost);
                         e.heal(hpBoost);
@@ -28245,7 +28249,7 @@ public class CombatManager {
         } else {
             hp = 8; atk = 2; def = 0; range = 1;
         }
-        hp += computeAllyPetHpBonus(typeId, player.getUuid());
+        hp += computeAllyPetHpBonus(typeId, player.getUuid(), hp);
 
         java.util.Set<GridPos> reserved = new java.util.HashSet<>();
         for (CombatEntity e : enemies) {
@@ -28719,6 +28723,9 @@ public class CombatManager {
             int allEmeralds = ld.emeralds;
             if (allEmeralds > 0) ld.spendEmeralds(allEmeralds);
             ld.highestBiomeUnlocked = 1;
+            // The NG+ offer is campaign progress too. Left standing, a wiped island kept the
+            // button and could take the next cycle without beating the campaign again.
+            ld.campaignCompleted = false;
             sendMessage("§4§lPERMADEATH: All progress lost!");
         }
 
@@ -37859,14 +37866,15 @@ public class CombatManager {
             // affinity points are handed out on boss clears, a pet brought in before the owner
             // invested in Pet could never gain the HP no matter how far they levelled it.
             //
-            // Taking the MAXIMUM of the two rather than adding is what keeps this safe to run
-            // on a pet whose saved max already includes the bonus: it tops up a pet that lost
-            // it (or never had it) and leaves an already-correct one alone, instead of
-            // compounding the boost a little more on every level boundary.
-            int petHpBonus = computeAllyPetHpBonus(pet.entityType(), player.getUuid());
+            // A registered pet is rebuilt from its registry base every time, so a pet saved
+            // under older numbers (the flat +10 per level, a 20 HP iron golem) picks up the
+            // current balance instead of keeping its stale max forever. An unregistered pet has
+            // no base to rebuild from, so it keeps its saved max; adding the bonus on top of a
+            // max that already contains it would compound on every level boundary.
             AllyEntry savedEntry = AllyRegistry.getOrNull(pet.entityType());
-            int baseHp = savedEntry != null ? savedEntry.hp() : pet.maxHp();
-            int maxHp = Math.max(pet.maxHp(), baseHp + petHpBonus);
+            int maxHp = savedEntry != null
+                ? savedEntry.hp() + computeAllyPetHpBonus(pet.entityType(), player.getUuid(), savedEntry.hp())
+                : pet.maxHp();
 
             CombatEntity ce = new CombatEntity(
                 mob.getId(), pet.entityType(), spawnPos,
@@ -38134,7 +38142,7 @@ public class CombatManager {
             // Max HP is constructor-only, so the owner's Pet-affinity HP has to be
             // folded in here rather than applied to the CombatEntity afterwards.
             int hp = allyEntry.hp()
-                + computeAllyPetHpBonus(snapshot.entityTypeId(), snapshot.playerUuid());
+                + computeAllyPetHpBonus(snapshot.entityTypeId(), snapshot.playerUuid(), allyEntry.hp());
             int atk = allyEntry.attack();
             int def = allyEntry.defense();
             int range = allyEntry.range();
@@ -39109,7 +39117,7 @@ public class CombatManager {
             def = 0;
             range = 1;
         }
-        hp += computeAllyPetHpBonus(typeId, player.getUuid());
+        hp += computeAllyPetHpBonus(typeId, player.getUuid(), hp);
 
         int apCost = 2;
         if (apRemaining < apCost) {
@@ -39220,7 +39228,7 @@ public class CombatManager {
         } else {
             hp = 8; atk = 2; def = 0; range = 1;
         }
-        hp += computeAllyPetHpBonus(typeId, ownerUuid);
+        hp += computeAllyPetHpBonus(typeId, ownerUuid, hp);
 
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         BlockPos blockPos = arena.gridToBlockPos(tile);
@@ -39333,7 +39341,8 @@ public class CombatManager {
             + getProgRangedBonus() + PlayerCombatStats.getSetAttackBonus(player)
             + PlayerCombatStats.getWeaponEnchantBonus(player)
             + DamageType.getWeaponAffinityBonus(player, activeTrimScan, combatEffects,
-                attackerStats, damageType, secondaryType);
+                attackerStats, damageType, secondaryType,
+                com.crackedgames.craftics.api.registry.WeaponRegistry.getApCost(weapon));
         baseDamage = (int) (baseDamage * CrafticsMod.CONFIG.playerDamageMultiplier());
         baseDamage = applyPowerPercent(baseDamage, powerPoints(true));
 
@@ -39905,14 +39914,17 @@ public class CombatManager {
 
     /**
      * Bonus max HP an owner's Pet affinity grants one of their allies:
-     * {@code Pet affinity level × }{@link DamageType#ALLY_HP_PER_PET_AFFINITY_LEVEL}.
-     * Folded into the ally's max HP at spawn time (max HP is constructor-only on
-     * {@link CombatEntity}), so every ally-spawn path must call this.
+     * {@code baseHp × Pet affinity level × }{@link DamageType#ALLY_HP_PERCENT_PER_PET_AFFINITY_LEVEL},
+     * at least 1 per level. Folded into the ally's max HP at spawn time (max HP is
+     * constructor-only on {@link CombatEntity}), so every ally-spawn path must call this.
+     *
+     * <p>Scales off the ally's own base HP so a sturdy pet stays sturdier than a frail one as
+     * the owner levels, rather than every pet converging on the same flat bonus.
      *
      * <p>Returns 0 when the owner isn't resolvable or the ally's registry entry opts out
      * of gear scaling, mirroring {@link #computeAllyPetBonus}'s gating exactly.
      */
-    private int computeAllyPetHpBonus(String entityTypeId, java.util.UUID ownerUuid) {
+    private int computeAllyPetHpBonus(String entityTypeId, java.util.UUID ownerUuid, int baseHp) {
         AllyEntry entry = AllyRegistry.getOrNull(entityTypeId);
         // Unregistered allies default to gear-scaling -matches handleAllyTurn.
         if (entry != null && !entry.scalesWithOwnerGear()) return 0;
@@ -39922,7 +39934,9 @@ public class CombatManager {
 
         int petLevels = PlayerProgression.get(sw).getStats(allyOwner)
             .getAffinityPoints(PlayerProgression.Affinity.PET);
-        return Math.max(0, petLevels) * DamageType.ALLY_HP_PER_PET_AFFINITY_LEVEL;
+        if (petLevels <= 0 || baseHp <= 0) return 0;
+        int bonus = (int) Math.round(baseHp * petLevels * DamageType.ALLY_HP_PERCENT_PER_PET_AFFINITY_LEVEL);
+        return Math.max(petLevels, bonus);
     }
 
     private int computeAllyPetBonus(CombatEntity ally) {

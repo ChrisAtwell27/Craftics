@@ -74,11 +74,13 @@ public final class VanillaAllies {
 
         // Golems - built combat allies, each healed in battle by its build material:
         // an iron ingot patches up an iron golem, a snowball repacks a snow golem.
+        // Iron is the premium vanilla golem and should clearly out-class the cheap builds
+        // (coal 8/3/0, terracotta 18/3/4), sitting just under the netherite golem.
         AllyRegistry.register(AllyEntry.builder("minecraft:iron_golem")
-            .hp(20).attack(5).defense(3).speed(2).range(1)
+            .hp(30).attack(7).defense(4).speed(2).range(1)
             .recruitMode(AllyEntry.RecruitMode.BUILT)
             .scalesWithOwnerGear(true)
-            .healItem(net.minecraft.item.Items.IRON_INGOT, 6)
+            .healItem(net.minecraft.item.Items.IRON_INGOT, 10)
             .build());
         AllyRegistry.register(AllyEntry.builder("minecraft:snow_golem")
             .hp(5).attack(2).defense(0).speed(2).range(3)

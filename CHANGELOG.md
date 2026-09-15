@@ -2,6 +2,24 @@
 
 0.4.8
 
+Heavy Weapons Pull Their Weight
+
+Affinity used to add the same flat bonus to every swing, which is worth the most on the cheapest one. A 1 AP weapon cashed it in three times a turn, so every build ended up on 1 AP weapons.
+
+- **Affinity damage now depends on weapon cost:** +2 per point on a 1 AP weapon, +3 on 2 AP, +4 on 3 AP (was +3 on everything)
+- **Affinity proc chances scale the same way:** sweep is +3/5/7% per point (was 5%); armor shatter, stun, Wet knockback, club slow, katana bleed and Special's free-AP proc are +2/4/6% (were 3%)
+- **Dual-wield daggers and sai now scale with your stats.** The offhand hit used to read only the bare dagger's base damage, so it fell off late game. It now carries your full attack bonuses at 50% (was 75% of the bare dagger)
+- **Sword on a Stick hits like a stone sword (5) instead of a netherite one (13).** It is a cheap craft and was trivializing the first biomes
+
+Pets And Sherds Rebalanced
+
+- **Petsplosion (Howl) deals a flat 12 per blast** instead of half the target's max HP. Blasts stack, so two pets next to a boss used to erase it
+- **Death Mark (Skull) executes below 20% HP**, down from 50%. Boss phase two starts at 50%, so the old line skipped it entirely
+- **Phase Step (Explorer) costs 3 AP**, up from 2. With the Robe discount it was 4 tiles of free movement for 1 AP
+- **Guardian Spirit (Friend) heals pets for 30% of their max HP** instead of fully, so pets can still die
+- **Pet affinity adds 35% of an ally's base HP per level** instead of a flat +10. The flat bonus buried base stats, so every pet ended up with about the same HP
+- **Iron golems are stronger:** 30 HP, 7 ATK, 4 DEF (was 20/5/3), and an iron ingot heals 10 (was 6)
+
 Hemorrhage Actually Fires
 
 The enchantment reads "knocking back a Bleeding enemy detonates its Bleed stacks", but it was gated on holding the enchanted sword at the instant of the knockback. Nearly every knockback in the game comes from an item you have to be holding to use, so the sword was almost never in hand - in practice Hemorrhage could only fire off that same sword's own Knockback shockwave.
@@ -40,7 +58,12 @@ Beating the final boss called the reset on the spot. Every biome relocked, the b
 - **A New Game+ button on the level select block takes the cycle**, behind a confirmation that says plainly that it cannot be undone and that it affects everyone on the island
 - **Anyone on the island can press it**, not just the owner - the campaign belongs to the island, and a group whose owner is offline would otherwise be stuck
 - **The offer survives being declined.** It is stored on the island rather than inferred from the victory, so a party can sit at NG+0 as long as they like, replay the final boss as often as they like, and take the cycle whenever they actually want it
-- **Refused while a run is engaged or paused.** The reset clears the run cursor and relocks the biomes, which mid-run would rewrite the run its party is standing in
+- **Refused while a run is live.** That covers a party member mid-fight or at a between-level stop, a run lobby waiting on replies, and a live infinite run. The reset clears the run cursor and relocks the biomes, which mid-run would rewrite the run its party is standing in. A parked infinite run does not block it, since its save point is kept separately
+- **The confirmation is bound to the cycle it showed.** If a teammate takes NG+ first or an admin rolls the island back while the dialog is open, confirming does nothing and says the prompt is out of date, instead of starting a different cycle from the one agreed to
+- **It only works from the level select block.** The server ignores the request unless that screen is open, so it cannot be triggered from anywhere else
+- **A run lobby re-checks its biome when it launches**, so a biome relocked while the party was answering the invite cannot start
+- **Permadeath clears the NG+ offer** along with the rest of the campaign, so a wiped island has to beat the campaign again to earn it
+- `/craftics info` and `/craftics set_ngplus` now read and write the island's record, like everything else that handles NG+, instead of the typing player's own
 - **Fixed the level select showing the wrong cycle number.** It divided the unlock frontier by the campaign length, and a cycle resets that frontier to 1 - so the title read NG+0 for the whole of every NG+ run. The real count now comes from the server
 - Existing saves are untouched: an island already at NG+3 stays at NG+3, and gets the choice at its next clear
 

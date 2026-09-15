@@ -127,7 +127,8 @@ public final class VanillaWeapons {
         // Base sword sweep (affinity-scaled): only when neither enchant claimed the swing.
         if (serrated <= 0 && sweepingEdge <= 0) {
             int slashingPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.SLASHING) : 0;
-            double sweepChance = 0.10 + (slashingPts * 0.05) + luckBonus;
+            double sweepChance = 0.10 + slashingPts * com.crackedgames.craftics.combat.WeaponCostScaling
+                .sweepPerAffinityPoint(WeaponRegistry.getApCost(player.getMainHandStack().getItem())) + luckBonus;
             if (Math.random() < sweepChance) {
                 List<CombatEntity> sweepTargets = Abilities.findAdjacentEnemies(arena, target, 1);
                 for (CombatEntity sweepTarget : sweepTargets) {
@@ -430,7 +431,8 @@ public final class VanillaWeapons {
         double luckBonus = luckPoints * LUCK_BONUS_PER_POINT;
         List<String> messages = new ArrayList<>();
         int waterPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.WATER) : 0;
-        double waterChance = 0.05 + (waterPts * 0.03) + luckBonus;
+        double waterChance = 0.05 + waterPts * com.crackedgames.craftics.combat.WeaponCostScaling
+            .procPerAffinityPoint(WeaponRegistry.getApCost(player.getMainHandStack().getItem())) + luckBonus;
 
         if (Math.random() < waterChance) {
             // Apply Soaked (Wet) debuff
@@ -625,7 +627,8 @@ public final class VanillaWeapons {
 
             // Blunt stun check (shared with stick/bamboo)
             int bluntPts = stats != null ? stats.getAffinityPoints(PlayerProgression.Affinity.BLUNT) : 0;
-            double stunChance = 0.05 + (bluntPts * 0.03) + luckBonus;
+            double stunChance = 0.05 + bluntPts * com.crackedgames.craftics.combat.WeaponCostScaling
+                .procPerAffinityPoint(WeaponRegistry.getApCost(player.getMainHandStack().getItem())) + luckBonus;
             if (Math.random() < stunChance) {
                 target.setStunned(true);
                 messages.add("\u00a78\u2726 STUNNED! " + target.getDisplayName() + " can't move next turn!");

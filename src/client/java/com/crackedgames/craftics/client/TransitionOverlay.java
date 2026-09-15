@@ -43,7 +43,7 @@ public class TransitionOverlay {
         "Some enemies are weak to specific damage types. Experiment!",
         "You can level up by defeating bosses. Each level grants stat or affinity points.",
         "Affinity points boost a damage type by +3 per point, plus a unique passive effect.",
-        "Slashing affinity increases your sword sweep chance by 5% per point.",
+        "Slashing affinity raises sweep chance per point, more on heavier weapons.",
         "Ranged affinity gives a 5% ricochet chain chance per point.",
         "Blunt affinity adds a 3% stun chance per point.",
         "Physical affinity gives a 3% counterattack chance when you're hit.",

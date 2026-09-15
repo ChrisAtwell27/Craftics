@@ -208,6 +208,11 @@ public final class RunInviteManager {
             "§6Gathering the party", "§7Waiting for players to join..."));
     }
 
+    /** True while a lobby for this island is waiting on the party's replies. */
+    public static boolean hasPendingLobby(UUID island) {
+        return island != null && BY_ISLAND.containsKey(island);
+    }
+
     /** A C2S reply to a {@link RunInvitePayload}. */
     public static void respond(MinecraftServer server, UUID responder, boolean accept) {
         UUID island = INVITEE_ISLAND.remove(responder);
@@ -246,6 +251,27 @@ public final class RunInviteManager {
                 if (m != null) ServerPlayNetworking.send(m, new ExitCombatPayload(false));
             }
             return;
+        }
+        // Re-check the pick now the lobby is closing, not only when it opened. Up to the invite
+        // timeout can pass in between, and the island's unlocks can change in that window (an
+        // admin command, a relock). Starting a biome the island no longer has open would put
+        // the party in a fight the level select would refuse.
+        if (!InfiniteRunManager.START_ID.equals(p.biomeId)) {
+            CrafticsSavedData data = CrafticsSavedData.get((ServerWorld) starter.getEntityWorld());
+            CrafticsSavedData.PlayerData islandPd = data.getPlayerData(p.island);
+            int biomeOrder = CampaignManager.ordinalOf(p.biomeId, Math.max(0, islandPd.branchChoice)) + 1;
+            if (findBiome(p.biomeId) == null || biomeOrder <= 0 || biomeOrder > islandPd.highestBiomeUnlocked) {
+                List<UUID> bounce = new ArrayList<>(p.accepted);
+                bounce.add(p.starter);
+                for (UUID u : bounce) {
+                    ServerPlayerEntity m = server.getPlayerManager().getPlayer(u);
+                    if (m == null) continue;
+                    m.sendMessage(Text.literal(
+                        "§cThat biome is no longer unlocked on this island. Reopen the level select."), false);
+                    ServerPlayNetworking.send(m, new ExitCombatPayload(false));
+                }
+                return;
+            }
         }
         List<UUID> participants = new ArrayList<>();
         participants.add(p.starter);

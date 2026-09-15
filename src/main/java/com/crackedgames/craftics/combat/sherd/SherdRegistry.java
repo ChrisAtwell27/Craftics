@@ -50,9 +50,19 @@ public final class SherdRegistry {
     private static final int FRIEND_ATK_BUFF = 3;
     private static final int FRIEND_SPEED_BUFF = 1;
     private static final int FRIEND_BUFF_TURNS = 3;
+    /** Share of each pet's max HP Guardian Spirit restores. A full heal made pets unkillable. */
+    private static final double FRIEND_HEAL_PERCENT = 0.30;
     private static final int PETSPLOSION_RADIUS = 2;
-    private static final int PETSPLOSION_HP_DIVISOR = 2;
-    private static final int PETSPLOSION_MIN_DAMAGE = 10;
+    /**
+     * Flat per-blast damage. It used to be half the target's max HP, and since blasts stack
+     * where pets overlap, two pets beside a boss deleted it outright.
+     */
+    private static final int PETSPLOSION_DAMAGE = 12;
+    /**
+     * Death Mark's execute line. Boss phase two triggers at 50%, so an execute at 50% let a
+     * boss go from phase one straight to dead.
+     */
+    private static final double DEATH_MARK_EXECUTE_BELOW = 0.20;
 
     private static final Map<Item, SherdSpell> SPELLS = new LinkedHashMap<>();
 
@@ -83,10 +93,11 @@ public final class SherdRegistry {
     }
 
     static {
-        // ── 2 AP ────────────────────────────────────────────────────────
+        // ── 3 AP ────────────────────────────────────────────────────────
 
+        // 3 AP, not 2: with the Robe discount a 2 AP blink was 4 free tiles for 1 AP.
         register(SherdSpell.of(Items.EXPLORER_POTTERY_SHERD, "Phase Step")
-            .color("§d").ap(2).range(4).targets(SherdSpell.TargetMode.WALKABLE_TILE)
+            .color("§d").ap(3).range(4).targets(SherdSpell.TargetMode.WALKABLE_TILE)
             .castVisuals(SpellVisuals.builder()
                 .cast(ParticleTypes.END_ROD, SoundEvents.ENTITY_ENDERMAN_TELEPORT)
                 .castCount(15).converge(1.2))
@@ -100,10 +111,8 @@ public final class SherdRegistry {
             // escape tool rather than a scouting one.
             .step(SpellStep.of(Selector.self())
                 .effect(Effects.casterEffect(EffectType.RESISTANCE, 1, 1)))
-            .tooltip("§d[2 AP] Phase Step §7- Teleport 4 tiles + Resistance II (1 turn)")
+            .tooltip("§d[3 AP] Phase Step §7- Teleport 4 tiles + Resistance II (1 turn)")
             .build());
-
-        // ── 3 AP ────────────────────────────────────────────────────────
 
         register(SherdSpell.of(Items.FRIEND_POTTERY_SHERD, "Guardian Spirit")
             .color("§a").ap(3).selfCast()
@@ -111,14 +120,15 @@ public final class SherdRegistry {
             .castVisuals(SpellVisuals.builder()
                 .cast(ParticleTypes.ENCHANT, SoundEvents.ENTITY_CAT_PURR).castCount(8).converge(1.0))
             .step(SpellStep.of(Selector.pets())
-                .effect(Effects.healTarget(-1))
+                .effect(Effects.healTargetPercent(FRIEND_HEAL_PERCENT))
                 .effect(Effects.buffTargetAttack(FRIEND_ATK_BUFF, FRIEND_BUFF_TURNS))
                 .effect(Effects.buffTargetSpeed(FRIEND_SPEED_BUFF, FRIEND_BUFF_TURNS))
                 .visuals(SpellVisuals.builder()
                     .trail(ParticleTypes.HAPPY_VILLAGER, ParticleTypes.ENCHANT).trailShape(12, 0.4).trailDelay(3)
                     .impact(ParticleTypes.HEART, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP)
                     .impactCount(6).impactRing(0.6).impactDelay(6).impactPitch(0.5f, 1.5f)))
-            .tooltip("§d[3 AP] Guardian Spirit §7- Heal ALL pets to full\n"
+            .tooltip("§d[3 AP] Guardian Spirit §7- Heal every pet for "
+                + Math.round(FRIEND_HEAL_PERCENT * 100) + "% of its max HP\n"
                 + "§7+" + FRIEND_ATK_BUFF + " ATK and +" + FRIEND_SPEED_BUFF
                 + " Speed to every pet (" + FRIEND_BUFF_TURNS + " turns)")
             .build());
@@ -297,14 +307,13 @@ public final class SherdRegistry {
             .castVisuals(SpellVisuals.builder()
                 .cast(ParticleTypes.CLOUD, howlSound()).castCount(8).converge(1.5).castPitch(2.0f, 0.8f))
             .step(SpellStep.of(Selector.enemiesAroundEachPet(PETSPLOSION_RADIUS))
-                .effect(Effects.damage(PETSPLOSION_MIN_DAMAGE)
-                    .orFractionOfMaxHp(PETSPLOSION_HP_DIVISOR))
+                .effect(Effects.damage(PETSPLOSION_DAMAGE))
                 .visuals(SpellVisuals.builder()
                     .impact(ParticleTypes.EXPLOSION, SoundEvents.ENTITY_GENERIC_EXPLODE.value())
                     .impactCount(3).impactRing(1.0).impactDelay(3).impactPitch(0.9f, 1.3f)))
             .tooltip("§7[4 AP] Petsplosion §7- Every pet erupts in a "
                 + PETSPLOSION_RADIUS + "-tile blast\n"
-                + "§7Anvil-grade damage (half an enemy's max HP, min " + PETSPLOSION_MIN_DAMAGE + ")\n"
+                + "§7" + PETSPLOSION_DAMAGE + " damage per blast\n"
                 + "§7Blasts STACK where they overlap. Pets are unharmed")
             .build());
 
@@ -432,7 +441,7 @@ public final class SherdRegistry {
             .castVisuals(SpellVisuals.builder()
                 .cast(ParticleTypes.SOUL_FIRE_FLAME, SoundEvents.ENTITY_WITHER_AMBIENT)
                 .castCount(10).converge(1.5).castPitch(0.6f, 0.6f))
-            .step(SpellStep.of(Selector.enemy().onlyBelowHp(0.5))
+            .step(SpellStep.of(Selector.enemy().onlyBelowHp(DEATH_MARK_EXECUTE_BELOW))
                 .effect(Effects.execute())
                 .visuals(SpellVisuals.builder()
                     .trail(ParticleTypes.SOUL_FIRE_FLAME, ParticleTypes.SOUL).trailShape(14, 2.0).trailDelay(4)
@@ -445,7 +454,8 @@ public final class SherdRegistry {
                     .trail(ParticleTypes.SOUL_FIRE_FLAME, ParticleTypes.SOUL).trailShape(14, 2.0).trailDelay(4)
                     .impact(ParticleTypes.SOUL, SoundEvents.ENTITY_WITHER_SHOOT)
                     .impactCount(15).impactRing(0.6).impactDelay(8).impactPitch(1.0f, 0.8f)))
-            .tooltip("§4[6 AP] Death Mark §7- Execute <50% HP or 10 dmg + Wither IV (4t)")
+            .tooltip("§4[6 AP] Death Mark §7- Execute <"
+                + Math.round(DEATH_MARK_EXECUTE_BELOW * 100) + "% HP or 10 dmg + Wither IV (4t)")
             .build());
     }
 

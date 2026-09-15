@@ -2183,7 +2183,10 @@ public class CrafticsMod implements ModInitializer {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
                 CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
-                CrafticsSavedData.PlayerData pd = data.getPlayerData(cmdPlayer.getUuid());
+                // Island state, so read the island the player resolves to - for a party member
+                // their own record is not what the level select block or NG+ reads.
+                CrafticsSavedData.PlayerData pd = data.getPlayerData(
+                    data.getEffectiveWorldOwner(cmdPlayer.getUuid()));
                 src.sendFeedback(() -> Text.literal(
                     "§6--- Craftics Debug Info ---\n" +
                     "§fBiomes unlocked: §e" + pd.highestBiomeUnlocked + "\n" +
@@ -2290,7 +2293,9 @@ public class CrafticsMod implements ModInitializer {
                 int level = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "level");
                 ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
                 CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
-                data.getPlayerData(targetPlayer.getUuid()).ngPlusLevel = level;
+                // NG+ is island state: write the island the target resolves to, the same record
+                // the level select block, run scaling and ngplus_rollback use.
+                data.getPlayerData(data.getEffectiveWorldOwner(targetPlayer.getUuid())).ngPlusLevel = level;
                 data.markDirty();
                 src.sendFeedback(() -> Text.literal("§aSet " + targetPlayer.getName().getString()
                     + "'s NG+ level to " + level + "."), true);
