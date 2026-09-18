@@ -236,6 +236,8 @@ public class CombatManager {
     }
 
     public static GridPos findNearestWalkableUnreserved(GridArena arena, GridPos desiredPos, java.util.Set<GridPos> reserved) {
+        GridPos bestSafe = null;
+        int bestSafeDistance = Integer.MAX_VALUE;
         GridPos bestFree = null;
         int bestFreeDistance = Integer.MAX_VALUE;
         GridPos bestOccupied = null;
@@ -266,9 +268,16 @@ public class CombatManager {
                     bestFreeDistance = distance;
                     bestFree = candidate;
                 }
+                // Lava and fire count as walkable, so a free tile is not necessarily one you
+                // can stand on. Prefer a harmless one when the arena has any.
+                if (tile.isSafeForSpawn() && distance < bestSafeDistance) {
+                    bestSafeDistance = distance;
+                    bestSafe = candidate;
+                }
             }
         }
 
+        if (bestSafe != null) return bestSafe;
         // An occupied tile only when the arena has no free one at all: standing on a mob
         // beats being left off the grid entirely.
         return bestFree != null ? bestFree : bestOccupied;
@@ -323,6 +332,10 @@ public class CombatManager {
     public static GridPos findNearestSafeSpawn(ServerWorld world, GridArena arena,
                                                GridPos desired, java.util.Set<GridPos> reserved,
                                                java.util.Set<GridPos> connected) {
+        // Free, floored AND harmless to stand on. Lava and fire are "walkable" (they only hurt),
+        // so walkability alone kept dropping players into the lava ringing cavern and nether
+        // arenas whenever the tiles nearest the start were taken by the party and its pets.
+        GridPos bestSafe = null; int bestSafeDist = Integer.MAX_VALUE;
         GridPos bestFloored = null; int bestFlDist = Integer.MAX_VALUE;
         GridPos bestWalkable = null; int bestWkDist = Integer.MAX_VALUE;
         // Same tiles, but a mob is standing on them. Kept only as a last resort, for the
@@ -348,8 +361,14 @@ public class CombatManager {
                 }
                 if (dist < bestWkDist) { bestWkDist = dist; bestWalkable = c; }
                 if (floored && dist < bestFlDist) { bestFlDist = dist; bestFloored = c; }
+                if (floored && tile.isSafeForSpawn() && dist < bestSafeDist) {
+                    bestSafeDist = dist; bestSafe = c;
+                }
             }
         }
+        if (bestSafe != null) return bestSafe;
+        // Only a hazard tile is free. Still preferred over a mob's tile or a pit: a hazard
+        // under your feet costs nothing until your turn ends on it.
         if (bestFloored != null) return bestFloored;
         // Floor outranks everything below it, including being free. Sharing a tile with a
         // mob is survivable and self-corrects the moment either of them moves; a floorless
@@ -35694,14 +35713,66 @@ public class CombatManager {
         return slots;
     }
 
-    /** Pick the inscriptions this player may choose between on this visit. */
+    /**
+     * This visit's inscription order for one player: every inscription, shuffled once.
+     *
+     * <p>The whole order is kept rather than the first few, because what is worth offering
+     * depends on which sherd they pick - see {@link #scribeOffersFor}. Shuffled once per visit,
+     * so the list shown for a given sherd stays the same however often they back out and look.
+     */
     private java.util.List<com.crackedgames.craftics.combat.sherd.SherdInscription> rollScribeOffers(
             java.util.Random rng) {
-        java.util.List<com.crackedgames.craftics.combat.sherd.SherdInscription> pool =
-            new java.util.ArrayList<>(java.util.Arrays.asList(
-                com.crackedgames.craftics.combat.sherd.SherdInscription.values()));
-        java.util.Collections.shuffle(pool, rng);
-        return new java.util.ArrayList<>(pool.subList(0, Math.min(SCRIBE_OFFER_COUNT, pool.size())));
+        java.util.List<com.crackedgames.craftics.combat.sherd.SherdInscription> commons = new java.util.ArrayList<>();
+        java.util.List<com.crackedgames.craftics.combat.sherd.SherdInscription> legendaries = new java.util.ArrayList<>();
+        for (com.crackedgames.craftics.combat.sherd.SherdInscription i
+                : com.crackedgames.craftics.combat.sherd.SherdInscription.values()) {
+            (i.isLegendary() ? legendaries : commons).add(i);
+        }
+        java.util.Collections.shuffle(commons, rng);
+        // Legendaries join this visit's order only on a lucky roll; when they do, the offer
+        // shows one of them beside the ordinary picks (see scribeOffersFor).
+        if (rng.nextDouble() < com.crackedgames.craftics.combat.sherd.SherdInscription.LEGENDARY_OFFER_CHANCE) {
+            java.util.Collections.shuffle(legendaries, rng);
+            commons.addAll(legendaries);
+        }
+        return commons;
+    }
+
+    /**
+     * The inscriptions offered for one sherd: the first few of this visit's order that would do
+     * something on it and that it does not already carry.
+     *
+     * <p>Both the offer screen and the write handler read this, so a player can only ever write
+     * what they were shown for that exact sherd.
+     */
+    private java.util.List<com.crackedgames.craftics.combat.sherd.SherdInscription> scribeOffersFor(
+            ServerPlayerEntity p, ItemStack stack) {
+        java.util.List<com.crackedgames.craftics.combat.sherd.SherdInscription> out = new java.util.ArrayList<>();
+        if (stack == null || stack.isEmpty()) return out;
+        com.crackedgames.craftics.combat.sherd.SherdSpell spell =
+            com.crackedgames.craftics.combat.sherd.SherdModifiers.resolve(stack);
+        if (spell == null) return out;
+        java.util.List<com.crackedgames.craftics.combat.sherd.SherdModifiers.Entry> existing =
+            com.crackedgames.craftics.combat.sherd.SherdModifiers.read(stack);
+        int commons = 0;
+        boolean legendaryOffered = false;
+        for (com.crackedgames.craftics.combat.sherd.SherdInscription inscription
+                : perPlayerScribeOffers.getOrDefault(p.getUuid(), java.util.List.of())) {
+            // canAccept covers duplicates, a full sherd, and a second legendary.
+            if (!com.crackedgames.craftics.combat.sherd.SherdModifiers.canAccept(existing, inscription)) continue;
+            if (!inscription.appliesTo(spell)) continue;
+            if (inscription.isLegendary()) {
+                // One legendary at most, shown on top of the ordinary picks rather than in
+                // place of one.
+                if (legendaryOffered) continue;
+                legendaryOffered = true;
+                out.add(inscription);
+            } else if (commons < SCRIBE_OFFER_COUNT) {
+                commons++;
+                out.add(inscription);
+            }
+        }
+        return out;
     }
 
     /**
@@ -35764,25 +35835,17 @@ public class CombatManager {
     private com.crackedgames.craftics.combat.dialogue.DialogueDefinition buildScribeInscriptionDialogue(
             ServerPlayerEntity p, int slot) {
         ItemStack stack = p.getInventory().getStack(slot);
+        // Already filtered to what would do something on this sherd and is not on it yet.
         java.util.List<com.crackedgames.craftics.combat.sherd.SherdInscription> offers =
-            perPlayerScribeOffers.getOrDefault(p.getUuid(), java.util.List.of());
-        java.util.List<com.crackedgames.craftics.combat.sherd.SherdModifiers.Entry> existing =
-            com.crackedgames.craftics.combat.sherd.SherdModifiers.read(stack);
+            scribeOffersFor(p, stack);
 
         java.util.List<com.crackedgames.craftics.combat.dialogue.DialogueChoice> choices =
             new java.util.ArrayList<>();
         int added = 0;
         for (com.crackedgames.craftics.combat.sherd.SherdInscription inscription : offers) {
-            // An inscription already on this sherd would be refused by inscribe(); leaving it
-            // on the list would offer the player a choice that silently does nothing.
-            boolean already = false;
-            for (com.crackedgames.craftics.combat.sherd.SherdModifiers.Entry entry : existing) {
-                if (entry.inscription() == inscription) { already = true; break; }
-            }
-            if (already) continue;
             int magnitude = inscription.defaultMagnitude();
             choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
-                inscription.color() + inscription.displayName(),
+                inscription.label(),
                 "scribe:write:" + inscription.name() + ":" + magnitude,
                 inscription.describe(magnitude)));
             added++;
@@ -35860,7 +35923,7 @@ public class CombatManager {
         }
         // Only an inscription this player was actually offered. The action string is client
         // input; without this it alone would let any client write any inscription.
-        if (!perPlayerScribeOffers.getOrDefault(player.getUuid(), java.util.List.of()).contains(inscription)) {
+        if (!scribeOffersFor(player, player.getInventory().getStack(slot)).contains(inscription)) {
             sendDialogue(player, buildScribeSherdDialogue(player));
             return;
         }
@@ -35892,7 +35955,7 @@ public class CombatManager {
             java.util.List.of(
                 "\"It is written. The clay will remember.\"",
                 "§7" + stack.getName().getString() + "§7 is now "
-                    + inscription.color() + inscription.displayName()),
+                    + inscription.label()),
             java.util.List.of()));
         // DISMISS on click-through routes back here -> finishScribePlayer.
     }
@@ -37443,6 +37506,15 @@ public class CombatManager {
      */
     private GridPos findPetSpawnTile(GridPos playerStart) {
         ServerWorld w = (player != null && player.getEntityWorld() instanceof ServerWorld sw) ? sw : null;
+        // Tiles party members stand on. Players are not grid occupants (only mobs are), so
+        // isOccupied alone let a pet land on a teammate - most often on a level transition,
+        // where the party is placed first and the pets after. The pet then covered the player
+        // under the cursor, so their stats could not be inspected.
+        java.util.Set<GridPos> playerTiles = new java.util.HashSet<>();
+        playerTiles.add(arena.getPlayerGridPos());
+        for (ServerPlayerEntity member : snapshotParticipants()) {
+            if (member != null && !member.isRemoved()) playerTiles.add(gridPosOf(member));
+        }
         final int maxRadius = 5;
         for (int r = 1; r <= maxRadius; r++) {
             for (int dx = -r; dx <= r; dx++) {
@@ -37452,6 +37524,7 @@ public class CombatManager {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) != r) continue;
                     GridPos candidate = new GridPos(playerStart.x() + dx, playerStart.z() + dz);
                     if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
+                    if (playerTiles.contains(candidate)) continue;
                     if (arena.hasWebOverlay(candidate)) continue;
                     var tile = arena.getTile(candidate);
                     // Require a real floor too, so carried-over pets don't drop into

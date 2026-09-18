@@ -90,6 +90,14 @@ public final class Selector {
     /** Which side this step reaches. Read by the client's range indicator to pick a colour. */
     public Side side() { return side; }
 
+    /**
+     * Whether this step can land on an enemy. {@link #self()} and {@link #tile()} carry the
+     * default ENEMY side but gather nobody, so side alone does not answer it.
+     */
+    public boolean hitsEnemies() {
+        return !tileOnly && side != Side.ALLY;
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Factories - the common shapes, so a definition reads as a sentence
     // ─────────────────────────────────────────────────────────────────────

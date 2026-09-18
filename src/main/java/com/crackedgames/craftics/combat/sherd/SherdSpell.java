@@ -75,6 +75,14 @@ public final class SherdSpell {
 
     public boolean isSelfCast() { return targetMode == TargetMode.SELF; }
 
+    /** Whether any step strikes enemies - what an on-hit inscription needs to ride on. */
+    public boolean hitsEnemies() {
+        for (SpellStep step : steps) {
+            if (step.selector().hitsEnemies()) return true;
+        }
+        return false;
+    }
+
     /** The bold prefix every cast message opens with, e.g. {@code "§e§lChain Lightning!"}. */
     public String banner() { return color + "§l" + name + "!"; }
 
@@ -152,12 +160,49 @@ public final class SherdSpell {
             return this;
         }
 
-        /** Widen every step's area of effect. */
+        /**
+         * Attach an effect to every step that strikes enemies, and only those.
+         *
+         * <p>What every harmful inscription should use. {@link #augmentAllSteps} also reaches
+         * steps aimed at your own pets, so a burn or a knockback written onto Guardian Spirit
+         * landed on the pack it was meant to rally.
+         */
+        public Builder augmentEnemySteps(SpellEffect extra) {
+            for (int i = 0; i < steps.size(); i++) {
+                SpellStep old = steps.get(i);
+                if (!old.selector().hitsEnemies()) continue;
+                SpellStep.Builder rebuilt = SpellStep.of(old.selector().toBuilder())
+                    .visuals(old.visuals()).heading(old.heading());
+                for (SpellEffect e : old.effects()) rebuilt.effect(e);
+                rebuilt.effect(extra);
+                steps.set(i, rebuilt.build());
+            }
+            return this;
+        }
+
+        /** Run every step again after the last one - the spell happens twice. */
+        public Builder repeatAllSteps() {
+            steps.addAll(new ArrayList<>(steps));
+            return this;
+        }
+
+        /** Shift the shatter chance in percentage points, never below 0. */
+        public Builder adjustBreakPercent(int delta) {
+            this.breakPercent = Math.max(0, breakPercent + delta);
+            return this;
+        }
+
+        /**
+         * Widen the area of every enemy-facing step.
+         *
+         * <p>Enemy steps only. A pet step gathers from every pet as its own centre, so widening
+         * it made each pet catch its neighbours and the heal land several times on one animal.
+         */
         public Builder augmentRadius(int extra) {
             return rebuildSelectors(s -> s.withExtraRadius(extra));
         }
 
-        /** Give every step more chain links, starting one if it had none. */
+        /** Give every enemy-facing step more chain links, starting one if it had none. */
         public Builder augmentChain(int extraHops, int hopRange) {
             return rebuildSelectors(s -> s.withExtraChain(extraHops, hopRange));
         }
@@ -165,6 +210,7 @@ public final class SherdSpell {
         private Builder rebuildSelectors(java.util.function.UnaryOperator<Selector> op) {
             for (int i = 0; i < steps.size(); i++) {
                 SpellStep old = steps.get(i);
+                if (!old.selector().hitsEnemies()) continue;
                 SpellStep.Builder rebuilt = SpellStep.of(op.apply(old.selector()).toBuilder())
                     .visuals(old.visuals()).heading(old.heading());
                 for (SpellEffect e : old.effects()) rebuilt.effect(e);

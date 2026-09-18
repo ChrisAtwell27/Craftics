@@ -186,6 +186,120 @@ class SherdCompositionTest {
         assertEquals(2, spell.steps().size(), "reaping adds its own step rather than editing one");
     }
 
+    /** A pet-rallying spell with no enemy step at all, like Guardian Spirit. */
+    private static SherdSpell.Builder petBuff() {
+        return SherdSpell.of(null, "Test Rally").ap(3).selfCast()
+            .step(SpellStep.of(Selector.pets()).effect(Effects.healTarget(5)));
+    }
+
+    @Test
+    void harmfulInscriptionsNeverTouchAPetStep() {
+        // Kindled on Guardian Spirit used to set the pack on fire.
+        for (SherdInscription harmful : new SherdInscription[]{
+                SherdInscription.KINDLED, SherdInscription.FORCEFUL, SherdInscription.WITHERING,
+                SherdInscription.SUNDERING, SherdInscription.SERRATED, SherdInscription.VENOMOUS,
+                SherdInscription.DRENCHING, SherdInscription.CHILLING, SherdInscription.BLINDING,
+                SherdInscription.DAZING, SherdInscription.ENFEEBLING, SherdInscription.EMPOWERED}) {
+            SherdSpell.Builder builder = petBuff();
+            harmful.applyTo(builder, harmful.defaultMagnitude());
+            SherdSpell spell = builder.build();
+            assertEquals(1, spell.steps().get(0).effects().size(),
+                harmful + " must not attach to a step aimed at your own pets");
+        }
+    }
+
+    @Test
+    void harmfulInscriptionsStillLandOnEnemySteps() {
+        SherdSpell.Builder builder = targeted();
+        SherdInscription.SERRATED.applyTo(builder, 2);
+        assertEquals(2, builder.build().steps().get(0).effects().size());
+    }
+
+    @Test
+    void widerAreasDoNotMultiplyAPetHeal() {
+        // Widening a per-pet selector made each pet catch its neighbours, healing each one
+        // several times over.
+        SherdSpell.Builder builder = petBuff();
+        SherdInscription.RESONANT.applyTo(builder, 2);
+        assertEquals(0, builder.build().steps().get(0).selector().radius());
+    }
+
+    @Test
+    void harmfulInscriptionsAreNotOfferedForAPureBuff() {
+        SherdSpell buff = petBuff().build();
+        assertFalse(SherdInscription.KINDLED.appliesTo(buff));
+        assertFalse(SherdInscription.EMPOWERED.appliesTo(buff));
+        assertFalse(SherdInscription.FARSIGHTED.appliesTo(buff), "a self-cast has no range to extend");
+        assertTrue(SherdInscription.RALLYING.appliesTo(buff), "pack and caster buffs fit any sherd");
+        assertTrue(SherdInscription.HEARTENING.appliesTo(buff));
+    }
+
+    @Test
+    void statInscriptionsAreOnlyOfferedWhereTheyChangeSomething() {
+        assertFalse(SherdInscription.FLUENT.appliesTo(targeted().ap(1).build()),
+            "a 1 AP sherd cannot get cheaper");
+        SherdSpell unbreakable = targeted().unbreakable().build();
+        assertFalse(SherdInscription.ENDURING.appliesTo(unbreakable));
+        assertFalse(SherdInscription.TEMPERED.appliesTo(unbreakable));
+    }
+
+    @Test
+    void temperedLowersTheShatterChanceWithoutGoingNegative() {
+        int before = targeted().build().breakPercent();
+        SherdSpell.Builder builder = targeted();
+        SherdInscription.TEMPERED.applyTo(builder, 15);
+        assertEquals(Math.max(0, before - 15), builder.build().breakPercent());
+        SherdSpell.Builder floor = targeted();
+        SherdInscription.TEMPERED.applyTo(floor, 1000);
+        assertEquals(0, floor.build().breakPercent());
+    }
+
+    @Test
+    void everyInscriptionIsOfferableSomewhere() {
+        // An inscription that applies to neither a targeted attack nor a buff could never be
+        // offered by the Scribe at all.
+        SherdSpell attack = targeted().build();
+        SherdSpell buff = petBuff().build();
+        for (SherdInscription inscription : SherdInscription.values()) {
+            assertTrue(inscription.appliesTo(attack) || inscription.appliesTo(buff),
+                inscription + " would never be offered");
+        }
+    }
+
+    @Test
+    void aSherdCarriesAtMostOneLegendary() {
+        java.util.List<SherdModifiers.Entry> entries = new java.util.ArrayList<>();
+        assertTrue(SherdModifiers.canAccept(entries, SherdInscription.DOOM));
+        entries.add(new SherdModifiers.Entry(SherdInscription.DOOM, 40));
+        assertFalse(SherdModifiers.canAccept(entries, SherdInscription.TEMPEST),
+            "a second legendary must be refused");
+        assertTrue(SherdModifiers.canAccept(entries, SherdInscription.KINDLED),
+            "ordinary inscriptions still fit beside a legendary");
+    }
+
+    @Test
+    void echoingRunsTheSpellTwiceAndCostsMore() {
+        SherdSpell base = targeted().build();
+        SherdSpell.Builder builder = targeted();
+        SherdInscription.ECHOING.applyTo(builder, 1);
+        SherdSpell echoed = builder.build();
+        assertEquals(base.steps().size() * 2, echoed.steps().size());
+        assertEquals(base.apCost() + 1, echoed.apCost());
+    }
+
+    @Test
+    void echoingIsNeverOfferedForASelfCast() {
+        // Self-casts summon, arm and place things that must happen once per cast.
+        assertFalse(SherdInscription.ECHOING.appliesTo(selfCast().build()));
+        assertFalse(SherdInscription.ECHOING.appliesTo(petBuff().build()));
+    }
+
+    @Test
+    void legendariesAreMarkedInTheirLabel() {
+        assertTrue(SherdInscription.DOOM.label().contains("★"));
+        assertFalse(SherdInscription.KINDLED.label().contains("★"));
+    }
+
     @Test
     void anUnknownInscriptionNameResolvesToNullRatherThanThrowing() {
         // Saved sherds outlive the enum. A removed inscription should cost that one line, not

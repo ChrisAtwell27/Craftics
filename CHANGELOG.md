@@ -1,5 +1,58 @@
 ﻿Changelog
 
+0.4.9
+
+The Scribe Knows More Words
+
+The Scribe can now write 36 inscriptions, up from 13: 29 ordinary ones and 7 rare legendaries.
+
+On-hit, riding along on every enemy the sherd strikes:
+
+- **Serrated** - also inflicts 2 Bleed
+- **Venomous** - also poisons for 3 turns
+- **Drenching** - also Soaks for 2 turns (double lightning damage, puts out fire)
+- **Chilling** - also slows for 2 turns
+- **Blinding** - also blinds for 2 turns
+- **Dazing** - 25% chance to stun each target
+- **Enfeebling** - also lowers ATK by 3
+- **Empowered** - +4 damage to every enemy hit
+
+For you and your pack, on any sherd:
+
+- **Heartening** - also heals you 6 HP
+- **Emboldening** - grants Strength for 2 turns
+- **Swift** - grants Speed for 2 turns
+- **Bulwark** - grants Absorption for 2 turns
+- **Fortunate** - grants Luck for 3 turns
+- **Rallying** - every pet gains +3 ATK for 3 turns
+
+On the sherd itself:
+
+- **Tempered** - 15% less likely to shatter
+
+Legendary inscriptions, marked with a gold ★. On any visit there is a 5% chance the Scribe also offers one, on top of the usual picks. A sherd can carry only one legendary:
+
+- **★ Echoing** - the spell casts twice, for +1 AP (aimed sherds only)
+- **★ Tempest** - +2 chains, and Soaks everything it hits
+- **★ Cataclysm** - impacts spread 1 tile further and burn for 3 turns
+- **★ Sanguine** - inflicts 3 Bleed and heals you for the damage dealt
+- **★ Doom** - executes non-boss targets below 40% HP
+- **★ Warlord** - grants Strength II, Resistance II and Speed for 3 turns
+- **★ Packmaster** - every pet heals 50% of its max HP and gains +5 ATK
+
+Fixes:
+
+- **Harmful inscriptions no longer hit your own pets.** Kindled, Forceful, Withering and Sundering attached to every step of a spell, including a step aimed at your pets, so Kindled on Guardian Spirit set the whole pack on fire. They now only land on enemies
+- **Resonant no longer heals a pet several times over.** Widening a pet heal made each pet catch its neighbours. Resonant and Arcing now only widen steps that strike enemies
+- **The Scribe only offers inscriptions that would do something on the sherd you picked.** No more Farsighted for a self-cast, Fluent for a 1 AP sherd, Enduring for an unbreakable one, or a burn for a sherd that never hits an enemy. The offer still stays the same for a given sherd however often you back out and look
+
+No More Spawning In Lava
+
+Entering a level in a busy party, or in a lava-ringed cavern, could drop you straight onto lava. The spawn search only asked whether a tile was walkable, and lava and fire count as walkable because they only hurt. Once the party and its pets took the safe tiles nearest the start, the next closest tile was often a hazard.
+
+- **Players now spawn on safe ground first.** Lava, fire, embers and other hazard tiles are only used when the arena has no safe tile left at all
+- **Pets no longer spawn on top of a teammate.** Players are not tracked as tile occupants the way mobs are, so a pet could be placed on a party member's tile, hiding them under the cursor. Every ally now gets its own tile
+
 0.4.8
 
 Heavy Weapons Pull Their Weight
