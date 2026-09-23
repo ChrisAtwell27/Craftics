@@ -2,6 +2,8 @@ package com.crackedgames.craftics.world;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.UUID;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -67,5 +69,126 @@ class InfiniteStashNbtTest {
             CrafticsSavedData.PlayerData.fromNbt(new CrafticsSavedData.PlayerData().toNbt());
         assertEquals(0, back.infiniteStashEmeralds);
         assertEquals(0, back.infiniteParkedEmeralds);
+    }
+
+    // ── Extra loadout parts (XP, ender chest, worn backpacks) ───────────────────
+    //
+    // These carry the player's REAL XP, ender chest and backpacks while a run is on. A shard
+    // that wrote them and failed to read them back would restore nothing at the end of a run:
+    // the part would read as "never captured" and the run's version would be kept - exactly
+    // the leak the parts exist to close.
+
+    private static net.minecraft.nbt.NbtCompound sampleExtras() {
+        net.minecraft.nbt.NbtCompound xp = new net.minecraft.nbt.NbtCompound();
+        xp.putInt("level", 30);
+        xp.putFloat("progress", 0.5f);
+        xp.putInt("total", 1395);
+        net.minecraft.nbt.NbtCompound packs = new net.minecraft.nbt.NbtCompound();
+        packs.put("packs", new net.minecraft.nbt.NbtList());
+        net.minecraft.nbt.NbtCompound extras = new net.minecraft.nbt.NbtCompound();
+        extras.put("xp", xp);
+        extras.put("enderChest", new net.minecraft.nbt.NbtList());
+        extras.put("backpacks", packs);
+        return extras;
+    }
+
+    @Test
+    void stashExtrasRoundTrip() {
+        CrafticsSavedData.PlayerData pd = new CrafticsSavedData.PlayerData();
+        pd.infiniteStashActive = true;
+        pd.infiniteStashExtras = sampleExtras();
+        CrafticsSavedData.PlayerData back = CrafticsSavedData.PlayerData.fromNbt(pd.toNbt());
+        assertEquals(pd.infiniteStashExtras, back.infiniteStashExtras,
+            "every captured stash part must survive a save/load on every shard");
+    }
+
+    @Test
+    void parkedExtrasRoundTrip() {
+        CrafticsSavedData.PlayerData pd = new CrafticsSavedData.PlayerData();
+        pd.infiniteSuspended = true;
+        pd.infiniteParkedExtras = sampleExtras();
+        CrafticsSavedData.PlayerData back = CrafticsSavedData.PlayerData.fromNbt(pd.toNbt());
+        assertEquals(pd.infiniteParkedExtras, back.infiniteParkedExtras,
+            "every parked run part must survive a save/load on every shard");
+    }
+
+    @Test
+    void absentExtrasLoadAsNothingCaptured() {
+        // A stash taken before the parts existed has no extras key at all. It must load as an
+        // empty compound - "no part captured", so the restore leaves that storage alone -
+        // never as null, and never as a part captured empty (which would wipe it).
+        net.minecraft.nbt.NbtCompound legacy = new CrafticsSavedData.PlayerData().toNbt();
+        legacy.remove("infiniteStashExtras");
+        legacy.remove("infiniteParkedExtras");
+        CrafticsSavedData.PlayerData back = CrafticsSavedData.PlayerData.fromNbt(legacy);
+        assertNotNull(back.infiniteStashExtras);
+        assertNotNull(back.infiniteParkedExtras);
+        assertTrue(back.infiniteStashExtras.isEmpty());
+        assertTrue(back.infiniteParkedExtras.isEmpty());
+    }
+
+    @Test
+    void stashAndParkedExtrasAreIndependent() {
+        CrafticsSavedData.PlayerData pd = new CrafticsSavedData.PlayerData();
+        net.minecraft.nbt.NbtCompound onlyXp = new net.minecraft.nbt.NbtCompound();
+        onlyXp.put("xp", new net.minecraft.nbt.NbtCompound());
+        pd.infiniteStashExtras = sampleExtras();
+        pd.infiniteParkedExtras = onlyXp;
+        CrafticsSavedData.PlayerData back = CrafticsSavedData.PlayerData.fromNbt(pd.toNbt());
+        assertTrue(back.infiniteStashExtras.contains("backpacks"));
+        assertFalse(back.infiniteParkedExtras.contains("backpacks"));
+    }
+
+    // ── A stash outlives a record reset ─────────────────────────────────────────
+
+    private static CrafticsSavedData dataWithActiveStash(UUID id) {
+        CrafticsSavedData data = new CrafticsSavedData();
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(id);
+        pd.worldSlot = 2;
+        pd.infiniteRunHost = id.toString();
+        pd.infiniteStashActive = true;
+        pd.infiniteStashEmeralds = 900;
+        pd.infiniteStashStats = "stats";
+        pd.infiniteStashExtras = sampleExtras();
+        return data;
+    }
+
+    @Test
+    void forgetIslandKeepsAnActiveStash() {
+        // Deleting an island mid-run used to drop the stash with the record, and the run's
+        // loadout became the player's real one for good.
+        UUID id = UUID.randomUUID();
+        CrafticsSavedData data = dataWithActiveStash(id);
+        data.forgetIsland(id);
+        CrafticsSavedData.PlayerData fresh = data.getPlayerData(id);
+        assertEquals(-1, fresh.worldSlot, "the island itself is still forgotten");
+        assertTrue(fresh.infiniteStashActive);
+        assertEquals(900, fresh.infiniteStashEmeralds);
+        assertEquals("stats", fresh.infiniteStashStats);
+        assertEquals(id.toString(), fresh.infiniteRunHost);
+        assertEquals(sampleExtras(), fresh.infiniteStashExtras);
+    }
+
+    @Test
+    void resetPlayerDataKeepsAnActiveStash() {
+        UUID id = UUID.randomUUID();
+        CrafticsSavedData data = dataWithActiveStash(id);
+        data.resetPlayerData(id);
+        CrafticsSavedData.PlayerData fresh = data.getPlayerData(id);
+        assertTrue(fresh.infiniteStashActive);
+        assertEquals(900, fresh.infiniteStashEmeralds);
+        assertEquals(sampleExtras(), fresh.infiniteStashExtras);
+    }
+
+    @Test
+    void resetWithoutAStashCarriesNothing() {
+        UUID id = UUID.randomUUID();
+        CrafticsSavedData data = new CrafticsSavedData();
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(id);
+        pd.infiniteStashEmeralds = 5;   // stale leftovers, stash not active
+        data.forgetIsland(id);
+        CrafticsSavedData.PlayerData fresh = data.getPlayerData(id);
+        assertFalse(fresh.infiniteStashActive);
+        assertEquals(0, fresh.infiniteStashEmeralds);
     }
 }

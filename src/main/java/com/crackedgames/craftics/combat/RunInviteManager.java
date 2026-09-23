@@ -355,7 +355,13 @@ public final class RunInviteManager {
         }
 
         BiomeTemplate biome = findBiome(biomeId);
-        if (biome == null) { ServerPlayNetworking.send(starter, new ExitCombatPayload(false)); return; }
+        if (biome == null) {
+            // An Infinite start/resume above has already stashed everyone; park the run again
+            // rather than leave the party holding run loadouts in the hub. No-op otherwise.
+            InfiniteRunManager.abortFailedStart(starter, "unknown biome " + biomeId);
+            ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
+            return;
+        }
         pd.initBranchIfNeeded();
 
         // The FIRST arena of a run is entered from right here - beginRun builds it and sends
@@ -415,6 +421,7 @@ public final class RunInviteManager {
             false, infiniteSpec);
         if (levelDef == null) {
             CrafticsMod.LOGGER.warn("RunInviteManager: no definition for level {}", globalLevel);
+            InfiniteRunManager.abortFailedStart(starter, "no level " + globalLevel);
             ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
             return;
         }

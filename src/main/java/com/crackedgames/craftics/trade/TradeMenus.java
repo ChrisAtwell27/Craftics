@@ -33,6 +33,23 @@ public final class TradeMenus {
 
     private TradeMenus() {}
 
+    /** Shown when an Infinite run stands between the two traders. */
+    static final String RUN_REFUSAL =
+        "§cTrades can't cross an Infinite run - both of you need to be in the same run, or neither.";
+
+    /**
+     * Whether these two may swap items at all. A trade moves items without going through the
+     * Infinite stash swap, so one between a run participant and anyone outside that run would
+     * carry run loot out, or real gear in.
+     */
+    static boolean mayTrade(ServerPlayerEntity a, ServerPlayerEntity b) {
+        var server = a.getServer();
+        if (server == null) return true;
+        return com.crackedgames.craftics.combat.InfiniteRunManager.mayExchangeItems(
+            com.crackedgames.craftics.world.CrafticsSavedData.get(server.getOverworld()),
+            a.getUuid(), b.getUuid());
+    }
+
     private static final int ROWS = 6;
     private static final int SIZE = ROWS * 9;
 
@@ -175,6 +192,13 @@ public final class TradeMenus {
         ServerPlayerEntity partner = server.getPlayerManager().getPlayer(themId);
         if (partner == null) {
             cancel(clicker, session, "§cThe other trader is no longer online. Nothing was traded.");
+            return;
+        }
+
+        // Checked again here, not only when the trade opened: the window can stay up while
+        // either side enters or leaves an Infinite run, and this is the moment items move.
+        if (!mayTrade(clicker, partner)) {
+            cancelBoth(session, clicker, partner, RUN_REFUSAL + " Nothing was traded.");
             return;
         }
 

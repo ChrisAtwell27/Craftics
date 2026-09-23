@@ -1801,6 +1801,10 @@ public class CombatManager {
                 teleportToHub(m);
             }
             if (active) endCombat();
+            // Home is where the chests are: an Infinite run the server cannot continue has to
+            // hand everyone their real loadout back (the host's run parks), or the party stands
+            // in the hub still wearing the run's.
+            InfiniteRunManager.releaseAfterFailure(members);
             return;
         }
 
@@ -28703,8 +28707,8 @@ public class CombatManager {
         }
 
         // INFINITE MODE: a wipe just ends the run. No emerald/XP/item death
-        // penalties - the run items and the run wallet evaporate with the stash
-        // restore (the real balance returns), and the banked best score is kept.
+        // penalties - the run's items, XP and wallet evaporate with the stash
+        // restore (the real ones return), and the banked best score is kept.
         // Resolve the ACTUAL run host, not the party leader: infiniteActive lives on
         // the HOST's record, and in co-op the host need not be the leader. Checking
         // the leader's record here skipped this branch entirely and dropped a co-op
@@ -31178,7 +31182,13 @@ public class CombatManager {
             } catch (Exception ex) {
                 CrafticsMod.LOGGER.error("Failed to start next level, sending player home", ex);
                 sendMessageTo(savedPlayer, "§cError loading next level! Returning to hub...");
-                ld.endBiomeRun();
+                // An Infinite run parks instead (see below), and parking reads the live cursor -
+                // ending it here would park the run at nothing and wipe whatever campaign run
+                // the park hands the cursor back to.
+                if (InfiniteRunManager.resolveActiveHost(data, savedPlayer.getUuid(),
+                        savedPlayer.getUuid()) == null) {
+                    ld.endBiomeRun();
+                }
                 ld.inCombat = false;
                 data.markDirty();
                 teleportToHub(savedPlayer);
@@ -31189,6 +31199,9 @@ public class CombatManager {
                     }
                     ServerPlayNetworking.send(m, new ExitCombatPayload(false));
                 }
+                List<ServerPlayerEntity> sentHome = new ArrayList<>(savedMembers);
+                if (!sentHome.contains(savedPlayer)) sentHome.add(savedPlayer);
+                InfiniteRunManager.releaseAfterFailure(sentHome);
             }
         }
     }

@@ -1,5 +1,28 @@
 ﻿Changelog
 
+0.4.9
+
+Coming Home When Your Party Leader Has No Island
+
+Every island lookup asked the same question: whose island does this party play on? The answer is the leader's, which is right up until the leader does not have one. Then the entire party counted as islandless - including players whose own island was sitting there the whole time.
+
+- **/home falls back to your own island** when your party leader has none, instead of dropping you in the lobby at the world origin
+- **Visiting resolves the same way**, so a friend is no longer told you have no island to visit while you are standing on it
+- **/craftics island info and /craftics island tp agree with /home**, so the admin tools find the island the player actually goes to
+- **A hub spawn point that went missing is recovered from the island itself.** The island is marked built, so nothing ever rebuilt it, and every trip home landed on the centre of the plot at (0, 65, 0) instead of the front door. The spawn marker is read off the island and stored - nothing is built over what you have there
+
+Infinite Mode Keeps What It Takes
+
+Infinite Mode stashes everything you own on the way in and hands it back on the way out, but the stash only ever knew about your inventory and your accessory slots. A worn backpack is neither, so it carried your real gear into a run and carried the run's loot back out. The ender chest, your XP and whatever sat on your cursor crossed the same way, and several exits skipped the swap entirely.
+
+- **Worn backpacks are stashed with everything else** - contents and unlocked bays included. You enter a run with none, and yours come back when it ends
+- **The ender chest and vanilla XP are stashed too.** A run earns its own XP and spends its own; yours is waiting when you leave
+- **Items on the cursor, in the 2x2 crafting grid or in an open container** are folded into the stash instead of riding across the swap
+- **/lobby, /spawn, /craftics world lobby and /craftics world home leave the run properly**, the way /home always did - and so do a failed arena build, an island deletion, and the host disconnecting, which used to leave the party standing in the hub still holding the run's loot
+- **The auction house, /trade, raids, merchant scenes and lootbox kiosks are closed** while a run holds your items, so run loot and the real economy no longer meet
+- **A hardcore wipe now takes worn backpacks and accessories**, which used to survive it - stuffing a backpack before a hardcore fight made the wipe cost nothing
+- **Fixed: resuming a parked run could overwrite the stash** with another run's loadout, destroying the real inventory, levels and emeralds it was holding
+
 0.4.8
 
 Heavy Weapons Pull Their Weight

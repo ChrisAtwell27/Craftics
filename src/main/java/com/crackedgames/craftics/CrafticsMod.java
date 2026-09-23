@@ -659,12 +659,16 @@ public class CrafticsMod implements ModInitializer {
          * matching "arrived" is a ghost lobby, spelled out in the log.
          */
         net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents
-            .AFTER_PLAYER_CHANGE_WORLD.register((player, origin, destination) ->
+            .AFTER_PLAYER_CHANGE_WORLD.register((player, origin, destination) -> {
                 LOGGER.info("[teleport] {} arrived {} -> {} at {}, {}, {}",
                     player.getName().getString(),
                     com.crackedgames.craftics.world.HubTeleports.dimensionNameOf(origin),
                     com.crackedgames.craftics.world.HubTeleports.dimensionNameOf(destination),
-                    (int) player.getX(), (int) player.getY(), (int) player.getZ()));
+                    (int) player.getX(), (int) player.getY(), (int) player.getZ());
+                // Leaving the islands while still wearing an Infinite run's loadout is leaving
+                // the run, however it happened. Checked next tick; see onChangedWorld.
+                com.crackedgames.craftics.combat.InfiniteRunManager.onChangedWorld(player, destination);
+            });
 
         registerRespawnHooks();
     }
@@ -781,6 +785,18 @@ public class CrafticsMod implements ModInitializer {
             // surviving member the instant the leader disconnects.
             if (!raidStillRunning) {
                 CombatManager.remove(playerUuid);
+                // An Infinite host logging out parks their run - but only once they are back
+                // did anything act on it, and until then the rest of the party stood in the hub
+                // (sent there just above) still wearing the run's loadout, free to chest the
+                // loot. Park it now: every member no longer held by a fight gets their real
+                // loadout back, and the host's own swap happens on their next join as before.
+                // Asked of the leaver's OWN record: a member's pointer leads to the host, whose
+                // run is not theirs to park.
+                if (com.crackedgames.craftics.combat.InfiniteRunManager.isInLiveRun(
+                        CrafticsSavedData.get(server.getOverworld()), playerUuid)) {
+                    com.crackedgames.craftics.combat.InfiniteRunManager.suspendRun(
+                        server, playerUuid, "host disconnected");
+                }
             }
             com.crackedgames.craftics.scene.SceneController.onDisconnect(playerUuid);
 
@@ -1499,6 +1515,14 @@ public class CrafticsMod implements ModInitializer {
             }
         }
 
+        // Settle any Infinite run first. The owner's record is about to be replaced, and a run
+        // - or a stash - it was carrying goes with it: the run's loadout would simply become
+        // their real one. Ending it hands every online participant their real loadout back.
+        if (data.getPlayerData(owner).infiniteActive) {
+            com.crackedgames.craftics.combat.InfiniteRunManager.endRun(server, owner, "island deleted");
+        }
+        com.crackedgames.craftics.combat.InfiniteRunManager.onHomeExit(target);
+
         // Evacuate first - everyone, not just the owner. A visitor left inside a dimension
         // being deleted is the one case Fantasy gives no guarantees about.
         ServerWorld island = com.crackedgames.craftics.world.IslandDimensions.getLoaded(server, owner);
@@ -1974,12 +1998,21 @@ public class CrafticsMod implements ModInitializer {
                 ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
                 CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
                 CrafticsSavedData.PlayerData pd = data.getPlayerData(targetPlayer.getUuid());
-                pd.inCombat = false;
-                pd.endBiomeRun();
-                data.markDirty();
+                boolean infiniteHost = com.crackedgames.craftics.combat.InfiniteRunManager
+                    .isInLiveRun(data, targetPlayer.getUuid());
                 CombatManager cm = CombatManager.get(targetPlayer);
                 if (cm.isActive()) cm.endCombat();
                 CombatManager.remove(targetPlayer.getUuid());
+                // Out of the fight, out of the Infinite run too: a host parks it (reading the
+                // live cursor, so this must come before the cursor is wiped below), a member
+                // gets their real loadout back. Skipping this left them in the lobby wearing
+                // the run's loadout with the stash still holding their own.
+                com.crackedgames.craftics.combat.InfiniteRunManager.onHomeExit(targetPlayer);
+                pd.inCombat = false;
+                // Parking an Infinite run hands the shared cursor back to any campaign run it
+                // had borrowed it from; that run is not the stuck one, so it stays.
+                if (!infiniteHost) pd.endBiomeRun();
+                data.markDirty();
                 // The whole point of this command is unsticking someone, so clear every client
                 // flag rather than just combat: a player stuck in scene or behind the loading
                 // curtain reaches for this command too, and it used to leave both untouched.
@@ -2673,7 +2706,12 @@ public class CrafticsMod implements ModInitializer {
                             if (tpd.infiniteActive) {
                                 com.crackedgames.craftics.combat.InfiniteRunManager.endRun(
                                     targetPlayer.getServer(), targetPlayer.getUuid(), "admin stop");
-                                tpd.infiniteRunHost = "";
+                                // Only their own run's pointer. If it names another host they
+                                // are seated in that run, and its stash is still theirs to
+                                // get back when it ends.
+                                if (targetPlayer.getUuid().toString().equals(tpd.infiniteRunHost)) {
+                                    tpd.infiniteRunHost = "";
+                                }
                                 stopData.markDirty();
                             } else {
                                 com.crackedgames.craftics.combat.InfiniteRunManager.abandonRun(targetPlayer);
@@ -3128,8 +3166,10 @@ public class CrafticsMod implements ModInitializer {
                 ServerWorld overworld = player.getServer().getOverworld();
                 CrafticsSavedData data = CrafticsSavedData.get(overworld);
 
-                // Check effective world owner (party leader's world if in a party)
-                java.util.UUID effectiveOwner = data.getEffectiveWorldOwner(player.getUuid());
+                // The party leader's island when the leader has one, else the player's own.
+                // Asking for the bare effective owner sent a player whose leader had no island
+                // to the lobby, past an island of their own.
+                java.util.UUID effectiveOwner = data.getIslandOwnerFor(player.getUuid());
                 if (!data.hasPersonalWorld(effectiveOwner)) {
                     ctx.getSource().sendError(Text.literal(
                         "\u00a7cYou don't have a personal world yet. Use \u00a7e/new\u00a7c to create one."));
@@ -3247,6 +3287,9 @@ public class CrafticsMod implements ModInitializer {
                 if (blockedByCombatEscape(ctx.getSource(), player, "/lobby")) return 0;
                 detachFromCombatForTeleport(player);
                 clearClientRunState(player);
+                // Same as /home: leaving for the lobby is leaving an Infinite run, and the
+                // stash swap has to happen before the player is anywhere they can stow loot.
+                com.crackedgames.craftics.combat.InfiniteRunManager.onHomeExit(player);
 
                 com.crackedgames.craftics.world.HubTeleports.toLobby(player);
                 player.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
@@ -3320,8 +3363,14 @@ public class CrafticsMod implements ModInitializer {
                 return 0;
             }
 
-            if (cm.isActive()) cm.endCombat();
+            // detach, not a bare endCombat on the player's own manager: party combat runs on
+            // the leader's, and an operator who is a party member would otherwise leave a
+            // ghost of themselves in the fight.
+            detachFromCombatForTeleport(player);
             clearClientRunState(player);
+            // The island hub is where the chests are - the one place an Infinite loadout must
+            // never arrive unswapped. This was the only hub teleport besides /home without it.
+            com.crackedgames.craftics.combat.InfiniteRunManager.onHomeExit(player);
 
             // HubTeleports.toHub resolves the effective owner (party leader when in a
             // party) and the island dim itself, same as the manual lookup this replaced.
@@ -3381,6 +3430,7 @@ public class CrafticsMod implements ModInitializer {
             if (blockedByCombatEscape(ctx.getSource(), player, "/craftics world lobby")) return 0;
             detachFromCombatForTeleport(player);
             clearClientRunState(player);
+            com.crackedgames.craftics.combat.InfiniteRunManager.onHomeExit(player);
 
             com.crackedgames.craftics.world.HubTeleports.toLobby(player);
             player.changeGameMode(GameMode.SURVIVAL);

@@ -28,6 +28,8 @@ public final class CrafticsServerCommands {
                 // in a scene from a payload and unlearns it only from one, so teleporting the
                 // body out without telling it leaves every right-click silently swallowed.
                 com.crackedgames.craftics.CrafticsMod.clearClientRunState(p);
+                // Leaving for the lobby leaves an Infinite run; swap the loadout back first.
+                com.crackedgames.craftics.combat.InfiniteRunManager.onHomeExit(p);
                 HubTeleports.toLobby(p);
                 ctx.getSource().sendFeedback(() -> Text.literal("§aTeleported to lobby."), false);
                 return 1;
@@ -68,6 +70,11 @@ public final class CrafticsServerCommands {
             .then(CommandManager.argument("player", EntityArgumentType.player())
                 .executes(ctx -> {
                     ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+                    // A rescued player is out of their Infinite run as well - unless a fight
+                    // still holds them, in which case its own exit does the swap.
+                    if (!com.crackedgames.craftics.combat.CombatManager.isEngaged(target.getUuid())) {
+                        com.crackedgames.craftics.combat.InfiniteRunManager.onHomeExit(target);
+                    }
                     HubTeleports.toHub(target);
                     ctx.getSource().sendFeedback(() -> Text.literal(
                         "§aSent " + target.getName().getString() + " home."), true);
@@ -239,7 +246,7 @@ public final class CrafticsServerCommands {
             return 0;
         }
         CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
-        java.util.UUID owner = data.getEffectiveWorldOwner(target);
+        java.util.UUID owner = data.getIslandOwnerFor(target);
         if (!data.hasPersonalWorld(owner)) {
             src.sendError(Text.literal("§c" + query + " has no island."));
             return 0;
@@ -288,7 +295,7 @@ public final class CrafticsServerCommands {
             return 0;
         }
         CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
-        java.util.UUID owner = data.getEffectiveWorldOwner(target);
+        java.util.UUID owner = data.getIslandOwnerFor(target);
         if (!data.hasPersonalWorld(owner)) {
             src.sendError(Text.literal("§c" + query + " has no island to visit."));
             return 0;

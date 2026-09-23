@@ -143,6 +143,9 @@ public final class SceneController {
         // instance), so the old `getActiveCombat(...) != null` guard silently
         // blocked ALL scene entry - isEngaged() is the real check.
         if (com.crackedgames.craftics.combat.CombatManager.isEngaged(player.getUuid())) return;
+        // A run's wallet and inventory are not the player's; a merchant scene would spend the
+        // one and fill the other with goods the end of the run deletes.
+        if (com.crackedgames.craftics.combat.InfiniteRunManager.holdsRunLoadout(player)) return;
         if (com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(player)) return;
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         // Scene booths are built at fixed coords inside the owner's island dim. Entry

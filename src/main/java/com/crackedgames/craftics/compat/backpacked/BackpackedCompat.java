@@ -41,6 +41,14 @@ import java.util.function.Predicate;
  *
  * <p>Every failure path degrades to "no backpacks", which reads as the mod being absent. A compat
  * module is the last thing that should be able to break loot delivery or a death screen.
+ *
+ * <h2>Infinite Mode</h2>
+ *
+ * <p>Worn packs live in Backpacked's own player data, not in {@code PlayerInventory}, so the
+ * Infinite Mode stash never saw them: a player walked into a "start from nothing" run wearing
+ * their real packs, and walked out with whatever run loot they had stuffed in. {@link #saveWorn},
+ * {@link #clearWorn} and {@link #restoreWorn} are how {@code RunLoadout} swaps them with the
+ * rest of the loadout.
  */
 public final class BackpackedCompat {
 
@@ -77,6 +85,21 @@ public final class BackpackedCompat {
     private static Method saveItemsToStack;  // BackpackInventory.saveItemsToStack()
     private static Method getBackpackStack;  // BackpackInventory.getBackpackStack()
     private static Method findAugment;       // static BackpackHelper.findAugment(ItemStack, AugmentType)
+
+    // Worn-pack storage, for the Infinite Mode stash (see "Stash" below). Resolved separately
+    // from the handles above so a Backpacked update that moves one of these costs the stash,
+    // not loot delivery.
+    private static boolean stashResolved = false;
+    private static Method getBackpacks;       // static BackpackHelper.getBackpacks(PlayerEntity) -> live DefaultedList
+    private static Method removeAllBackpacks; // static BackpackHelper.removeAllBackpacks(PlayerEntity)
+    private static Method setBackpackStack;   // static BackpackHelper.setBackpackStack(PlayerEntity, ItemStack, int)
+    private static Method equipBackpack;      // static BackpackHelper.equipBackpack(PlayerEntity, ItemStack)
+    private static Method getBayUnlocks;      // static BackpackHelper.getBackpackUnlockableSlots(PlayerEntity)
+    private static Method setBayUnlocks;      // static BackpackHelper.setBackpackUnlockableSlots(PlayerEntity, UnlockableSlots)
+    private static java.lang.reflect.Constructor<?> newBayUnlocks; // new UnlockableSlots(int maxSlots)
+    private static Method maxEquipable;       // static ManagementInventory.getMaxEquipable()
+    @SuppressWarnings("rawtypes")
+    private static com.mojang.serialization.Codec bayUnlocksCodec; // UnlockableSlots.CODEC
 
     /** Augment key to its AugmentType singleton. Absent key = that augment could not be reached. */
     private static final Map<String, Object> AUGMENT_TYPES = new HashMap<>();
@@ -525,6 +548,191 @@ public final class BackpackedCompat {
             }
         }
         return out;
+    }
+
+    // -- Stash ----------------------------------------------------------------
+
+    /**
+     * Look up the worn-pack handles the Infinite Mode stash needs, once.
+     *
+     * <p>Kept apart from {@link #resolve} for the same reason each augment is resolved on its
+     * own: losing one of these in a Backpacked update should cost the stash, not loot delivery.
+     */
+    private static synchronized void resolveStash() {
+        if (stashResolved || !loaded) return;
+        stashResolved = true;
+        try {
+            Class<?> helper = Class.forName(HELPER_CLASS);
+            Class<?> unlocks = Class.forName(
+                "com.mrcrayfish.backpacked.common.backpack.UnlockableSlots");
+            getBackpacks = helper.getMethod("getBackpacks", PlayerEntity.class);
+            removeAllBackpacks = helper.getMethod("removeAllBackpacks", PlayerEntity.class);
+            setBackpackStack = helper.getMethod("setBackpackStack",
+                PlayerEntity.class, ItemStack.class, int.class);
+            equipBackpack = helper.getMethod("equipBackpack", PlayerEntity.class, ItemStack.class);
+            getBayUnlocks = helper.getMethod("getBackpackUnlockableSlots", PlayerEntity.class);
+            setBayUnlocks = helper.getMethod("setBackpackUnlockableSlots", PlayerEntity.class, unlocks);
+            newBayUnlocks = unlocks.getConstructor(int.class);
+            maxEquipable = Class.forName("com.mrcrayfish.backpacked.inventory.ManagementInventory")
+                .getMethod("getMaxEquipable");
+            bayUnlocksCodec = (com.mojang.serialization.Codec) unlocks.getField("CODEC").get(null);
+        } catch (Throwable t) {
+            getBackpacks = null;
+            CrafticsMod.LOGGER.warn("[Craftics x Backpacked] could not reach Backpacked's worn-pack "
+                + "storage ({}). Worn backpacks will be left in place across Infinite Mode.",
+                t.toString());
+        }
+    }
+
+    /** Registry-aware NBT ops for this player's world, as {@code AccessoryStash} uses. */
+    private static net.minecraft.registry.RegistryOps<net.minecraft.nbt.NbtElement> ops(
+            PlayerEntity player) {
+        return player.getEntityWorld().getRegistryManager().getOps(net.minecraft.nbt.NbtOps.INSTANCE);
+    }
+
+    /**
+     * Snapshot every worn backpack - contents included - and the player's bay unlocks, for the
+     * Infinite Mode stash.
+     *
+     * <p>Returns {@code null} when the packs could not be read in full: Backpacked absent, a
+     * handle missing, or any one pack refusing to encode. Null is a promise to the caller, not a
+     * shrug - the stash only strips a player of what it managed to save, so a partial snapshot
+     * here would be real backpacks deleted on the way into a run.
+     *
+     * <p>Bay unlocks are best-effort: if they cannot be encoded the key is simply absent and
+     * {@link #clearWorn} leaves the unlocks alone.
+     */
+    public static net.minecraft.nbt.NbtCompound saveWorn(PlayerEntity player) {
+        if (!loaded || player == null) return null;
+        resolveStash();
+        if (getBackpacks == null) return null;
+        try {
+            // A backpack's contents live in its open inventory until the next player tick
+            // writes them back to the item. Encoding the item first would miss whatever the
+            // player moved in the last tick.
+            flush(player);
+            @SuppressWarnings("unchecked")
+            List<ItemStack> worn = (List<ItemStack>) getBackpacks.invoke(null, player);
+            net.minecraft.nbt.NbtList packs = new net.minecraft.nbt.NbtList();
+            for (int bay = 0; bay < worn.size(); bay++) {
+                ItemStack stack = worn.get(bay);
+                if (stack == null || stack.isEmpty()) continue;
+                var encoded = ItemStack.CODEC.encodeStart(ops(player), stack).result();
+                if (encoded.isEmpty() || !(encoded.get() instanceof net.minecraft.nbt.NbtCompound item)) {
+                    CrafticsMod.LOGGER.warn("[Craftics x Backpacked] could not stash worn pack {}; "
+                        + "leaving every worn pack in place", stack);
+                    return null;
+                }
+                net.minecraft.nbt.NbtCompound entry = new net.minecraft.nbt.NbtCompound();
+                entry.putInt("bay", bay);
+                entry.put("item", item);
+                packs.add(entry);
+            }
+            net.minecraft.nbt.NbtCompound out = new net.minecraft.nbt.NbtCompound();
+            out.put("packs", packs);
+            try {
+                @SuppressWarnings("unchecked")
+                var bays = bayUnlocksCodec.encodeStart(net.minecraft.nbt.NbtOps.INSTANCE,
+                    getBayUnlocks.invoke(null, player)).result();
+                bays.ifPresent(b -> out.put("bays", (net.minecraft.nbt.NbtElement) b));
+            } catch (Throwable ignored) {
+                // Bays stay put; the packs themselves are still safe to move.
+            }
+            return out;
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.warn("[Craftics x Backpacked] worn-pack snapshot failed: {}", t.toString());
+            return null;
+        }
+    }
+
+    /**
+     * Take every worn backpack off, dropping nothing, and - when {@code saved} carried the bay
+     * unlocks - reset the bays to the config's starting count.
+     *
+     * <p>Only ever called once the packs are safe somewhere else (a stash) or are meant to go
+     * (run loot, a hardcore wipe). Pass {@code null} to leave the bay unlocks alone.
+     */
+    public static void clearWorn(PlayerEntity player, net.minecraft.nbt.NbtCompound saved) {
+        if (!loaded || player == null) return;
+        resolveStash();
+        if (getBackpacks == null) return;
+        try {
+            // An open backpack menu keeps writing into the inventory it was opened on. The
+            // caller closes screens first; this is the backstop for the pack's own buffer.
+            flush(player);
+            removeAllBackpacks.invoke(null, player);
+            if (saved != null && saved.contains("bays")) {
+                int max = (int) maxEquipable.invoke(null);
+                // A fresh set; Backpacked re-applies its configured starting unlocks the next
+                // time anything reads the bays.
+                setBayUnlocks.invoke(null, player, newBayUnlocks.newInstance(max));
+            }
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.warn("[Craftics x Backpacked] could not clear worn packs: {}", t.toString());
+        }
+    }
+
+    /**
+     * Put a {@link #saveWorn} snapshot back on the player, replacing what is worn now.
+     *
+     * <p>Bay unlocks go back first, because Backpacked refuses a pack in a locked bay. A pack
+     * that still cannot go back into its own bay tries any free bay, and failing that lands in
+     * the inventory - a restore may move a pack, it never deletes one.
+     */
+    public static void restoreWorn(ServerPlayerEntity player, net.minecraft.nbt.NbtCompound saved) {
+        if (!loaded || player == null || saved == null) return;
+        resolveStash();
+        if (getBackpacks == null) return;
+        try {
+            removeAllBackpacks.invoke(null, player);
+            if (saved.contains("bays")) {
+                net.minecraft.nbt.NbtElement baysNbt = saved.get("bays");
+                @SuppressWarnings("unchecked")
+                var bays = bayUnlocksCodec.parse(net.minecraft.nbt.NbtOps.INSTANCE, baysNbt).result();
+                if (bays.isPresent()) setBayUnlocks.invoke(null, player, bays.get());
+            }
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.warn("[Craftics x Backpacked] could not reset worn packs for restore: {}",
+                t.toString());
+        }
+
+        //? if <=1.21.4 {
+        net.minecraft.nbt.NbtList packs = saved.getList("packs", net.minecraft.nbt.NbtElement.COMPOUND_TYPE);
+        //?} else
+        /*net.minecraft.nbt.NbtList packs = saved.getListOrEmpty("packs");*/
+        for (int i = 0; i < packs.size(); i++) {
+            //? if <=1.21.4 {
+            net.minecraft.nbt.NbtCompound entry = packs.getCompound(i);
+            int bay = entry.getInt("bay");
+            net.minecraft.nbt.NbtCompound item = entry.getCompound("item");
+            //?} else {
+            /*net.minecraft.nbt.NbtCompound entry = packs.getCompound(i).orElse(null);
+            if (entry == null) continue;
+            int bay = entry.getInt("bay", 0);
+            net.minecraft.nbt.NbtCompound item = entry.getCompoundOrEmpty("item");
+            *///?}
+            ItemStack stack;
+            try {
+                stack = ItemStack.CODEC.parse(ops(player), item).result().orElse(ItemStack.EMPTY);
+            } catch (Throwable t) {
+                stack = ItemStack.EMPTY;
+            }
+            if (stack.isEmpty()) continue;   // its mod is gone; nothing left to hand back
+            if (!placeWorn(player, stack, bay)) {
+                player.getInventory().offerOrDrop(stack);
+            }
+        }
+    }
+
+    /** Wear {@code stack} in {@code bay}, else in any free bay. False when neither would take it. */
+    private static boolean placeWorn(PlayerEntity player, ItemStack stack, int bay) {
+        try {
+            if ((boolean) setBackpackStack.invoke(null, player, stack, bay)) return true;
+            // equipBackpack empties the stack it accepts, and leaves it untouched when it refuses.
+            return (boolean) equipBackpack.invoke(null, player, stack);
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** Take {@code count} units out of one backpack slot, for an applied coin-flip loss. */

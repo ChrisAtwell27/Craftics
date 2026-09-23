@@ -112,6 +112,11 @@ public final class RaidBossLobby {
     public static JoinResult checkEligibility(ServerPlayerEntity p) {
         UUID id = p.getUuid();
         if (CombatManager.isEngaged(id)) return JoinResult.BUSY;
+        // Wearing an Infinite run's loadout: the run's gear would fight the raid and the
+        // raid's rewards would land in an inventory that evaporates when the run ends.
+        if (com.crackedgames.craftics.combat.InfiniteRunManager.holdsRunLoadout(p)) {
+            return JoinResult.BUSY;
+        }
         if (VisitProtection.isForeignVisitor(p)) return JoinResult.VISITING;
         return null;
     }

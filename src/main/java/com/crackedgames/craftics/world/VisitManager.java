@@ -26,8 +26,8 @@ public final class VisitManager {
     public static void request(ServerPlayerEntity visitor, ServerPlayerEntity host) {
         var server = visitor.getServer();
         CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
-        UUID owner = data.getEffectiveWorldOwner(host.getUuid());
-        if (owner.equals(data.getEffectiveWorldOwner(visitor.getUuid()))) {
+        UUID owner = data.getIslandOwnerFor(host.getUuid());
+        if (owner.equals(data.getIslandOwnerFor(visitor.getUuid()))) {
             visitor.sendMessage(Text.literal("§eThat is your own island."), false);
             return;
         }

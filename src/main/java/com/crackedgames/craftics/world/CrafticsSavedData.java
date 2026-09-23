@@ -297,6 +297,11 @@ public class CrafticsSavedData extends PersistentState {
          *  {@code InfiniteRunManager.START_EMERALDS}); the real balance parks here and
          *  returns when the run ends - run earnings evaporate with the run items. */
         public int infiniteStashEmeralds = 0;
+        /** Pre-run storage beyond the inventory and accessories - vanilla XP, the ender chest,
+         *  worn backpacks - one key per {@code RunLoadout} part. A key that is ABSENT means that
+         *  part was never captured (a stash taken before it existed, or its mod was missing), and
+         *  the restore then leaves that storage alone rather than wiping it. */
+        public net.minecraft.nbt.NbtCompound infiniteStashExtras = new net.minecraft.nbt.NbtCompound();
         /** On the HOST's record: true while the run is parked at a save point (the host
          *  left mid-run or logged out). The cursor, score, and cleared count all stay;
          *  opening Infinite Mode again resumes it, {@code /craftics infinite stop}
@@ -313,6 +318,8 @@ public class CrafticsSavedData extends PersistentState {
         public String infiniteParkedStats = "";
         /** The host's RUN wallet, parked while the run is suspended (resume brings it back). */
         public int infiniteParkedEmeralds = 0;
+        /** As {@link #infiniteStashExtras}, for the parked run snapshot. */
+        public net.minecraft.nbt.NbtCompound infiniteParkedExtras = new net.minecraft.nbt.NbtCompound();
         /** The parked run's own biome/level cursor. A LIVE infinite run borrows
          *  {@link #activeBiomeId}/{@link #activeBiomeLevelIndex}; suspending moves the
          *  cursor here so normal biome runs can use the shared fields in the meantime. */
@@ -675,6 +682,7 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putInt("infiniteStashSelectedSlot", infiniteStashSelectedSlot);
             nbt.putString("infiniteStashStats", infiniteStashStats);
             nbt.putInt("infiniteStashEmeralds", infiniteStashEmeralds);
+            nbt.put("infiniteStashExtras", infiniteStashExtras.copy());
             nbt.putBoolean("infiniteSuspended", infiniteSuspended);
             nbt.put("infiniteParkedInventory", infiniteParkedInventory.copy());
             nbt.put("infiniteParkedAccessories", infiniteParkedAccessories.copy());
@@ -682,6 +690,7 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putInt("infiniteParkedSelectedSlot", infiniteParkedSelectedSlot);
             nbt.putString("infiniteParkedStats", infiniteParkedStats);
             nbt.putInt("infiniteParkedEmeralds", infiniteParkedEmeralds);
+            nbt.put("infiniteParkedExtras", infiniteParkedExtras.copy());
             nbt.putString("infiniteParkedBiomeId", infiniteParkedBiomeId);
             nbt.putInt("infiniteParkedLevelIndex", infiniteParkedLevelIndex);
             nbt.putString("parkedNormalBiomeId", parkedNormalBiomeId);
@@ -803,6 +812,9 @@ public class CrafticsSavedData extends PersistentState {
             pd.infiniteStashSelectedSlot = nbt.contains("infiniteStashSelectedSlot") ? nbt.getInt("infiniteStashSelectedSlot") : 0;
             pd.infiniteStashStats = nbt.contains("infiniteStashStats") ? nbt.getString("infiniteStashStats") : "";
             pd.infiniteStashEmeralds = nbt.contains("infiniteStashEmeralds") ? nbt.getInt("infiniteStashEmeralds") : 0;
+            if (nbt.contains("infiniteStashExtras")) {
+                pd.infiniteStashExtras = nbt.getCompound("infiniteStashExtras");
+            }
             pd.infiniteSuspended = nbt.contains("infiniteSuspended") && nbt.getBoolean("infiniteSuspended");
             if (nbt.contains("infiniteParkedInventory")) {
                 pd.infiniteParkedInventory = nbt.getList("infiniteParkedInventory",
@@ -817,6 +829,9 @@ public class CrafticsSavedData extends PersistentState {
             pd.infiniteParkedSelectedSlot = nbt.contains("infiniteParkedSelectedSlot") ? nbt.getInt("infiniteParkedSelectedSlot") : 0;
             pd.infiniteParkedStats = nbt.contains("infiniteParkedStats") ? nbt.getString("infiniteParkedStats") : "";
             pd.infiniteParkedEmeralds = nbt.contains("infiniteParkedEmeralds") ? nbt.getInt("infiniteParkedEmeralds") : 0;
+            if (nbt.contains("infiniteParkedExtras")) {
+                pd.infiniteParkedExtras = nbt.getCompound("infiniteParkedExtras");
+            }
             pd.infiniteParkedBiomeId = nbt.contains("infiniteParkedBiomeId") ? nbt.getString("infiniteParkedBiomeId") : "";
             pd.infiniteParkedLevelIndex = nbt.contains("infiniteParkedLevelIndex") ? nbt.getInt("infiniteParkedLevelIndex") : 0;
             pd.parkedNormalBiomeId = nbt.contains("parkedNormalBiomeId") ? nbt.getString("parkedNormalBiomeId") : "";
@@ -916,6 +931,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.infiniteStashSelectedSlot = nbt.getInt("infiniteStashSelectedSlot", 0);
             pd.infiniteStashStats = nbt.getString("infiniteStashStats", "");
             pd.infiniteStashEmeralds = nbt.getInt("infiniteStashEmeralds", 0);
+            pd.infiniteStashExtras = nbt.getCompoundOrEmpty("infiniteStashExtras");
             pd.infiniteSuspended = nbt.getBoolean("infiniteSuspended", false);
             pd.infiniteParkedInventory = nbt.getListOrEmpty("infiniteParkedInventory");
             pd.infiniteParkedAccessories = nbt.getListOrEmpty("infiniteParkedAccessories");
@@ -924,6 +940,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.infiniteParkedSelectedSlot = nbt.getInt("infiniteParkedSelectedSlot", 0);
             pd.infiniteParkedStats = nbt.getString("infiniteParkedStats", "");
             pd.infiniteParkedEmeralds = nbt.getInt("infiniteParkedEmeralds", 0);
+            pd.infiniteParkedExtras = nbt.getCompoundOrEmpty("infiniteParkedExtras");
             pd.infiniteParkedBiomeId = nbt.getString("infiniteParkedBiomeId", "");
             pd.infiniteParkedLevelIndex = nbt.getInt("infiniteParkedLevelIndex", 0);
             pd.parkedNormalBiomeId = nbt.getString("parkedNormalBiomeId", "");
@@ -1003,10 +1020,33 @@ public class CrafticsSavedData extends PersistentState {
             fresh.chaptersPlaced = old.chaptersPlaced;
             fresh.bestChapterPlacement = old.bestChapterPlacement;
             fresh.allTimeInfiniteScore = old.allTimeInfiniteScore;
+            carryInfiniteStash(old, fresh);
         }
         fresh.starterGuideGranted = true;
         players.put(playerId, fresh);
         markDirty();
+    }
+
+    /**
+     * Keep an active Infinite Mode stash across a record reset.
+     *
+     * <p>The stash is the player's REAL loadout, parked while they wear a run's. Resetting the
+     * record around an active one (an island deletion, a hardcore wipe of an offline owner) used to
+     * throw it away, and the run loadout they were wearing quietly became their real one. Carried
+     * over, the join hook still finds it and hands it back; whatever the reset meant to take away
+     * is taken after that, as it would have been had they been online.
+     */
+    private static void carryInfiniteStash(PlayerData old, PlayerData fresh) {
+        if (!old.infiniteStashActive) return;
+        fresh.infiniteStashActive = true;
+        fresh.infiniteRunHost = old.infiniteRunHost;
+        fresh.infiniteStashInventory = old.infiniteStashInventory;
+        fresh.infiniteStashAccessories = old.infiniteStashAccessories;
+        fresh.infiniteStashAccessoriesCaptured = old.infiniteStashAccessoriesCaptured;
+        fresh.infiniteStashSelectedSlot = old.infiniteStashSelectedSlot;
+        fresh.infiniteStashStats = old.infiniteStashStats;
+        fresh.infiniteStashEmeralds = old.infiniteStashEmeralds;
+        fresh.infiniteStashExtras = old.infiniteStashExtras;
     }
 
     //? if <=1.21.4 {
@@ -1608,15 +1648,38 @@ public class CrafticsSavedData extends PersistentState {
     }
 
     /**
+     * Whose island this player should actually be sent to.
+     *
+     * <p>{@link #getEffectiveWorldOwner} answers "whose island does the party play on", and a
+     * party plays on its leader's. That is right while the leader HAS one. When they do not,
+     * every island lookup that asked the bare question answered "nobody", and the player was
+     * treated as islandless even though their own island was sitting right there: {@code /home}
+     * sent them to the lobby, {@code /new} refused to make them a second one, and a friend was
+     * told they had no island to visit.
+     *
+     * <p>So: the leader's island when the leader has one, otherwise the player's own. Falls back
+     * to the effective owner when neither has an island, which is the genuine "no island yet"
+     * case every caller already handles.
+     */
+    public UUID getIslandOwnerFor(UUID playerId) {
+        UUID effective = getEffectiveWorldOwner(playerId);
+        if (hasPersonalWorld(effective)) return effective;
+        if (playerId != null && hasPersonalWorld(playerId)) return playerId;
+        return effective;
+    }
+
+    /**
      * Get the hub teleport position for a player. Resolves to the podzol-based spawn
      * in their (or party leader's) personal hub, or the central lobby if no world exists.
      */
     public net.minecraft.util.math.BlockPos getHubTeleportPos(UUID playerId) {
-        UUID owner = getEffectiveWorldOwner(playerId);
+        UUID owner = getIslandOwnerFor(playerId);
         net.minecraft.util.math.BlockPos spawn = getHubSpawnPos(owner);
         if (spawn != null) return spawn;
-        // Fallback to central lobby
-        return new net.minecraft.util.math.BlockPos(0, 65, 0);
+        // Nobody in the party has an island. The old answer here was (0, 65, 0), which is a
+        // lobby coordinate - and callers teleport this INTO an island dimension, where it is
+        // open void. The hub origin is at least the place an island gets built.
+        return new net.minecraft.util.math.BlockPos(0, HUB_Y, 0);
     }
 
     /**
@@ -1650,6 +1713,7 @@ public class CrafticsSavedData extends PersistentState {
             fresh.chaptersPlaced = old.chaptersPlaced;
             fresh.bestChapterPlacement = old.bestChapterPlacement;
             fresh.allTimeInfiniteScore = old.allTimeInfiniteScore;
+            carryInfiniteStash(old, fresh);
             players.put(playerId, fresh);
         }
         markDirty();

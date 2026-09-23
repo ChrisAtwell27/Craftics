@@ -13,8 +13,8 @@ import java.util.UUID;
 /**
  * Hardcore islands: created via {@code /new hardcore}. When the whole run party is
  * defeated in combat, the island dimension is deleted from disk, the owner's island
- * record is reset, and every run participant loses inventory, XP, and combat
- * progression. Everyone lands in the central lobby. Guests merely visiting are
+ * record is reset, and every run participant loses inventory (worn accessories and
+ * backpacks included), XP, and combat progression. Everyone lands in the central lobby. Guests merely visiting are
  * evacuated unharmed. See docs/superpowers/specs/2026-07-09-hardcore-islands-design.md.
  */
 public final class HardcoreIslands {
@@ -70,7 +70,10 @@ public final class HardcoreIslands {
 
     /** Inventory + XP + combat progression gone; healed; guide book handed back. */
     public static void wipeParticipant(ServerPlayerEntity p) {
-        p.getInventory().clear(); // main + armor + offhand
+        // Everything worn or carried: main + armor + offhand, plus worn accessories and worn
+        // Backpacked packs. Those two used to survive the wipe untouched, so stuffing a pack
+        // before a risky hardcore fight made "everything is gone" cost nothing.
+        com.crackedgames.craftics.combat.infinite.RunLoadout.wipeCarried(p);
         p.setExperienceLevel(0);
         p.setExperiencePoints(0);
         p.clearStatusEffects();

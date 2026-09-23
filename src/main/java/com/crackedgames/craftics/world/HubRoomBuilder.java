@@ -343,28 +343,61 @@ public class HubRoomBuilder {
         int placeZ = hubCenter.getZ() - schem.length() / 2;
         schem.place(world, placeX, placeY, placeZ, false);
 
-        // Scan for podzol - the marker block for the spawn point
-        BlockPos spawnPos = hubCenter; // fallback
+        BlockPos spawnPos = scanForPodzolSpawn(world, hubCenter, schem, placeX, placeY, placeZ);
+
+        CrafticsMod.LOGGER.info("Home island built. origin=({},{},{}), size={}x{}x{}, spawn={}",
+            placeX, placeY, placeZ, schem.width(), schem.height(), schem.length(), spawnPos);
+        return spawnPos;
+    }
+
+    /**
+     * Find the podzol spawn marker on an island that is ALREADY standing.
+     *
+     * <p>The spawn point is stored on the player's record when the island is built, and a record
+     * that lost it (or never got it) falls back to the hub origin - open ground at the centre of
+     * the plot, or open air above it. Rebuilding the hub would find the marker again, but it
+     * would also stamp the starter room back over whatever the player has built there since.
+     * This reads the island instead of writing to it.
+     *
+     * @return the spawn one block above the marker, or {@code hubCenter} when there is none
+     */
+    public static BlockPos findSpawn(ServerWorld world, BlockPos hubCenter) {
+        net.minecraft.util.Identifier schemId = net.minecraft.util.Identifier.of("craftics", "home.schem");
+        var resource = world.getServer().getResourceManager().getResource(schemId);
+        if (resource.isEmpty()) return hubCenter;
+        com.crackedgames.craftics.level.SchemLoader.SchemData schem;
+        try (java.io.InputStream in = resource.get().getInputStream()) {
+            schem = com.crackedgames.craftics.level.SchemLoader.load(in, schemId.toString());
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.error("Failed to read home.schem while looking for a spawn marker", e);
+            return hubCenter;
+        }
+        if (schem == null) return hubCenter;
+        // The same footprint build() places the schematic on, so the scan covers the island.
+        return scanForPodzolSpawn(world, hubCenter, schem,
+            hubCenter.getX() - schem.width() / 2,
+            hubCenter.getY() - schem.height() / 2 + 20,
+            hubCenter.getZ() - schem.length() / 2);
+    }
+
+    /** Podzol is the spawn marker; the spawn is the block above it. {@code hubCenter} if absent. */
+    private static BlockPos scanForPodzolSpawn(ServerWorld world, BlockPos hubCenter,
+                                               com.crackedgames.craftics.level.SchemLoader.SchemData schem,
+                                               int placeX, int placeY, int placeZ) {
         for (int y = 0; y < schem.height(); y++) {
             for (int z = 0; z < schem.length(); z++) {
                 for (int x = 0; x < schem.width(); x++) {
                     BlockState state = world.getBlockState(
                         new BlockPos(placeX + x, placeY + y, placeZ + z));
                     if (state.isOf(Blocks.PODZOL)) {
-                        // Spawn one block above the podzol
-                        spawnPos = new BlockPos(placeX + x, placeY + y + 1, placeZ + z);
+                        BlockPos spawnPos = new BlockPos(placeX + x, placeY + y + 1, placeZ + z);
                         CrafticsMod.LOGGER.info("Home island podzol spawn marker at {}", spawnPos);
-                        break;
+                        return spawnPos;
                     }
                 }
-                if (spawnPos != hubCenter) break;
             }
-            if (spawnPos != hubCenter) break;
         }
-
-        CrafticsMod.LOGGER.info("Home island built. origin=({},{},{}), size={}x{}x{}, spawn={}",
-            placeX, placeY, placeZ, schem.width(), schem.height(), schem.length(), spawnPos);
-        return spawnPos;
+        return hubCenter;
     }
 
     /**

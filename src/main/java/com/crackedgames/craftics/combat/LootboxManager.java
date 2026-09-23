@@ -253,6 +253,13 @@ public final class LootboxManager {
         }
         ChestConfig config = resolveChestConfig(entry);
         if (config == null) return ActionResult.PASS;
+        // Paid with the run's wallet, delivered into the run's inventory: a kiosk is another
+        // way across the Infinite Mode boundary, in both directions.
+        if (InfiniteRunManager.holdsRunLoadout(sp)) {
+            sp.sendMessage(net.minecraft.text.Text.literal(
+                "§eLootboxes are closed while an Infinite run holds your items."), true);
+            return ActionResult.SUCCESS;
+        }
         if (!data.areLootboxesEnabled()) {
             // SUCCESS, not PASS. Passing would drop the click through to the next handler -
             // in the lobby that is the spawn protection, which would answer a temporarily

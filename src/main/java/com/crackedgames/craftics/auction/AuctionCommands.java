@@ -67,6 +67,24 @@ public final class AuctionCommands {
         }
     }
 
+    /**
+     * Refuse any trade on the board while the player is wearing an Infinite run's loadout.
+     *
+     * <p>The board is outside the run's stash swap, so it is a bridge across it: a run item
+     * listed mid-run and cancelled after the run came back as a real item, and real gear listed
+     * before a run could be cancelled straight into the run inventory. Buying and collecting
+     * are the same bridge with another player - or the mailbox - on the far end. Browsing stays
+     * open; it moves nothing.
+     */
+    private static boolean refusedDuringRun(ServerPlayerEntity player) {
+        CrafticsSavedData.PlayerData pd = CrafticsSavedData
+            .get((ServerWorld) player.getEntityWorld()).getPlayerData(player.getUuid());
+        if (!com.crackedgames.craftics.combat.InfiniteRunManager.holdsRunLoadout(pd)) return false;
+        player.sendMessage(Text.literal("§cThe auction house is closed to you during an Infinite run."
+            + " §7Your listings and mailbox are waiting for you when it ends."), false);
+        return true;
+    }
+
     // ── Browse ───────────────────────────────────────────────────────────────
 
     private static int browse(ServerCommandSource source) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
@@ -101,6 +119,7 @@ public final class AuctionCommands {
     private static int sell(ServerCommandSource source, int price, String wantedItem, int wantedCount)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayerEntity player = source.getPlayerOrThrow();
+        if (refusedDuringRun(player)) return 0;
         ItemStack held = player.getMainHandStack();
         if (held.isEmpty()) {
             player.sendMessage(Text.literal("§cHold the item you want to sell."), false);
@@ -160,6 +179,7 @@ public final class AuctionCommands {
      * @return true when the item changed hands
      */
     public static boolean buyListing(ServerPlayerEntity player, AuctionListing preview) {
+        if (refusedDuringRun(player)) return false;
         if (preview.seller().equals(player.getUuid())) {
             player.sendMessage(Text.literal("§cThat is your own listing. Cancel it instead."), false);
             return false;
@@ -261,6 +281,7 @@ public final class AuctionCommands {
 
     /** Take your own listing down, from a command or from the chest screen. */
     public static boolean cancelListing(ServerPlayerEntity player, AuctionListing preview) {
+        if (refusedDuringRun(player)) return false;
         AuctionListing listing = AuctionStore.cancel(preview.id(), player.getUuid());
         if (listing == null) {
             player.sendMessage(Text.literal("§cThat is not your listing."), false);
@@ -286,6 +307,7 @@ public final class AuctionCommands {
 
     /** Hand over everything owed, from a command or from the chest screen. */
     public static void collectMailbox(ServerPlayerEntity player) {
+        if (refusedDuringRun(player)) return;
         List<NbtCompound> owed = AuctionStore.drainMailbox(player.getUuid());
         if (owed.isEmpty()) {
             player.sendMessage(Text.literal("§7Nothing waiting for you."), false);

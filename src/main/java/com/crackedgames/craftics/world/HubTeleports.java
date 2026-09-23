@@ -30,7 +30,7 @@ public final class HubTeleports {
         VisitManager.clearVisit(p.getUuid());
         ServerWorld previousWorld = (ServerWorld) p.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(previousWorld);
-        java.util.UUID owner = data.getEffectiveWorldOwner(p.getUuid());
+        java.util.UUID owner = data.getIslandOwnerFor(p.getUuid());
         // Guard: no personal world for the effective owner means there is no hub to
         // resolve. Without this, getOrCreate would open a brand-new empty island dim
         // just to drop the player at its unbuilt origin (void). Send them to the
@@ -63,6 +63,7 @@ public final class HubTeleports {
             ownerPd.hubSpawnZ = spawnPos.getZ();
             data.markDirty();
         }
+        recoverMissingHubSpawn(data, owner, island);
         BlockPos hub = data.getHubTeleportPos(p.getUuid());
         // Last resort. personalHubBuilt only tracks whether the game ever BUILT a hub, not
         // whether one is still standing, so a player who mined theirs out (or moved their
@@ -89,6 +90,36 @@ public final class HubTeleports {
             stampIslandRespawn(p, island, hub);
         }
         crossDimMove(server, p, previousWorld, island, hub);
+    }
+
+
+    /**
+     * Put back a hub spawn point that went missing on a built island.
+     *
+     * <p>{@code personalHubBuilt} records that an island was built once; the spawn coordinate is
+     * recorded separately, and a record that has the flag but not the coordinate is one nothing
+     * repairs. {@code getHubSpawnPos} then answers with the hub ORIGIN - the centre of the plot,
+     * at the fixed hub Y - so every trip home lands on the same wrong spot with no rebuild ever
+     * triggered, because the flag says the island is already there.
+     *
+     * <p>Reads the island for its spawn marker and stores what it finds. It never builds: the
+     * island is standing, and stamping the starter room back over it would be worse than the
+     * bad landing spot.
+     */
+    private static void recoverMissingHubSpawn(CrafticsSavedData data, java.util.UUID owner,
+                                               ServerWorld island) {
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(owner);
+        if (!pd.personalHubBuilt) return;                       // the build path sets it
+        if (pd.hubSpawnX >= 0 && pd.hubSpawnY >= 0 && pd.hubSpawnZ >= 0) return;
+        BlockPos origin = data.getHubOrigin(owner);
+        if (origin == null) return;
+        BlockPos found = HubRoomBuilder.findSpawn(island, origin);
+        if (found.equals(origin)) return;                       // no marker; origin it is
+        pd.hubSpawnX = found.getX();
+        pd.hubSpawnY = found.getY();
+        pd.hubSpawnZ = found.getZ();
+        data.markDirty();
+        CrafticsMod.LOGGER.info("[island] recovered the missing hub spawn of {} at {}", owner, found);
     }
 
     /**
@@ -172,6 +203,7 @@ public final class HubTeleports {
             ownerPd.hubSpawnZ = spawnPos.getZ();
             data.markDirty();
         }
+        recoverMissingHubSpawn(data, owner, island);
         // getHubSpawnPos(owner) directly - NOT getHubTeleportPos(visitor), which would
         // resolve the visitor's own effective owner instead of the explicit target.
         BlockPos hub = data.getHubSpawnPos(owner);

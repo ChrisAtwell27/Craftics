@@ -44,6 +44,12 @@ public class InfiniteClassScreen extends Screen {
             com.crackedgames.craftics.network.InfiniteClassOfferPayload.ID,
             (payload, context) -> pending = true);
 
+        // An offer belongs to the connection it arrived on. Left raised across a disconnect it
+        // popped up on the next join - after the server had already handed the real profile
+        // back - inviting a pick the server now refuses, for a run that no longer exists.
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT
+            .register((handler, client) -> pending = false);
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (!pending || client.player == null || client.world == null) return;
             if (client.currentScreen != null) return; // wait out loading/other screens

@@ -5,6 +5,7 @@ import com.crackedgames.craftics.combat.ai.AIRegistry;
 import com.crackedgames.craftics.combat.ai.boss.InfiniteAbilityPool;
 import com.crackedgames.craftics.combat.ai.boss.InfiniteBossAI;
 import com.crackedgames.craftics.combat.infinite.ChapterPlacement;
+import com.crackedgames.craftics.combat.infinite.RunLoadout;
 import com.crackedgames.craftics.level.BiomeTemplate;
 import com.crackedgames.craftics.level.InfiniteSpec;
 import com.crackedgames.craftics.network.PlayerStatsSyncPayload;
@@ -99,13 +100,26 @@ public final class InfiniteRunManager {
 
     /**
      * Participants who have been OFFERED the run-start class selection and haven't answered
-     * yet. Transient on purpose: the pick is only valid while the offer is outstanding, so a
-     * stray or replayed {@code InfiniteClassPickPayload} can never grant a second class. A
-     * server restart mid-offer simply drops the offer - the player continues classless,
-     * exactly as if they'd skipped.
+     * yet, mapped to the host of the run the offer belongs to. Transient on purpose: the pick
+     * is only valid while the offer is outstanding, so a stray or replayed
+     * {@code InfiniteClassPickPayload} can never grant a second class. A server restart
+     * mid-offer simply drops the offer - the player continues classless, exactly as if they'd
+     * skipped.
+     *
+     * <p>The host is kept so a pick can be checked against the run it was offered for. An
+     * offer used to outlive its run: left unanswered through a Go Home, it could still be
+     * cashed in afterwards, and the affinity point, weapon and wolf then landed on the
+     * player's REAL profile.
      */
-    private static final java.util.Set<UUID> pendingClassOffers =
-        java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    private static final java.util.Map<UUID, UUID> pendingClassOffers =
+        java.util.Collections.synchronizedMap(new java.util.HashMap<>());
+
+    /**
+     * Players who just changed dimension to somewhere that is not an island, to be checked on
+     * the next tick for a stash they should no longer be holding. See {@link #onChangedWorld}.
+     */
+    private static final java.util.Set<UUID> pendingLeaveChecks =
+        java.util.Collections.synchronizedSet(new java.util.LinkedHashSet<>());
 
     // ─── Init ──────────────────────────────────────────────────────────────────
 
@@ -130,6 +144,16 @@ public final class InfiniteRunManager {
             if (origin == null || !pos.equals(RestRoomBuilder.bellPos(origin))) return ActionResult.PASS;
             return onBellRung(sp, sw, data, islandOwner);
         });
+
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK
+            .register(InfiniteRunManager::drainLeaveChecks);
+        // The map is static, and an integrated server keeps statics alive from one world to
+        // the next: an offer left open in one save must not be answerable in another.
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED
+            .register(server -> {
+                pendingClassOffers.clear();
+                pendingLeaveChecks.clear();
+            });
     }
 
     // ─── Queries ───────────────────────────────────────────────────────────────
@@ -155,6 +179,43 @@ public final class InfiniteRunManager {
     /** True when {@code uuid}'s PlayerData hosts an infinite run that is live, not parked. */
     public static boolean isHostOfActiveRun(CrafticsSavedData data, UUID uuid) {
         return isInLiveRun(data, uuid);
+    }
+
+    /**
+     * True while {@code pd}'s inventory, wallet and the rest of their carried loadout belong to
+     * an Infinite run rather than to them - their real one is in the stash.
+     *
+     * <p>This is the per-player question every item-moving feature has to ask before it lets
+     * something through. The run boundary is only enforced by the stash swap, so anything that
+     * moves an item somewhere the swap does not reach (a market listing, another player, a
+     * mailbox) carries it across the boundary. Deliberately per player, not per run: it is also
+     * true for a party member still holding a parked run's items, and false for a parked host,
+     * who has had their real loadout back since the park.
+     */
+    public static boolean holdsRunLoadout(CrafticsSavedData.PlayerData pd) {
+        return pd != null && pd.infiniteStashActive;
+    }
+
+    /** {@link #holdsRunLoadout(CrafticsSavedData.PlayerData)} for a live player. */
+    public static boolean holdsRunLoadout(ServerPlayerEntity player) {
+        MinecraftServer server = player == null ? null : player.getServer();
+        if (server == null) return false;
+        return holdsRunLoadout(
+            CrafticsSavedData.get(server.getOverworld()).getPlayerData(player.getUuid()));
+    }
+
+    /**
+     * Whether items may pass directly between two players: both on the real side, or both in
+     * the SAME live run. A run participant handing loot to anyone else is loot walking out of
+     * the run, and the reverse is real gear walking in.
+     */
+    public static boolean mayExchangeItems(CrafticsSavedData data, UUID a, UUID b) {
+        boolean aRun = holdsRunLoadout(data.getPlayerData(a));
+        boolean bRun = holdsRunLoadout(data.getPlayerData(b));
+        if (!aRun && !bRun) return true;
+        if (aRun != bRun) return false;
+        UUID hostA = resolveActiveHost(data, null, a);
+        return hostA != null && hostA.equals(resolveActiveHost(data, null, b));
     }
 
     /** True when {@code uuid} has an infinite run parked at a save point. */
@@ -315,16 +376,18 @@ public final class InfiniteRunManager {
             ServerPlayerEntity member = server.getPlayerManager().getPlayer(uuid);
             if (member == null) continue;
             CrafticsSavedData.PlayerData pd = data.getPlayerData(uuid);
+            releaseForeignSeat(member, pd, hostUuid, data, progression);
             pd.infiniteRunHost = hostUuid.toString();
             pd.lastKnownName = member.getName().getString();
             stashAndReset(member, pd, progression);
             syncStats(member, progression, pd);
             member.sendMessage(Text.literal("§5§l∞ INFINITE MODE ∞"), false);
             member.sendMessage(Text.literal(
-                "§7Your items, levels and emeralds are stashed away - you start from nothing."), false);
+                "§7Everything you carry is stashed away - items, worn backpacks, ender chest, XP,"
+                + " levels and emeralds. You start from nothing."), false);
             member.sendMessage(Text.literal(
                 "§7You carry §a" + START_EMERALDS + " emeralds§7 for the road. The run keeps what it takes."), false);
-            offerClassSelection(member);
+            offerClassSelection(member, hostUuid);
         }
         data.markDirty();
         CrafticsMod.LOGGER.info("Infinite run started by {} with {} player(s)",
@@ -332,31 +395,29 @@ public final class InfiniteRunManager {
         return STARTING_BIOME;
     }
 
-    /** Stash inventory + progression, then hand the player a clean slate. */
+    /**
+     * Stash the player's whole carried loadout (see {@link RunLoadout}) plus progression and
+     * wallet, then hand them a clean slate.
+     */
     private static void stashAndReset(ServerPlayerEntity player, CrafticsSavedData.PlayerData pd,
                                       PlayerProgression progression) {
+        RunLoadout.Snapshot real;
         if (!pd.infiniteStashActive) {
-            pd.infiniteStashInventory = player.getInventory().writeNbt(new NbtList());
-            // Accessories live in the mod's own containers, not PlayerInventory, so the
-            // line above never saw them: worn trinkets used to walk straight into the run
-            // while the island loadout came back short of them.
-            pd.infiniteStashAccessories =
-                com.crackedgames.craftics.compat.artifacts.AccessoryStash.save(player);
-            pd.infiniteStashAccessoriesCaptured = true;
-            //? if <=1.21.4 {
-            pd.infiniteStashSelectedSlot = player.getInventory().selectedSlot;
-            //?} else
-            /*pd.infiniteStashSelectedSlot = player.getInventory().getSelectedSlot();*/
+            real = RunLoadout.capture(player);
+            RunLoadout.toStash(pd, real);
             pd.infiniteStashStats = progression.snapshotSerialized(player.getUuid());
             pd.infiniteStashEmeralds = pd.emeralds;
             pd.infiniteStashActive = true;
+        } else {
+            // A leftover stash is still the real loadout; what is carried now is stale run
+            // loot. Strip only what that stash actually holds, so a part it never captured
+            // (an older save) is not wiped with nothing to bring it back.
+            real = RunLoadout.fromStash(pd);
         }
         // Fresh run wallet even when the stash was already captured (a leftover stash
         // means pd.emeralds currently holds stale RUN currency, not the real balance).
         pd.emeralds = START_EMERALDS;
-        player.getInventory().clear();
-        player.getInventory().markDirty();
-        com.crackedgames.craftics.compat.artifacts.AccessoryStash.clear(player);
+        RunLoadout.clear(player, real);
         // The Move item is a core control, not loot - hand it straight back.
         com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
         // Infinite runs always begin with a tiny wood bootstrap for crafting.
@@ -364,11 +425,53 @@ public final class InfiniteRunManager {
         progression.resetForInfiniteRun(player.getUuid());
     }
 
+    /**
+     * Before seating {@code player} in {@code hostUuid}'s run, let go of any OTHER run they still
+     * hold a seat in.
+     *
+     * <p>A player can be left on another run's roster with that run's stash active - a member
+     * still mid-fight when their host parked, or one who left by a route that skipped the
+     * restore. Seating them here used to take a "fresh" stash of what they were carrying, which
+     * was the other run's loadout, and throw their real one away with it. Their stash goes back
+     * first, so the new stash captures their real loadout; and they come off the old roster, so
+     * that run ending later cannot reach back into this one and swap their inventory mid-fight.
+     */
+    private static void releaseForeignSeat(ServerPlayerEntity player, CrafticsSavedData.PlayerData pd,
+                                           UUID hostUuid, CrafticsSavedData data,
+                                           PlayerProgression progression) {
+        String held = pd.infiniteRunHost;
+        if (held == null || held.isEmpty() || held.equals(hostUuid.toString())) return;
+        // Their own parked run keeps its pointer at them; it holds no stash (parking restored it).
+        if (held.equals(player.getUuid().toString()) && !pd.infiniteStashActive) return;
+        try {
+            CrafticsSavedData.PlayerData other = data.getPlayerData(UUID.fromString(held));
+            other.infiniteParticipants = removeUuid(other.infiniteParticipants, player.getUuid());
+        } catch (IllegalArgumentException ignored) {}
+        restoreParticipant(player, data, progression);
+    }
+
+    /**
+     * True when {@code pd}'s stash belongs to a different run that is still going (live or
+     * parked). Ending or parking {@code hostUuid}'s run must leave that stash alone: it is the
+     * other run's to give back, and restoring it here would swap the player's inventory in the
+     * middle of that run.
+     */
+    private static boolean seatedElsewhere(CrafticsSavedData data, CrafticsSavedData.PlayerData pd,
+                                           UUID hostUuid) {
+        String held = pd.infiniteRunHost;
+        if (held == null || held.isEmpty() || held.equals(hostUuid.toString())) return false;
+        try {
+            return data.getPlayerData(UUID.fromString(held)).infiniteActive;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     // ─── Class selection ───────────────────────────────────────────────────────
 
     /** Send the class-selection offer and arm the one-shot pick guard. */
-    private static void offerClassSelection(ServerPlayerEntity member) {
-        pendingClassOffers.add(member.getUuid());
+    private static void offerClassSelection(ServerPlayerEntity member, UUID hostUuid) {
+        pendingClassOffers.put(member.getUuid(), hostUuid);
         ServerPlayNetworking.send(member,
             new com.crackedgames.craftics.network.InfiniteClassOfferPayload());
     }
@@ -467,7 +570,16 @@ public final class InfiniteRunManager {
      * outstanding offer, so the packet can neither be replayed nor forged mid-run.
      */
     public static void applyClassPick(ServerPlayerEntity player, int affinityOrdinal) {
-        if (!pendingClassOffers.remove(player.getUuid())) return;
+        UUID offeredFor = pendingClassOffers.remove(player.getUuid());
+        if (offeredFor == null) return;
+        // The pick spends the run's profile, so the run has to still be the one wearing it.
+        // Every exit revokes the offer (restoreParticipant), but a pick already in flight when
+        // the player left must not land on the real profile they have just been given back.
+        CrafticsSavedData pickData = CrafticsSavedData.get((ServerWorld) player.getEntityWorld());
+        if (!holdsRunLoadout(pickData.getPlayerData(player.getUuid()))
+                || !offeredFor.equals(resolveActiveHost(pickData, null, player.getUuid()))) {
+            return;
+        }
 
         if (affinityOrdinal < 0 || affinityOrdinal >= PlayerProgression.Affinity.values().length) {
             player.sendMessage(Text.literal(
@@ -714,6 +826,8 @@ public final class InfiniteRunManager {
         List<UUID> stillHolding = new java.util.ArrayList<>();
         for (UUID uuid : parseUuids(host.infiniteParticipants)) {
             if (uuid.equals(hostUuid)) continue;
+            // A stale roster entry for someone now seated in another run: not ours to restore.
+            if (seatedElsewhere(data, data.getPlayerData(uuid), hostUuid)) continue;
             ServerPlayerEntity member = server.getPlayerManager().getPlayer(uuid);
             if (member != null && !CombatManager.isEngaged(uuid)) {
                 member.sendMessage(Text.literal(
@@ -743,14 +857,10 @@ public final class InfiniteRunManager {
     private static void parkAndRestore(ServerPlayerEntity player, CrafticsSavedData.PlayerData pd,
                                        CrafticsSavedData data, PlayerProgression progression) {
         if (!pd.infiniteStashActive) return;
-        pd.infiniteParkedInventory = player.getInventory().writeNbt(new NbtList());
-        pd.infiniteParkedAccessories =
-            com.crackedgames.craftics.compat.artifacts.AccessoryStash.save(player);
-        pd.infiniteParkedAccessoriesCaptured = true;
-        //? if <=1.21.4 {
-        pd.infiniteParkedSelectedSlot = player.getInventory().selectedSlot;
-        //?} else
-        /*pd.infiniteParkedSelectedSlot = player.getInventory().getSelectedSlot();*/
+        // Park only the parts the real stash holds. A part the stash never captured is still
+        // the player's own, worn through the run - parking it would put real gear on the run's
+        // side, where ending the run deletes it.
+        RunLoadout.toParked(pd, RunLoadout.capture(player, RunLoadout.fromStash(pd)));
         pd.infiniteParkedStats = progression.snapshotSerialized(player.getUuid());
         // Park the RUN wallet before the restore below overwrites pd.emeralds with the stash.
         pd.infiniteParkedEmeralds = pd.emeralds;
@@ -804,6 +914,7 @@ public final class InfiniteRunManager {
             ServerPlayerEntity member = server.getPlayerManager().getPlayer(uuid);
             if (member == null) continue;
             CrafticsSavedData.PlayerData pd = data.getPlayerData(uuid);
+            releaseForeignSeat(member, pd, hostUuid, data, progression);
             pd.infiniteRunHost = hostUuid.toString();
             pd.lastKnownName = member.getName().getString();
             if (uuid.equals(hostUuid)) {
@@ -812,7 +923,7 @@ public final class InfiniteRunManager {
                 stashAndReset(member, pd, progression);
                 // A fresh clean slate deserves the class pick; the host resumed with their
                 // run profile intact, so their earlier choice (or skip) stands.
-                offerClassSelection(member);
+                offerClassSelection(member, hostUuid);
             }
             syncStats(member, progression, pd);
             member.sendMessage(Text.literal("§5§l∞ RUN RESUMED ∞"), false);
@@ -835,38 +946,30 @@ public final class InfiniteRunManager {
      */
     private static void unparkHost(ServerPlayerEntity player, CrafticsSavedData.PlayerData pd,
                                    PlayerProgression progression) {
-        pd.infiniteStashInventory = player.getInventory().writeNbt(new NbtList());
-        pd.infiniteStashAccessories =
-            com.crackedgames.craftics.compat.artifacts.AccessoryStash.save(player);
-        pd.infiniteStashAccessoriesCaptured = true;
-        //? if <=1.21.4 {
-        pd.infiniteStashSelectedSlot = player.getInventory().selectedSlot;
-        //?} else
-        /*pd.infiniteStashSelectedSlot = player.getInventory().getSelectedSlot();*/
-        pd.infiniteStashStats = progression.snapshotSerialized(player.getUuid());
-        pd.infiniteStashEmeralds = pd.emeralds;
-        pd.infiniteStashActive = true;
-
-        var inventory = player.getInventory();
-        inventory.clear();
-        inventory.readNbt(pd.infiniteParkedInventory);
-        //? if <=1.21.4 {
-        inventory.selectedSlot = Math.max(0, Math.min(pd.infiniteParkedSelectedSlot, 8));
-        //?} else
-        /*inventory.setSelectedSlot(Math.max(0, Math.min(pd.infiniteParkedSelectedSlot, 8)));*/
-        inventory.markDirty();
-        if (pd.infiniteParkedAccessoriesCaptured) {
-            com.crackedgames.craftics.compat.artifacts.AccessoryStash.restore(
-                player, pd.infiniteParkedAccessories);
+        RunLoadout.Snapshot real;
+        // Never overwrite a stash that is already holding someone's real loadout. This used to
+        // re-capture unconditionally, so a host still wearing another run's loadout had that
+        // taken as "real" and their actual inventory, levels and emeralds deleted.
+        // (releaseForeignSeat normally hands a foreign stash back before this runs.)
+        if (!pd.infiniteStashActive) {
+            real = RunLoadout.capture(player);
+            RunLoadout.toStash(pd, real);
+            pd.infiniteStashStats = progression.snapshotSerialized(player.getUuid());
+            pd.infiniteStashEmeralds = pd.emeralds;
+            pd.infiniteStashActive = true;
+        } else {
+            real = RunLoadout.fromStash(pd);
         }
+
+        // Strip the real side, then put the run's back - limited to parts the real stash holds,
+        // so a parked part with no real counterpart captured can never overwrite real storage.
+        RunLoadout.clear(player, real);
+        RunLoadout.apply(player, RunLoadout.fromParked(pd), real);
         com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
         progression.restoreSnapshot(player.getUuid(), pd.infiniteParkedStats);
         pd.emeralds = pd.infiniteParkedEmeralds;
 
-        pd.infiniteParkedInventory = new NbtList();
-        pd.infiniteParkedAccessories = new NbtList();
-        pd.infiniteParkedAccessoriesCaptured = false;
-        pd.infiniteParkedSelectedSlot = 0;
+        RunLoadout.clearParked(pd);
         pd.infiniteParkedStats = "";
         pd.infiniteParkedEmeralds = 0;
     }
@@ -903,11 +1006,9 @@ public final class InfiniteRunManager {
         }
         // Any parked save point dies with the run - its items were run loot.
         host.infiniteSuspended = false;
-        host.infiniteParkedInventory = new NbtList();
-        host.infiniteParkedAccessories = new NbtList();
-        host.infiniteParkedAccessoriesCaptured = false;
-        host.infiniteParkedSelectedSlot = 0;
+        RunLoadout.clearParked(host);
         host.infiniteParkedStats = "";
+        host.infiniteParkedEmeralds = 0;
         host.infiniteParkedBiomeId = "";
         host.infiniteParkedLevelIndex = 0;
 
@@ -929,7 +1030,13 @@ public final class InfiniteRunManager {
                 member.sendMessage(Text.literal("§6Final score: §l" + finalScore
                     + "§r§6 points §7(" + biomesCleared + " biome" + (biomesCleared == 1 ? "" : "s")
                     + " cleared) §7| Best: §6" + Math.max(pd.highestInfiniteScore, finalScore)), false);
-                restoreParticipant(member, data, progression);
+                // A roster entry (the host's own included) can be sitting in ANOTHER run by
+                // now - a parked host who joined a friend's run, say. Their stash is that run's
+                // to give back; restoring it here would swap their inventory mid-fight and hand
+                // them everything that run pays out afterwards to keep.
+                if (!seatedElsewhere(data, pd, hostUuid)) {
+                    restoreParticipant(member, data, progression);
+                }
             }
             // Offline members keep their stash flags; onPlayerJoin restores them.
         }
@@ -937,30 +1044,20 @@ public final class InfiniteRunManager {
         CrafticsMod.LOGGER.info("Infinite run ended ({}) host={} score={}", reason, hostUuid, finalScore);
     }
 
-    /** Bring back one participant's stashed inventory + progression. */
+    /** Bring back one participant's stashed loadout, progression and wallet. */
     private static void restoreParticipant(ServerPlayerEntity player, CrafticsSavedData data,
                                            PlayerProgression progression) {
         CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
         pd.infiniteRunHost = "";
+        // Whatever run the class offer was for, this player is no longer wearing its profile.
+        pendingClassOffers.remove(player.getUuid());
         if (!pd.infiniteStashActive) return;
 
-        var inventory = player.getInventory();
-        inventory.clear(); // run loot (and the run wallet) stays behind
-        inventory.readNbt(pd.infiniteStashInventory);
-        // Same for the trinket slots: whatever the run put there is run loot, and the
-        // island loadout's accessories come back in its place. A run that STARTED before
-        // accessories were stashed at all captured nothing, and what is worn now is the
-        // player's own gear - wiping it on the way out would destroy it, so that case is
-        // left alone and the run simply keeps whatever it walked in with.
-        if (pd.infiniteStashAccessoriesCaptured) {
-            com.crackedgames.craftics.compat.artifacts.AccessoryStash.restore(
-                player, pd.infiniteStashAccessories);
-        }
-        //? if <=1.21.4 {
-        inventory.selectedSlot = Math.max(0, Math.min(pd.infiniteStashSelectedSlot, 8));
-        //?} else
-        /*inventory.setSelectedSlot(Math.max(0, Math.min(pd.infiniteStashSelectedSlot, 8)));*/
-        inventory.markDirty();
+        // Every part the stash captured is replaced - the run's version of it (loot, run XP,
+        // a run-found backpack) stays behind. A part the stash never captured is the player's
+        // own and is left exactly as it is; see RunLoadout for why that is the safe side.
+        RunLoadout.Snapshot real = RunLoadout.fromStash(pd);
+        RunLoadout.apply(player, real, real);
         com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
 
         progression.restoreSnapshot(player.getUuid(), pd.infiniteStashStats);
@@ -968,17 +1065,14 @@ public final class InfiniteRunManager {
         pd.emeralds = pd.infiniteStashEmeralds;
 
         pd.infiniteStashActive = false;
-        pd.infiniteStashInventory = new NbtList();
-        pd.infiniteStashAccessories = new NbtList();
-        pd.infiniteStashAccessoriesCaptured = false;
-        pd.infiniteStashSelectedSlot = 0;
+        RunLoadout.clearStash(pd);
         pd.infiniteStashStats = "";
         pd.infiniteStashEmeralds = 0;
         data.markDirty();
 
         syncStats(player, progression, pd);
         player.sendMessage(Text.literal(
-            "§aYour stashed items, levels and emeralds have returned."), false);
+            "§aEverything you stashed has returned - items, XP, levels and emeralds."), false);
     }
 
     /**
@@ -1030,14 +1124,33 @@ public final class InfiniteRunManager {
         if (server == null) return;
         CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
         CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
-        if (pd.infiniteRunHost == null || pd.infiniteRunHost.isEmpty()) return;
+        if (pd.infiniteRunHost == null || pd.infiniteRunHost.isEmpty()) {
+            // No run claims this player, yet they are still wearing one's loadout: an orphaned
+            // stash whose run ended behind their back. Same unconditional heal as a join.
+            if (pd.infiniteStashActive) {
+                restoreParticipant(player, data, PlayerProgression.get(server.getOverworld()));
+            }
+            return;
+        }
 
         if (pd.infiniteRunHost.equals(player.getUuid().toString())) {
             // parkAndRestore re-stamps this pointer at itself so the run stays findable,
             // which means an already-parked host passes the gate above on every later
             // /home. Suspending twice is harmless (the cursor block and parkAndRestore
             // both self-guard) but it logs a suspend that never happened.
-            if (!pd.infiniteSuspended) suspendRun(server, player.getUuid(), "returned home");
+            if (pd.infiniteActive && !pd.infiniteSuspended) {
+                suspendRun(server, player.getUuid(), "returned home");
+            } else if (pd.infiniteStashActive) {
+                PlayerProgression progression = PlayerProgression.get(server.getOverworld());
+                if (pd.infiniteActive) {
+                    // Parked while they were not here to swap (a host who disconnected):
+                    // their run loadout still needs putting away before the real one returns.
+                    parkAndRestore(player, pd, data, progression);
+                } else {
+                    // The run is gone entirely; only the stash is left to hand back.
+                    restoreParticipant(player, data, progression);
+                }
+            }
             return;
         }
         try {
@@ -1047,6 +1160,78 @@ public final class InfiniteRunManager {
         } catch (IllegalArgumentException ignored) {}
         player.sendMessage(Text.literal("§7You leave the infinite run."), false);
         restoreParticipant(player, data, PlayerProgression.get(server.getOverworld()));
+    }
+
+    /**
+     * Backstop for exits nobody wired up: called for every player dimension change.
+     *
+     * <p>Every Infinite run - arenas, event rooms, the rest room - happens inside island
+     * dimensions. A player still holding a run's loadout who arrives anywhere else (the lobby, a
+     * raid, the Nether, an operator's /tp) has left the run by a route that skipped the stash
+     * swap, and is free to put run loot in a chest, hand it to a friend or list it for sale.
+     * {@code /lobby} and {@code /spawn} did exactly that for as long as they existed.
+     *
+     * <p>The check runs on the next tick, not now: a teleport can be one step of a larger exit
+     * (a wipe teleports the party first and ends the run second), and by the next tick that exit
+     * has either restored the player itself - nothing left to do - or it never will.
+     */
+    public static void onChangedWorld(ServerPlayerEntity player, net.minecraft.world.World destination) {
+        if (player == null || destination == null) return;
+        if (com.crackedgames.craftics.world.IslandDimensions.isIslandWorld(destination)) return;
+        pendingLeaveChecks.add(player.getUuid());
+    }
+
+    private static void drainLeaveChecks(MinecraftServer server) {
+        if (pendingLeaveChecks.isEmpty()) return;
+        List<UUID> due;
+        synchronized (pendingLeaveChecks) {
+            due = new ArrayList<>(pendingLeaveChecks);
+            pendingLeaveChecks.clear();
+        }
+        CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
+        for (UUID uuid : due) {
+            ServerPlayerEntity player = server.getPlayerManager().getPlayer(uuid);
+            if (player == null) continue;   // the join hook restores them
+            if (com.crackedgames.craftics.world.IslandDimensions.isIslandWorld(player.getEntityWorld())) continue;
+            if (!holdsRunLoadout(data.getPlayerData(uuid))) continue;
+            CrafticsMod.LOGGER.info("[Infinite] {} left the island dimensions still holding a run "
+                + "loadout; leaving the run for them", player.getName().getString());
+            onHomeExit(player);
+        }
+    }
+
+    /**
+     * The server could not carry a run on - an arena failed to build, a level threw - and has
+     * sent these players home. Let each of them out of the run the way {@code /home} would:
+     * members get their real loadout back, the host parks the run at its save point. Members go
+     * first so the host's park does not skip anyone still counted as mid-fight.
+     */
+    public static void releaseAfterFailure(List<ServerPlayerEntity> players) {
+        List<ServerPlayerEntity> hosts = new ArrayList<>();
+        for (ServerPlayerEntity p : players) {
+            if (p == null || p.getServer() == null) continue;
+            CrafticsSavedData.PlayerData pd =
+                CrafticsSavedData.get(p.getServer().getOverworld()).getPlayerData(p.getUuid());
+            if (p.getUuid().toString().equals(pd.infiniteRunHost)) {
+                hosts.add(p);
+            } else {
+                onHomeExit(p);
+            }
+        }
+        for (ServerPlayerEntity host : hosts) onHomeExit(host);
+    }
+
+    /**
+     * {@code starter}'s run was set up - stashes taken, cursor stamped - but its first arena never
+     * got built. Park it again rather than leave everyone holding run loadouts in the hub.
+     */
+    public static void abortFailedStart(ServerPlayerEntity starter, String reason) {
+        MinecraftServer server = starter.getServer();
+        if (server == null) return;
+        if (!isInLiveRun(CrafticsSavedData.get(server.getOverworld()), starter.getUuid())) return;
+        CrafticsMod.LOGGER.warn("[Infinite] run for {} could not start ({}); parking it",
+            starter.getName().getString(), reason);
+        suspendRun(server, starter.getUuid(), reason);
     }
 
     /**

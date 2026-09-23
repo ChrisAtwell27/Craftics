@@ -51,6 +51,10 @@ public final class TradeCommands {
                 + " is already in a trade."), false);
             return 0;
         }
+        if (!TradeMenus.mayTrade(asker, target)) {
+            asker.sendMessage(Text.literal(TradeMenus.RUN_REFUSAL), false);
+            return 0;
+        }
 
         TradeSession.invite(asker, target, System.currentTimeMillis());
         asker.sendMessage(Text.literal("§eTrade offered to " + target.getName().getString()
@@ -77,6 +81,11 @@ public final class TradeCommands {
         if (invite == null) {
             me.sendMessage(Text.literal("§cNo trade offer from " + from.getName().getString()
                 + " (offers expire after a minute)."), false);
+            return 0;
+        }
+        if (!TradeMenus.mayTrade(me, from)) {
+            TradeSession.clearInvite(me.getUuid());
+            me.sendMessage(Text.literal(TradeMenus.RUN_REFUSAL), false);
             return 0;
         }
         TradeSession session = TradeSession.open(from, me);
