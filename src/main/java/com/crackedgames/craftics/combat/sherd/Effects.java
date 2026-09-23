@@ -226,6 +226,55 @@ public final class Effects {
         };
     }
 
+    /** Open wounds: {@code stacks} of Bleed. */
+    public static SpellEffect bleed(int stacks) {
+        return (ctx, target, report) -> {
+            if (!target.hasEntity() || !target.entity().isAlive()) return;
+            target.entity().stackBleed(stacks);
+            report.say("§c" + stacks + " Bleed");
+        };
+    }
+
+    public static SpellEffect poison(int turns) {
+        return (ctx, target, report) -> {
+            if (!target.hasEntity() || !target.entity().isAlive()) return;
+            target.entity().stackPoison(turns, 0);
+            report.say("§2poisoned (" + turns + "t)");
+        };
+    }
+
+    /** Soaked: doubles lightning damage and puts out fire. */
+    public static SpellEffect soak(int turns) {
+        return (ctx, target, report) -> {
+            if (!target.hasEntity() || !target.entity().isAlive()) return;
+            target.entity().stackSoaked(turns, 0);
+            report.say("§3Soaked (" + turns + "t)");
+        };
+    }
+
+    public static SpellEffect slow(int turns, int penalty) {
+        return (ctx, target, report) -> {
+            if (!target.hasEntity() || !target.entity().isAlive()) return;
+            target.entity().stackSlowness(turns, penalty);
+            report.say("§bslowed (" + turns + "t)");
+        };
+    }
+
+    public static SpellEffect blind(int turns) {
+        return (ctx, target, report) -> {
+            if (!target.hasEntity() || !target.entity().isAlive()) return;
+            target.entity().stackBlinded(turns);
+            report.say("§8blinded (" + turns + "t)");
+        };
+    }
+
+    /** Apply {@code inner} to each target with probability {@code chance}, rolled per target. */
+    public static SpellEffect chance(double chance, SpellEffect inner) {
+        return (ctx, target, report) -> {
+            if (Math.random() < chance) inner.apply(ctx, target, report);
+        };
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Support - the ally-facing half, usable by any spell that points at pets
     // ─────────────────────────────────────────────────────────────────────

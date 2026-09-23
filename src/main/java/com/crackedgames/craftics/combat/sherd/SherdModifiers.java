@@ -163,12 +163,24 @@ public final class SherdModifiers {
         if (stack == null || stack.isEmpty() || inscription == null) return false;
         if (!SherdRegistry.isSherd(stack.getItem())) return false;
         List<Entry> entries = read(stack);
-        if (entries.size() >= MAX_INSCRIPTIONS) return false;
-        for (Entry existing : entries) {
-            if (existing.inscription() == inscription) return false;
-        }
+        if (!canAccept(entries, inscription)) return false;
         entries.add(new Entry(inscription, magnitude));
         write(stack, entries);
+        return true;
+    }
+
+    /**
+     * Whether a sherd already carrying {@code entries} may take {@code inscription}: room left,
+     * not a duplicate, and at most one legendary. Enforced here, where every write passes, so
+     * no offer or command path can stack two legendaries on one sherd.
+     */
+    public static boolean canAccept(List<Entry> entries, SherdInscription inscription) {
+        if (inscription == null || entries.size() >= MAX_INSCRIPTIONS) return false;
+        for (Entry existing : entries) {
+            if (existing.inscription() == inscription) return false;
+            if (inscription.isLegendary() && existing.inscription() != null
+                    && existing.inscription().isLegendary()) return false;
+        }
         return true;
     }
 
