@@ -2,6 +2,17 @@
 
 0.4.9
 
+Home Stays Home
+
+On 1.21.1 servers, leaving your island could lock you out of it. Every /home, every visit and even logging back in would put you straight back at the lobby spawn, and only a server restart fixed it.
+
+When everyone leaves an island, the server starts unloading it, and the unload only finishes once the island has nothing held in memory. Until then, anyone who arrives on it is sent to the lobby spawn every tick. Two things stopped that unload from ever finishing: the chunks around the island's spawn point were always kept loaded, and leftover force-loaded chunks from event rooms and arenas were never released. And on 1.21.1, going back to an island did not cancel its unload, so nobody could get back in.
+
+- **Going to an island now cancels any unload in progress**, so /home, visits and rejoining always land you on your island
+- **Islands no longer keep spawn chunks loaded**, so an empty island can finish unloading
+- **An empty island releases any leftover force-loaded chunks as it unloads.** This also cleans up chunks leaked by earlier versions, which were saved with the world
+- **Fixed /craftics rebuild_arenas building in the lobby.** It pasted a full set of arena schematics into the overworld (freezing the server while it did) and left your real arenas untouched. All three forms now rebuild inside the island. It is refused while anyone on the island is mid-run, and is admin-only by default. Servers with an existing config keep their current setting, so set `rebuildArenasAdminOnly` to true there as well
+
 Coming Home When Your Party Leader Has No Island
 
 Every island lookup asked the same question: whose island does this party play on? The answer is the leader's, which is right up until the leader does not have one. Then the entire party counted as islandless - including players whose own island was sitting there the whole time.

@@ -450,6 +450,13 @@ public class CrafticsMod implements ModInitializer {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayerEntity player = handler.getPlayer();
             ServerWorld overworld = server.getOverworld();
+            // Logging back in inside an island that started unloading when they logged out:
+            // reopening it through IslandDimensions takes it off Fantasy's unload queue, which
+            // would otherwise bounce them to the lobby on their first tick back.
+            java.util.UUID loginIsland = com.crackedgames.craftics.world.IslandDimensions.ownerOf(player.getEntityWorld());
+            if (loginIsland != null) {
+                com.crackedgames.craftics.world.IslandDimensions.getOrCreate(server, loginIsland);
+            }
             // Daily raid boss: tell a rejoining player about a raid already announced
             // or in its join window, so they don't miss it just for having logged in late.
             com.crackedgames.craftics.raid.RaidBossSchedule.onPlayerJoin(player);
@@ -1565,6 +1572,50 @@ public class CrafticsMod implements ModInitializer {
      * what it is about to do and logs per island. It is op-gated for that reason as much as any
      * other.
      */
+    /**
+     * {@code /craftics rebuild_arenas [biome]}: rebuild the caller's island arenas.
+     *
+     * <p>Built in the island's own dimension. This used to hand {@code regenerate} the
+     * overworld, which is where arenas lived before islands became per-owner dimensions: every
+     * run pasted a full set of arena schematics into the lobby, froze the server while doing
+     * it, and left the real arenas untouched.
+     *
+     * <p>Refused while anyone on the island is mid-run rather than ending the caller's own fight,
+     * which never reached a party member fighting in the arena about to be rebuilt.
+     */
+    private static int rebuildOwnArenas(net.minecraft.server.command.ServerCommandSource src,
+                                        String biomeFilter)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+        net.minecraft.server.MinecraftServer server = src.getServer();
+        CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
+        java.util.UUID uid = data.getEffectiveWorldOwner(cmdPlayer.getUuid());
+        if (!data.hasPersonalWorld(uid)) {
+            src.sendError(Text.literal("§cNo personal world found."));
+            return 0;
+        }
+        for (java.util.UUID member : data.getPartyMemberUuids(cmdPlayer.getUuid())) {
+            if (CombatManager.isEngaged(member)) {
+                src.sendError(Text.literal(
+                    "§cSomeone on this island is mid-run. Rebuild the arenas once it is over."));
+                return 0;
+            }
+        }
+        if (CombatManager.isEngaged(cmdPlayer.getUuid())) {
+            src.sendError(Text.literal("§cFinish your run before rebuilding the arenas."));
+            return 0;
+        }
+
+        src.sendFeedback(() -> Text.literal("§eRebuilding arenas"
+            + (biomeFilter != null ? " for biome §6" + biomeFilter : "")
+            + "§e... (this may take a few seconds)"), true);
+        ServerWorld island = com.crackedgames.craftics.world.IslandDimensions.getOrCreate(server, uid);
+        int count = com.crackedgames.craftics.level.ArenaPreGenerator.regenerate(island, uid, biomeFilter);
+        src.sendFeedback(() -> Text.literal(
+            "§aRebuilt §e" + count + "§a arena" + (count == 1 ? "" : "s") + "."), true);
+        return 1;
+    }
+
     private static int rebuildAllArenas(net.minecraft.server.command.ServerCommandSource source) {
         ServerWorld overworld = source.getServer().getOverworld();
         CrafticsSavedData data = CrafticsSavedData.get(overworld);
@@ -1596,8 +1647,11 @@ public class CrafticsMod implements ModInitializer {
         int arenas = 0;
         for (java.util.UUID owner : owners) {
             try {
+                // Each island's own dimension, not the overworld - see rebuildOwnArenas.
+                ServerWorld island = com.crackedgames.craftics.world.IslandDimensions
+                    .getOrCreate(source.getServer(), owner);
                 int built = com.crackedgames.craftics.level.ArenaPreGenerator
-                    .regenerate(overworld, owner, null);
+                    .regenerate(island, owner, null);
                 arenas += built;
                 islands++;
                 LOGGER.info("Craftics rebuild_arenas all: {} arenas rebuilt for island {}",
@@ -1605,6 +1659,11 @@ public class CrafticsMod implements ModInitializer {
             } catch (Exception e) {
                 LOGGER.error("Craftics rebuild_arenas all: island {} failed", owner, e);
             }
+            // Opened only to rebuild it. Left loaded, every island on the server would stay
+            // resident until restart.
+            final java.util.UUID doneOwner = owner;
+            source.getServer().execute(() -> com.crackedgames.craftics.world.IslandDimensions
+                .unloadIfEmpty(source.getServer(), doneOwner));
         }
 
         final int fIslands = islands;
@@ -2056,36 +2115,8 @@ public class CrafticsMod implements ModInitializer {
             // broken state, since the next combat will otherwise still scan the bad
             // blocks. Corrupted arenas already auto-repair on fight entry, but
             // this command lets an admin force a full sweep without waiting.
-            var rebuildArenasExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
-                ServerCommandSource src = ctx.getSource();
-                ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
-                ServerWorld overworld = src.getServer().getOverworld();
-                CrafticsSavedData data = CrafticsSavedData.get(overworld);
-                java.util.UUID uid = data.getEffectiveWorldOwner(cmdPlayer.getUuid());
-                if (!data.hasPersonalWorld(uid)) {
-                    src.sendError(Text.literal("§cNo personal world found."));
-                    return 0;
-                }
-                // End any active combat so we're not scanning mid-fight.
-                CombatManager cm = CombatManager.get(cmdPlayer);
-                if (cm.isActive()) cm.endCombat();
-
-                String biomeFilter = null;
-                try {
-                    biomeFilter = com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "biome");
-                } catch (IllegalArgumentException ignored) {}
-
-                final String filter = biomeFilter;
-                src.sendFeedback(() -> Text.literal(
-                    "§eRebuilding arenas" + (filter != null ? " for biome §6" + filter : "") + "... (this may take a few seconds)"), true);
-
-                int count = com.crackedgames.craftics.level.ArenaPreGenerator
-                    .regenerate(overworld, uid, filter);
-                final int finalCount = count;
-                src.sendFeedback(() -> Text.literal(
-                    "§aRebuilt §e" + finalCount + "§a arena" + (finalCount == 1 ? "" : "s") + "."), true);
-                return 1;
-            };
+            var rebuildArenasExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx ->
+                rebuildOwnArenas(ctx.getSource(), null);
 
             // Gate is config-driven: admin-only when rebuildArenasAdminOnly is set,
             // otherwise open to any player (they can only rebuild their own world).
@@ -2130,28 +2161,8 @@ public class CrafticsMod implements ModInitializer {
 
             // Register a literal child per biome so tab-completion suggests valid ids.
             for (var biome : com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes()) {
-                rebuildArenasNode.then(CommandManager.literal(biome.biomeId).executes(ctx -> {
-                    ServerCommandSource src = ctx.getSource();
-                    ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
-                    ServerWorld overworld = src.getServer().getOverworld();
-                    CrafticsSavedData data = CrafticsSavedData.get(overworld);
-                    java.util.UUID uid = data.getEffectiveWorldOwner(cmdPlayer.getUuid());
-                    if (!data.hasPersonalWorld(uid)) {
-                        src.sendError(Text.literal("§cNo personal world found."));
-                        return 0;
-                    }
-                    CombatManager cm = CombatManager.get(cmdPlayer);
-                    if (cm.isActive()) cm.endCombat();
-                    src.sendFeedback(() -> Text.literal(
-                        "§eRebuilding §6" + biome.biomeId + "§e arenas..."), true);
-                    int count = com.crackedgames.craftics.level.ArenaPreGenerator
-                        .regenerate(overworld, uid, biome.biomeId);
-                    final int finalCount = count;
-                    src.sendFeedback(() -> Text.literal(
-                        "§aRebuilt §e" + finalCount + "§a " + biome.biomeId + " arena"
-                            + (finalCount == 1 ? "" : "s") + "."), true);
-                    return 1;
-                }));
+                rebuildArenasNode.then(CommandManager.literal(biome.biomeId)
+                    .executes(ctx -> rebuildOwnArenas(ctx.getSource(), biome.biomeId)));
             }
             root.then(rebuildArenasNode);
 

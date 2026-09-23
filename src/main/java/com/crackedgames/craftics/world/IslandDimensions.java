@@ -49,11 +49,71 @@ public final class IslandDimensions {
                 // Set here as well as on the lobby: Fantasy copies the overworld's rules when
                 // it opens a runtime world, but a persistent island keeps whatever copy it was
                 // opened with, so an island created before the rule existed would never see it.
-                .setGameRule(net.minecraft.world.GameRules.KEEP_INVENTORY, true);
+                .setGameRule(net.minecraft.world.GameRules.KEEP_INVENTORY, true)
+                // No spawn chunks. HubRoomBuilder sets the island's spawn point, and vanilla
+                // answers setSpawnPos with a permanent START ticket around it. Those chunks then
+                // never unload, so Fantasy's unload of an empty island could never finish - see
+                // cancelPendingUnload for what a stuck unload did to anyone who came back.
+                // Islands are unloaded whenever empty anyway, so the ticket kept nothing useful.
+                .setGameRule(net.minecraft.world.GameRules.SPAWN_CHUNK_RADIUS, 0);
             handle = Fantasy.get(server).getOrOpenPersistentWorld(dimensionKeyOf(owner), config);
             HANDLES.put(owner, handle);
         }
-        return handle.asWorld();
+        ServerWorld world = handle.asWorld();
+        cancelPendingUnload(server, world);
+        return world;
+    }
+
+    /**
+     * Take a reopened island back off Fantasy's unload queue.
+     *
+     * <p>Unloading is not immediate. {@code handle.unload()} only queues the world, and Fantasy
+     * finishes the job on a later tick once the world has no players AND no loaded chunks. Until
+     * then, every tick, it teleports anyone standing in the world to the overworld spawn - which
+     * here is the lobby pad at 0,y,0.
+     *
+     * <p>Fantasy 0.6.7 takes a world off that queue when it is reopened. The 0.6.4 build that the
+     * 1.21.1 shard ships does not: {@code getOrOpenPersistentWorld} only clears the deletion
+     * queue. So an island that had started unloading (its owner stepped out to the lobby) and
+     * was reopened before the unload finished stayed queued, and every {@code /home} and every
+     * visit into it was bounced straight back to the lobby. With any chunk pinned in memory -
+     * a spawn ticket, a leaked forced chunk - the unload never finished at all, and the island
+     * stayed unreachable until the server restarted.
+     *
+     * <p>Run now and again one task later: the unload request reaches the queue through
+     * {@code server.submit}, so a request made just before this call may not have landed yet.
+     * Reflection because the queue is private. Failing that, it logs once and does nothing,
+     * which is exactly the old behaviour.
+     */
+    private static void cancelPendingUnload(MinecraftServer server, ServerWorld world) {
+        if (server == null || world == null) return;
+        dequeueUnload(server, world);
+        server.execute(() -> dequeueUnload(server, world));
+    }
+
+    private static java.lang.reflect.Field unloadingQueueField;
+    private static boolean unloadingQueueUnavailable;
+
+    private static void dequeueUnload(MinecraftServer server, ServerWorld world) {
+        if (unloadingQueueUnavailable) return;
+        try {
+            if (unloadingQueueField == null) {
+                java.lang.reflect.Field f = Fantasy.class.getDeclaredField("unloadingQueue");
+                f.setAccessible(true);
+                unloadingQueueField = f;
+            }
+            if (unloadingQueueField.get(Fantasy.get(server)) instanceof java.util.Set<?> queue
+                    && queue.remove(world)) {
+                com.crackedgames.craftics.CrafticsMod.LOGGER.info(
+                    "[dimension] cancelled pending unload of {} - it was reopened before the unload finished",
+                    HubTeleports.dimensionNameOf(world));
+            }
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            unloadingQueueUnavailable = true;
+            com.crackedgames.craftics.CrafticsMod.LOGGER.warn(
+                "[dimension] could not reach Fantasy's unload queue; a reopened island may bounce "
+                    + "players to the lobby until its unload finishes: {}", e.toString());
+        }
     }
 
     /** The dimension identifier an owner's island lives under. Single source of truth for the
@@ -78,6 +138,24 @@ public final class IslandDimensions {
         if (handle == null) return false;
         ServerWorld w = handle.asWorld();
         if (w != null && !w.getPlayers().isEmpty()) return false;
+        // Nobody is in the island, so nothing in it needs a chunk held in memory. Force-loads
+        // are released on the way out of every event room and arena, but only through whichever
+        // world the releasing player is standing in by then - often the lobby, after they have
+        // already been sent there - so some leaked, and forced chunks are saved with the world
+        // and outlive restarts. Any one of them kept the island from ever finishing its unload
+        // (see cancelPendingUnload). Clearing them here fixes new leaks and old saves alike.
+        if (w != null) {
+            long[] forced = w.getForcedChunks().toLongArray();
+            for (long packed : forced) {
+                w.setChunkForced(net.minecraft.util.math.ChunkPos.getPackedX(packed),
+                    net.minecraft.util.math.ChunkPos.getPackedZ(packed), false);
+            }
+            if (forced.length > 0) {
+                com.crackedgames.craftics.CrafticsMod.LOGGER.info(
+                    "[dimension] released {} leftover force-loaded chunk(s) in island {}",
+                    forced.length, dimensionIdOf(owner));
+            }
+        }
         // Logged next to the teleport lines on purpose: an island unloading in the same breath
         // as somebody leaving it is the shape of half the ghost-lobby reports, and the two log
         // lines sitting adjacent is what makes that visible instead of theoretical.

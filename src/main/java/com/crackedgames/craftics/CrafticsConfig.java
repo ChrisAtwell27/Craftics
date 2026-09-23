@@ -139,10 +139,11 @@ public class CrafticsConfig {
     public boolean partyToggleByShiftClick = true;
 
     /**
-     * When true, {@code /craftics rebuild_arenas} requires op/permission level 2.
-     * When false (default), any player may run it on their own personal world.
+     * When true (default), {@code /craftics rebuild_arenas} requires op/permission level 2.
+     * When false, any player may run it on their own personal world. Rebuilding every arena
+     * freezes the server for a few seconds, so it is not something every player should hold.
      */
-    public boolean rebuildArenasAdminOnly = false;
+    public boolean rebuildArenasAdminOnly = true;
 
     // ===== Enemy Counts =====
 
