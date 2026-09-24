@@ -111,4 +111,23 @@ public final class SwordAxeEnchantEffects {
 
     /** Beacon: tile radius of the walking banner aura. */
     public static final int BEACON_RADIUS = 2;
+
+    // ── Third wave ──────────────────────────────────────────────────────────
+
+    /** Quakeboots: Speed a stomp costs. */
+    public static final int QUAKEBOOTS_SPEED_COST = 2;
+    /** Quakeboots: rounds from one stomp to the next. 2 = every other turn. */
+    public static final int QUAKEBOOTS_RECHARGE_ROUNDS = 2;
+
+    /**
+     * Quakeboots: whether the boots have recharged. A stomp in round N makes them ready again
+     * in round N + {@value #QUAKEBOOTS_RECHARGE_ROUNDS}, so the turn right after a stomp is spent
+     * recharging.
+     *
+     * @param lastStompRound the round of the wearer's last stomp this fight, or null for none yet
+     * @param round          the current round
+     */
+    public static boolean quakebootsReady(Integer lastStompRound, int round) {
+        return lastStompRound == null || round - lastStompRound >= QUAKEBOOTS_RECHARGE_ROUNDS;
+    }
 }

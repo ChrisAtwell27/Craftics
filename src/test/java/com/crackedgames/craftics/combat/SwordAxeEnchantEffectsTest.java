@@ -78,4 +78,25 @@ class SwordAxeEnchantEffectsTest {
         assertEquals(0.25, SwordAxeEnchantEffects.HILT_MULT, 0.0001);
         assertEquals(0.5, SwordAxeEnchantEffects.DULL_MULT, 0.0001);
     }
+
+    @Test
+    void quakebootsAreReadyUntilTheFirstStomp() {
+        assertTrue(SwordAxeEnchantEffects.quakebootsReady(null, 1));
+        assertTrue(SwordAxeEnchantEffects.quakebootsReady(null, 7));
+    }
+
+    @Test
+    void quakebootsRechargeEveryOtherTurn() {
+        // Stomped in round 3: round 3 again (a second stomp) and round 4 are recharging.
+        assertFalse(SwordAxeEnchantEffects.quakebootsReady(3, 3));
+        assertFalse(SwordAxeEnchantEffects.quakebootsReady(3, 4));
+        // Round 5 is the next "other" turn.
+        assertTrue(SwordAxeEnchantEffects.quakebootsReady(3, 5));
+        assertTrue(SwordAxeEnchantEffects.quakebootsReady(3, 9));
+    }
+
+    @Test
+    void quakebootsCostTwoSpeed() {
+        assertEquals(2, SwordAxeEnchantEffects.QUAKEBOOTS_SPEED_COST);
+    }
 }

@@ -518,6 +518,14 @@ public class ClientGridHelper {
             com.crackedgames.craftics.combat.CrafticsEnchantments.LONGSTRIDE.fullId()) > 0;
     }
 
+    /** Quakeboots worn: the move item clicked on yourself stomps instead of walking. */
+    public static boolean hasQuakeboots(MinecraftClient client) {
+        if (client == null || client.player == null) return false;
+        return com.crackedgames.craftics.combat.PlayerCombatStats.getEnchantLevel(
+            client.player.getEquippedStack(net.minecraft.entity.EquipmentSlot.FEET),
+            com.crackedgames.craftics.combat.CrafticsEnchantments.QUAKEBOOTS.fullId()) > 0;
+    }
+
     /** The widest clearable gap for the local player. Must match the server profile. */
     public static int jumpMaxGap(MinecraftClient client) {
         return hasLongstride(client)

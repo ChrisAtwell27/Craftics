@@ -252,6 +252,16 @@ public final class CrafticsEnchantments {
     public static final Entry SHOCKSTEP = new Entry("shockstep", Tool.BOOTS, 1,
         "Shockstep", "Landing a gap jump stomps adjacent enemies - damage and a 1-turn Slow");
 
+    // ── Third wave: armor. Also read from the WORN piece via wornLevel. ──
+    public static final Entry CLOCKWORK = new Entry("clockwork", Tool.CHESTPLATE, 1,
+        "Clockwork", "Repeat your first turn's first 3 actions, in order, on your second turn and your next attack deals 2x");
+    public static final Entry BOILING_BRACER = new Entry("boiling_bracer", Tool.CHESTPLATE, 1,
+        "Boiling Bracer", "Enemies can be Soaked and Burning at once - water no longer puts their fire out");
+    public static final Entry ANKLE_MONITOR = new Entry("ankle_monitor", Tool.BOOTS, 1,
+        "Ankle Monitor", "Enemies target you from any distance, and you can't be Hidden");
+    public static final Entry QUAKEBOOTS = new Entry("quakeboots", Tool.BOOTS, 1,
+        "Quakeboots", "Click yourself with the move item to stomp: Stuns adjacent enemies for 2 Speed, every other turn");
+
     /** Every Craftics enchantment. Loot pools, tooltips and the guide book all read this. */
     public static final List<Entry> ALL = List.of(
         HONED, FIRE_FANG, THUNDER_FANG, WATER_FANG, PACK_BOND, RABID, VENGEFUL_BOND, TAG_TEAM,
@@ -259,7 +269,8 @@ public final class CrafticsEnchantments {
         FACADE, EXECUTIONER, DEMOLISHER, TIMBERFALL,
         SERRATED, REVERSAL, MATADOR, PHANTOM_EDGE, UNDERTOW, HEMORRHAGE, AMBUSH,
         HILT, DULL, CONDUCTIVE, CRATER, MOMENTUM, POLE_VAULT, MIDAS,
-        IRON_WILL, BEACON, PHALANX, GRUDGEPLATE, TRAILBLAZER, LONGSTRIDE, LEDGEGRIP, SHOCKSTEP);
+        IRON_WILL, BEACON, PHALANX, GRUDGEPLATE, TRAILBLAZER, LONGSTRIDE, LEDGEGRIP, SHOCKSTEP,
+        CLOCKWORK, BOILING_BRACER, ANKLE_MONITOR, QUAKEBOOTS);
 
     /**
      * Every enchantment that goes on {@code tool}. A multi-tool enchantment (Hilt, Dull) is

@@ -15,20 +15,16 @@ public class TileRaycast {
 
     public static GridPos getLastDebugPos() { return lastDebugPos; }
 
-    public static GridPos getGridPosUnderCursor() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.getWindow() == null || client.world == null) return null;
-
+    /**
+     * The cursor's ray through the combat camera: {@code [camera position, direction]}, the
+     * direction unnormalized. Null when the window has no size yet.
+     */
+    private static Vec3d[] cursorRay(MinecraftClient client) {
         // Use the actual Camera object for position/rotation
         Camera camera = client.gameRenderer.getCamera();
         Vec3d camPos = camera.getPos();
         float pitch = camera.getPitch();
         float yaw = camera.getYaw();
-        int originX = CombatState.getArenaOriginX();
-        int originY = CombatState.getArenaOriginY();
-        int originZ = CombatState.getArenaOriginZ();
-        int arenaW = CombatState.getArenaWidth();
-        int arenaH = CombatState.getArenaHeight();
 
         // Mouse coords are in screen space; window dimensions may be framebuffer space on HiDPI.
         // Use GLFW window size (screen coords) to match mouse coords.
@@ -73,6 +69,50 @@ public class TileRaycast {
         double rayDirX = fwdX + ndcX * tanHalfFov * aspect * rightX + ndcY * tanHalfFov * upX;
         double rayDirY = fwdY + ndcX * tanHalfFov * aspect * rightY + ndcY * tanHalfFov * upY;
         double rayDirZ = fwdZ + ndcX * tanHalfFov * aspect * rightZ + ndcY * tanHalfFov * upZ;
+
+        return new Vec3d[]{camPos, new Vec3d(rayDirX, rayDirY, rayDirZ)};
+    }
+
+    /**
+     * Whether the cursor is on the local player's own body, with no block in front of it.
+     *
+     * <p>The tile pick deliberately skips the local player, so a click on your own model falls
+     * through to the tile behind you. Quakeboots' self-stomp asks this first, so "click
+     * yourself" means exactly that.
+     */
+    public static boolean isCursorOnLocalPlayer() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.getWindow() == null || client.world == null || client.player == null) return false;
+        Vec3d[] ray = cursorRay(client);
+        if (ray == null) return false;
+        Vec3d start = ray[0];
+        Vec3d end = start.add(ray[1].multiply(64.0));
+        var bodyHit = client.player.getBoundingBox().expand(0.08).raycast(start, end);
+        if (bodyHit.isEmpty()) return false;
+        net.minecraft.util.hit.BlockHitResult blockHit = client.world.raycast(
+            new net.minecraft.world.RaycastContext(start, end,
+                net.minecraft.world.RaycastContext.ShapeType.COLLIDER,
+                net.minecraft.world.RaycastContext.FluidHandling.NONE,
+                client.player));
+        return blockHit.getType() != net.minecraft.util.hit.HitResult.Type.BLOCK
+            || start.squaredDistanceTo(blockHit.getPos()) >= start.squaredDistanceTo(bodyHit.get());
+    }
+
+    public static GridPos getGridPosUnderCursor() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.getWindow() == null || client.world == null) return null;
+
+        Vec3d[] ray = cursorRay(client);
+        if (ray == null) return null;
+        Vec3d camPos = ray[0];
+        double rayDirX = ray[1].x;
+        double rayDirY = ray[1].y;
+        double rayDirZ = ray[1].z;
+        int originX = CombatState.getArenaOriginX();
+        int originY = CombatState.getArenaOriginY();
+        int originZ = CombatState.getArenaOriginZ();
+        int arenaW = CombatState.getArenaWidth();
+        int arenaH = CombatState.getArenaHeight();
 
         // World raycast first: catches elevated blocks (Creaking Heart and
         // any other block-based enemy whose collider sits at floor+1) that the

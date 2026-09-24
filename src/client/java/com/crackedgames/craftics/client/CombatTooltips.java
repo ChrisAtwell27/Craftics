@@ -1230,8 +1230,15 @@ public class CombatTooltips implements ItemTooltipCallback {
             return "\u00a751 AP \u00a77- Plant defense zone\n\u00a77+2 Armor Class for you/allies within 2 tiles\n\u00a7bOr carry in your offhand: \u00a77the aura walks with you (base bonus, no shield hand)";
 
         // ── Move item ──
-        if (item == com.crackedgames.craftics.item.ModItems.MOVE_ITEM)
-            return "\u00a7aSelect to enter Move Mode\n\u00a77Click tiles to move your character\n\u00a77Left/Right arrows rotate its hotbar slot";
+        if (item == com.crackedgames.craftics.item.ModItems.MOVE_ITEM) {
+            String move = "\u00a7aSelect to enter Move Mode\n\u00a77Click tiles to move your character\n\u00a77Left/Right arrows rotate its hotbar slot";
+            if (ClientGridHelper.hasQuakeboots(net.minecraft.client.MinecraftClient.getInstance())) {
+                move += "\n\u00a76Quakeboots: \u00a77click yourself to stomp - "
+                    + com.crackedgames.craftics.combat.SwordAxeEnchantEffects.QUAKEBOOTS_SPEED_COST
+                    + " Speed, Stuns adjacent enemies, every other turn";
+            }
+            return move;
+        }
 
         // ── Trial/Event items ──
         if (item == Items.TRIAL_KEY) return "\u00a76Trial Chamber reward\n\u00a77Rare drop from trial chamber events\n\u00a7b\u27a4 Offer it at a Shrine for guaranteed gear";
