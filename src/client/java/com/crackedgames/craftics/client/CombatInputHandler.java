@@ -292,6 +292,14 @@ public class CombatInputHandler {
 
     private static void handleClick(MinecraftClient client, ActionMode mode) {
         GridPos tilePos = TileRaycast.getGridPosUnderCursor();
+        // Quakeboots: clicking your own body with the move item is a stomp on your own tile.
+        // The tile pick looks straight through the local player, so without this the click
+        // would land on whatever tile is behind you and walk you there instead.
+        if (mode == ActionMode.MOVE && ClientGridHelper.hasQuakeboots(client)
+                && TileRaycast.isCursorOnLocalPlayer()) {
+            GridPos self = ClientGridHelper.getPlayerGridPos(client);
+            if (self != null) tilePos = self;
+        }
         if (tilePos == null) return;
 
         var hintMgr = com.crackedgames.craftics.client.hints.HintManager.get();

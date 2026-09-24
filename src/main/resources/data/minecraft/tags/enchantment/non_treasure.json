@@ -40,6 +40,10 @@
     "craftics:trailblazer",
     "craftics:longstride",
     "craftics:ledgegrip",
-    "craftics:shockstep"
+    "craftics:shockstep",
+    "craftics:clockwork",
+    "craftics:boiling_bracer",
+    "craftics:ankle_monitor",
+    "craftics:quakeboots"
   ]
 }

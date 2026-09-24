@@ -34,6 +34,9 @@ public class AIUtils {
     public static EnemyAction seekWaterIfBurning(CombatEntity self, GridArena arena) {
         if (self.getBurningTurns() <= 0) return null;
         if (arena == null) return null;
+        // Boiling Bracer: water no longer puts this mob out, so running for it would only
+        // park it in a pool, still on fire, turn after turn. Keep fighting instead.
+        if (self.fireAndWaterCoexist()) return null;
 
         GridPos from = self.getGridPos();
         // Already standing in it - the water tile itself will douse the mob, so hold position

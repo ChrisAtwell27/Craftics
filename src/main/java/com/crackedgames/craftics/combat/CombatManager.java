@@ -649,6 +649,19 @@ public class CombatManager {
 
     /** Trailblazer: tiles each wearer crossed on their last move, cleared at their next turn. */
     private final java.util.Map<java.util.UUID, java.util.Set<GridPos>> playerTrails = new java.util.HashMap<>();
+
+    /** Clockwork chestplate: each wearer's watch for this fight, keyed by player UUID. */
+    private final java.util.Map<java.util.UUID, ClockworkWatch> clockworkWatches = new java.util.HashMap<>();
+    /** Clockwork: raised by a handler once its action is committed (an attack swung, an item
+     *  used, a sherd cast), so the watch counts it even when it cost nothing - a Reserving free
+     *  cast, a Magic Surge swing, an Efficiency-free hit. */
+    private boolean clockworkActionCommitted;
+    /** Clockwork: raised by a handler whose action is a different kind than the input that
+     *  carried it (a Quakeboots stomp arrives as a move, an instrument as an attack). */
+    private ClockworkWatch.Action clockworkKindOverride;
+
+    /** Quakeboots: the round each wearer last stomped in, keyed by player UUID. */
+    private final java.util.Map<java.util.UUID, Integer> quakebootsLastStompRound = new java.util.HashMap<>();
     /** Momentum fires once per turn; reset whenever a player turn starts. */
     private boolean momentumProcThisTurn;
     /** Phantom Edge: stealth-preserved attacks already spent this turn. Reset at turn start. */
@@ -4660,6 +4673,12 @@ public class CombatManager {
         // before a single enemy had died in it.
         this.killStreak = 0;
         this.killedThisTurn = false;
+        // Clockwork and Quakeboots are per-fight: a watch wound (or a stomp spent) in the last
+        // fight must not carry its round numbers into this one.
+        this.clockworkWatches.clear();
+        this.clockworkActionCommitted = false;
+        this.clockworkKindOverride = null;
+        this.quakebootsLastStompRound.clear();
 
         // Cache the biome ordinal so late-game tuning (boss waiting-turn skip,
         // etc.) doesn't have to recompute it on every enemy decision.
@@ -5693,6 +5712,82 @@ public class CombatManager {
         return 0;
     }
 
+    /** Every living, present party member (the solo player included) wearing {@code entry}. */
+    private java.util.List<ServerPlayerEntity> partyMembersWearing(CrafticsEnchantments.Entry entry) {
+        java.util.List<ServerPlayerEntity> out = new java.util.ArrayList<>();
+        for (ServerPlayerEntity member : allCombatPlayers()) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            if (CrafticsEnchantments.wornLevel(member, entry) > 0) out.add(member);
+        }
+        return out;
+    }
+
+    /**
+     * Boiling Bracer: while any party member wears it, Soaked and Burning coexist on every
+     * hostile in the fight. The rule lives on the entity ({@link CombatEntity#fireAndWaterCoexist})
+     * because every Soak and every ignition in the game routes through CombatEntity, so this
+     * stamps it onto each hostile at the moments effects get applied: every player input, every
+     * pet and enemy turn, and each phase start. A pass over a few dozen entities at most.
+     * Allies are left alone - the bracer changes what you do to enemies, not to your pets.
+     */
+    private void refreshBoilingBracer() {
+        boolean on = !partyMembersWearing(CrafticsEnchantments.BOILING_BRACER).isEmpty();
+        for (CombatEntity e : enemies) {
+            if (e == null) continue;
+            e.setFireAndWaterCoexist(on && !e.isAlly());
+        }
+    }
+
+    /** Whether {@code member} has the Ankle Monitor boots on. */
+    private boolean wearsAnkleMonitor(ServerPlayerEntity member) {
+        return member != null
+            && CrafticsEnchantments.wornLevel(member, CrafticsEnchantments.ANKLE_MONITOR) > 0;
+    }
+
+    /**
+     * A party member's live grid tile: the arena's tracked tile for the turn holder (their body
+     * can lag it mid-walk), their body's tile for everyone else.
+     */
+    private GridPos liveGridPosOf(ServerPlayerEntity member) {
+        if (arena != null && player != null && member != null
+                && member.getUuid().equals(player.getUuid())) {
+            return arena.getPlayerGridPos();
+        }
+        return gridPosOf(member);
+    }
+
+    /**
+     * Ankle Monitor: the wearer an enemy at {@code from} goes after, or null when nobody in the
+     * party wears one. Enemies track a wearer from any distance - they come for the wearer
+     * however far away they are, ahead of closer teammates and of pets that hurt them - so
+     * distance only picks between several wearers.
+     */
+    private ServerPlayerEntity ankleMonitorTarget(GridPos from) {
+        if (arena == null || from == null) return null;
+        ServerPlayerEntity best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (ServerPlayerEntity wearer : partyMembersWearing(CrafticsEnchantments.ANKLE_MONITOR)) {
+            GridPos wp = liveGridPosOf(wearer);
+            if (wp == null) continue;
+            int d = Math.abs(wp.x() - from.x()) + Math.abs(wp.z() - from.z());
+            if (d < bestDist) {
+                bestDist = d;
+                best = wearer;
+            }
+        }
+        return best;
+    }
+
+    /** Ankle Monitor: whether a living wearer stands on {@code pos}, which cancels any Hidden there. */
+    private boolean ankleMonitorWearerAt(GridPos pos) {
+        if (pos == null) return false;
+        for (ServerPlayerEntity wearer : partyMembersWearing(CrafticsEnchantments.ANKLE_MONITOR)) {
+            if (pos.equals(liveGridPosOf(wearer))) return true;
+        }
+        return false;
+    }
+
     /** Grudgeplate: whether ANY wearer's grudge points at this enemy. */
     private boolean isGrudgeTarget(CombatEntity target) {
         return target != null && grudgeTargets.containsValue(target.getEntityId());
@@ -5951,19 +6046,106 @@ public class CombatManager {
         // Keep all player grid positions fresh so isOccupied() sees party members
         refreshAllPlayerGridPositions();
 
+        // Boiling Bracer: stamp the fire-and-water rule before anything this input does can
+        // Soak or ignite an enemy.
+        refreshBoilingBracer();
+
+        // Clockwork: snapshot what this input could spend, so the watch only hears about
+        // actions that actually happened - a click the server rejects spends nothing.
+        ClockworkSnapshot clockwork = beginClockworkInput();
+        ClockworkWatch.Action clockworkKind = null;
+
         switch (action.actionType()) {
-            case CombatActionPayload.ACTION_MOVE -> handleMove(new GridPos(action.targetX(), action.targetZ()));
+            case CombatActionPayload.ACTION_MOVE -> {
+                clockworkKind = ClockworkWatch.Action.MOVE;
+                handleMove(new GridPos(action.targetX(), action.targetZ()));
+            }
             case CombatActionPayload.ACTION_ATTACK -> {
-                if (tryHandleInstrument(new GridPos(action.targetX(), action.targetZ()))) break;
+                if (tryHandleInstrument(new GridPos(action.targetX(), action.targetZ()))) {
+                    clockworkKind = ClockworkWatch.Action.ITEM;
+                    break;
+                }
+                clockworkKind = ClockworkWatch.Action.ATTACK;
                 handleAttack(action.targetEntityId(), new GridPos(action.targetX(), action.targetZ()));
             }
             case CombatActionPayload.ACTION_END_TURN -> handleEndTurn();
             case CombatActionPayload.ACTION_USE_ITEM -> {
+                clockworkKind = ClockworkWatch.Action.ITEM;
                 if (tryHandleInstrument(new GridPos(action.targetX(), action.targetZ()))) break;
                 handleUseItem(new GridPos(action.targetX(), action.targetZ()));
             }
-            case CombatActionPayload.ACTION_MINE -> handleMine(new GridPos(action.targetX(), action.targetZ()));
+            case CombatActionPayload.ACTION_MINE -> {
+                clockworkKind = ClockworkWatch.Action.MINE;
+                handleMine(new GridPos(action.targetX(), action.targetZ()));
+            }
             case CombatActionPayload.ACTION_DISMOUNT -> handleDismount();
+        }
+
+        finishClockworkInput(clockwork, clockworkKind);
+    }
+
+    /** What the acting player could spend before an input ran, for {@link #finishClockworkInput}. */
+    private record ClockworkSnapshot(ServerPlayerEntity actor, int ap, int speed, int round,
+                                     boolean playerTurn) {}
+
+    /**
+     * Clockwork: open one player input. Clears the committed and kind-override flags a
+     * handler may raise, and remembers the actor's AP, Speed and round so the close can tell
+     * whether the input was an action they actually took.
+     */
+    private ClockworkSnapshot beginClockworkInput() {
+        clockworkActionCommitted = false;
+        clockworkKindOverride = null;
+        return new ClockworkSnapshot(player, apRemaining, movePointsRemaining, turnNumber,
+            active && phase == CombatPhase.PLAYER_TURN);
+    }
+
+    /**
+     * Clockwork chestplate: close one player input, logging it to the actor's watch when it was
+     * an action they actually took. Taken means it spent AP or Speed, passed the turn on, or a
+     * handler flagged it committed. Rejected clicks spend nothing and never count, which is what
+     * keeps a mis-click from jamming the watch.
+     *
+     * @param kind what the input was, or null for inputs that are not actions (end turn, dismount)
+     */
+    private void finishClockworkInput(ClockworkSnapshot before, ClockworkWatch.Action kind) {
+        ClockworkWatch.Action resolved = clockworkKindOverride != null ? clockworkKindOverride : kind;
+        boolean committed = clockworkActionCommitted;
+        clockworkKindOverride = null;
+        clockworkActionCommitted = false;
+
+        ServerPlayerEntity actor = before.actor();
+        // An input that arrived outside a live player turn was refused outright - and would
+        // otherwise read as "the turn passed" below.
+        if (!before.playerTurn() || !active || actor == null || resolved == null) return;
+        if (CrafticsEnchantments.wornLevel(actor, CrafticsEnchantments.CLOCKWORK) <= 0) return;
+
+        boolean turnPassed = player != actor || phase != CombatPhase.PLAYER_TURN;
+        boolean spent = !turnPassed
+            && (apRemaining < before.ap() || movePointsRemaining < before.speed());
+        if (!turnPassed && !spent && !committed) return;
+
+        ClockworkWatch watch = clockworkWatches.computeIfAbsent(actor.getUuid(), k -> new ClockworkWatch());
+        switch (watch.record(before.round(), resolved)) {
+            case RECORDED -> sendMessageTo(actor, "§6⌚ Clockwork §7ticks: "
+                + ClockworkWatch.describe(watch.remembered()));
+            case WOUND -> sendMessageTo(actor, "§6⌚ Clockwork wound: §f"
+                + ClockworkWatch.describe(watch.remembered())
+                + "§7. Open next turn the same way, in order.");
+            case UNWOUND -> sendMessageTo(actor, "§7⌚ Clockwork never wound - your first turn took fewer than "
+                + ClockworkWatch.SEQUENCE_LENGTH + " actions.");
+            case MATCHED -> sendMessageTo(actor, "§6⌚ Clockwork §7" + watch.matched() + "/"
+                + ClockworkWatch.SEQUENCE_LENGTH + " - " + resolved.label() + " matches.");
+            case STRUCK -> {
+                sendMessage("§6§l⌚ Clockwork strikes! §r§e" + actor.getName().getString()
+                    + "'s next attack deals " + ClockworkWatch.DAMAGE_MULT + "x damage.");
+                actor.getWorld().playSound(null, actor.getBlockPos(),
+                    net.minecraft.sound.SoundEvents.BLOCK_BELL_USE,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.6f);
+            }
+            case JAMMED -> sendMessageTo(actor, "§7⌚ Clockwork jams - " + resolved.label()
+                + " breaks the sequence (" + ClockworkWatch.describe(watch.remembered()) + ").");
+            case IGNORED -> { }
         }
     }
 
@@ -6066,6 +6248,12 @@ public class CombatManager {
      * allies on free tiles beside the player (combat-only summons, not returned home).
      */
     public void handleMountAbility(java.util.UUID senderUuid) {
+        ClockworkSnapshot clockwork = beginClockworkInput();
+        runMountAbility(senderUuid);
+        finishClockworkInput(clockwork, ClockworkWatch.Action.MOUNT);
+    }
+
+    private void runMountAbility(java.util.UUID senderUuid) {
         if (!active || phase != CombatPhase.PLAYER_TURN || player == null || arena == null) return;
         if (!mount.mounted || !"golemoverhaul:netherite_golem".equals(mount.typeId)) {
             sendMessage("§7Mount ability: you must be riding the Netherite Golem.");
@@ -6289,6 +6477,14 @@ public class CombatManager {
     }
 
     public void handleLeadCommand(int allyEntityId, int targetX, int targetZ, int targetEntityId) {
+        // Boiling Bracer: a commanded pet's Fang can Soak or ignite what it hits.
+        refreshBoilingBracer();
+        ClockworkSnapshot clockwork = beginClockworkInput();
+        runLeadCommand(allyEntityId, targetX, targetZ, targetEntityId);
+        finishClockworkInput(clockwork, ClockworkWatch.Action.COMMAND);
+    }
+
+    private void runLeadCommand(int allyEntityId, int targetX, int targetZ, int targetEntityId) {
         if (!active) return;
         if (phase != CombatPhase.PLAYER_TURN) return;
         if (player == null) return;
@@ -6359,6 +6555,7 @@ public class CombatManager {
             }
             if (canSwap) {
                 tagTeamUsedThisTurn = true;
+                clockworkActionCommitted = true; // a free action is still an action to the watch
                 GridPos swapFrom = gridPosOf(player);
                 GridPos swapTo = ally.getGridPos();
                 arena.moveEntity(ally, swapFrom);
@@ -6680,6 +6877,13 @@ public class CombatManager {
         }
         if (!arena.isInBounds(target)) return;
 
+        // Quakeboots: the move item clicked on your own tile is a stomp, not a zero-length walk.
+        if (target.equals(arena.getPlayerGridPos())
+                && CrafticsEnchantments.wornLevel(player, CrafticsEnchantments.QUAKEBOOTS) > 0) {
+            handleQuakebootsStomp();
+            return;
+        }
+
         // Warped: mirror the intended destination about the player's own tile - a move 2 left /
         // 1 up instead sends you 2 right / 1 down. Attacks are unaffected (handled separately in
         // handleAttack); only movement is warped.
@@ -6986,6 +7190,74 @@ public class CombatManager {
     private static boolean isTridentWeapon(Item weapon) {
         return weapon == Items.TRIDENT
             || com.crackedgames.craftics.compat.simplyswords.SimplySwordsUniques.isTridentLike(weapon);
+    }
+
+    /**
+     * Quakeboots: stomp the ground where you stand. Costs
+     * {@link SwordAxeEnchantEffects#QUAKEBOOTS_SPEED_COST} Speed and Stuns every enemy on the
+     * eight tiles around you, then the boots need a turn to recharge - one stomp every other
+     * turn at most. Reached by clicking your own tile (or yourself) with the move item.
+     */
+    private void handleQuakebootsStomp() {
+        if (player.hasVehicle()) {
+            sendMessage("§cYou can't stomp while riding.");
+            return;
+        }
+        Integer lastStomp = quakebootsLastStompRound.get(player.getUuid());
+        if (!SwordAxeEnchantEffects.quakebootsReady(lastStomp, turnNumber)) {
+            sendMessage("§cQuakeboots are recharging - ready next turn.");
+            return;
+        }
+        if (movePointsRemaining < SwordAxeEnchantEffects.QUAKEBOOTS_SPEED_COST) {
+            sendMessage("§cQuakeboots need " + SwordAxeEnchantEffects.QUAKEBOOTS_SPEED_COST
+                + " Speed to stomp.");
+            return;
+        }
+        movePointsRemaining -= SwordAxeEnchantEffects.QUAKEBOOTS_SPEED_COST;
+        quakebootsLastStompRound.put(player.getUuid(), turnNumber);
+        clockworkKindOverride = ClockworkWatch.Action.STOMP;
+
+        // A set, not a tile count: a big mob spread over several of the eight tiles is still
+        // one mob, stunned once.
+        GridPos center = arena.getPlayerGridPos();
+        java.util.Set<CombatEntity> shaken = new java.util.LinkedHashSet<>();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                GridPos pos = new GridPos(center.x() + dx, center.z() + dz);
+                if (!arena.isInBounds(pos)) continue;
+                CombatEntity occupant = arena.getOccupant(pos);
+                if (occupant == null || !occupant.isAlive() || occupant.isAlly()) continue;
+                shaken.add(occupant);
+            }
+        }
+
+        if (shaken.isEmpty()) {
+            sendMessage("§6Quakeboots! §7The ground shakes, but nothing is close enough to stun.");
+        }
+        for (CombatEntity enemy : shaken) {
+            enemy.setStunned(true);
+            if (enemy.isStunned()) {
+                sendMessage("§6Quakeboots! " + enemy.getDisplayName() + " is Stunned!");
+            } else {
+                sendMessage("§7Quakeboots! " + enemy.getDisplayName() + " keeps its footing.");
+            }
+        }
+
+        ServerWorld stompWorld = (ServerWorld) player.getEntityWorld();
+        BlockPos stompBp = arena.gridToBlockPos(center);
+        ProjectileSpawner.spawnExpandingRing(stompWorld, stompBp, 1.5,
+            net.minecraft.particle.ParticleTypes.CLOUD, 16);
+        stompWorld.spawnParticles(new net.minecraft.particle.BlockStateParticleEffect(
+                net.minecraft.particle.ParticleTypes.BLOCK, stompWorld.getBlockState(stompBp)),
+            stompBp.getX() + 0.5, stompBp.getY() + 1.0, stompBp.getZ() + 0.5,
+            24, 0.9, 0.1, 0.9, 0.15);
+        stompWorld.playSound(null, stompBp,
+            net.minecraft.sound.SoundEvents.ENTITY_GENERIC_BIG_FALL,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.7f);
+
+        sendSync();
+        refreshHighlights();
     }
 
     /** Mine a VFX-placed obstacle tile adjacent to the player, if the player holds a pickaxe. Costs 1 AP. */
@@ -7855,6 +8127,7 @@ public class CombatManager {
         }
         // The attack is committed: if it's thrown from tall grass, the grass gives you away
         // (unless Phantom Edge preserves it).
+        clockworkActionCommitted = true; // counts for Clockwork even when it cost no AP
         breakStealthFromAttack();
 
         // Apply 10 durability damage per attack (tactical combat is hard on weapons)
@@ -8206,6 +8479,16 @@ public class CombatManager {
             baseDamage *= 2;
             doubleDamageNextAttack = false;
             usedTriple = true;
+        }
+
+        // Clockwork chestplate: a struck watch doubles the wearer's next attack. Same tier as
+        // Fortune's Favor, so the two stack into 4x when both are waiting.
+        if (baseDamage > 0 && CrafticsEnchantments.wornLevel(player, CrafticsEnchantments.CLOCKWORK) > 0) {
+            ClockworkWatch watch = clockworkWatches.get(player.getUuid());
+            if (watch != null && watch.consumeStrike()) {
+                baseDamage *= ClockworkWatch.DAMAGE_MULT;
+                sendMessage("§6⌚ Clockwork! §f" + ClockworkWatch.DAMAGE_MULT + "x damage!");
+            }
         }
 
         // Executioner: a held axe adds +1 flat damage per debuff on the target, per level. Sits
@@ -9701,6 +9984,9 @@ public class CombatManager {
             attacker.setAggroAllyEntityId(-1);
             return null;
         }
+        // Ankle Monitor: a wearer counts as in reach from any distance, so a pet is never the
+        // closer target. The grudge is kept, in case the wearer goes down.
+        if (ankleMonitorTarget(attacker.getGridPos()) != null) return null;
 
         int distToPet = attacker.minDistanceTo(pet.getGridPos());
         int distToPlayer = attacker.minDistanceTo(arena.getPlayerGridPos());
@@ -12617,6 +12903,7 @@ public class CombatManager {
 
         // Past the failure gate, so these only count uses that actually happened. The gate is
         // the same "§c means it did not work" rule the AP refund above runs on.
+        clockworkActionCommitted = true; // counts for Clockwork even on a Reserving free cast
         if (achievementTracker != null) {
             if (ItemUseHandler.isFood(heldItem)) {
                 achievementTracker.recordFoodEaten(heldItem);
@@ -13390,6 +13677,7 @@ public class CombatManager {
 
         // Reserving (hoe): chance a sherd cast costs no AP. The encore is already free, so it
         // neither rolls nor pays.
+        clockworkActionCommitted = true; // the cast is going ahead - Clockwork counts it either way
         if (sherdEncoreInProgress) {
             // free replay - charge nothing
         } else if (HoeEnchantEffects.rollFreeAp(player)) {
@@ -14552,6 +14840,7 @@ public class CombatManager {
 
     private void startEnemyTurn() {
         fireEffectHook(h -> h.onTurnEnd(effectContext));
+        refreshBoilingBracer();
         // Age timed summons exactly once per round, BEFORE any early-return guard,
         // so a summon's lifespan stays accurate even when the enemy turn is skipped
         // (e.g. the PHANTOM set bonus below). Round-effect hooks (bee summon, hay
@@ -15070,8 +15359,11 @@ public class CombatManager {
                 if (member == null || member.isRemoved()
                     || deadPartyMembers.contains(member.getUuid())) continue;
                 stealthPlayers.add(member);
-                stealthPositions.add(player != null && member.getUuid().equals(player.getUuid())
-                    ? arena.getPlayerGridPos() : gridPosOf(member));
+                // Ankle Monitor: no tile hides a wearer. A null tile is never a stealth tile,
+                // so the grass invisibility is stripped rather than refreshed.
+                stealthPositions.add(wearsAnkleMonitor(member) ? null
+                    : player != null && member.getUuid().equals(player.getUuid())
+                        ? arena.getPlayerGridPos() : gridPosOf(member));
             }
             com.crackedgames.craftics.combat.StealthTiles.applyEach(
                 arena, stealthPlayers, stealthPositions, enemies,
@@ -16893,11 +17185,20 @@ public class CombatManager {
                 currentEnemy.getDisplayName(), currentEnemy.getAiKey(), ai.getClass().getSimpleName());
         }
         refreshAllPlayerGridPositions();
+        // Boiling Bracer: this enemy may walk into water or fire, or splash another enemy.
+        refreshBoilingBracer();
         CombatEntity tauntTarget = resolveTauntTarget(currentEnemy);
         currentEnemyPetAggroTarget = tauntTarget != null ? tauntTarget : resolveAggroPetTarget(currentEnemy);
         GridPos aiTargetPos;
+        // Ankle Monitor: a wearer is tracked from any distance, so the enemy comes for them
+        // ahead of whichever teammate happens to be closer. A taunting ally still wins -
+        // it is forcing the issue - and pet aggro already yields to the monitor.
+        ServerPlayerEntity monitored = currentEnemyPetAggroTarget == null
+            ? ankleMonitorTarget(currentEnemy.getGridPos()) : null;
         if (currentEnemyPetAggroTarget != null) {
             aiTargetPos = currentEnemyPetAggroTarget.getGridPos();
+        } else if (monitored != null) {
+            aiTargetPos = liveGridPosOf(monitored);
         } else {
             java.util.List<GridPos> allPlayers = arena.getAllPlayerGridPositions();
             if (allPlayers.size() > 1) {
@@ -16976,7 +17277,9 @@ public class CombatManager {
         if (waterSeek != null) {
             pendingAction = waterSeek;
         } else if (invisibleToThisEnemy
-                || StealthTiles.isConcealedFrom(arena, currentEnemy.getGridPos(), aiTargetPos, player.getEntityWorld())) {
+                || (StealthTiles.isConcealedFrom(arena, currentEnemy.getGridPos(), aiTargetPos, player.getEntityWorld())
+                    // Ankle Monitor: a wearer in the grass is never Hidden.
+                    && !ankleMonitorWearerAt(aiTargetPos))) {
             // Target is hidden. Hunt for it instead of standing still: close on the
             // nearest cover and thrash it open. Losing the grass is the cost of
             // hiding in it, so stealth buys time rather than permanent safety.
@@ -17979,6 +18282,8 @@ public class CombatManager {
      * applying owner-gear damage bonuses for gear-scaling allies.
      */
     private void handleAllyTurn(CombatEntity ally) {
+        // Boiling Bracer: a pet's Fire and Water Fangs are exactly what the bracer is for.
+        refreshBoilingBracer();
         // A mounted ally is the player's vehicle, not a combatant -it has no
         // grid tile and moves with the player, so it never takes a turn.
         if (ally.isMounted()) {
@@ -34143,6 +34448,11 @@ public class CombatManager {
      *  up to, not just whoever the arena's leader-tracked grid points at. */
     private ServerPlayerEntity findClosestPartyTarget(GridPos enemyPos) {
         if (partyPlayers.size() <= 1 || arena == null) return player;
+        // Ankle Monitor: the enemy was sent after the wearer (see the AI target pick), so its
+        // blow, shot or shove lands on the wearer too, not on a teammate who happened to be
+        // standing closer.
+        ServerPlayerEntity monitored = ankleMonitorTarget(enemyPos);
+        if (monitored != null) return monitored;
         BlockPos origin = arena.getOrigin();
         ServerPlayerEntity closest = null;
         int closestDist = Integer.MAX_VALUE;
@@ -40224,7 +40534,7 @@ public class CombatManager {
                 // with this per-UUID column in MP, which has no notion of stealth, so
                 // each member loses the indicator unless we add it here per their own
                 // tile (the scalar reflects only the leader's tile anyway).
-                if (arena != null && !isDead && StealthTiles.isStealthTile(
+                if (arena != null && !isDead && !wearsAnkleMonitor(member) && StealthTiles.isStealthTile(
                         arena, gridPosOf(member), member.getEntityWorld())) {
                     memberEffects = memberEffects.isEmpty() ? "Hidden" : ("Hidden | " + memberEffects);
                 }
@@ -40264,7 +40574,7 @@ public class CombatManager {
         // that stealth is active. Falls through to the world-aware tile check
         // so it works even when the cached tile type missed classification.
         String effectsDisplay = combatEffects.getDisplayString();
-        if (arena != null && player != null && StealthTiles.isStealthTile(
+        if (arena != null && player != null && !wearsAnkleMonitor(player) && StealthTiles.isStealthTile(
                 arena, arena.getPlayerGridPos(), player.getEntityWorld())) {
             String hidden = "Hidden";
             effectsDisplay = effectsDisplay.isEmpty() ? hidden : (hidden + " | " + effectsDisplay);
@@ -40314,7 +40624,7 @@ public class CombatManager {
         if (fx == null) return activePlayerDisplay;
         String display = fx.getDisplayString();
         // Their own tile decides their own stealth, not the turn holder's.
-        if (arena != null && !deadPartyMembers.contains(member.getUuid())
+        if (arena != null && !deadPartyMembers.contains(member.getUuid()) && !wearsAnkleMonitor(member)
                 && StealthTiles.isStealthTile(arena, gridPosOf(member), member.getEntityWorld())) {
             display = display.isEmpty() ? "Hidden" : ("Hidden | " + display);
         }

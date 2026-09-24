@@ -34,6 +34,15 @@ Infinite Mode stashes everything you own on the way in and hands it back on the 
 - **A hardcore wipe now takes worn backpacks and accessories**, which used to survive it - stuffing a backpack before a hardcore fight made the wipe cost nothing
 - **Fixed: resuming a parked run could overwrite the stash** with another run's loadout, destroying the real inventory, levels and emeralds it was holding
 
+Four New Armor Enchantments
+
+Like the rest of the armor enchants, these only work on the piece you are wearing.
+
+- **Clockwork (chest):** the first 3 actions of your first turn are remembered. Open your second turn with the same 3 actions in the same order and your next attack deals 2x. Only the first 3 actions of each turn count, and a first turn with fewer than 3 never winds the watch. One chance per fight. Moves, attacks, item uses, mining, Lead commands and stomps are all actions; clicks that the game refuses do not count
+- **Boiling Bracer (chest):** while anyone in the party wears it, water no longer puts enemies out. Soaked and Burning tick side by side, so Fire Fang and Water Fang finally work together. Burning mobs stop running for water, since it can't save them. Your own status effects are unaffected
+- **Ankle Monitor (boots):** enemies come for you from any distance, ahead of closer teammates and of pets that hurt them. Their hits, shots and shoves land on you too. A taunting ally still pulls enemies off you. The catch: you can never be Hidden. Tall grass doesn't conceal you or turn you invisible
+- **Quakeboots (boots):** click yourself (or your own tile) with the move item to stomp. It costs 2 Speed and Stuns every enemy on the 8 tiles around you. The boots then need a turn to recharge, so you can stomp every other turn. Not usable while riding
+
 0.4.8
 
 Heavy Weapons Pull Their Weight

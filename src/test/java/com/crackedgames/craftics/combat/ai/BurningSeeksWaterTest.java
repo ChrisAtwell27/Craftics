@@ -174,4 +174,21 @@ class BurningSeeksWaterTest {
         assertNull(AIUtils.seekWaterIfBurning(mob, a),
             "no longer on fire, so it goes back to its normal AI");
     }
+
+    /**
+     * Boiling Bracer: water can't put this mob out, so it must not run for water - it would
+     * sit in the pool still burning, turn after turn, instead of fighting.
+     */
+    @Test
+    void aBoilingMobKeepsFightingInsteadOfSeekingWater() {
+        GridArena a = arena();
+        paint(a, TileType.WATER, 3, 0);
+
+        CombatEntity mob = mobAt(0, 0);
+        mob.setFireAndWaterCoexist(true);
+        mob.stackBurning(3, 2);
+
+        assertNull(AIUtils.seekWaterIfBurning(mob, a),
+            "water is no cure under the bracer, so the mob's normal AI must run");
+    }
 }

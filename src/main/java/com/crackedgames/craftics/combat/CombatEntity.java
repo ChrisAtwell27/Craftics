@@ -71,6 +71,10 @@ public class CombatEntity {
     private int burningAmplifier = 0;
     private int soakedTurns = 0;
     private int soakedAmplifier = 0;
+    /** Boiling Bracer: while set, Soaked and Burning no longer cancel each other on this
+     *  entity. Stamped by CombatManager onto every hostile while a party member wears the
+     *  chestplate; see {@link #setFireAndWaterCoexist}. */
+    private boolean fireAndWaterCoexist = false;
     /** Visual+movement Airtime state for enemies/allies. No damage hook. */
     private int airtimeStateTurns = 0;
     /** Visual+movement Levitation state; amplifier drives the per-level move slow. */
@@ -844,6 +848,13 @@ public class CombatEntity {
     public boolean isSoaked() { return soakedTurns > 0; }
     public int getSoakedAmplifier() { return soakedAmplifier; }
     public void setSoakedAmplifier(int a) { this.soakedAmplifier = a; }
+    /**
+     * Boiling Bracer: whether water and fire coexist on this entity. While true, getting Soaked
+     * no longer puts its fire out and being Soaked no longer stops it catching fire, so both
+     * tick side by side - the rule that makes Fire Fang and Water Fang work together.
+     */
+    public boolean fireAndWaterCoexist() { return fireAndWaterCoexist; }
+    public void setFireAndWaterCoexist(boolean v) { this.fireAndWaterCoexist = v; }
     public int getConfusionTurns() { return confusionTurns; }
     public void setConfusionTurns(int t) { this.confusionTurns = t; }
     public int getConfusionAmplifier() { return confusionAmplifier; }
@@ -1023,7 +1034,7 @@ public class CombatEntity {
      * immunity and applies to both kinds of flame.
      */
     public void stackSoulBurning(int turns, int ampIncrease) {
-        if (isDrenched()) return;
+        if (isDrenched() && !fireAndWaterCoexist) return;
         var cfg = com.crackedgames.craftics.CrafticsMod.CONFIG;
         int maxDur = cfg != null ? cfg.maxCombatEffectDuration() : 10;
         soulBurningTurns = Math.min(maxDur, Math.max(MIN_DOT_TURNS, soulBurningTurns + turns));
@@ -1034,8 +1045,8 @@ public class CombatEntity {
         if (isFireImmune()) return; // fire-immune mobs (blaze, magma cube, ...) don't burn
         // A drenched target can't catch light. Without this, Soaked's douse could be undone
         // by any fire proc landing later in the same turn, and the "water beats fire" rule
-        // would hold only until the next hit.
-        if (isDrenched()) return;
+        // would hold only until the next hit. The Boiling Bracer lifts the rule.
+        if (isDrenched() && !fireAndWaterCoexist) return;
         // Repeat hits EXTEND the burn: the new turns add onto whatever's left
         // (so re-applying Fire Aspect prolongs the fire), capped at the
         // configured max effect duration so it can't run away.
@@ -1050,12 +1061,13 @@ public class CombatEntity {
      * extinguishes Burning outright rather than the two ticking side by side.
      *
      * <p>Every source of Soaked routes through here (coral weapons, bubble columns, water
-     * tiles, creeper blasts, addon procs), so the douse applies to all of them.
+     * tiles, creeper blasts, addon procs), so the douse applies to all of them - unless the
+     * Boiling Bracer is in play ({@link #fireAndWaterCoexist}), in which case the fire stays lit.
      */
     public void stackSoaked(int turns, int ampIncrease) {
         soakedTurns = Math.max(soakedTurns, turns);
         soakedAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, soakedAmplifier + ampIncrease);
-        extinguish();
+        if (!fireAndWaterCoexist) extinguish();
     }
 
     /**
@@ -1076,7 +1088,8 @@ public class CombatEntity {
         }
     }
 
-    /** True if this entity is currently drenched, which prevents it catching fire. */
+    /** True if this entity is currently drenched, which prevents it catching fire (unless
+     *  {@link #fireAndWaterCoexist}). */
     public boolean isDrenched() {
         return soakedTurns > 0;
     }

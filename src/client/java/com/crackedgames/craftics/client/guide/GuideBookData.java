@@ -1342,7 +1342,17 @@ public class GuideBookData {
                 new Box("minecraft:leather_boots", "Ledgegrip", "boots · I",
                     "Once per combat, a knockback into a pit or deep water becomes a caught edge: 2 damage instead of death."),
                 new Box("minecraft:netherite_boots", "Shockstep", "boots · I",
-                    "Landing a gap jump stomps every adjacent enemy - damage plus a 1-turn Slow.")))
+                    "Landing a gap jump stomps every adjacent enemy - damage plus a 1-turn Slow."))),
+            new Page("Armor Enchantments (5)", "", List.of(
+                new Box("minecraft:clock", "Clockwork", "chest · I",
+                    "Your first turn's first 3 actions are remembered. Open your second turn with the same 3, in order, and your next attack deals 2x. Fewer than 3 on turn one and it never winds."),
+                new Box("minecraft:cauldron", "Boiling Bracer", "chest · I",
+                    "Water no longer puts enemies out: Soaked and Burning tick side by side, so Fire Fang and Water Fang finally work together."))),
+            new Page("Armor Enchantments (6)", "", List.of(
+                new Box("minecraft:compass", "Ankle Monitor", "boots · I",
+                    "Enemies come for you from any distance, ahead of closer teammates and your pets. The catch: tall grass never hides you."),
+                new Box("minecraft:chainmail_boots", "Quakeboots", "boots · I",
+                    "Click yourself with the move item to stomp: 2 Speed, Stuns every adjacent enemy. Needs a turn to recharge after each stomp.")))
         )));
         equipment.add(new Entry("Tipped Arrows", "minecraft:tipped_arrow", List.of(
             new Page("Arrow Effects",
