@@ -504,6 +504,66 @@ public class CombatManager {
         return !sw.getBlockState(floor).getCollisionShape(sw, floor).isEmpty();
     }
 
+    /**
+     * Put {@code who} back on solid ground after they sank below the arena anywhere but a VOID
+     * tile, and return the tile they were put on.
+     *
+     * <p>Sinking below the floor used to be instant death whatever was under you, which is what
+     * the "insta-killed walking on a normal tile" reports were. Only a VOID tile says it drops you
+     * (see {@link GridArena#fallIsLethalAt}); a fall anywhere else is the grid and the world
+     * disagreeing, and the player is put back unhurt. One confirmed way in was a torch or banner
+     * set on deep water, which retyped the tile to NORMAL with nothing under it.
+     *
+     * <p>When the tile they fell through is one the grid calls walkable, its ground is gone, so it
+     * becomes the hole it really is: nobody else walks into it, and the rescue below cannot land
+     * on it. The log line names what was under the tile, which is what the next report needs.
+     *
+     * @param fellThrough the grid tile over the column they fell in, or null off the arena's edge
+     */
+    private GridPos rescueFromBrokenFloor(ServerPlayerEntity who, GridPos fellThrough) {
+        ServerWorld sw = (ServerWorld) who.getEntityWorld();
+        GridTile tile = fellThrough != null ? arena.getTile(fellThrough) : null;
+        if (tile != null) {
+            BlockPos floor = tileFloorPos(fellThrough);
+            CrafticsMod.LOGGER.warn(
+                "{} fell through tile {} ({}, block {}): floor {} is {}, below is {}. Only VOID tiles "
+                + "kill - rescued instead.",
+                who.getName().getString(), fellThrough, tile.getType(), tile.getBlockType(), floor,
+                sw.getBlockState(floor), sw.getBlockState(floor.down()));
+            if (tile.isWalkable()) {
+                // Permanently: a pending temporary-terrain revert would hand the hole its
+                // walkable type back a few turns from now.
+                tile.setTurnsRemaining(-1);
+                tile.setType(TileType.VOID);
+            }
+        } else {
+            CrafticsMod.LOGGER.warn("{} fell below the arena outside the grid at {} - rescued instead.",
+                who.getName().getString(), who.getBlockPos());
+        }
+
+        // Nearest free, floored, harmless tile that no teammate is standing on.
+        java.util.Set<GridPos> reserved = new java.util.HashSet<>();
+        for (ServerPlayerEntity other : allCombatPlayers()) {
+            if (other == null || other == who || deadPartyMembers.contains(other.getUuid())) continue;
+            reserved.add(gridPosOf(other));
+        }
+        GridPos desired = fellThrough != null ? fellThrough : gridPosOf(who);
+        GridPos landing = findNearestSafeSpawn(sw, arena, desired, reserved);
+        if (landing == null) landing = getSafeArenaGridPos(arena);
+        BlockPos landingBp = landing != null ? arena.gridToBlockPos(landing) : arena.getPlayerStartBlockPos();
+        if (landingBp != null) {
+            who.requestTeleport(landingBp.getX() + 0.5, landingBp.getY(), landingBp.getZ() + 0.5);
+            broadcastPlayerPositionToOthers(who);
+        }
+        who.setVelocity(0, 0, 0);
+        who.velocityModified = true;
+        who.fallDistance = 0;
+        who.setFireTicks(0);
+        who.setFrozenTicks(0);
+        sendMessage("§e" + who.getName().getString() + " lost their footing! §7Pulled back to solid ground.");
+        return landing;
+    }
+
     private static BlockPos getSafeArenaBlockPos(GridArena arena) {
         GridPos safe = getSafeArenaGridPos(arena);
         return safe != null ? arena.gridToBlockPos(safe) : arena.getPlayerStartBlockPos();
@@ -838,6 +898,15 @@ public class CombatManager {
             applyPrismarineDischarge(member);
         }
 
+        // Dragon breath: starting a turn inside the cloud bites. It goes through the tile path,
+        // so no armor, dodge, Fire Resistance or Piglin Head gets in the way - that is the point
+        // of a hazard the fire counters don't answer.
+        int breathBite = arena.breathCloudDamage(playerPos);
+        if (breathBite > 0) {
+            int dealt = damagePlayerFromTile(breathBite, null);
+            sendMessageTo(member, "§5The dragon's breath sears you for " + dealt + "!");
+            if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return partyPlayers.size() <= 1 || !active; }
+        }
 
         // Campfire heal + poison-cloud breath are tile effects centered on the
         // player's own position, so they belong in this per-member pass.
@@ -1186,6 +1255,9 @@ public class CombatManager {
         perPlayerDisenchantSlots.remove(memberUuid);
         // Drop the leaver from the cinematic so they never block the arrived/finished gates.
         if (activeCinematic != null) activeCinematic.removePlayer(memberUuid);
+        // Village: clears the leaver from every stop, so the trader and generic branches below
+        // find nothing of theirs to act on - they must not finalize a single stop mid-village.
+        handleVillageDisconnect(memberUuid);
         if (traderPendingPlayers.remove(memberUuid)) {
             // Reclaim any emerald items still in the leaver's inventory into their bank.
             // offerTrader materialized their whole balance as items, so a mid-trade
@@ -1594,9 +1666,11 @@ public class CombatManager {
         }
         TraderCategory traderType =
             activeTraderOffer != null ? activeTraderOffer.type() : null;
+        // A Nether village plays as the barter it is built around.
+        String musicRoom = isVillageEvent() && villageTraderIsBarter ? "piglin_barter" : eventRoomType;
         com.crackedgames.craftics.sound.MusicTracks track =
             com.crackedgames.craftics.sound.MusicDirector.select(
-                active, biomeId, bossLevel, eventRoomType, traderType, trialIsOminous);
+                active, biomeId, bossLevel, musicRoom, traderType, trialIsOminous);
         String key = (track == null) ? "" : track.key;
         if (key.equals(lastSentMusicKey)) return;
         lastSentMusicKey = key;
@@ -2708,7 +2782,8 @@ public class CombatManager {
         sendToAllParty(new com.crackedgames.craftics.network.TileSetPayload(
             new int[0], new int[0], new int[0],
             warnList.stream().mapToInt(Integer::intValue).toArray(),
-            new int[0], "", new int[0], new int[0], new int[0], new int[0], new int[0]));
+            new int[0], "", new int[0], new int[0], new int[0], new int[0], new int[0],
+            breathCloudLayer()));
     }
 
     /** Plays a sound to the whole party, positioned at the arena's centre tile. Used by
@@ -5757,17 +5832,40 @@ public class CombatManager {
         return gridPosOf(member);
     }
 
+    /** Chance, per enemy per turn, that Ankle Monitor pulls it onto the wearer. */
+    static final double ANKLE_MONITOR_PULL_CHANCE = 0.5;
+    /** This turn's Ankle Monitor rolls, by enemy entity id. Cleared when the turn changes. */
+    private final java.util.Map<Integer, Boolean> ankleMonitorRolls = new java.util.HashMap<>();
+    private int ankleMonitorRollTurn = Integer.MIN_VALUE;
+
     /**
-     * Ankle Monitor: the wearer an enemy at {@code from} goes after, or null when nobody in the
-     * party wears one. Enemies track a wearer from any distance - they come for the wearer
-     * however far away they are, ahead of closer teammates and of pets that hurt them - so
-     * distance only picks between several wearers.
+     * Ankle Monitor: the wearer {@code enemy} goes after this turn, or null when nobody in the
+     * party wears one or the monitor did not pull this enemy.
+     *
+     * <p>A pulled enemy tracks the wearer from any distance - ahead of closer teammates and of
+     * pets that hurt it - and distance only picks between several wearers. It is a coin flip
+     * rather than a certainty: an unpulled enemy picks its target the ordinary way.
+     *
+     * <p>Rolled once per enemy per turn and remembered. The AI target pick, the pet-aggro
+     * override and the attack resolution each ask this separately, and if each rolled its own
+     * coin an enemy could walk toward the wearer and then swing at whoever was closest.
      */
-    private ServerPlayerEntity ankleMonitorTarget(GridPos from) {
-        if (arena == null || from == null) return null;
+    private ServerPlayerEntity ankleMonitorTarget(CombatEntity enemy) {
+        if (arena == null || enemy == null) return null;
+        GridPos from = enemy.getGridPos();
+        if (from == null) return null;
+        java.util.List<ServerPlayerEntity> wearers = partyMembersWearing(CrafticsEnchantments.ANKLE_MONITOR);
+        if (wearers.isEmpty()) return null;
+        if (turnNumber != ankleMonitorRollTurn) {
+            ankleMonitorRolls.clear();
+            ankleMonitorRollTurn = turnNumber;
+        }
+        boolean pulled = ankleMonitorRolls.computeIfAbsent(enemy.getEntityId(),
+            id -> Math.random() < ANKLE_MONITOR_PULL_CHANCE);
+        if (!pulled) return null;
         ServerPlayerEntity best = null;
         int bestDist = Integer.MAX_VALUE;
-        for (ServerPlayerEntity wearer : partyMembersWearing(CrafticsEnchantments.ANKLE_MONITOR)) {
+        for (ServerPlayerEntity wearer : wearers) {
             GridPos wp = liveGridPosOf(wearer);
             if (wp == null) continue;
             int d = Math.abs(wp.x() - from.x()) + Math.abs(wp.z() - from.z());
@@ -9984,9 +10082,10 @@ public class CombatManager {
             attacker.setAggroAllyEntityId(-1);
             return null;
         }
-        // Ankle Monitor: a wearer counts as in reach from any distance, so a pet is never the
-        // closer target. The grudge is kept, in case the wearer goes down.
-        if (ankleMonitorTarget(attacker.getGridPos()) != null) return null;
+        // Ankle Monitor: an enemy the monitor pulled this turn counts the wearer as in reach from
+        // any distance, so a pet is never the closer target. The grudge is kept, in case the
+        // wearer goes down or the next turn's roll lets the enemy go.
+        if (ankleMonitorTarget(attacker) != null) return null;
 
         int distToPet = attacker.minDistanceTo(pet.getGridPos());
         int distToPlayer = attacker.minDistanceTo(arena.getPlayerGridPos());
@@ -11888,10 +11987,31 @@ public class CombatManager {
             double cx = origin.getX() + arenaW / 2.0;
             double cz = origin.getZ() + arenaH / 2.0;
 
+            // Name each volley as it's telegraphed. A stacked volley paints one combined
+            // highlight, so the chat line is where the player learns what is in it.
+            java.util.List<com.crackedgames.craftics.combat.ai.DragonAI.Move> volley =
+                dragonAi.consumeAnnouncedVolley();
+            if (volley != null) {
+                StringBuilder names = new StringBuilder();
+                for (var move : volley) {
+                    if (names.length() > 0) names.append(" + ");
+                    names.append(move.label);
+                }
+                sendMessage("§5✦ The Ender Dragon readies: §d" + names + "§5!");
+            }
+            if (dragonAi.consumeFuryPeaked()) {
+                sendMessage("§4§l✦ The Ender Dragon's fury peaks! §r§cIt no longer rests between volleys.");
+                ServerWorld furyWorld = (ServerWorld) player.getEntityWorld();
+                furyWorld.playSound(null, player.getBlockPos(),
+                    net.minecraft.sound.SoundEvents.ENTITY_ENDER_DRAGON_GROWL,
+                    net.minecraft.sound.SoundCategory.HOSTILE, 2.5f, 0.5f);
+            }
+
             // Handle state transitions: toggle occupancy tiles + messages
             if (dragonAi.hasStateChanged()) {
                 dragonAi.acknowledgeStateChange();
-                int bw = 3, bh = 7;
+                int bw = com.crackedgames.craftics.combat.ai.DragonAI.PERCH_W;
+                int bh = com.crackedgames.craftics.combat.ai.DragonAI.PERCH_H;
                 int ox = (arenaW - bw) / 2;
                 int oz = (arenaH - bh) / 2;
 
@@ -13299,6 +13419,16 @@ public class CombatManager {
                     if (bridgedFrom == TileType.WATER || bridgedFrom == TileType.DEEP_WATER
                             || bridgedFrom == TileType.LAVA) {
                         bridgeTile.setType(TileType.NORMAL);
+                        // A NORMAL tile promises ground, so lay some. Most of these items stand
+                        // in the slot ABOVE the floor (torch, banner, campfire, lantern...), which
+                        // left the water or lava itself as the "floor": over deep water that was a
+                        // walkable tile with nothing under it, and stepping onto it sank the player
+                        // below the arena and killed them outright. Honey, slime and powder snow
+                        // replace this block with their own floor block straight after.
+                        net.minecraft.block.Block bridgeFloor = bridgeFloorBlock();
+                        setArenaBlock((ServerWorld) player.getEntityWorld(), tileFloorPos(effectPos),
+                            bridgeFloor, false);
+                        bridgeTile.setBlockType(bridgeFloor);
                     }
                 }
 
@@ -15461,6 +15591,17 @@ public class CombatManager {
             // position somewhere else entirely. Enemies kept attacking the desynced position
             // until something finally killed them.
             if (player.getY() < arenaFloorY - 0.5) {
+                // Only a VOID tile kills. Anywhere else the fall is the world and the grid
+                // disagreeing: put them back instead. See rescueFromBrokenFloor.
+                BlockPos fellAt = player.getBlockPos();
+                if (!arena.fallIsLethalAt(fellAt.getX(), fellAt.getZ())) {
+                    GridPos landing = rescueFromBrokenFloor(player,
+                        arena.gridPosAtColumn(fellAt.getX(), fellAt.getZ()));
+                    if (landing != null) arena.setPlayerGridPos(landing);
+                    refreshHighlights();
+                    sendSync();
+                    return;
+                }
                 // Move the player's GRID position too, not just their entity: the tile they fell
                 // through is a void obstacle and is not somewhere they can be standing. Leaving
                 // the grid on it desyncs move highlights, attack range, and enemy pathing from
@@ -15569,6 +15710,16 @@ public class CombatManager {
                         || deadPartyMembers.contains(member.getUuid())) continue;
                     if (member.getY() >= arenaFloorY - 0.5) continue;
 
+                    // Same rule as the turn holder: only a VOID tile kills.
+                    BlockPos memberFellAt = member.getBlockPos();
+                    if (!arena.fallIsLethalAt(memberFellAt.getX(), memberFellAt.getZ())) {
+                        rescueFromBrokenFloor(member,
+                            arena.gridPosAtColumn(memberFellAt.getX(), memberFellAt.getZ()));
+                        refreshAllPlayerGridPositions();
+                        anyMemberFell = true;
+                        continue;
+                    }
+
                     BlockPos safePos = getSafeArenaBlockPos(arena);
                     if (safePos != null) {
                         member.requestTeleport(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
@@ -15623,6 +15774,7 @@ public class CombatManager {
         tickBossAmbientParticles();
         tickDragonPositionEnforcer();
         tickVoidRiftParticles();
+        tickBreathCloudParticles();
         tickSandMineParticles();
 
         if (activeMiniboss != null || activeBiomeEffect != null) {
@@ -15992,6 +16144,19 @@ public class CombatManager {
                         && !mount.mounted && !combatEffects.hasFireResistance()) {
                     int lavaDmg = damagePlayerFromTile(10, null);
                     sendMessage("§6  Stepped in lava for " + lavaDmg + " damage!");
+                    if (getPlayerHp() <= 0) {
+                        sendSync();
+                        handlePlayerDeathOrGameOver();
+                        return;
+                    }
+                }
+
+                // Dragon breath bites on every clouded tile walked through, like lava does - and
+                // unlike lava, riding a mount doesn't lift you out of it.
+                int crossedBite = arena.breathCloudDamage(crossed);
+                if (crossedBite > 0) {
+                    int dealt = damagePlayerFromTile(crossedBite, null);
+                    sendMessage("§5  Walked through the dragon's breath for " + dealt + "!");
                     if (getPlayerHp() <= 0) {
                         sendSync();
                         handlePlayerDeathOrGameOver();
@@ -16853,7 +17018,7 @@ public class CombatManager {
                 if ("cactus".equals(effect)) {
                     for (CombatEntity e : enemies) {
                         if (!e.isAlive() || e.isAlly()) continue;
-                        int d = Math.abs(e.getGridPos().x() - tPos.x()) + Math.abs(e.getGridPos().z() - tPos.z());
+                        int d = arena.blastDistance(e, tPos);
                         if (d <= 1) {
                             e.takeDamage(1);
                             sendMessage("§2" + e.getDisplayName() + " is pricked by cactus for 1 damage!");
@@ -16885,7 +17050,7 @@ public class CombatManager {
                     int hit = 0;
                     for (CombatEntity e : enemies) {
                         if (!e.isAlive() || e.isAlly()) continue;
-                        int d = Math.abs(e.getGridPos().x() - tPos.x()) + Math.abs(e.getGridPos().z() - tPos.z());
+                        int d = arena.blastDistance(e, tPos);
                         if (d <= 1) {
                             // Soaked doubles lightning -mirrors CombatEntity.takeLightningDamage
                             // (canonical rule). The rod keeps the SPECIAL-resistance utility path,
@@ -17190,11 +17355,11 @@ public class CombatManager {
         CombatEntity tauntTarget = resolveTauntTarget(currentEnemy);
         currentEnemyPetAggroTarget = tauntTarget != null ? tauntTarget : resolveAggroPetTarget(currentEnemy);
         GridPos aiTargetPos;
-        // Ankle Monitor: a wearer is tracked from any distance, so the enemy comes for them
-        // ahead of whichever teammate happens to be closer. A taunting ally still wins -
+        // Ankle Monitor: half the time, the enemy tracks a wearer from any distance and comes
+        // for them ahead of whichever teammate happens to be closer. A taunting ally still wins -
         // it is forcing the issue - and pet aggro already yields to the monitor.
         ServerPlayerEntity monitored = currentEnemyPetAggroTarget == null
-            ? ankleMonitorTarget(currentEnemy.getGridPos()) : null;
+            ? ankleMonitorTarget(currentEnemy) : null;
         if (currentEnemyPetAggroTarget != null) {
             aiTargetPos = currentEnemyPetAggroTarget.getGridPos();
         } else if (monitored != null) {
@@ -17940,6 +18105,12 @@ public class CombatManager {
             }
             case EnemyAction.IgniteTiles ignite -> {
                 resolveIgniteTiles(ignite);
+                sendSync();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+            }
+            case EnemyAction.BreathCloud cloud -> {
+                resolveBreathCloud(cloud);
                 sendSync();
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
@@ -19382,6 +19553,7 @@ public class CombatManager {
             case EnemyAction.CreateTerrain ct -> resolveCreateTerrain(ct);
             case EnemyAction.RaisePillars rp -> resolveRaisePillars(rp);
             case EnemyAction.IgniteTiles ignite -> resolveIgniteTiles(ignite);
+            case EnemyAction.BreathCloud cloud -> resolveBreathCloud(cloud);
             case EnemyAction.PlaceWeb pw -> resolvePlaceWeb(pw);
             case EnemyAction.LineAttack la -> resolveLineAttack(la);
             case EnemyAction.ModifySelf ms -> resolveModifySelf(currentEnemy, ms);
@@ -22532,6 +22704,43 @@ public class CombatManager {
     }
 
     /**
+     * Resolve an {@link EnemyAction.BreathCloud}: hang the dragon's harming breath over its
+     * tiles. This only lays the cloud and shows it landing. The bite happens later, at the start
+     * of each player's turn in it and on every tile walked through (see
+     * {@code tickPlayerPerTurnEffects} and the move-tick hazard loop), and
+     * {@link #tickBossWarnings} ages it out.
+     */
+    private void resolveBreathCloud(EnemyAction.BreathCloud cloud) {
+        if (arena == null || cloud.tiles() == null || cloud.tiles().isEmpty()) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        for (GridPos p : cloud.tiles()) {
+            if (!arena.isInBounds(p)) continue;
+            arena.setBreathCloud(p, cloud.turns(), cloud.damage());
+            BlockPos bp = arena.gridToBlockPos(p);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.DRAGON_BREATH,
+                bp.getX() + 0.5, bp.getY() + 0.3, bp.getZ() + 0.5, 14, 0.35, 0.25, 0.35, 0.02);
+        }
+        world.playSound(null, arena.gridToBlockPos(cloud.tiles().get(0)),
+            net.minecraft.sound.SoundEvents.ENTITY_DRAGON_FIREBALL_EXPLODE,
+            net.minecraft.sound.SoundCategory.HOSTILE, 1.2f, 1.0f);
+        // Paint it on the grid now, mid enemy phase, not whenever the next full refresh comes.
+        syncWarningTiles();
+    }
+
+    /** Called every combat tick: keep each breath cloud visibly hanging over its tile. */
+    private void tickBreathCloudParticles() {
+        if (arena == null || player == null || tickCounter % 3 != 0) return;
+        java.util.Set<GridPos> clouds = arena.getBreathCloudTiles();
+        if (clouds.isEmpty()) return;
+        ServerWorld sw = (ServerWorld) player.getEntityWorld();
+        for (GridPos p : clouds) {
+            BlockPos bp = arena.gridToBlockPos(p);
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.DRAGON_BREATH,
+                bp.getX() + 0.5, bp.getY() + 0.2, bp.getZ() + 0.5, 4, 0.35, 0.15, 0.35, 0.005);
+        }
+    }
+
+    /**
      * Resolve an {@link EnemyAction.IgniteTiles} - an enemy lighting an impact site and
      * leaving the rest to the arena. The listed tiles enter the burn cycle exactly as a
      * struck light does, so they spread a ring per turn, collapse to magma, and burn out on
@@ -24498,8 +24707,8 @@ public class CombatManager {
         int total = 0;
         for (CombatEntity e : new ArrayList<>(enemies)) {
             if (!e.isAlive() || e.isAlly() || e == crystal) continue;
-            int dist = Math.abs(e.getGridPos().x() - center.x())
-                     + Math.abs(e.getGridPos().z() - center.z());
+            // Measured to what is actually on the ground: the parked dragon is out of reach.
+            int dist = arena.blastDistance(e, center);
             if (dist >= CRYSTAL_FLAT.length) continue;
             total += applySpecialUtilityDamage(e,
                 CRYSTAL_FLAT[dist] + e.percentMaxHpDamage(CRYSTAL_PCT[dist]));
@@ -24930,8 +25139,7 @@ public class CombatManager {
             int killCount = 0;
             for (CombatEntity enemy : new ArrayList<>(enemies)) {
                 if (!enemy.isAlive()) continue;
-                int dist = Math.abs(enemy.getGridPos().x() - center.x())
-                         + Math.abs(enemy.getGridPos().z() - center.z());
+                int dist = arena.blastDistance(enemy, center);
                 if (dist <= 2) {
                     // Flat blast damage plus a percent of max HP by ring (center/adjacent/outer)
                     // so TNT stays lethal against late-game HP pools. Bosses take 1/3 (8/5/3%).
@@ -25123,6 +25331,12 @@ public class CombatManager {
         }
         // Also tick Void Walker rift lifetimes.
         tickVoidRifts();
+        // Age the dragon's breath clouds here, after the turn they bit on, so a 3-turn cloud is
+        // up for three of the player's turns rather than two.
+        if (arena != null && !arena.getBreathCloudTiles().isEmpty()) {
+            arena.tickBreathClouds();
+            syncWarningTiles(); // every cloud's turns-left number just changed, and some may be gone
+        }
         // Tick Sandstorm Pharaoh sand-mine lifetimes (arm fresh mines, expire old ones).
         tickSandMines();
         // Tick down the Curse of the Sands.
@@ -25365,7 +25579,8 @@ public class CombatManager {
             // The dragon starts in ATTACKING state (off-stage, not targetable).
             // tickDragonPositionEnforcer adds occupancy tiles when it transitions
             // to PERCHING state.
-            int bw = 3, bh = 7;
+            int bw = com.crackedgames.craftics.combat.ai.DragonAI.PERCH_W;
+            int bh = com.crackedgames.craftics.combat.ai.DragonAI.PERCH_H;
             int ox = (arenaW - bw) / 2;
             int oz = (arenaH - bh) / 2;
             bossEntity.setGridPos(new GridPos(ox, oz));
@@ -31178,8 +31393,8 @@ public class CombatManager {
                         + CrafticsMod.CONFIG.travelerChance()
                         + CrafticsMod.CONFIG.vaultChance()
                         + CrafticsMod.CONFIG.digSiteChance()
-                        + 0.06f // enchanter (hardcoded below)
-                        + CrafticsMod.CONFIG.traderSpawnChance()
+                        + 0.03f // disenchanter (hardcoded below)
+                        + CrafticsMod.CONFIG.traderSpawnChance() // the village
                         + addonEventTotal;
                     float pityScale = 1f + pityBonus;
                     if (baseEventTotal * pityScale > 0.98f) {
@@ -31194,16 +31409,13 @@ public class CombatManager {
                     float cTraveler = cShrine + CrafticsMod.CONFIG.travelerChance() * pityScale;
                     float cVault = cTraveler + CrafticsMod.CONFIG.vaultChance() * pityScale;
                     float cDigSite = cVault + CrafticsMod.CONFIG.digSiteChance() * pityScale;
-                    float cEnchanter = cDigSite + 0.06f * pityScale; // 6% enchanter chance
-                    // The disenchanter is rarer than the enchanter: it only ever takes something
-                    // away, so meeting one should feel like an unlucky draw rather than a regular
-                    // stop. Hardcoded next to the enchanter it mirrors, which is hardcoded too.
-                    float cDisenchanter = cEnchanter + 0.03f * pityScale; // 3% disenchanter chance
-                    // The Scribe, at the enchanter's rate: it is the same kind of stop (one
-                    // permanent upgrade to something you already carry), and a player with no
-                    // sherd is handed one rather than turned away, so it is never a dead draw.
-                    float cScribe = cDisenchanter + 0.06f * pityScale; // 6% scribe chance
-                    float cTrader = cScribe + CrafticsMod.CONFIG.traderSpawnChance() * pityScale;
+                    // The disenchanter is rare: it only ever takes something away, so meeting one
+                    // should feel like an unlucky draw rather than a regular stop.
+                    float cDisenchanter = cDigSite + 0.03f * pityScale; // 3% disenchanter chance
+                    // The village: trader, enchanter and scribe in one event, each player picking
+                    // a stop. It takes the trader's slot alone - the enchanter's and scribe's 6%
+                    // each are gone - so the party meets one event where it used to meet three.
+                    float cVillage = cDisenchanter + CrafticsMod.CONFIG.traderSpawnChance() * pityScale;
 
                     boolean isNetherRegion = "nether".equals(
                         java.util.Optional.ofNullable(
@@ -31361,13 +31573,6 @@ public class CombatManager {
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         offerDigSite(savedPlayer, biome);
-                    } else if (forced != null ? forced.equals("enchanter") : (eventRoll < cEnchanter)) {
-                        // Enchanter -enhance a weapon or armor piece
-                        ld.levelsSinceLastEvent = 0; // reset pity timer on event
-                        data.markDirty();
-                        pendingNextLevelDef = nextLevelDef;
-                        pendingBiome = biome;
-                        offerEnchanter(savedPlayer);
                     } else if (forced != null ? forced.equals("disenchanter") : (eventRoll < cDisenchanter)) {
                         // Disenchanter -strip enchantments off a weapon or armor piece
                         ld.levelsSinceLastEvent = 0; // reset pity timer on event
@@ -31375,24 +31580,14 @@ public class CombatManager {
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         offerDisenchanter(savedPlayer);
-                    } else if (forced != null ? forced.equals("scribe") : (eventRoll < cScribe)) {
-                        // Scribe -inscribe a new behaviour onto a pottery sherd
+                    } else if (forced != null ? isVillageToken(forced) : (eventRoll < cVillage)) {
+                        // The village: trader (piglin barter in the Nether), enchanter and scribe,
+                        // one stop per player. The old separate tokens all land here.
                         ld.levelsSinceLastEvent = 0; // reset pity timer on event
                         data.markDirty();
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
-                        offerScribe(savedPlayer);
-                    } else if (forced != null ? (forced.equals("trader") || forced.equals("piglin_barter")) : (eventRoll < cTrader)) {
-                        // Configurable chance: Wandering Trader (Overworld/End) or Piglin Barter (Nether)
-                        ld.levelsSinceLastEvent = 0; // reset pity timer on event
-                        data.markDirty();
-                        pendingNextLevelDef = nextLevelDef;
-                        pendingBiome = biome;
-                        if (isNetherRegion) {
-                            offerPiglinBarter(savedPlayer, biome, biomeOrdinal);
-                        } else {
-                            offerTrader(savedPlayer, biome, biomeOrdinal);
-                        }
+                        offerVillage(savedPlayer, biome, biomeOrdinal, isNetherRegion);
                     } else {
                         // Check addon-registered events from EventRegistry
                         String addonEventId = null;
@@ -31403,7 +31598,7 @@ public class CombatManager {
                             // Roll against addon event probabilities. Apply the same
                             // pity-timer boost as built-in events so addons scale
                             // proportionally as pity ramps.
-                            float addonRoll = eventRoll - cTrader; // remaining probability space
+                            float addonRoll = eventRoll - cVillage; // remaining probability space
                             if (addonRoll >= 0) {
                                 for (var addonEvent : com.crackedgames.craftics.api.registry.EventRegistry.getAll()) {
                                     // Skip built-in events that are also mirrored into the registry
@@ -31671,6 +31866,26 @@ public class CombatManager {
     private String eventRoomType = null; // "shrine", "traveler", "vault", "enchanter", "disenchanter", "shiny", "trial"
     private int pendingEventBiomeOrdinal = 0; // biome ordinal when the current event started
     private net.minecraft.entity.passive.VillagerEntity spawnedTraveler;
+
+    // ---- Village event: trader, enchanter and scribe, one stop per player ----
+    /** A stop a player can pick in the village. In the Nether the trader stop is the barter. */
+    private enum VillageStation { TRADER, ENCHANTER, SCRIBE }
+    /** Nether flavour: an outpost of piglins instead of a village of villagers. */
+    private boolean villageNether = false;
+    /** Whether the trader stop is the piglin barter rather than a wandering trader. */
+    private boolean villageTraderIsBarter = false;
+    private com.crackedgames.craftics.level.BiomeTemplate villageBiome = null;
+    /** The stop each player picked. Absent = still looking at the menu. */
+    private final java.util.Map<java.util.UUID, VillageStation> villageStations = new java.util.HashMap<>();
+    /** Players finished with their stop (or who skipped), waiting for the rest of the party. */
+    private final java.util.Set<java.util.UUID> villageDone = new java.util.HashSet<>();
+    /** Stops whose room has been built this event. Built on first pick, shared after that. */
+    private final java.util.Set<VillageStation> villageRoomsBuilt = java.util.EnumSet.noneOf(VillageStation.class);
+    /** Players sent to each stop so far, so each walks to their own talk tile. */
+    private final java.util.Map<VillageStation, Integer> villageStationArrivals =
+        new java.util.EnumMap<>(VillageStation.class);
+    private net.minecraft.entity.mob.MobEntity villageEnchanterNpc;
+    private net.minecraft.entity.mob.MobEntity villageScribeNpc;
 
     // ---- Piglin barter event ----
     /** Per-player secret success threshold for the active piglin barter, keyed by UUID. */
@@ -32030,172 +32245,642 @@ public class CombatManager {
         scheduleEventReturnTransition(referencePlayer);
     }
 
-    private void offerPiglinBarter(ServerPlayerEntity savedPlayer,
-            com.crackedgames.craftics.level.BiomeTemplate biome, int biomeOrdinal) {
+    // ═════════════════════════════════════════════════════════════════════
+    // Village event - trader, enchanter and scribe, one stop per player
+    // ═════════════════════════════════════════════════════════════════════
+
+    /** True while a village event is running. */
+    private boolean isVillageEvent() {
+        return eventRoomPending && "village".equals(eventRoomType);
+    }
+
+    /** force_event tokens that open the village. The old per-stop tokens still work. */
+    private static boolean isVillageToken(String token) {
+        return switch (token) {
+            case "village", "trader", "piglin_barter", "enchanter", "scribe" -> true;
+            default -> false;
+        };
+    }
+
+    /**
+     * The village: a trader, an enchanter and a scribe in one event, and each party member picks
+     * which one to visit.
+     *
+     * <p>These used to be three separate events with three places in the cascade. Bundled, the
+     * party meets one event where it used to meet three, and a party that disagrees no longer has
+     * to: each member goes to their own pick at the same time, and nobody moves on until everyone
+     * is done.
+     *
+     * <p>There is no village room. The event opens on a menu in the arena, and a pick sends that
+     * player straight into the stop's room - the rooms the three events always used. Each stop
+     * has its own room so different picks can run side by side; the first player to pick a stop
+     * builds it, and anyone who picks it after joins them there.
+     *
+     * <p>In the Nether it is a piglin outpost: the trader stop is the piglin barter, and the
+     * enchanter and scribe are piglins.
+     */
+    private void offerVillage(ServerPlayerEntity savedPlayer,
+            com.crackedgames.craftics.level.BiomeTemplate biome, int biomeOrdinal, boolean nether) {
         List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
         for (ServerPlayerEntity p : members) {
             ServerPlayNetworking.send(p, new ExitCombatPayload(false));
         }
-
-        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
         eventRoomPending = true;
-        eventRoomType = "piglin_barter";
+        eventRoomType = "village";
+        villageNether = nether;
+        villageBiome = biome;
         pendingEventBiomeOrdinal = Math.max(0, biomeOrdinal);
 
-        int tier = biomeOrdinal + 1;
-        this.barterTier = tier;
-        barterThresholds.clear();
-        barterPendingPlayers.clear();
+        villageStations.clear();
+        villageDone.clear();
+        villageRoomsBuilt.clear();
+        villageStationArrivals.clear();
         eventPendingPlayers.clear();
+        traderPendingPlayers.clear();
+        currentTrader = null;
+        traderQueue.clear();
+        activeTraderOffer = null;
+        activeTraderStock = new int[0];
+        barterCategoryId = null;
+        barterPendingPlayers.clear();
+        barterThresholds.clear();
+        perPlayerEnchanterSlots.clear();
+        perPlayerEnchanterRolls.clear();
+        perPlayerScribeSlots.clear();
+        perPlayerScribeOffers.clear();
+        perPlayerScribePick.clear();
+        // Everyone stays in the pending set until the whole village is done, finished or not:
+        // it is what routes their packets here and keeps them counted as mid-run.
+        for (ServerPlayerEntity p : members) eventPendingPlayers.add(p.getUuid());
 
-        // Pick the shared category for this event from those unlocked at this tier.
-        java.util.Random rng = new java.util.Random();
+        // Decide who is at the trader stop now, so the menu can say who is waiting there.
+        villageTraderIsBarter = nether && prepareVillageBarter(savedPlayer, biomeOrdinal);
+        if (!villageTraderIsBarter) prepareVillageTrader(savedPlayer, biomeOrdinal);
+
+        java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
+        for (ServerPlayerEntity p : members) partyUuids.add(p.getUuid());
+        // Every gate the village has is per player, so the party-wide arrived and finished
+        // callbacks do nothing. The cinematic is kept for the walkers and the disconnect path.
+        this.activeWalkers.clear();
+        this.activeCinematic = new EventCinematic(partyUuids, () -> {}, () -> {});
+
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.EnterEventCinematicPayload());
+            sendDialogue(p, buildVillageMenu(p), com.crackedgames.craftics.network.DialoguePayload.BG_SOLID);
+        }
+    }
+
+    /**
+     * Roll the wandering trader for the trader stop: which merchant, its stock, and prices.
+     * One trader for the whole party, as the trader event always had.
+     */
+    private void prepareVillageTrader(ServerPlayerEntity savedPlayer, int biomeOrdinal) {
+        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
+        // Tier is based on the biome where the event started, not mutable runtime state.
+        int biomeTier = Math.max(1, biomeOrdinal + 1);
+        // Bias the roll toward a trader this island has NOT met, so the hall fills out instead of
+        // handing you the same Weaponsmith every event. Met traders stay possible, just rarer.
+        var metData = com.crackedgames.craftics.world.CrafticsSavedData.get(world);
+        var metOwner = metData.getEffectiveWorldOwner(savedPlayer.getUuid());
+        // Same stock for everyone at the same run depth. Outside an infinite run the trader
+        // stays unseeded.
+        java.util.Random traderRng = new java.util.Random();
+        String traderHostRef = metData.getPlayerData(savedPlayer.getUuid()).infiniteRunHost;
+        if (traderHostRef != null && !traderHostRef.isEmpty()) {
+            try {
+                var traderHost = metData.getPlayerData(java.util.UUID.fromString(traderHostRef));
+                if (traderHost.infiniteActive && !traderHost.infiniteSuspended) {
+                    traderRng = com.crackedgames.craftics.combat.infinite.ChapterRng.random(
+                        com.crackedgames.craftics.combat.infinite.ChapterManager.seedOf(metData),
+                        com.crackedgames.craftics.combat.infinite.ChapterRng.SALT_TRADER,
+                        traderHost.infiniteBiomesCleared, traderHost.activeBiomeLevelIndex);
+                }
+            } catch (IllegalArgumentException ignored) {}
+        }
+        activeTraderOffer = TraderSystem.generateOffer(biomeTier, traderRng,
+            metData.getPlayerData(metOwner).metTraders, world);
+        activeTraderStock = new int[activeTraderOffer.trades().size()];
+        java.util.Arrays.fill(activeTraderStock, 99);
+        com.crackedgames.craftics.scene.MetMerchants.recordTrader(
+            world, savedPlayer.getUuid(), activeTraderOffer.type().id());
+
+        // Resourceful discount: the stock is shared, so it is priced at the leader's discount.
+        int resourcefulDiscount = PlayerProgression.get(world)
+            .getStats(savedPlayer).getPoints(PlayerProgression.Stat.RESOURCEFUL);
+        if (resourcefulDiscount > 0) {
+            List<TraderSystem.Trade> discounted = new java.util.ArrayList<>();
+            for (TraderSystem.Trade t : activeTraderOffer.trades()) {
+                int newCost = Math.max(1, t.emeraldCost() - resourcefulDiscount);
+                discounted.add(new TraderSystem.Trade(t.item(), newCost, t.description()));
+            }
+            activeTraderOffer = new TraderSystem.TraderOffer(activeTraderOffer.type(), discounted);
+        }
+        // Dialogue groups are keyed by the local id ("trader_intro_weaponsmith"). An addon trader
+        // with no registered group falls back to the generic intro.
+        this.activeTraderIntroGroup = "trader_intro_" + activeTraderOffer.type().localId();
+    }
+
+    /**
+     * Roll the barterer for the Nether's trader stop. False when no barter category is open at
+     * this tier, in which case the stop falls back to a wandering trader.
+     */
+    private boolean prepareVillageBarter(ServerPlayerEntity savedPlayer, int biomeOrdinal) {
+        int tier = biomeOrdinal + 1;
         java.util.List<com.crackedgames.craftics.combat.barter.BarterCategory> eligible =
             new java.util.ArrayList<>();
         for (com.crackedgames.craftics.combat.barter.BarterCategory c
                 : com.crackedgames.craftics.api.registry.BarterCategoryRegistry.all()) {
             if (c.minBiomeTier() <= tier) eligible.add(c);
         }
-        if (eligible.isEmpty()) {
-            // Defensive: no category available at this tier, fall back to the trader event.
-            eventRoomPending = false;
-            eventRoomType = null;
-            offerTrader(savedPlayer, biome, biomeOrdinal);
+        if (eligible.isEmpty()) return false;
+        com.crackedgames.craftics.combat.barter.BarterCategory picked =
+            eligible.get(new java.util.Random().nextInt(eligible.size()));
+        this.barterTier = tier;
+        this.barterCategoryId = picked.id();
+        com.crackedgames.craftics.scene.MetMerchants.recordBarterer(
+            (ServerWorld) savedPlayer.getEntityWorld(), savedPlayer.getUuid(), picked.id());
+        return true;
+    }
+
+    /** The opening menu: where does this player want to go? */
+    private com.crackedgames.craftics.combat.dialogue.DialogueDefinition buildVillageMenu(ServerPlayerEntity p) {
+        String sep = com.crackedgames.craftics.network.DialoguePayload.TOOLTIP_LINE;
+        java.util.List<String> lines = villageNether
+            ? java.util.List.of(
+                "You stumble upon a bastion outpost, loud with piglins who trade in more than gold.",
+                "Where would you like to go?")
+            : java.util.List.of(
+                "You stumble upon a village full of different workers.",
+                "Where would you like to go?");
+        String kin = villageNether ? "Piglin" : "Villager";
+        boolean hasSherd = !findInscribableSherdSlots(p).isEmpty();
+
+        java.util.List<com.crackedgames.craftics.combat.dialogue.DialogueChoice> choices =
+            new java.util.ArrayList<>();
+        choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+            villageTraderLabel(), "village:trader", villageTraderTooltip(sep)));
+        choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+            "§dEnchanter §7(" + kin + ")", "village:enchanter",
+            "§dEnchanter" + sep + "§7Enchants or trims one weapon or armor piece you carry."));
+        choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+            "§bScribe §7(" + kin + ")", "village:scribe",
+            "§bScribe" + sep + "§7Writes an inscription onto one of your pottery sherds."
+                + (hasSherd ? "" : sep + "§eYou carry no sherd it can write on, so it will give you one.")));
+        choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+            "§7Keep moving", "village:skip", "§7Skip the village and wait for the rest of the party."));
+        return new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+            "craftics:village_menu", "", "village_menu", lines, choices);
+    }
+
+    /** The trader stop's menu row: who is standing there. */
+    private String villageTraderLabel() {
+        if (villageTraderIsBarter) {
+            var cat = com.crackedgames.craftics.api.registry.BarterCategoryRegistry.get(barterCategoryId);
+            return "§6" + (cat != null ? cat.displayName() : "Barterer") + " §7(Piglin Barterer)";
+        }
+        String name = activeTraderOffer != null ? activeTraderOffer.type().displayName() : "Trader";
+        return "§e" + name + " §7(Wandering Trader)";
+    }
+
+    /** The trader stop's hover text: what they sell, or what the barterer trades in. */
+    private String villageTraderTooltip(String sep) {
+        if (villageTraderIsBarter) {
+            var cat = com.crackedgames.craftics.api.registry.BarterCategoryRegistry.get(barterCategoryId);
+            StringBuilder sb = new StringBuilder("§6Piglin Barterer");
+            if (cat != null) sb.append(" - ").append(cat.displayName());
+            sb.append(sep).append("§7Trade gold ingots for a chance at its goods.");
+            if (cat != null && cat.dialogueHint() != null && !cat.dialogueHint().isBlank()) {
+                sb.append(sep).append("§7").append(cat.dialogueHint());
+            }
+            return sb.toString();
+        }
+        if (activeTraderOffer == null) return "§eWandering Trader";
+        StringBuilder sb = new StringBuilder("§eWandering Trader - ")
+            .append(activeTraderOffer.type().displayName())
+            .append(sep).append("§7Buy with your emeralds:");
+        java.util.List<TraderSystem.Trade> trades = activeTraderOffer.trades();
+        int shown = Math.min(6, trades.size());
+        for (int i = 0; i < shown; i++) {
+            TraderSystem.Trade t = trades.get(i);
+            sb.append(sep).append("§f").append(t.item().getCount()).append("x ")
+              .append(t.item().getName().getString())
+              .append(" §7- §a").append(t.emeraldCost()).append(" emerald")
+              .append(t.emeraldCost() == 1 ? "" : "s");
+        }
+        if (trades.size() > shown) {
+            sb.append(sep).append("§7...and ").append(trades.size() - shown).append(" more");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Route a village player's dialogue input: the menu while they have not picked, the stop's
+     * own handler once they have.
+     */
+    private void handleVillageDialogueChoice(ServerPlayerEntity player, String action) {
+        java.util.UUID u = player.getUuid();
+        if (villageDone.contains(u)) {
+            // Anything from a player already waiting is stray; keep them on the waiting screen.
+            showVillageWaiting(player);
             return;
         }
-        com.crackedgames.craftics.combat.barter.BarterCategory picked =
-            eligible.get(rng.nextInt(eligible.size()));
-        barterCategoryId = picked.id();
-        com.crackedgames.craftics.scene.MetMerchants.recordBarterer(world, savedPlayer.getUuid(), picked.id());
-
-        // Track participating players and roll each one's secret success threshold.
-        for (ServerPlayerEntity p : members) {
-            barterPendingPlayers.add(p.getUuid());
-            eventPendingPlayers.add(p.getUuid());
-            barterThresholds.put(p.getUuid(),
-                com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollThreshold(rng));
-        }
-
-        // Use the Nether-themed trader area so the piglin stands in a biome-themed
-        // room (NETHER_BRICKS / CRIMSON_PLANKS / CRIMSON_STEM) instead of the plain
-        // traveler dirt path. Origin, area builder, force-load range, spawn position
-        // and walk-up tiles all mirror offerTrader.
-        BlockPos barterOrigin = getEventRoomOrigin(savedPlayer);
-        buildTraderArea(world, barterOrigin, biome);
-
-        // Force-load the trader area + walkway chunks so the spawned piglin + walk-up
-        // don't desync if a chunk unloads. Walkway extends to oz - WALKWAY_LEN - 1
-        // (low z); include it plus margin. Released in the event finalize path.
-        {
-            int margin = 32;
-            int minCX = (barterOrigin.getX() - margin) >> 4;
-            int maxCX = (barterOrigin.getX() + 9 + margin) >> 4;
-            int minCZ = (barterOrigin.getZ() - 8 - 1 - margin) >> 4;
-            int maxCZ = (barterOrigin.getZ() + 9 + margin) >> 4;
-            for (int cx = minCX; cx <= maxCX; cx++) {
-                for (int cz = minCZ; cz <= maxCZ; cz++) {
-                    world.setChunkForced(cx, cz, true);
-                    forcedChunks.add(new net.minecraft.util.math.ChunkPos(cx, cz));
+        VillageStation station = villageStations.get(u);
+        if (station == null) {
+            VillageStation picked = null;
+            if (action != null) {
+                switch (action) {
+                    case "village:trader" -> picked = VillageStation.TRADER;
+                    case "village:enchanter" -> picked = VillageStation.ENCHANTER;
+                    case "village:scribe" -> picked = VillageStation.SCRIBE;
+                    case "village:skip" -> {
+                        finishVillagePlayer(player);
+                        return;
+                    }
+                    default -> { }
                 }
+            }
+            if (picked == null) {
+                // Closing the menu (ESC sends DISMISS) is not a choice. Ask again.
+                sendDialogue(player, buildVillageMenu(player),
+                    com.crackedgames.craftics.network.DialoguePayload.BG_SOLID);
+                return;
+            }
+            enterVillageStation(player, picked);
+            return;
+        }
+        switch (station) {
+            case ENCHANTER -> handleEnchanterDialogueChoice(player, action);
+            case SCRIBE -> handleScribeDialogueChoice(player, action);
+            case TRADER -> {
+                if (villageTraderIsBarter) handleBarterDialogueChoice(player, action);
+                else handleTraderDialogueAction(player, action);
+            }
+        }
+    }
+
+    /** Send one player to the stop they picked: build its room if nobody has, walk them up. */
+    private void enterVillageStation(ServerPlayerEntity player, VillageStation station) {
+        java.util.UUID u = player.getUuid();
+        villageStations.put(u, station);
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos origin = villageStationOrigin(player, station);
+        if (villageRoomsBuilt.add(station)) buildVillageStationRoom(world, origin, station);
+
+        java.util.Random rng = new java.util.Random();
+        switch (station) {
+            case TRADER -> {
+                if (villageTraderIsBarter) {
+                    barterPendingPlayers.add(u);
+                    barterThresholds.put(u,
+                        com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollThreshold(rng));
+                } else {
+                    traderPendingPlayers.add(u);
+                }
+            }
+            case ENCHANTER -> {
+                java.util.List<int[]> offered = buildEnchanterSlotsFor(player, rng);
+                // Decide every outcome now, so the shortlist shown on hover is the truth.
+                java.util.Map<Integer, EnchanterRoll> rolls = rollEnchanterOutcomes(player, offered, rng);
+                // Something the enchanter has nothing left to add to is not offered at all.
+                offered.removeIf(slot -> !rolls.containsKey(slot[0]));
+                perPlayerEnchanterSlots.put(u, offered);
+                perPlayerEnchanterRolls.put(u, rolls);
+            }
+            case SCRIBE -> {
+                perPlayerScribeSlots.put(u, findInscribableSherdSlots(player));
+                perPlayerScribeOffers.put(u, rollScribeOffers(rng));
             }
         }
 
-        // Spawn the piglin where the trader stands in the trader area (origin+6.5 x,
-        // origin+4.5 z, yaw -90 = facing -X toward the talk tiles). AI off,
-        // invulnerable, persistent. No merchant offers.
-        clearStrayEventNpcs(world, barterOrigin); // remove any orphaned NPC at this fixed room first
-        spawnedBarterPiglin = (net.minecraft.entity.mob.PiglinEntity)
-            net.minecraft.entity.EntityType.PIGLIN.spawn(world, barterOrigin.up(), net.minecraft.entity.SpawnReason.EVENT);
-        if (spawnedBarterPiglin != null) {
-            spawnedBarterPiglin.refreshPositionAndAngles(
-                barterOrigin.getX() + 6.5, barterOrigin.getY() + 1, barterOrigin.getZ() + 4.5,
-                -90f, 0f);
-            spawnedBarterPiglin.setAiDisabled(true);
-            spawnedBarterPiglin.setInvulnerable(true);
-            spawnedBarterPiglin.setPersistent(); // never despawn during the event
-            // The event room is in the overworld, where a piglin converts to a zombified
-            // piglin after ~15s - longer events (intro + stepper + reveal) hit that easily.
-            // Conversion swaps the entity out, orphaning spawnedBarterPiglin so finalize can
-            // never discard the leftover. Immunity keeps it a piglin and keeps the reference live.
-            spawnedBarterPiglin.setImmuneToZombification(true);
-            world.spawnEntity(spawnedBarterPiglin);
-        }
+        // The talk tiles each room always used: the trader room's merchant stands at the side
+        // (6.5, 4.5); the shrine room's worker stands at the back (4.5, 6.5).
+        int idx = villageStationArrivals.merge(station, 1, Integer::sum) - 1;
+        boolean traderRoom = station == VillageStation.TRADER;
+        double npcX = origin.getX() + (traderRoom ? 6.5 : 4.5);
+        double npcZ = origin.getZ() + (traderRoom ? 4.5 : 6.5);
+        double tx = origin.getX() + 3.5 + (idx % 3);
+        double ty = origin.getY() + 1;
+        double tz = origin.getZ() + (traderRoom ? 4.5 : 3.5);
 
-        // Teleport players to the FAR END of the approach walkway (low-z), facing the
-        // piglin, so they walk up the path before dialogue. Matches offerTrader.
         final int WALKWAY_LEN = 8;
-        for (ServerPlayerEntity p : members) {
-            p.requestTeleport(
-                barterOrigin.getX() + 4.5,
-                barterOrigin.getY() + 1,
-                barterOrigin.getZ() - WALKWAY_LEN + 0.5);
-            // All three angles, not two. Seating the look and the head but not the body
-            // leaves the torso pointing wherever the player was walking when the level
-            // ended, so the model renders bent - head to the scene, shoulders elsewhere -
-            // and nothing turns a standing player's body back.
-            p.setYaw(0f);       // face +Z, toward the trader area
-            p.setHeadYaw(0f);
-            p.setBodyYaw(0f);
+        player.requestTeleport(origin.getX() + 4.5, origin.getY() + 1, origin.getZ() - WALKWAY_LEN + 0.5);
+        // All three angles, so the body does not keep facing wherever they last walked.
+        player.setYaw(0f);
+        player.setHeadYaw(0f);
+        player.setBodyYaw(0f);
+        walkEventPlayer(player, tx, ty, tz, npcX, npcZ, () -> startVillageStation(player, station));
+    }
+
+    /**
+     * Where a stop's room goes. The trader keeps the event room; the others sit beside it along
+     * +X, so two different picks never share a room. Well clear of the arenas (Z 0) and the dig
+     * site (Z 600).
+     */
+    private BlockPos villageStationOrigin(ServerPlayerEntity ref, VillageStation station) {
+        BlockPos base = getEventRoomOrigin(ref);
+        return switch (station) {
+            case TRADER -> base;
+            case ENCHANTER -> base.add(200, 0, 0);
+            case SCRIBE -> base.add(400, 0, 0);
+        };
+    }
+
+    /**
+     * The room a player's event is happening in. During a village each stop has its own room,
+     * so effects (particles, sounds) have to ask which one this player is in.
+     */
+    private BlockPos eventRoomOriginFor(ServerPlayerEntity player) {
+        if (isVillageEvent()) {
+            VillageStation station = villageStations.get(player.getUuid());
+            if (station != null) return villageStationOrigin(player, station);
         }
+        return getEventRoomOrigin(player);
+    }
 
-        java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
-        for (ServerPlayerEntity p : members) partyUuids.add(p.getUuid());
+    /** Build a stop's room and put its worker in it. Runs once per stop per event. */
+    private void buildVillageStationRoom(ServerWorld world, BlockPos origin, VillageStation station) {
+        if (station == VillageStation.TRADER) {
+            buildTraderArea(world, origin, villageBiome);
+        } else {
+            buildShrineArea(world, origin, true);
+        }
+        forceEventRoomChunks(world, origin);
+        clearStrayEventNpcs(world, origin); // remove any orphaned NPC at this room first
+        switch (station) {
+            case TRADER -> {
+                if (villageTraderIsBarter) spawnVillageBarterPiglin(world, origin);
+                else spawnVillageTrader(world, origin);
+            }
+            case ENCHANTER -> villageEnchanterNpc = spawnVillageWorker(world, origin,
+                villageNether ? "§dPiglin Enchanter" : "§dEnchanter", Items.ENCHANTED_BOOK);
+            case SCRIBE -> villageScribeNpc = spawnVillageWorker(world, origin,
+                villageNether ? "§bPiglin Scribe" : "§bScribe", Items.WRITABLE_BOOK);
+        }
+    }
 
-        final ServerPlayerEntity ref = savedPlayer;
-        this.activeWalkers.clear();
-        this.activeCinematic = new EventCinematic(partyUuids,
-            () -> {
-                for (ServerPlayerEntity p : getOnlinePartyMembers(ref)) {
-                    sendBarterIntro(p);
+    /**
+     * Force-load an event room and its walkway so its worker stays loaded and the walk-up does
+     * not desync on a chunk unload. Released with every other forced chunk when the event ends.
+     */
+    private void forceEventRoomChunks(ServerWorld world, BlockPos origin) {
+        int margin = 32;
+        int minCX = (origin.getX() - margin) >> 4;
+        int maxCX = (origin.getX() + 9 + margin) >> 4;
+        // The walkway extends to oz - WALKWAY_LEN - 1 (low z); include it plus margin.
+        int minCZ = (origin.getZ() - 8 - 1 - margin) >> 4;
+        int maxCZ = (origin.getZ() + 9 + margin) >> 4;
+        for (int cx = minCX; cx <= maxCX; cx++) {
+            for (int cz = minCZ; cz <= maxCZ; cz++) {
+                world.setChunkForced(cx, cz, true);
+                forcedChunks.add(new net.minecraft.util.math.ChunkPos(cx, cz));
+            }
+        }
+    }
+
+    private void spawnVillageTrader(ServerWorld world, BlockPos origin) {
+        spawnedTrader = (net.minecraft.entity.passive.WanderingTraderEntity)
+            net.minecraft.entity.EntityType.WANDERING_TRADER.spawn(world, origin.up(),
+                net.minecraft.entity.SpawnReason.EVENT);
+        if (spawnedTrader == null) return;
+        spawnedTrader.refreshPositionAndAngles(
+            origin.getX() + 6.5, origin.getY() + 1, origin.getZ() + 4.5, -90f, 0f);
+        spawnedTrader.setAiDisabled(true);
+        spawnedTrader.setInvulnerable(true);
+        spawnedTrader.setPersistent(); // never despawn during the event
+        if (activeTraderOffer != null) {
+            spawnedTrader.setCustomName(Text.literal("§e" + activeTraderOffer.type().displayName()));
+            spawnedTrader.setCustomNameVisible(true);
+        }
+    }
+
+    private void spawnVillageBarterPiglin(ServerWorld world, BlockPos origin) {
+        spawnedBarterPiglin = (net.minecraft.entity.mob.PiglinEntity)
+            net.minecraft.entity.EntityType.PIGLIN.spawn(world, origin.up(),
+                net.minecraft.entity.SpawnReason.EVENT);
+        if (spawnedBarterPiglin == null) return;
+        spawnedBarterPiglin.refreshPositionAndAngles(
+            origin.getX() + 6.5, origin.getY() + 1, origin.getZ() + 4.5, -90f, 0f);
+        spawnedBarterPiglin.setAiDisabled(true);
+        spawnedBarterPiglin.setInvulnerable(true);
+        spawnedBarterPiglin.setPersistent();
+        // The room is in the island's overworld-type dimension, where a piglin turns into a
+        // zombified piglin within seconds and orphans the reference.
+        spawnedBarterPiglin.setImmuneToZombification(true);
+        var cat = com.crackedgames.craftics.api.registry.BarterCategoryRegistry.get(barterCategoryId);
+        if (cat != null) {
+            spawnedBarterPiglin.setCustomName(Text.literal("§6" + cat.displayName()));
+            spawnedBarterPiglin.setCustomNameVisible(true);
+        }
+    }
+
+    /**
+     * The enchanter's or scribe's body: a villager in the overworld, a piglin holding
+     * {@code netherHeldItem} in the Nether. Named, so the room says who is in it.
+     */
+    private net.minecraft.entity.mob.MobEntity spawnVillageWorker(ServerWorld world, BlockPos origin,
+            String name, net.minecraft.item.Item netherHeldItem) {
+        net.minecraft.entity.mob.MobEntity npc;
+        if (villageNether) {
+            net.minecraft.entity.mob.PiglinEntity piglin = net.minecraft.entity.EntityType.PIGLIN
+                .spawn(world, origin.up(), net.minecraft.entity.SpawnReason.EVENT);
+            if (piglin != null) {
+                piglin.setImmuneToZombification(true);
+                piglin.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, new ItemStack(netherHeldItem));
+            }
+            npc = piglin;
+        } else {
+            net.minecraft.entity.passive.VillagerEntity villager = net.minecraft.entity.EntityType.VILLAGER
+                .spawn(world, origin.up(), net.minecraft.entity.SpawnReason.EVENT);
+            if (villager != null) villager.setBaby(false);
+            npc = villager;
+        }
+        if (npc == null) return null;
+        npc.refreshPositionAndAngles(origin.getX() + 4.5, origin.getY() + 1, origin.getZ() + 6.5, 180f, 0f);
+        npc.setAiDisabled(true);
+        npc.setInvulnerable(true);
+        npc.setPersistent();
+        npc.setCustomName(Text.literal(name));
+        npc.setCustomNameVisible(true);
+        return npc;
+    }
+
+    /** Open a stop for one player once they have walked up to it. */
+    private void startVillageStation(ServerPlayerEntity player, VillageStation station) {
+        if (!isVillageEvent() || player.isRemoved() || player.isDisconnected()) return;
+        if (villageDone.contains(player.getUuid())) return;
+        switch (station) {
+            case TRADER -> {
+                if (villageTraderIsBarter) {
+                    sendBarterIntro(player);
+                    return;
                 }
-            },
-            () -> { /* all-finished handled via barterPendingPlayers/finalize path */ });
-
-        final double WALK_SPEED = 1.0 / getMoveTicks();
-        // Piglin stands where the trader does (origin+6.5 x, origin+4.5 z).
-        final double piglinX = barterOrigin.getX() + 6.5;
-        final double piglinZ = barterOrigin.getZ() + 4.5;
-        int idx = 0;
-        for (ServerPlayerEntity p : members) {
-            ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.EnterEventCinematicPayload());
-            // Talk tiles in front of the piglin, fanned across the x=3..5 lane so
-            // multiple members stand side by side (matches offerTrader).
-            double tx = barterOrigin.getX() + 3.5 + (idx % 3);
-            double ty = barterOrigin.getY() + 1;
-            double tz = barterOrigin.getZ() + 4.5;
-            double walkDist = Math.hypot(tx - p.getX(), tz - p.getZ());
-            int walkTicks = Math.max(1, (int) Math.round(walkDist / WALK_SPEED));
-            final ServerPlayerEntity fp = p;
-            EntityWalker.Mover mover = (x, y, z, yaw) -> {
-                fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
-                //? if <=1.21.4 {
-                fp.prevX = fp.getX();
-                fp.prevY = fp.getY();
-                fp.prevZ = fp.getZ();
-                //?} else {
-                /*fp.lastX = fp.getX();
-                fp.lastY = fp.getY();
-                fp.lastZ = fp.getZ();
-                *///?}
-                double dx = x - fp.getX(), dz = z - fp.getZ();
-                double len = Math.sqrt(dx * dx + dz * dz);
-                if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
-                fp.setPosition(x, y, z);
-                fp.networkHandler.requestTeleport(x, y, z, yaw, 0f);
-                broadcastPlayerPositionToOthers(fp);
-            };
-            final java.util.UUID fu = p.getUuid();
-            final double ftx = tx, ftz = tz;
-            activeWalkers.add(new EntityWalker(mover,
-                p.getX(), p.getY(), p.getZ(), tx, ty, tz, walkTicks,
-                () -> {
-                    float faceYaw = (float) Math.toDegrees(Math.atan2(-(piglinX - ftx), piglinZ - ftz));
-                    fp.setYaw(faceYaw); fp.setHeadYaw(faceYaw); fp.setBodyYaw(faceYaw);
-                    fp.networkHandler.requestTeleport(fp.getX(), fp.getY(), fp.getZ(), faceYaw, 0f);
-                    activeCinematic.markArrived(fu);
-                }));
-            idx++;
+                var def = com.crackedgames.craftics.combat.dialogue.DialogueRegistry
+                    .pickFromGroup(activeTraderIntroGroup, new java.util.Random());
+                if (def == null) def = com.crackedgames.craftics.combat.dialogue.DialogueRegistry
+                    .pickFromGroup("trader_intro", new java.util.Random());
+                if (def == null) {
+                    openTraderFor(player); // no intro line: go straight to trading
+                    return;
+                }
+                sendDialogue(player, def);
+            }
+            case ENCHANTER -> sendDialogue(player,
+                com.crackedgames.craftics.combat.dialogue.DialogueRegistry.get("craftics:enchanter_intro"));
+            case SCRIBE -> sendDialogue(player, buildScribeOpeningDialogue(player));
         }
+    }
+
+    /**
+     * Walk one player from where they stand to a talk tile, facing {@code (faceX, faceZ)} on
+     * arrival, at the same per-tick rate combat moves at so it reads like in-fight movement.
+     */
+    private void walkEventPlayer(ServerPlayerEntity p, double tx, double ty, double tz,
+                                 double faceX, double faceZ, Runnable onArrive) {
+        final double walkSpeed = 1.0 / getMoveTicks(); // blocks per tick, matches combat
+        double walkDist = Math.hypot(tx - p.getX(), tz - p.getZ());
+        int walkTicks = Math.max(1, (int) Math.round(walkDist / walkSpeed));
+        final ServerPlayerEntity fp = p;
+        EntityWalker.Mover mover = (x, y, z, yaw) -> {
+            fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
+            // prevXYZ (lastXYZ on 1.21.5+) must be set BEFORE setPosition so the client limb
+            // animator sees a movement delta and interpolates smoothly.
+            //? if <=1.21.4 {
+            fp.prevX = fp.getX();
+            fp.prevY = fp.getY();
+            fp.prevZ = fp.getZ();
+            //?} else {
+            /*fp.lastX = fp.getX();
+            fp.lastY = fp.getY();
+            fp.lastZ = fp.getZ();
+            *///?}
+            double dx = x - fp.getX(), dz = z - fp.getZ();
+            double len = Math.sqrt(dx * dx + dz * dz);
+            if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
+            fp.setPosition(x, y, z);
+            fp.networkHandler.requestTeleport(x, y, z, yaw, 0f);
+            broadcastPlayerPositionToOthers(fp);
+        };
+        activeWalkers.add(new EntityWalker(mover,
+            p.getX(), p.getY(), p.getZ(), tx, ty, tz, walkTicks,
+            () -> {
+                float faceYaw = (float) Math.toDegrees(Math.atan2(-(faceX - tx), faceZ - tz));
+                fp.setYaw(faceYaw); fp.setHeadYaw(faceYaw); fp.setBodyYaw(faceYaw);
+                fp.networkHandler.requestTeleport(fp.getX(), fp.getY(), fp.getZ(), faceYaw, 0f);
+                if (activeCinematic != null) activeCinematic.markArrived(fp.getUuid());
+                onArrive.run();
+            }));
+    }
+
+    /**
+     * One player is done with their stop (or skipped). Hold them on a waiting screen, or end the
+     * village if they were the last.
+     */
+    private void finishVillagePlayer(ServerPlayerEntity player) {
+        if (!isVillageEvent()) return;
+        if (!villageDone.add(player.getUuid())) return;
+        if (!villageDone.containsAll(eventPendingPlayers)) {
+            showVillageWaiting(player);
+            return;
+        }
+        finalizeVillageEvent(player);
+    }
+
+    private void showVillageWaiting(ServerPlayerEntity player) {
+        ServerPlayNetworking.send(player, new com.crackedgames.craftics.network.LoadingScreenPayload(
+            true, villageNether ? "§6Bastion Outpost" : "§aVillage",
+            "§7Waiting for the rest of the party..."));
+    }
+
+    /** Everyone is done: tear down every stop at once and take the party to the next level. */
+    private void finalizeVillageEvent(ServerPlayerEntity referencePlayer) {
+        resetVillageState();
+        if (!forcedChunks.isEmpty() && referencePlayer != null) {
+            ServerWorld cw = (ServerWorld) referencePlayer.getEntityWorld();
+            for (net.minecraft.util.math.ChunkPos cp : forcedChunks) {
+                cw.setChunkForced(cp.x, cp.z, false);
+            }
+            forcedChunks.clear();
+        }
+        scheduleEventReturnTransition(referencePlayer);
+    }
+
+    /**
+     * Drop every piece of village state and release each player's waiting screen and cinematic
+     * lock. No level transition: {@link #finalizeVillageEvent} adds that, and {@link #endCombat}
+     * calls this alone when the village is abandoned (the leader left and the party went home),
+     * so nobody is left locked on a waiting screen for an event that no longer exists.
+     */
+    private void resetVillageState() {
+        // Released first - scheduleEventReturnTransition only raises the loading screen, it
+        // never lets go of the cinematic lock.
+        if (server != null) {
+            for (java.util.UUID u : eventPendingPlayers) {
+                ServerPlayerEntity m = server.getPlayerManager().getPlayer(u);
+                if (m == null) continue;
+                ServerPlayNetworking.send(m, new com.crackedgames.craftics.network.LoadingScreenPayload(false, "", ""));
+                ServerPlayNetworking.send(m, new com.crackedgames.craftics.network.ExitEventCinematicPayload());
+            }
+        }
+        discardVillageNpcs();
+        eventRoomPending = false;
+        eventRoomType = null;
+        this.activeCinematic = null;
+        this.activeWalkers.clear();
+        villageStations.clear();
+        villageDone.clear();
+        villageRoomsBuilt.clear();
+        villageStationArrivals.clear();
+        eventPendingPlayers.clear();
+        traderPendingPlayers.clear();
+        currentTrader = null;
+        traderQueue.clear();
+        activeTraderOffer = null;
+        activeTraderStock = new int[0];
+        barterCategoryId = null;
+        barterTier = 0;
+        barterPendingPlayers.clear();
+        barterThresholds.clear();
+        perPlayerEnchanterSlots.clear();
+        perPlayerEnchanterRolls.clear();
+        perPlayerScribeSlots.clear();
+        perPlayerScribeOffers.clear();
+        perPlayerScribePick.clear();
+    }
+
+    private void discardVillageNpcs() {
+        if (spawnedTrader != null) { spawnedTrader.discard(); spawnedTrader = null; }
+        if (spawnedBarterPiglin != null) { spawnedBarterPiglin.discard(); spawnedBarterPiglin = null; }
+        if (villageEnchanterNpc != null) { villageEnchanterNpc.discard(); villageEnchanterNpc = null; }
+        if (villageScribeNpc != null) { villageScribeNpc.discard(); villageScribeNpc = null; }
+    }
+
+    /**
+     * A village player disconnected: drop them from every stop, and end the village if everyone
+     * left is already done. Returns true when the village handled it.
+     */
+    private boolean handleVillageDisconnect(java.util.UUID memberUuid) {
+        if (!isVillageEvent()) return false;
+        villageStations.remove(memberUuid);
+        villageDone.remove(memberUuid);
+        eventPendingPlayers.remove(memberUuid);
+        if (traderPendingPlayers.remove(memberUuid) && server != null) {
+            ServerPlayerEntity leaver = server.getPlayerManager().getPlayer(memberUuid);
+            if (leaver != null) reclaimTraderEmeralds(leaver);
+        }
+        barterPendingPlayers.remove(memberUuid);
+        barterThresholds.remove(memberUuid);
+        perPlayerEnchanterSlots.remove(memberUuid);
+        perPlayerEnchanterRolls.remove(memberUuid);
+        perPlayerScribeSlots.remove(memberUuid);
+        perPlayerScribeOffers.remove(memberUuid);
+        perPlayerScribePick.remove(memberUuid);
+        if (eventPendingPlayers.isEmpty()) {
+            resetVillageState(); // everyone left; nothing to move on to
+        } else if (villageDone.containsAll(eventPendingPlayers)) {
+            ServerPlayerEntity ref = firstOnlinePartyMember();
+            if (ref != null) finalizeVillageEvent(ref);
+        }
+        return true;
     }
 
     /** Send the category intro dialogue and the stepper context payload to one player. */
@@ -32237,222 +32922,6 @@ public class CombatManager {
                 s.decrement(take);
                 remaining -= take;
             }
-        }
-    }
-
-    private void offerTrader(ServerPlayerEntity savedPlayer, com.crackedgames.craftics.level.BiomeTemplate biome, int biomeOrdinal) {
-        List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
-        // Exit combat mode on client for all party members
-        for (ServerPlayerEntity p : members) {
-            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
-        }
-
-        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
-        // Tier is based on the biome where the event started, not mutable runtime state.
-        int biomeTier = Math.max(1, biomeOrdinal + 1);
-        // Bias the roll toward a trader this island has NOT met, so the hall fills out instead of
-        // handing you the same Weaponsmith every event. Met traders stay possible, just rarer.
-        var metData = com.crackedgames.craftics.world.CrafticsSavedData.get(world);
-        var metOwner = metData.getEffectiveWorldOwner(savedPlayer.getUuid());
-        // Same stock for everyone at the same run depth. Outside an infinite run the
-        // trader stays unseeded, exactly as before.
-        java.util.Random traderRng = new java.util.Random();
-        String traderHostRef = metData.getPlayerData(savedPlayer.getUuid()).infiniteRunHost;
-        if (traderHostRef != null && !traderHostRef.isEmpty()) {
-            try {
-                var traderHost = metData.getPlayerData(java.util.UUID.fromString(traderHostRef));
-                if (traderHost.infiniteActive && !traderHost.infiniteSuspended) {
-                    traderRng = com.crackedgames.craftics.combat.infinite.ChapterRng.random(
-                        com.crackedgames.craftics.combat.infinite.ChapterManager.seedOf(metData),
-                        com.crackedgames.craftics.combat.infinite.ChapterRng.SALT_TRADER,
-                        traderHost.infiniteBiomesCleared, traderHost.activeBiomeLevelIndex);
-                }
-            } catch (IllegalArgumentException ignored) {}
-        }
-        activeTraderOffer = TraderSystem.generateOffer(biomeTier, traderRng,
-            metData.getPlayerData(metOwner).metTraders, world);
-        activeTraderStock = new int[activeTraderOffer.trades().size()];
-        java.util.Arrays.fill(activeTraderStock, 99);
-        com.crackedgames.craftics.scene.MetMerchants.recordTrader(
-            world, savedPlayer.getUuid(), activeTraderOffer.type().id());
-
-        // Apply Resourceful stat discount per-player (use leader's for trade offer since it's shared)
-        int resourcefulDiscount = PlayerProgression.get(world)
-            .getStats(savedPlayer).getPoints(PlayerProgression.Stat.RESOURCEFUL);
-        if (resourcefulDiscount > 0) {
-            List<TraderSystem.Trade> discounted = new java.util.ArrayList<>();
-            for (TraderSystem.Trade t : activeTraderOffer.trades()) {
-                int newCost = Math.max(1, t.emeraldCost() - resourcefulDiscount);
-                discounted.add(new TraderSystem.Trade(t.item(), newCost, t.description()));
-            }
-            activeTraderOffer = new TraderSystem.TraderOffer(activeTraderOffer.type(), discounted);
-        }
-
-        CrafticsSavedData data = CrafticsSavedData.get(world);
-        traderPendingPlayers.clear();
-        currentTrader = null;
-        traderQueue.clear();
-        for (ServerPlayerEntity p : members) {
-            traderPendingPlayers.add(p.getUuid());
-        }
-
-        // Build a small themed trader area away from the arena
-        BlockPos traderAreaOrigin;
-        if (worldOwnerUuid != null) {
-            CrafticsSavedData traderData = CrafticsSavedData.get(world);
-            BlockPos dynamicOrigin = traderData.getTraderOrigin(worldOwnerUuid);
-            traderAreaOrigin = dynamicOrigin != null ? dynamicOrigin : new BlockPos(500, 100, 500);
-        } else {
-            traderAreaOrigin = new BlockPos(500, 100, 500); // legacy fallback
-        }
-        buildTraderArea(world, traderAreaOrigin, biome);
-
-        // Force-load the trader area + walkway chunks so the spawned trader entity stays
-        // loaded and its merchant screen works. Without this the trader's chunk unloads
-        // (removed=UNLOADED_TO_CHUNK) and opening the shop flickers shut instantly.
-        // Reuses the same forcedChunks set the arena uses; released in finalizeTraderEvent.
-        {
-            int margin = 32;
-            int minCX = (traderAreaOrigin.getX() - margin) >> 4;
-            int maxCX = (traderAreaOrigin.getX() + 9 + margin) >> 4;
-            // Walkway extends to oz - WALKWAY_LEN - 1 (low z); include it plus margin.
-            int minCZ = (traderAreaOrigin.getZ() - 8 - 1 - margin) >> 4;
-            int maxCZ = (traderAreaOrigin.getZ() + 9 + margin) >> 4;
-            for (int cx = minCX; cx <= maxCX; cx++) {
-                for (int cz = minCZ; cz <= maxCZ; cz++) {
-                    world.setChunkForced(cx, cz, true);
-                    forcedChunks.add(new net.minecraft.util.math.ChunkPos(cx, cz));
-                }
-            }
-        }
-
-        // Teleport all party members to the FAR END of the approach walkway (low-z),
-        // facing the trader, so they walk up the path before dialogue. The walkway is
-        // 8 long on the x=3..5 lane (see buildTraderArea WALKWAY_LEN). z = origin - 8.
-        final int WALKWAY_LEN = 8;
-        for (ServerPlayerEntity p : members) {
-            p.requestTeleport(
-                traderAreaOrigin.getX() + 4.5,
-                traderAreaOrigin.getY() + 1,
-                traderAreaOrigin.getZ() - WALKWAY_LEN + 0.5);
-            // All three angles, not two. Seating the look and the head but not the body
-            // leaves the torso pointing wherever the player was walking when the level
-            // ended, so the model renders bent - head to the scene, shoulders elsewhere -
-            // and nothing turns a standing player's body back.
-            p.setYaw(0f);       // face +Z, toward the trader area
-            p.setHeadYaw(0f);
-            p.setBodyYaw(0f);
-        }
-
-        // Spawn real wandering trader in the trader area
-        clearStrayEventNpcs(world, traderAreaOrigin); // remove any orphaned NPC at this fixed room first
-        spawnedTrader = (net.minecraft.entity.passive.WanderingTraderEntity)
-            net.minecraft.entity.EntityType.WANDERING_TRADER.spawn(world, traderAreaOrigin.up(), net.minecraft.entity.SpawnReason.EVENT);
-        if (spawnedTrader != null) {
-            spawnedTrader.refreshPositionAndAngles(
-                traderAreaOrigin.getX() + 6.5, traderAreaOrigin.getY() + 1, traderAreaOrigin.getZ() + 4.5,
-                -90f, 0f);
-            spawnedTrader.setAiDisabled(true);
-            spawnedTrader.setInvulnerable(true);
-            spawnedTrader.setPersistent(); // never despawn during the event
-
-            // Set custom trades using emerald items as payment
-            net.minecraft.village.TradeOfferList tradeOffers = spawnedTrader.getOffers();
-            tradeOffers.clear();
-            for (TraderSystem.Trade t : activeTraderOffer.trades()) {
-                net.minecraft.village.TradedItem cost = new net.minecraft.village.TradedItem(Items.EMERALD, t.emeraldCost());
-                net.minecraft.village.TradeOffer offer = new net.minecraft.village.TradeOffer(
-                    cost, t.item().copy(), 99, 0, 0f);
-                tradeOffers.add(offer);
-            }
-
-            world.spawnEntity(spawnedTrader);
-        }
-
-        // Begin the dialogue intro cinematic: walk every member up to a talk tile
-        // in front of the trader, then (once all arrive) push the intro dialogue.
-        // Dialogue groups are keyed by the local id ("trader_intro_weaponsmith"). An addon trader
-        // with no registered dialogue group simply gets no intro line, which VanillaDialogue
-        // already tolerates.
-        this.activeTraderIntroGroup = "trader_intro_" + activeTraderOffer.type().localId();
-        java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
-        for (ServerPlayerEntity p : members) partyUuids.add(p.getUuid());
-
-        ServerPlayerEntity ref = savedPlayer;
-        this.activeWalkers.clear();
-        this.activeCinematic = new EventCinematic(partyUuids,
-            () -> {
-                for (ServerPlayerEntity p : getOnlinePartyMembers(ref)) {
-                    var def = com.crackedgames.craftics.combat.dialogue.DialogueRegistry
-                        .pickFromGroup(activeTraderIntroGroup, new java.util.Random());
-                    if (def == null) def = com.crackedgames.craftics.combat.dialogue.DialogueRegistry
-                        .pickFromGroup("trader_intro", new java.util.Random());
-                    if (def == null) {
-                        CrafticsMod.LOGGER.error(
-                            "No intro dialogue for group '{}' -opening trade directly for {}",
-                            activeTraderIntroGroup, p.getName().getString());
-                        openTraderFor(p);   // fail safe: skip dialogue, go straight to trading
-                        continue;
-                    }
-                    sendDialogue(p, def);
-                }
-            },
-            () -> { /* all-finished handled via traderPendingPlayers/finalizeTraderEvent */ });
-
-        // Walk each member from the walkway end up to a talk tile a couple blocks in
-        // front of the trader, fanned along x so they don't overlap. Move at the same
-        // per-tick rate combat uses (one 1.0-block tile per getMoveTicks() ticks =
-        // 0.25 blocks/tick) so the walk-up reads identically to in-combat movement.
-        final double WALK_SPEED = 1.0 / getMoveTicks(); // blocks per tick, matches combat
-        int idx = 0;
-        for (ServerPlayerEntity p : members) {
-            ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.EnterEventCinematicPayload());
-            // Talk tiles in front of the trader (trader at origin+6.5 x, origin+4.5 z),
-            // fanned across the x=3..5 lane so multiple members stand side by side.
-            double tx = traderAreaOrigin.getX() + 3.5 + (idx % 3);
-            double ty = traderAreaOrigin.getY() + 1;
-            double tz = traderAreaOrigin.getZ() + 4.5;
-            // Tick count from distance at combat speed, so each tick advances the same
-            // distance combat does and the client's entity interpolation lines up.
-            double walkDist = Math.hypot(tx - p.getX(), tz - p.getZ());
-            int walkTicks = Math.max(1, (int) Math.round(walkDist / WALK_SPEED));
-            final ServerPlayerEntity fp = p;
-            EntityWalker.Mover mover = (x, y, z, yaw) -> {
-                fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
-                // prevXYZ (lastXYZ on 1.21.5+) must be set BEFORE setPosition so the
-                // client limb animator sees a movement delta and interpolates smoothly -
-                // matches the combat movement code (tickAnimation).
-                //? if <=1.21.4 {
-                fp.prevX = fp.getX();
-                fp.prevY = fp.getY();
-                fp.prevZ = fp.getZ();
-                //?} else {
-                /*fp.lastX = fp.getX();
-                fp.lastY = fp.getY();
-                fp.lastZ = fp.getZ();
-                *///?}
-                // Velocity drives vanilla limb-swing fallback; magnitude matches combat.
-                double dx = x - fp.getX(), dz = z - fp.getZ();
-                double len = Math.sqrt(dx * dx + dz * dz);
-                if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
-                fp.setPosition(x, y, z);
-                fp.networkHandler.requestTeleport(x, y, z, yaw, 0f);
-                broadcastPlayerPositionToOthers(fp);
-            };
-            final java.util.UUID fu = p.getUuid();
-            final double traderX = traderAreaOrigin.getX() + 6.5;
-            final double traderZ = traderAreaOrigin.getZ() + 4.5;
-            final double ftx = tx, ftz = tz;
-            activeWalkers.add(new EntityWalker(mover,
-                p.getX(), p.getY(), p.getZ(), tx, ty, tz, walkTicks,
-                () -> {
-                    // On arrival, turn to face the trader before dialogue opens.
-                    float faceYaw = (float) Math.toDegrees(Math.atan2(-(traderX - ftx), traderZ - ftz));
-                    fp.setYaw(faceYaw); fp.setHeadYaw(faceYaw); fp.setBodyYaw(faceYaw);
-                    fp.networkHandler.requestTeleport(fp.getX(), fp.getY(), fp.getZ(), faceYaw, 0f);
-                    activeCinematic.markArrived(fu);
-                }));
-            idx++;
         }
     }
 
@@ -33075,149 +33544,6 @@ public class CombatManager {
                     // Without this the cinematic never counts anyone as arrived, so its
                     // onArrive never runs and the intro dialogue is never sent: the party
                     // stands in the room with no way to interact and no way out.
-                    activeCinematic.markArrived(fu);
-                }));
-            idx++;
-        }
-    }
-
-    private void offerEnchanter(ServerPlayerEntity savedPlayer) {
-        List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
-        for (ServerPlayerEntity p : members) {
-            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
-        }
-
-        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
-        eventRoomPending = true;
-        eventRoomType = "enchanter";
-
-        eventPendingPlayers.clear();
-        perPlayerEnchanterSlots.clear();
-        perPlayerEnchanterRolls.clear();
-        for (ServerPlayerEntity p : members) {
-            eventPendingPlayers.add(p.getUuid());
-        }
-
-        BlockPos enchanterOrigin = getEventRoomOrigin(savedPlayer);
-        buildShrineArea(world, enchanterOrigin, true); // walkway shrine room
-
-        // Force-load the area + approach walkway so the spawned villager + cinematic
-        // don't desync if a chunk unloads. Released in finalizeEnchanterEvent.
-        {
-            int margin = 32;
-            int minCX = (enchanterOrigin.getX() - margin) >> 4;
-            int maxCX = (enchanterOrigin.getX() + 9 + margin) >> 4;
-            int minCZ = (enchanterOrigin.getZ() - 8 - 1 - margin) >> 4;
-            int maxCZ = (enchanterOrigin.getZ() + 9 + margin) >> 4;
-            for (int cx = minCX; cx <= maxCX; cx++) {
-                for (int cz = minCZ; cz <= maxCZ; cz++) {
-                    world.setChunkForced(cx, cz, true);
-                    forcedChunks.add(new net.minecraft.util.math.ChunkPos(cx, cz));
-                }
-            }
-        }
-
-        // Spawn the enchanter at the back of the room, facing the walkway entrance
-        // so the party walks in to meet them.
-        clearStrayEventNpcs(world, enchanterOrigin); // remove any orphaned NPC at this fixed room first
-        spawnedTraveler = (net.minecraft.entity.passive.VillagerEntity)
-            net.minecraft.entity.EntityType.VILLAGER.spawn(world, enchanterOrigin.up(), net.minecraft.entity.SpawnReason.EVENT);
-        if (spawnedTraveler != null) {
-            spawnedTraveler.refreshPositionAndAngles(
-                enchanterOrigin.getX() + 4.5, enchanterOrigin.getY() + 1, enchanterOrigin.getZ() + 6.5,
-                180f, 0f);
-            spawnedTraveler.setAiDisabled(true);
-            spawnedTraveler.setInvulnerable(true);
-            spawnedTraveler.setBaby(false);
-            world.spawnEntity(spawnedTraveler);
-        }
-
-        // Teleport players to the walkway entrance facing the room.
-        final int WALKWAY_LEN = 8;
-        for (ServerPlayerEntity p : members) {
-            p.requestTeleport(
-                enchanterOrigin.getX() + 4.5,
-                enchanterOrigin.getY() + 1,
-                enchanterOrigin.getZ() - WALKWAY_LEN + 0.5);
-            // All three angles, not two. Seating the look and the head but not the body
-            // leaves the torso pointing wherever the player was walking when the level
-            // ended, so the model renders bent - head to the scene, shoulders elsewhere -
-            // and nothing turns a standing player's body back.
-            p.setYaw(0f);
-            p.setHeadYaw(0f);
-            p.setBodyYaw(0f);
-        }
-
-        // Build per-player offer slots once. Step-2 dialogues are derived from
-        // this list (filtered by category) so the player sees current names.
-        java.util.Random rng = new java.util.Random();
-        for (ServerPlayerEntity p : members) {
-            java.util.List<int[]> offered = buildEnchanterSlotsFor(p, rng);
-            // Decide every outcome now, while the offer is being built, so the shortlist shown on
-            // hover can contain the truth rather than a guess at it.
-            java.util.Map<Integer, EnchanterRoll> rolls = rollEnchanterOutcomes(p, offered, rng);
-            // A weapon the enchanter has nothing left to add to is not offered at all. Listing it
-            // would spend the player's one pick on an item that cannot change.
-            offered.removeIf(slot -> !rolls.containsKey(slot[0]));
-            perPlayerEnchanterSlots.put(p.getUuid(), offered);
-            perPlayerEnchanterRolls.put(p.getUuid(), rolls);
-        }
-
-        java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
-        for (ServerPlayerEntity p : members) partyUuids.add(p.getUuid());
-
-        final ServerPlayerEntity ref = savedPlayer;
-        this.activeWalkers.clear();
-        this.activeCinematic = new EventCinematic(partyUuids,
-            () -> {
-                var intro = com.crackedgames.craftics.combat.dialogue.DialogueRegistry
-                    .get("craftics:enchanter_intro");
-                for (ServerPlayerEntity p : getOnlinePartyMembers(ref)) {
-                    sendDialogue(p, intro);
-                }
-            },
-            () -> { /* all-finished handled via eventPendingPlayers/finalizeEnchanterEvent */ });
-
-        final double WALK_SPEED = 1.0 / getMoveTicks();
-        final double npcX = enchanterOrigin.getX() + 4.5;
-        final double npcZ = enchanterOrigin.getZ() + 6.5;
-        int idx = 0;
-        for (ServerPlayerEntity p : members) {
-            ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.EnterEventCinematicPayload());
-            // Talk tiles fanned across x=3..5 at z=3 (south of the centerpiece)
-            // so the party stands together facing the enchanter on the far side.
-            double tx = enchanterOrigin.getX() + 3.5 + (idx % 3);
-            double ty = enchanterOrigin.getY() + 1;
-            double tz = enchanterOrigin.getZ() + 3.5;
-            double walkDist = Math.hypot(tx - p.getX(), tz - p.getZ());
-            int walkTicks = Math.max(1, (int) Math.round(walkDist / WALK_SPEED));
-            final ServerPlayerEntity fp = p;
-            EntityWalker.Mover mover = (x, y, z, yaw) -> {
-                fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
-                //? if <=1.21.4 {
-                fp.prevX = fp.getX();
-                fp.prevY = fp.getY();
-                fp.prevZ = fp.getZ();
-                //?} else {
-                /*fp.lastX = fp.getX();
-                fp.lastY = fp.getY();
-                fp.lastZ = fp.getZ();
-                *///?}
-                double dx = x - fp.getX(), dz = z - fp.getZ();
-                double len = Math.sqrt(dx * dx + dz * dz);
-                if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
-                fp.setPosition(x, y, z);
-                fp.networkHandler.requestTeleport(x, y, z, yaw, 0f);
-                broadcastPlayerPositionToOthers(fp);
-            };
-            final java.util.UUID fu = p.getUuid();
-            final double ftx = tx, ftz = tz;
-            activeWalkers.add(new EntityWalker(mover,
-                p.getX(), p.getY(), p.getZ(), tx, ty, tz, walkTicks,
-                () -> {
-                    float faceYaw = (float) Math.toDegrees(Math.atan2(-(npcX - ftx), npcZ - ftz));
-                    fp.setYaw(faceYaw); fp.setHeadYaw(faceYaw); fp.setBodyYaw(faceYaw);
-                    fp.networkHandler.requestTeleport(fp.getX(), fp.getY(), fp.getZ(), faceYaw, 0f);
                     activeCinematic.markArrived(fu);
                 }));
             idx++;
@@ -34448,10 +34774,11 @@ public class CombatManager {
      *  up to, not just whoever the arena's leader-tracked grid points at. */
     private ServerPlayerEntity findClosestPartyTarget(GridPos enemyPos) {
         if (partyPlayers.size() <= 1 || arena == null) return player;
-        // Ankle Monitor: the enemy was sent after the wearer (see the AI target pick), so its
-        // blow, shot or shove lands on the wearer too, not on a teammate who happened to be
-        // standing closer.
-        ServerPlayerEntity monitored = ankleMonitorTarget(enemyPos);
+        // Ankle Monitor: when the monitor pulled this enemy (see the AI target pick), its blow,
+        // shot or shove lands on the wearer too, not on a teammate who happened to be standing
+        // closer. Every caller resolves for currentEnemy, so this reads the same cached roll
+        // the target pick did.
+        ServerPlayerEntity monitored = currentEnemy != null ? ankleMonitorTarget(currentEnemy) : null;
         if (monitored != null) return monitored;
         BlockPos origin = arena.getOrigin();
         ServerPlayerEntity closest = null;
@@ -34645,7 +34972,12 @@ public class CombatManager {
     }
 
     public void handleTraderBuy(ServerPlayerEntity player, int tradeIndex) {
-        if (activeTraderOffer == null || !player.getUuid().equals(currentTrader)
+        // Village shoppers share the stall rather than taking turns; anyone still at the
+        // trader may buy. Outside a village only the player holding the lock may.
+        boolean mayBuy = isVillageEvent()
+            ? traderPendingPlayers.contains(player.getUuid())
+            : player.getUuid().equals(currentTrader);
+        if (activeTraderOffer == null || !mayBuy
                 || tradeIndex < 0 || tradeIndex >= activeTraderOffer.trades().size()
                 || activeTraderStock[tradeIndex] <= 0) {
             return;
@@ -34664,6 +34996,14 @@ public class CombatManager {
         world.playSound(null, player.getBlockPos(), net.minecraft.sound.SoundEvents.ENTITY_VILLAGER_YES,
             net.minecraft.sound.SoundCategory.NEUTRAL, 1.0f, 1.0f);
         sendActiveTraderOffer(player, false);
+        // Everyone else at the stall sees the stock drop, so nobody tries to buy the last one twice.
+        if (isVillageEvent() && server != null) {
+            for (java.util.UUID other : traderPendingPlayers) {
+                if (other.equals(player.getUuid())) continue;
+                ServerPlayerEntity shopper = server.getPlayerManager().getPlayer(other);
+                if (shopper != null) sendActiveTraderOffer(shopper, false);
+            }
+        }
     }
 
     /** Push a dialogue definition to one player as a {@code DialoguePayload}. No-op if null. */
@@ -34682,6 +35022,12 @@ public class CombatManager {
                               com.crackedgames.craftics.combat.dialogue.DialogueDefinition def,
                               int background) {
         if (def == null) return;
+        // The enchanter and scribe are piglins at a Nether outpost. Their lines are written for
+        // a villager speaker, so swap the speaker here rather than duplicating every dialogue.
+        if (isVillageEvent() && villageNether && "minecraft:villager".equals(def.speaker())) {
+            def = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+                def.id(), "minecraft:piglin", def.group(), def.lines(), def.choices());
+        }
         java.util.List<String> labels = new java.util.ArrayList<>();
         java.util.List<String> actions = new java.util.ArrayList<>();
         java.util.List<String> tooltips = new java.util.ArrayList<>();
@@ -34739,6 +35085,11 @@ public class CombatManager {
             }
             return;
         }
+        // Village: each player is at their own stop, so route by what THEY picked.
+        if (isVillageEvent()) {
+            handleVillageDialogueChoice(player, action);
+            return;
+        }
         // Route shrine actions (and shrine result/leave DISMISS) before the trader path
         // so we don't mis-finalize a shrine session through handleTraderDone.
         if (eventRoomPending && "shrine".equals(eventRoomType)) {
@@ -34777,6 +35128,11 @@ public class CombatManager {
             handleBarterDialogueChoice(player, action);
             return;
         }
+        handleTraderDialogueAction(player, action);
+    }
+
+    /** The wandering trader's dialogue actions: open the shop, or finish with it. */
+    private void handleTraderDialogueAction(ServerPlayerEntity player, String action) {
         if (com.crackedgames.craftics.network.DialogueChoicePayload.ACTION_DISMISS.equals(action)) {
             // Choiceless dialogue clicked through -finish the trader session without
             // routing through DialogueActions.resolve (which would warn on the sentinel).
@@ -35133,6 +35489,10 @@ public class CombatManager {
     private void finishBarterPlayer(ServerPlayerEntity player) {
         barterPendingPlayers.remove(player.getUuid());
         barterThresholds.remove(player.getUuid());
+        if (isVillageEvent()) {
+            finishVillagePlayer(player);
+            return;
+        }
         eventPendingPlayers.remove(player.getUuid());
         ServerPlayNetworking.send(player,
             new com.crackedgames.craftics.network.ExitEventCinematicPayload());
@@ -35863,7 +36223,7 @@ public class CombatManager {
             playerRolls == null ? null : playerRolls.get(chosen[0]));
 
         ServerWorld world = (ServerWorld) player.getEntityWorld();
-        BlockPos enchanterOrigin = getEventRoomOrigin(player);
+        BlockPos enchanterOrigin = eventRoomOriginFor(player);
         world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANT,
             enchanterOrigin.getX() + 4.5, enchanterOrigin.getY() + 2.5, enchanterOrigin.getZ() + 4.5,
             40, 0.5, 1.0, 0.5, 0.1);
@@ -35884,144 +36244,12 @@ public class CombatManager {
     private static final int SCRIBE_OFFER_COUNT = 3;
 
     /**
-     * Run the Scribe event: a villager who adds a behaviour to a pottery sherd.
+     * Inventory slots holding a sherd the Scribe can still write on: one with a free slot, or
+     * a full one with an inscription below its highest tier (an upgrade takes no slot).
      *
-     * <p>Structurally the enchanter, pointed at sherds. What differs is the empty-handed case:
-     * the enchanter tells a player with no weapon that it has nothing to work with and the
-     * event is wasted on them, whereas the Scribe hands over a random sherd and sends them away
-     * to learn it. A player who does not yet use sherds is exactly the player worth giving one
-     * to, and an event that punished them for not already owning the thing it modifies would
-     * only ever reward the players who need it least.
-     */
-    private void offerScribe(ServerPlayerEntity savedPlayer) {
-        List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
-        for (ServerPlayerEntity p : members) {
-            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
-        }
-
-        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
-        eventRoomPending = true;
-        eventRoomType = "scribe";
-
-        eventPendingPlayers.clear();
-        perPlayerScribeSlots.clear();
-        perPlayerScribeOffers.clear();
-        perPlayerScribePick.clear();
-        for (ServerPlayerEntity p : members) {
-            eventPendingPlayers.add(p.getUuid());
-        }
-
-        BlockPos origin = getEventRoomOrigin(savedPlayer);
-        buildShrineArea(world, origin, true);
-
-        // Force-load the room + approach walkway so the villager and cinematic can't desync
-        // on a chunk unload. Released in finalizeScribeEvent.
-        {
-            int margin = 32;
-            int minCX = (origin.getX() - margin) >> 4;
-            int maxCX = (origin.getX() + 9 + margin) >> 4;
-            int minCZ = (origin.getZ() - 8 - 1 - margin) >> 4;
-            int maxCZ = (origin.getZ() + 9 + margin) >> 4;
-            for (int cx = minCX; cx <= maxCX; cx++) {
-                for (int cz = minCZ; cz <= maxCZ; cz++) {
-                    world.setChunkForced(cx, cz, true);
-                    forcedChunks.add(new net.minecraft.util.math.ChunkPos(cx, cz));
-                }
-            }
-        }
-
-        clearStrayEventNpcs(world, origin);
-        spawnedTraveler = (net.minecraft.entity.passive.VillagerEntity)
-            net.minecraft.entity.EntityType.VILLAGER.spawn(world, origin.up(), net.minecraft.entity.SpawnReason.EVENT);
-        if (spawnedTraveler != null) {
-            spawnedTraveler.refreshPositionAndAngles(
-                origin.getX() + 4.5, origin.getY() + 1, origin.getZ() + 6.5, 180f, 0f);
-            spawnedTraveler.setAiDisabled(true);
-            spawnedTraveler.setInvulnerable(true);
-            spawnedTraveler.setBaby(false);
-            world.spawnEntity(spawnedTraveler);
-        }
-
-        final int WALKWAY_LEN = 8;
-        for (ServerPlayerEntity p : members) {
-            p.requestTeleport(origin.getX() + 4.5, origin.getY() + 1,
-                origin.getZ() - WALKWAY_LEN + 0.5);
-            p.setYaw(0f);
-            p.setHeadYaw(0f);
-            p.setBodyYaw(0f);
-        }
-
-        // Decide each player's sherds and inscription offer now, so the list they weigh is the
-        // list they get. See perPlayerScribeOffers.
-        java.util.Random rng = new java.util.Random();
-        for (ServerPlayerEntity p : members) {
-            perPlayerScribeSlots.put(p.getUuid(), findInscribableSherdSlots(p));
-            perPlayerScribeOffers.put(p.getUuid(), rollScribeOffers(rng));
-        }
-
-        java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
-        for (ServerPlayerEntity p : members) partyUuids.add(p.getUuid());
-
-        final ServerPlayerEntity ref = savedPlayer;
-        this.activeWalkers.clear();
-        this.activeCinematic = new EventCinematic(partyUuids,
-            () -> {
-                for (ServerPlayerEntity p : getOnlinePartyMembers(ref)) {
-                    sendDialogue(p, buildScribeOpeningDialogue(p));
-                }
-            },
-            () -> { /* completion tracked via eventPendingPlayers/finalizeScribeEvent */ });
-
-        final double WALK_SPEED = 1.0 / getMoveTicks();
-        final double npcX = origin.getX() + 4.5;
-        final double npcZ = origin.getZ() + 6.5;
-        int idx = 0;
-        for (ServerPlayerEntity p : members) {
-            ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.EnterEventCinematicPayload());
-            double tx = origin.getX() + 3.5 + (idx % 3);
-            double ty = origin.getY() + 1;
-            double tz = origin.getZ() + 3.5;
-            double walkDist = Math.hypot(tx - p.getX(), tz - p.getZ());
-            int walkTicks = Math.max(1, (int) Math.round(walkDist / WALK_SPEED));
-            final ServerPlayerEntity fp = p;
-            EntityWalker.Mover mover = (x, y, z, yaw) -> {
-                fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
-                //? if <=1.21.4 {
-                fp.prevX = fp.getX();
-                fp.prevY = fp.getY();
-                fp.prevZ = fp.getZ();
-                //?} else {
-                /*fp.lastX = fp.getX();
-                fp.lastY = fp.getY();
-                fp.lastZ = fp.getZ();
-                *///?}
-                double dx = x - fp.getX(), dz = z - fp.getZ();
-                double len = Math.sqrt(dx * dx + dz * dz);
-                if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
-                fp.setPosition(x, y, z);
-                fp.networkHandler.requestTeleport(x, y, z, yaw, 0f);
-                broadcastPlayerPositionToOthers(fp);
-            };
-            final java.util.UUID fu = p.getUuid();
-            final double ftx = tx, ftz = tz;
-            activeWalkers.add(new EntityWalker(mover,
-                p.getX(), p.getY(), p.getZ(), tx, ty, tz, walkTicks,
-                () -> {
-                    float faceYaw = (float) Math.toDegrees(Math.atan2(-(npcX - ftx), npcZ - ftz));
-                    fp.setYaw(faceYaw); fp.setHeadYaw(faceYaw); fp.setBodyYaw(faceYaw);
-                    fp.networkHandler.requestTeleport(fp.getX(), fp.getY(), fp.getZ(), faceYaw, 0f);
-                    activeCinematic.markArrived(fu);
-                }));
-            idx++;
-        }
-    }
-
-    /**
-     * Inventory slots holding a sherd that still has room for another inscription.
-     *
-     * <p>A full sherd is left out rather than shown and refused: the visit is worth one pick,
-     * and spending it on something that cannot change is the same wasted click the enchanter
-     * already learned to avoid by dropping un-enchantable weapons from its list.
+     * <p>A sherd with nothing left to write is left out rather than shown and refused: the visit
+     * is worth one pick, and spending it on something that cannot change is the same wasted click
+     * the enchanter already learned to avoid by dropping un-enchantable weapons from its list.
      */
     private java.util.List<Integer> findInscribableSherdSlots(ServerPlayerEntity p) {
         java.util.List<Integer> slots = new java.util.ArrayList<>();
@@ -36029,8 +36257,8 @@ public class CombatManager {
             ItemStack stack = p.getInventory().getStack(i);
             if (stack.isEmpty()) continue;
             if (!PotterySherdSpells.isPotterySherd(stack.getItem())) continue;
-            if (com.crackedgames.craftics.combat.sherd.SherdModifiers.read(stack).size()
-                    >= com.crackedgames.craftics.combat.sherd.SherdModifiers.MAX_INSCRIPTIONS) continue;
+            if (!com.crackedgames.craftics.combat.sherd.SherdModifiers.hasRoomOrUpgrade(
+                    com.crackedgames.craftics.combat.sherd.SherdModifiers.read(stack))) continue;
             slots.add(i);
         }
         return slots;
@@ -36063,7 +36291,11 @@ public class CombatManager {
 
     /**
      * The inscriptions offered for one sherd: the first few of this visit's order that would do
-     * something on it and that it does not already carry.
+     * something on it and that the sherd can take.
+     *
+     * <p>One the sherd already carries is still offered - as an upgrade to its next tier - as long
+     * as it is below its highest tier. Rolling the same inscription again is how a sherd gets
+     * stronger at something instead of spending a slot on a second copy.
      *
      * <p>Both the offer screen and the write handler read this, so a player can only ever write
      * what they were shown for that exact sherd.
@@ -36158,19 +36390,29 @@ public class CombatManager {
     private com.crackedgames.craftics.combat.dialogue.DialogueDefinition buildScribeInscriptionDialogue(
             ServerPlayerEntity p, int slot) {
         ItemStack stack = p.getInventory().getStack(slot);
-        // Already filtered to what would do something on this sherd and is not on it yet.
+        // Already filtered to what would do something on this sherd and what it can take.
         java.util.List<com.crackedgames.craftics.combat.sherd.SherdInscription> offers =
             scribeOffersFor(p, stack);
+        java.util.List<com.crackedgames.craftics.combat.sherd.SherdModifiers.Entry> existing =
+            com.crackedgames.craftics.combat.sherd.SherdModifiers.read(stack);
 
         java.util.List<com.crackedgames.craftics.combat.dialogue.DialogueChoice> choices =
             new java.util.ArrayList<>();
         int added = 0;
         for (com.crackedgames.craftics.combat.sherd.SherdInscription inscription : offers) {
-            int magnitude = inscription.defaultMagnitude();
+            int current = com.crackedgames.craftics.combat.sherd.SherdModifiers.tierOn(existing, inscription);
+            int next = current + 1;
+            // An upgrade says so, and shows the step it is taking, so it reads as making an
+            // existing line stronger rather than as a second copy of it.
+            String label = current > 0
+                ? inscription.labelAt(next) + " §a(upgrade)"
+                : inscription.labelAt(next);
+            String tooltip = current > 0
+                ? inscription.describe(next) + "\n§7Was: " + inscription.describe(current)
+                    + "\n§7Upgrades the line already on this sherd. Takes no slot."
+                : inscription.describe(next);
             choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
-                inscription.label(),
-                "scribe:write:" + inscription.name() + ":" + magnitude,
-                inscription.describe(magnitude)));
+                label, "scribe:write:" + inscription.name(), tooltip));
             added++;
         }
         choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice("Back", "scribe:sherds"));
@@ -36186,7 +36428,8 @@ public class CombatManager {
     /**
      * Drive the Scribe off a dialogue choice. Actions are {@code scribe:sherds},
      * {@code scribe:back}, {@code scribe:decline}, {@code scribe:pick:<slot>} and
-     * {@code scribe:write:<INSCRIPTION>:<magnitude>}.
+     * {@code scribe:write:<INSCRIPTION>}. The tier written is always the sherd's current tier
+     * plus one, decided here - never read from the action, which is client input.
      */
     private void handleScribeDialogueChoice(ServerPlayerEntity player, String action) {
         if (com.crackedgames.craftics.network.DialogueChoicePayload.ACTION_DISMISS.equals(action)) {
@@ -36250,18 +36493,9 @@ public class CombatManager {
             sendDialogue(player, buildScribeSherdDialogue(player));
             return;
         }
-        int magnitude = inscription.defaultMagnitude();
-        if (parts.length > 1) {
-            try { magnitude = Integer.parseInt(parts[1]); }
-            catch (NumberFormatException ignored) { /* keep the default */ }
-        }
-        // And never above the strength it was offered at, for the same reason.
-        magnitude = Math.min(magnitude, inscription.defaultMagnitude());
-
         ItemStack stack = player.getInventory().getStack(slot);
-        boolean written = com.crackedgames.craftics.combat.sherd.SherdModifiers
-            .inscribe(stack, inscription, magnitude);
-        if (!written) {
+        int tier = com.crackedgames.craftics.combat.sherd.SherdModifiers.inscribe(stack, inscription);
+        if (tier <= 0) {
             sendDialogue(player, buildScribeSherdDialogue(player));
             return;
         }
@@ -36269,22 +36503,27 @@ public class CombatManager {
         perPlayerScribeSlots.put(player.getUuid(), java.util.List.of());
 
         ServerWorld world = (ServerWorld) player.getEntityWorld();
-        BlockPos origin = getEventRoomOrigin(player);
+        BlockPos origin = eventRoomOriginFor(player);
         world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANT,
             origin.getX() + 4.5, origin.getY() + 2.5, origin.getZ() + 4.5, 40, 0.5, 1.0, 0.5, 0.1);
 
         sendDialogue(player, new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
             "craftics:scribe_result", "minecraft:villager", "scribe_result",
             java.util.List.of(
-                "\"It is written. The clay will remember.\"",
+                tier > 1 ? "\"Deeper, now. The clay remembers it better.\""
+                         : "\"It is written. The clay will remember.\"",
                 "§7" + stack.getName().getString() + "§7 is now "
-                    + inscription.label()),
+                    + inscription.labelAt(tier)),
             java.util.List.of()));
         // DISMISS on click-through routes back here -> finishScribePlayer.
     }
 
     /** Mark one player done with the Scribe, exit their cinematic, finalize when all are done. */
     private void finishScribePlayer(ServerPlayerEntity player) {
+        if (isVillageEvent()) {
+            finishVillagePlayer(player);
+            return;
+        }
         eventPendingPlayers.remove(player.getUuid());
         ServerPlayNetworking.send(player,
             new com.crackedgames.craftics.network.ExitEventCinematicPayload());
@@ -36320,6 +36559,10 @@ public class CombatManager {
     /** Mark one player done with the enchanter event, exit their cinematic
      *  camera, and finalize once everyone has dismissed their result. */
     private void finishEnchanterPlayer(ServerPlayerEntity player) {
+        if (isVillageEvent()) {
+            finishVillagePlayer(player);
+            return;
+        }
         eventPendingPlayers.remove(player.getUuid());
         ServerPlayNetworking.send(player,
             new com.crackedgames.craftics.network.ExitEventCinematicPayload());
@@ -36439,6 +36682,14 @@ public class CombatManager {
     /** Open the event trader with the same banked-currency screen used by the trading hall. */
     private void openTraderFor(ServerPlayerEntity player) {
         if (spawnedTrader == null || activeTraderOffer == null) return;
+        // Village: no queue. The shop is the custom trader screen, not the vanilla merchant the
+        // lock was protecting, so everyone at the trader shops at once against the shared stock
+        // (handleTraderBuy refreshes the others after each purchase).
+        if (isVillageEvent()) {
+            sendTraderWaitOverlay(player, false);
+            sendActiveTraderOffer(player, true);
+            return;
+        }
         // Serialize access to the single shared merchant. Only one party member can hold
         // the vanilla customer slot at a time; the rest queue and are opened when the
         // current shopper finishes. Without this, near-simultaneous setCustomer() calls
@@ -36507,6 +36758,10 @@ public class CombatManager {
         // Remove this player from pending traders
         traderPendingPlayers.remove(player.getUuid());
         traderQueue.remove(player.getUuid());
+        if (isVillageEvent()) {
+            finishVillagePlayer(player);
+            return;
+        }
         // Release the shared-merchant lock and hand it to the next queued shopper, so the
         // party trades one at a time instead of fighting over the single customer slot.
         if (player.getUuid().equals(currentTrader)) {
@@ -37363,6 +37618,10 @@ public class CombatManager {
             if (spawnedBarterPiglin != null) { spawnedBarterPiglin.discard(); spawnedBarterPiglin = null; }
             if (spawnedTraveler != null) { spawnedTraveler.discard(); spawnedTraveler = null; }
             if (spawnedTrader != null) { spawnedTrader.discard(); spawnedTrader = null; }
+            // A village still open here was abandoned (the leader left and the party was sent
+            // home): drop its state and release everyone's screens. endCombat runs BEFORE the
+            // cascade opens an event, so this never touches a village that is just starting.
+            if (isVillageEvent()) resetVillageState();
         } catch (Exception e) {
             CrafticsMod.LOGGER.warn("endCombat: event NPC cleanup failed: {}", e.getMessage());
         }
@@ -38964,7 +39223,8 @@ public class CombatManager {
 
         sendToAllParty(new TileSetPayload(
             moveArr, attackArr, dangerArr, warningArr, enemyMapArr, enemyTypesBuilder.toString(), mountArr,
-            warningArrowArr, forecast.pathTiles(), forecast.strikeTiles(), castArr
+            warningArrowArr, forecast.pathTiles(), forecast.strikeTiles(), castArr,
+            breathCloudLayer()
         ));
 
         // Auto-end turn when AP is depleted (configurable)
@@ -39233,10 +39493,21 @@ public class CombatManager {
     }
 
     private void clearHighlights() {
+        // Clouds are not a highlight: they hang over the enemy phase this is clearing for, so
+        // they ride along rather than being wiped with the move and attack tiles.
         sendToAllParty(new TileSetPayload(
             new int[0], new int[0], new int[0], new int[0], new int[0], "", new int[0], new int[0],
-            new int[0], new int[0], new int[0]
+            new int[0], new int[0], new int[0], breathCloudLayer()
         ));
+    }
+
+    /**
+     * The dragon's breath clouds for the client's tile layer. Every TileSetPayload replaces every
+     * layer the client holds, so every sender carries the clouds - a warning-only resync mid enemy
+     * phase would otherwise wipe them off the grid while they are still biting.
+     */
+    private int[] breathCloudLayer() {
+        return arena != null ? arena.breathCloudLayer() : new int[0];
     }
 
     /**
@@ -39301,7 +39572,7 @@ public class CombatManager {
             warnList.stream().mapToInt(Integer::intValue).toArray(),
             new int[0], "", new int[0],
             arrowList.stream().mapToInt(Integer::intValue).toArray(),
-            new int[0], new int[0], new int[0]));
+            new int[0], new int[0], new int[0], breathCloudLayer()));
     }
 
     /**
@@ -40917,6 +41188,17 @@ public class CombatManager {
             }
         }
         return Blocks.GRASS_BLOCK;
+    }
+
+    /**
+     * Ground laid over water or lava when a placed item bridges it: the biome's floor, unless that
+     * floor would fall. Sand or gravel poured onto water sinks straight to the bottom and leaves the
+     * hole it was meant to fill, so those bridge with cobblestone, which is what water and lava
+     * make of each other anyway.
+     */
+    private net.minecraft.block.Block bridgeFloorBlock() {
+        net.minecraft.block.Block floor = getBiomeFloorBlock();
+        return floor instanceof net.minecraft.block.FallingBlock ? Blocks.COBBLESTONE : floor;
     }
 
     /** Resolve the AI for an entity, preferring per-entity instance if present (for split copies with own state). */

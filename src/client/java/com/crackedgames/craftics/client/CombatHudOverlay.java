@@ -906,6 +906,17 @@ public class CombatHudOverlay implements HudRenderCallback {
         net.minecraft.block.Block floor = world.getBlockState(floorPos).getBlock();
         net.minecraft.block.Block above = world.getBlockState(floorPos.up()).getBlock();
 
+        // Dragon's breath hangs over whatever the tile already is, so it wins the tooltip. It
+        // has no block to read - the server sends it as its own tile layer.
+        CombatState.BreathCloud cloud = CombatState.getBreathClouds().get(new com.crackedgames.craftics.core.GridPos(
+            floorPos.getX() - CombatState.getArenaOriginX(), floorPos.getZ() - CombatState.getArenaOriginZ()));
+        if (cloud != null) {
+            int left = cloud.turnsLeft();
+            return new TileTooltipInfo("§5§lDragon's Breath",
+                "§fBites for §c" + cloud.damage() + "§f if you start a turn here or cross it. Costs extra Speed.",
+                "§7Ignores armor and Fire Resistance. Clears in " + left + " turn" + (left == 1 ? "" : "s") + ".");
+        }
+
         // Stealth plants - tall grass / large fern (2-block-tall).
         if (above == net.minecraft.block.Blocks.TALL_GRASS) {
             return new TileTooltipInfo("\u00a7a\u00a7lTall Grass",

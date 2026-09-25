@@ -722,7 +722,7 @@ public class CrafticsClient implements ClientModInitializer {
                         payload.dangerTiles(), payload.warningTiles(), payload.enemyMap(), payload.enemyTypes(),
                         payload.mountTiles(), payload.warningArrows(),
                         payload.forecastPath(), payload.forecastStrike(),
-                        payload.castTiles());
+                        payload.castTiles(), payload.breathClouds());
                 });
             });
 

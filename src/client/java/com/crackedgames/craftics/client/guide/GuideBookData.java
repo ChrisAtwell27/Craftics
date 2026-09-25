@@ -1350,7 +1350,7 @@ public class GuideBookData {
                     "Water no longer puts enemies out: Soaked and Burning tick side by side, so Fire Fang and Water Fang finally work together."))),
             new Page("Armor Enchantments (6)", "", List.of(
                 new Box("minecraft:compass", "Ankle Monitor", "boots · I",
-                    "Enemies come for you from any distance, ahead of closer teammates and your pets. The catch: tall grass never hides you."),
+                    "Each turn, every enemy has a 50% chance to come for you from any distance, ahead of closer teammates and your pets. The catch: tall grass never hides you."),
                 new Box("minecraft:chainmail_boots", "Quakeboots", "boots · I",
                     "Click yourself with the move item to stomp: 2 Speed, Stuns every adjacent enemy. Needs a turn to recharge after each stomp.")))
         )));

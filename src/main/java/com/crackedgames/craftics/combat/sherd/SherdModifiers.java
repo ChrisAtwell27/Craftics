@@ -17,7 +17,8 @@ import java.util.List;
  * {@link #resolve(ItemStack)} is what anything actually casting or pricing a sherd must ask.
  *
  * <p>Stored in the vanilla {@code CUSTOM_DATA} component as a single comma-separated string of
- * {@code NAME:magnitude} pairs - the same place and idiom as
+ * {@code NAME#tier} pairs (sherds from before tiers hold {@code NAME:magnitude}, still read) -
+ * the same place and idiom as
  * {@link com.crackedgames.craftics.item.SeasonStamp}. Deliberately not a registered item per
  * combination: thirteen inscriptions with magnitudes would be a combinatorial explosion of item
  * ids, and an inscribed sherd should still be a pottery sherd to every other system that looks
@@ -37,9 +38,11 @@ public final class SherdModifiers {
     /** How many inscriptions one sherd may carry. */
     public static final int MAX_INSCRIPTIONS = 3;
 
-    /** One inscription at one strength. */
-    public record Entry(SherdInscription inscription, int magnitude) {
-        public String describe() { return inscription.describe(magnitude); }
+    /** One inscription at one tier. The magnitude is read off the inscription's tier table. */
+    public record Entry(SherdInscription inscription, int tier) {
+        public int magnitude() { return inscription.magnitudeAt(tier); }
+        public String describe() { return inscription.describe(tier); }
+        public boolean canUpgrade() { return tier < inscription.maxTier(); }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -59,23 +62,47 @@ public final class SherdModifiers {
         //?} else {
         /*raw = nbt.getString(KEY, "");
         *///?}
+        return parse(raw);
+    }
+
+    /**
+     * Parse a stored inscription string. Pure, so the format is testable without a stack.
+     *
+     * <p>{@code NAME#tier} is the current form. {@code NAME:magnitude} is what sherds inscribed
+     * before tiers carry; it reads as whichever tier that magnitude reaches, so an old Kindled 2
+     * becomes Kindled I and keeps working. A garbled number keeps the inscription at tier I
+     * rather than dropping it - it should cost the player a tier, not the whole effect.
+     */
+    public static List<Entry> parse(String raw) {
+        List<Entry> out = new ArrayList<>();
         if (raw == null || raw.isEmpty()) return out;
         for (String token : raw.split(",")) {
-            String[] parts = token.split(":", 2);
+            boolean tiered = token.contains("#");
+            String[] parts = token.split(tiered ? "#" : ":", 2);
             SherdInscription inscription = SherdInscription.byName(parts[0].trim());
             if (inscription == null) continue;
-            int magnitude = inscription.defaultMagnitude();
+            int tier = 1;
             if (parts.length > 1) {
                 try {
-                    magnitude = Integer.parseInt(parts[1].trim());
+                    int value = Integer.parseInt(parts[1].trim());
+                    tier = tiered ? value : inscription.tierOf(value);
                 } catch (NumberFormatException malformed) {
-                    // Keep the inscription at its default rather than dropping it: a garbled
-                    // number should cost the player a tuning value, not the whole effect.
+                    // tier I
                 }
             }
-            out.add(new Entry(inscription, magnitude));
+            out.add(new Entry(inscription, Math.max(1, Math.min(inscription.maxTier(), tier))));
         }
         return out;
+    }
+
+    /** The stored form of a list of entries. Inverse of {@link #parse}. */
+    public static String encode(List<Entry> entries) {
+        StringBuilder sb = new StringBuilder();
+        for (Entry entry : entries) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append(entry.inscription().name()).append('#').append(entry.tier());
+        }
+        return sb.toString();
     }
 
     public static boolean isInscribed(ItemStack stack) { return !read(stack).isEmpty(); }
@@ -155,33 +182,79 @@ public final class SherdModifiers {
     // ─────────────────────────────────────────────────────────────────────
 
     /**
-     * Add an inscription to a stack.
+     * Write an inscription onto a stack: a new line at tier I, or - when the sherd already
+     * carries it - one tier up on the line it has, taking no new slot.
      *
-     * @return false when the sherd is full, already carries that inscription, or is not a sherd
+     * @return the inscription's tier on the sherd afterwards, or 0 when nothing was written
+     *         (not a sherd, full, a second legendary, or already at its highest tier)
      */
-    public static boolean inscribe(ItemStack stack, SherdInscription inscription, int magnitude) {
-        if (stack == null || stack.isEmpty() || inscription == null) return false;
-        if (!SherdRegistry.isSherd(stack.getItem())) return false;
+    public static int inscribe(ItemStack stack, SherdInscription inscription) {
+        if (stack == null || stack.isEmpty() || inscription == null) return 0;
+        if (!SherdRegistry.isSherd(stack.getItem())) return 0;
         List<Entry> entries = read(stack);
-        if (!canAccept(entries, inscription)) return false;
-        entries.add(new Entry(inscription, magnitude));
-        write(stack, entries);
-        return true;
+        int tier = applyInscription(entries, inscription);
+        if (tier > 0) write(stack, entries);
+        return tier;
     }
 
     /**
-     * Whether a sherd already carrying {@code entries} may take {@code inscription}: room left,
-     * not a duplicate, and at most one legendary. Enforced here, where every write passes, so
-     * no offer or command path can stack two legendaries on one sherd.
+     * {@link #inscribe} on a plain list, so the upgrade-or-add rule is testable without a stack.
+     * Upgrades in place, so an upgraded line keeps its position - order matters, since
+     * inscriptions fold into the spell in the order they were written.
+     *
+     * @return the resulting tier, or 0 when {@link #canAccept} refuses
+     */
+    public static int applyInscription(List<Entry> entries, SherdInscription inscription) {
+        if (!canAccept(entries, inscription)) return 0;
+        for (int i = 0; i < entries.size(); i++) {
+            Entry existing = entries.get(i);
+            if (existing.inscription() == inscription) {
+                Entry upgraded = new Entry(inscription, existing.tier() + 1);
+                entries.set(i, upgraded);
+                return upgraded.tier();
+            }
+        }
+        entries.add(new Entry(inscription, 1));
+        return 1;
+    }
+
+    /** The tier this inscription has on a sherd carrying {@code entries}, or 0 if absent. */
+    public static int tierOn(List<Entry> entries, SherdInscription inscription) {
+        for (Entry e : entries) {
+            if (e.inscription() == inscription) return e.tier();
+        }
+        return 0;
+    }
+
+    /**
+     * Whether a sherd already carrying {@code entries} may take {@code inscription}.
+     *
+     * <p>One it already carries is an UPGRADE: allowed below the inscription's highest tier,
+     * even on a full sherd, because it takes no slot. A new one needs a free slot, and a
+     * legendary needs there to be no other legendary on the sherd. Enforced here, where every
+     * write passes, so no offer or command path can get around it.
      */
     public static boolean canAccept(List<Entry> entries, SherdInscription inscription) {
-        if (inscription == null || entries.size() >= MAX_INSCRIPTIONS) return false;
+        if (inscription == null) return false;
         for (Entry existing : entries) {
-            if (existing.inscription() == inscription) return false;
-            if (inscription.isLegendary() && existing.inscription() != null
-                    && existing.inscription().isLegendary()) return false;
+            if (existing.inscription() == inscription) return existing.canUpgrade();
+        }
+        if (entries.size() >= MAX_INSCRIPTIONS) return false;
+        if (inscription.isLegendary()) {
+            for (Entry existing : entries) {
+                if (existing.inscription() != null && existing.inscription().isLegendary()) return false;
+            }
         }
         return true;
+    }
+
+    /** Whether the Scribe could still write anything on a sherd carrying {@code entries}. */
+    public static boolean hasRoomOrUpgrade(List<Entry> entries) {
+        if (entries.size() < MAX_INSCRIPTIONS) return true;
+        for (Entry e : entries) {
+            if (e.canUpgrade()) return true;
+        }
+        return false;
     }
 
     /** Strip every inscription, restoring a plain, stackable sherd. */
@@ -203,12 +276,7 @@ public final class SherdModifiers {
     }
 
     private static void write(ItemStack stack, List<Entry> entries) {
-        StringBuilder sb = new StringBuilder();
-        for (Entry entry : entries) {
-            if (sb.length() > 0) sb.append(',');
-            sb.append(entry.inscription().name()).append(':').append(entry.magnitude());
-        }
-        final String encoded = sb.toString();
+        final String encoded = encode(entries);
         NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, nbt -> nbt.putString(KEY, encoded));
     }
 }

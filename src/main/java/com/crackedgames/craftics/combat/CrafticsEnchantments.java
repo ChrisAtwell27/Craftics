@@ -258,7 +258,7 @@ public final class CrafticsEnchantments {
     public static final Entry BOILING_BRACER = new Entry("boiling_bracer", Tool.CHESTPLATE, 1,
         "Boiling Bracer", "Enemies can be Soaked and Burning at once - water no longer puts their fire out");
     public static final Entry ANKLE_MONITOR = new Entry("ankle_monitor", Tool.BOOTS, 1,
-        "Ankle Monitor", "Enemies target you from any distance, and you can't be Hidden");
+        "Ankle Monitor", "Enemies have a 50% chance to target you from any distance, and you can't be Hidden");
     public static final Entry QUAKEBOOTS = new Entry("quakeboots", Tool.BOOTS, 1,
         "Quakeboots", "Click yourself with the move item to stomp: Stuns adjacent enemies for 2 Speed, every other turn");
 

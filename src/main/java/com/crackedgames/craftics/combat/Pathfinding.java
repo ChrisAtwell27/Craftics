@@ -2,6 +2,7 @@ package com.crackedgames.craftics.combat;
 
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
+import com.crackedgames.craftics.core.GridTile;
 import com.crackedgames.craftics.core.TileType;
 
 import java.util.*;
@@ -53,6 +54,15 @@ public class Pathfinding {
      * actually matters (a wider channel leaves no jump option anyway, so it has to be walked).
      */
     public static final int LAVA_STEP_COST = MAX_JUMP_GAP + 2;
+
+    /**
+     * Whether stepping onto {@code pos} costs a walking player {@link #LAVA_STEP_COST}: lava, or a
+     * dragon-breath cloud, which bites per tile walked through exactly the way lava does, so a
+     * clicked path goes around one whenever there is a way around.
+     */
+    private static boolean pricedLikeLava(GridArena arena, GridPos pos, GridTile tile) {
+        return (tile != null && tile.getType() == TileType.LAVA) || arena.hasBreathCloud(pos);
+    }
 
     /**
      * How this player's jumps behave. Threads the movement enchantments through the jump
@@ -310,7 +320,7 @@ public class Pathfinding {
                         // warp pathing). LAVA costs LAVA_STEP_COST instead of the old flat 1, so
                         // wading it has to genuinely compete on price against jumping it - see
                         // LAVA_STEP_COST's doc for why that number was chosen.
-                        int stepCost = t != null && t.getType() == TileType.LAVA ? LAVA_STEP_COST : 1;
+                        int stepCost = pricedLikeLava(arena, step, t) ? LAVA_STEP_COST : 1;
                         relax(open, gScore, cameFrom, current, step, currentG + stepCost, maxSpeed);
                     }
                 }
@@ -428,7 +438,7 @@ public class Pathfinding {
                 }
 
                 int moveCost = ignoreHazardCost
-                    ? (neighborTile.getType() == TileType.LAVA ? LAVA_STEP_COST : 1)
+                    ? (pricedLikeLava(arena, neighbor, neighborTile) ? LAVA_STEP_COST : 1)
                     : neighborTile.getMoveCost();
                 int tentativeG = currentG + moveCost;
                 if (tentativeG < gScore.getOrDefault(neighbor, Integer.MAX_VALUE)) {
@@ -708,7 +718,7 @@ public class Pathfinding {
                         // Mirrors findPlayerPathWithJumps exactly: FIRE stays cost 1, LAVA
                         // costs LAVA_STEP_COST, or a tile reachable only by jumping there
                         // would show green while the pathfinder refuses the walk-in click.
-                        int stepCost = t.getType() == TileType.LAVA ? LAVA_STEP_COST : 1;
+                        int stepCost = pricedLikeLava(arena, step, t) ? LAVA_STEP_COST : 1;
                         int nd = currentDist + stepCost;
                         if (nd <= maxSpeed && nd < dist.getOrDefault(step, Integer.MAX_VALUE)) {
                             dist.put(step, nd);

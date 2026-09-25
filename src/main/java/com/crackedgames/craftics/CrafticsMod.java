@@ -2601,7 +2601,7 @@ public class CrafticsMod implements ModInitializer {
             // CombatManager.rollEvent compares against. Must match the
             // {@code forced.equals("...")} arms over there exactly.
             java.util.List<String> eventNames = new java.util.ArrayList<>(java.util.List.of(
-                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "disenchanter", "scribe", "trader", "piglin_barter", "none",
+                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "disenchanter", "village", "none",
                 // Also a roll-chain branch, and was missing here since it shipped - the
                 // raid was forceable in the chain but unreachable from the command.
                 "raid"

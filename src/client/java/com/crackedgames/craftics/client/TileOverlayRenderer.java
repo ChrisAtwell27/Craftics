@@ -156,6 +156,27 @@ public class TileOverlayRenderer {
     }
 
     /**
+     * A row of {@code count} small square pips centred along a tile's south edge - a countdown
+     * that reads at a glance without needing text in the world. Capped at 5 so a long timer
+     * still fits inside the tile.
+     */
+    private static void pipsTile(List<Quad> out, net.minecraft.client.world.ClientWorld world,
+                                 int ox, int oy, int oz, GridPos tile, int count, float yOff,
+                                 float r, float g, float b, float a) {
+        int n = Math.max(0, Math.min(5, count));
+        if (n == 0) return;
+        float y = tileRenderY(world, ox, oy, oz, tile.x(), tile.z()) + yOff;
+        float size = 0.10f, gap = 0.06f;
+        float row = n * size + (n - 1) * gap;
+        float x0 = ox + tile.x() + (1 - row) / 2f;
+        float z0 = oz + tile.z() + 1 - TILE_MARGIN - 0.08f - size;
+        for (int i = 0; i < n; i++) {
+            float px = x0 + i * (size + gap);
+            out.add(new Quad(px, z0, px + size, z0 + size, y, r, g, b, a));
+        }
+    }
+
+    /**
      * Blocky arrow glyph pieces in tile-local (u, v) space: u runs 0(tail)→1(tip)
      * along the arrow's direction, v runs across it. A shaft plus three narrowing
      * head strips - the stepped triangle reads instantly at tile scale and only
@@ -351,6 +372,28 @@ public class TileOverlayRenderer {
         // Danger tiles (orange).
         for (GridPos tile : CombatState.getDangerTiles()) {
             fillTile(out, world, ox, oy, oz, tile, 0f, 1.0f, 0.6f, 0.1f, 0.25f);
+        }
+
+        // The Ender Dragon's lingering breath (violet). Painted on the grid because the cloud
+        // particles alone vanish under reduced particle settings and blend into the breath
+        // attacks landing around them. A slow breathing pulse, not the fast telegraph pulse:
+        // this is ground that hurts NOW, not an attack on its way. Pips along the near edge
+        // count the turns it has left. Shown through Blindness, like lava - it is terrain, not
+        // a forecast.
+        var breathClouds = CombatState.getBreathClouds();
+        if (!breathClouds.isEmpty()) {
+            float r = colorblind ? 0.35f : 0.62f;
+            float g = colorblind ? 0.45f : 0.22f;
+            float b = 1.0f;
+            float breath = (float) (0.30 + 0.10 * Math.sin(time * 2.4));
+            for (var cloud : breathClouds.entrySet()) {
+                fillTile(out, world, ox, oy, oz, cloud.getKey(), 0.005f, r, g, b, breath);
+                fillTile(xray, world, ox, oy, oz, cloud.getKey(), 0.005f, r, g, b, 0.12f);
+                pipsTile(out, world, ox, oy, oz, cloud.getKey(), cloud.getValue().turnsLeft(), 0.0095f,
+                    lighten(r), lighten(g), b, 0.9f);
+            }
+            outlineRegion(out, world, ox, oy, oz, breathClouds.keySet(), 0.0092f,
+                lighten(r), lighten(g), b, Math.min(1.0f, breath + 0.4f));
         }
 
         // The netherite mount's 1x3 footprint side tiles (steely blue-grey, reads

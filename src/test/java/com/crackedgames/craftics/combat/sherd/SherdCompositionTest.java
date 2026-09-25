@@ -160,7 +160,7 @@ class SherdCompositionTest {
     @Test
     void everyInscriptionDescribesItselfWithItsMagnitude() {
         for (SherdInscription inscription : SherdInscription.values()) {
-            String text = inscription.describe(inscription.defaultMagnitude());
+            String text = inscription.describe(1);
             assertNotNull(text);
             assertFalse(text.isBlank(), inscription + " needs a tooltip line");
             assertTrue(text.contains(inscription.displayName()),
@@ -270,7 +270,7 @@ class SherdCompositionTest {
     void aSherdCarriesAtMostOneLegendary() {
         java.util.List<SherdModifiers.Entry> entries = new java.util.ArrayList<>();
         assertTrue(SherdModifiers.canAccept(entries, SherdInscription.DOOM));
-        entries.add(new SherdModifiers.Entry(SherdInscription.DOOM, 40));
+        entries.add(new SherdModifiers.Entry(SherdInscription.DOOM, 1));
         assertFalse(SherdModifiers.canAccept(entries, SherdInscription.TEMPEST),
             "a second legendary must be refused");
         assertTrue(SherdModifiers.canAccept(entries, SherdInscription.KINDLED),
@@ -298,6 +298,100 @@ class SherdCompositionTest {
     void legendariesAreMarkedInTheirLabel() {
         assertTrue(SherdInscription.DOOM.label().contains("★"));
         assertFalse(SherdInscription.KINDLED.label().contains("★"));
+    }
+
+    // ── Tiers ───────────────────────────────────────────────────────────
+
+    @Test
+    void everyTierTableRisesAndClamps() {
+        for (SherdInscription inscription : SherdInscription.values()) {
+            for (int t = 2; t <= inscription.maxTier(); t++) {
+                assertTrue(inscription.magnitudeAt(t) > inscription.magnitudeAt(t - 1),
+                    inscription + " tier " + t + " must be stronger than tier " + (t - 1));
+            }
+            assertEquals(inscription.magnitudeAt(1), inscription.magnitudeAt(0), "below I clamps to I");
+            assertEquals(inscription.magnitudeAt(inscription.maxTier()),
+                inscription.magnitudeAt(inscription.maxTier() + 5), "above max clamps to max");
+        }
+    }
+
+    @Test
+    void rollingAnInscriptionAgainUpgradesItWithoutTakingASlot() {
+        java.util.List<SherdModifiers.Entry> entries = new java.util.ArrayList<>();
+        assertEquals(1, SherdModifiers.applyInscription(entries, SherdInscription.FARSIGHTED));
+        assertEquals(1, SherdModifiers.applyInscription(entries, SherdInscription.KINDLED));
+        assertEquals(1, SherdModifiers.applyInscription(entries, SherdInscription.SERRATED));
+        assertEquals(3, entries.size(), "precondition: the sherd is full");
+
+        assertEquals(2, SherdModifiers.applyInscription(entries, SherdInscription.FARSIGHTED),
+            "a full sherd still upgrades a line it already has");
+        assertEquals(3, entries.size(), "an upgrade takes no slot");
+        assertEquals(SherdInscription.FARSIGHTED, entries.get(0).inscription(),
+            "an upgrade stays where it was - inscriptions apply in order");
+        assertEquals(2, entries.get(0).magnitude());
+        assertEquals(0, SherdModifiers.applyInscription(entries, SherdInscription.WITHERING),
+            "a new line still needs a free slot");
+    }
+
+    @Test
+    void anInscriptionAtItsHighestTierIsNotOfferedAgain() {
+        java.util.List<SherdModifiers.Entry> entries = new java.util.ArrayList<>();
+        entries.add(new SherdModifiers.Entry(SherdInscription.FARSIGHTED,
+            SherdInscription.FARSIGHTED.maxTier()));
+        assertFalse(SherdModifiers.canAccept(entries, SherdInscription.FARSIGHTED));
+        assertEquals(0, SherdModifiers.applyInscription(entries, SherdInscription.FARSIGHTED));
+    }
+
+    @Test
+    void onOffInscriptionsHaveOneTier() {
+        // Nothing to scale on these, so a second copy would be a wasted pick.
+        for (SherdInscription single : new SherdInscription[]{
+                SherdInscription.LEECHING, SherdInscription.ENDURING, SherdInscription.ECHOING}) {
+            assertEquals(1, single.maxTier(), single + " should not be upgradable");
+        }
+    }
+
+    @Test
+    void aLegendaryCanBeUpgradedButNotJoinedByAnother() {
+        java.util.List<SherdModifiers.Entry> entries = new java.util.ArrayList<>();
+        SherdModifiers.applyInscription(entries, SherdInscription.DOOM);
+        assertEquals(2, SherdModifiers.applyInscription(entries, SherdInscription.DOOM));
+        assertEquals(0, SherdModifiers.applyInscription(entries, SherdInscription.TEMPEST));
+    }
+
+    @Test
+    void aFullSherdWithNothingLeftToUpgradeIsNotInscribable() {
+        java.util.List<SherdModifiers.Entry> entries = new java.util.ArrayList<>();
+        entries.add(new SherdModifiers.Entry(SherdInscription.LEECHING, 1));
+        entries.add(new SherdModifiers.Entry(SherdInscription.ENDURING, 1));
+        entries.add(new SherdModifiers.Entry(SherdInscription.FORCEFUL, SherdInscription.FORCEFUL.maxTier()));
+        assertFalse(SherdModifiers.hasRoomOrUpgrade(entries));
+        entries.set(2, new SherdModifiers.Entry(SherdInscription.FORCEFUL, 1));
+        assertTrue(SherdModifiers.hasRoomOrUpgrade(entries));
+    }
+
+    @Test
+    void storageRoundTripsTiers() {
+        java.util.List<SherdModifiers.Entry> entries = java.util.List.of(
+            new SherdModifiers.Entry(SherdInscription.KINDLED, 3),
+            new SherdModifiers.Entry(SherdInscription.DOOM, 1));
+        assertEquals(entries, SherdModifiers.parse(SherdModifiers.encode(entries)));
+    }
+
+    @Test
+    void sherdsInscribedBeforeTiersStillRead() {
+        // The old format stored the magnitude itself. Kindled 2 was the only strength the
+        // Scribe ever wrote, and it is Kindled I now.
+        java.util.List<SherdModifiers.Entry> legacy = SherdModifiers.parse("KINDLED:2,REAPING:25");
+        assertEquals(2, legacy.size());
+        assertEquals(new SherdModifiers.Entry(SherdInscription.KINDLED, 1), legacy.get(0));
+        assertEquals(new SherdModifiers.Entry(SherdInscription.REAPING, 1), legacy.get(1));
+    }
+
+    @Test
+    void storedTiersAboveTheTableAreClamped() {
+        assertEquals(SherdInscription.FARSIGHTED.maxTier(),
+            SherdModifiers.parse("FARSIGHTED#99").get(0).tier());
     }
 
     @Test

@@ -177,6 +177,14 @@ public sealed interface EnemyAction {
         public IgniteTiles(List<GridPos> tiles, boolean soulFire) { this(tiles, soulFire, null); }
     }
 
+    /**
+     * Leave the Ender Dragon's harming breath hanging over {@code tiles} for {@code turns}
+     * rounds. A player who starts a turn in it, or walks through it, takes {@code damage} of
+     * magic: no armor, dodge, Fire Resistance or Piglin Head stops it, and it never spreads fire.
+     * The dragon's own adds are unaffected.
+     */
+    record BreathCloud(List<GridPos> tiles, int turns, int damage) implements EnemyAction {}
+
     /** Place cobweb overlays on the listed tiles for {@code duration} turns.
      *  Unlike {@link CreateTerrain}, the cobweb is placed at floor+1 (so the
      *  floor stays intact underneath) and goes through the arena's web-overlay

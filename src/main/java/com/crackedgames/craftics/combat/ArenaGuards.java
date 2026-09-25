@@ -36,6 +36,12 @@ public final class ArenaGuards {
             if (!(entity instanceof ServerPlayerEntity player)) return true;
             if (!CombatManager.isEngaged(player.getUuid())) return true;
 
+            // Vanilla fall damage never belongs in a fight. Falling is the combat tick's call, and
+            // it only kills over a VOID tile (GridArena#fallIsLethalAt); a player who dropped
+            // anywhere else is rescued. Landing damage from that drop would route through the
+            // death takeover below and kill them on a tile the rule says is safe.
+            if (source.isIn(net.minecraft.registry.tag.DamageTypeTags.IS_FALL)) return false;
+
             // Only entity-sourced damage is refused. Anything the mod applies itself goes
             // directly to health and never arrives here, so this cannot swallow a hazard,
             // a status tick, or a boss ability - only something swinging on its own initiative.

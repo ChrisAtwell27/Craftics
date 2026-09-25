@@ -20,12 +20,15 @@ public record TileSetPayload(
     int[] warningArrows, // flat: [x, z, dx, dz, ...] - directional telegraph arrow glyphs
     int[] forecastPath,  // flat: [x1, z1, ...] - tiles enemies will walk next turn (Steampunk radar)
     int[] forecastStrike,// flat: [x1, z1, ...] - tiles that will be struck next turn (Steampunk radar)
-    int[] castTiles      // flat: [x1, z1, ...] - where the held sherd may be aimed, or the area
+    int[] castTiles,     // flat: [x1, z1, ...] - where the held sherd may be aimed, or the area
                          //       a self-cast one covers. Its own layer rather than reusing
                          //       attackTiles: those mean "swing here", and a hex trap's legal
                          //       ground or a blink's landing tiles are not attacks. Sharing the
                          //       list would also have made the range ring vanish the moment a
                          //       weapon range recomputed.
+    int[] breathClouds   // flat: [x, z, turnsLeft, damage, ...] - the Ender Dragon's lingering
+                         //       breath. Painted on the grid so it reads even when particles
+                         //       are turned down, and carries its bite for the hover info.
 ) implements CustomPayload {
 
     public static final Id<TileSetPayload> ID =
@@ -46,8 +49,9 @@ public record TileSetPayload(
         int[] forecastPath = readIntArray(buf);
         int[] forecastStrike = readIntArray(buf);
         int[] cast = readIntArray(buf);
+        int[] clouds = readIntArray(buf);
         return new TileSetPayload(move, attack, danger, warning, enemy, types, mount, arrows,
-            forecastPath, forecastStrike, cast);
+            forecastPath, forecastStrike, cast, clouds);
     }
 
     private void encode(RegistryByteBuf buf) {
@@ -62,6 +66,7 @@ public record TileSetPayload(
         writeIntArray(buf, forecastPath);
         writeIntArray(buf, forecastStrike);
         writeIntArray(buf, castTiles);
+        writeIntArray(buf, breathClouds);
     }
 
     private static void writeIntArray(RegistryByteBuf buf, int[] arr) {

@@ -24,6 +24,8 @@ public class GridArena {
     private final Map<GridPos, CombatEntity> occupants = new HashMap<>();
     private GridPos playerGridPos;
     private final Map<GridPos, Integer> webOverlays = new HashMap<>();
+    /** Dragon breath clouds by tile: {turns left, damage}. */
+    private final Map<GridPos, int[]> breathClouds = new HashMap<>();
 
     /** Tracks tiles that were converted to OBSTACLE by VFX (mace slam debris landing).
      *  Value is the prior TileType so we can restore on cleanup. */
@@ -112,6 +114,28 @@ public class GridArena {
 
     public boolean isInBounds(GridPos pos) {
         return isInBounds(pos.x(), pos.z());
+    }
+
+    /** The grid tile over world column {@code (blockX, blockZ)}, or null outside the grid. */
+    public GridPos gridPosAtColumn(int blockX, int blockZ) {
+        GridPos pos = new GridPos(blockX - origin.getX(), blockZ - origin.getZ());
+        return isInBounds(pos) ? pos : null;
+    }
+
+    /**
+     * Whether a player who has sunk below the floor at world column {@code (blockX, blockZ)} dies
+     * for it. Only a VOID tile kills: that is the one tile the grid tells you drops you.
+     *
+     * <p>Everywhere else a fall means the world and the grid disagree - the block under a walkable
+     * tile is gone, deep water swallowed someone the grid never moved there, a shove carried them
+     * off the edge - and the player walked or was put somewhere the game promised would hold them.
+     * Those are rescues, never deaths.
+     */
+    public boolean fallIsLethalAt(int blockX, int blockZ) {
+        GridPos pos = gridPosAtColumn(blockX, blockZ);
+        if (pos == null) return false;
+        GridTile tile = getTile(pos);
+        return tile != null && tile.getType() == TileType.VOID;
     }
 
     // --- Occupant tracking ---
@@ -255,6 +279,26 @@ public class GridArena {
         return occupants;
     }
 
+    /**
+     * Manhattan distance from a ground blast at {@code from} to {@code e}, or
+     * {@link Integer#MAX_VALUE} when nothing of it is on the ground to hit.
+     *
+     * <p>An ordinary combatant is measured to its tile. A background boss is not standing on its
+     * grid position - that is a sentinel - so it is measured to the tiles registered for it, the
+     * same surface ranged attacks aim at, and is out of reach while it has none. Measured to the
+     * sentinel instead, a crystal or TNT dropped beside the parked Ender Dragon's perch corner hit
+     * it while it was up in the sky and untargetable by anything else.
+     */
+    public int blastDistance(CombatEntity e, GridPos from) {
+        if (!e.isBackgroundBoss()) return from.manhattanDistance(e.getGridPos());
+        int best = Integer.MAX_VALUE;
+        for (Map.Entry<GridPos, CombatEntity> entry : occupants.entrySet()) {
+            if (entry.getValue() != e) continue;
+            best = Math.min(best, from.manhattanDistance(entry.getKey()));
+        }
+        return best;
+    }
+
     // --- Web overlay tracking (Broodmother) ---
 
     /** Sentinel duration meaning "this web never ticks down" - used for cobwebs
@@ -300,6 +344,64 @@ public class GridArena {
 
     public void clearAllWebOverlays() {
         webOverlays.clear();
+    }
+
+    // --- Dragon breath clouds (Ender Dragon) ---
+
+    /**
+     * Put a harming breath cloud on {@code pos} for {@code turns} rounds, biting for
+     * {@code damage}. A cloud landing on one already there keeps the longer timer and the
+     * harder bite of the two, so a weak cloud never softens a strong one.
+     */
+    public void setBreathCloud(GridPos pos, int turns, int damage) {
+        if (pos == null || turns <= 0 || !isInBounds(pos)) return;
+        int[] prior = breathClouds.get(pos);
+        if (prior != null) {
+            turns = Math.max(turns, prior[0]);
+            damage = Math.max(damage, prior[1]);
+        }
+        breathClouds.put(pos, new int[]{turns, damage});
+    }
+
+    public boolean hasBreathCloud(GridPos pos) {
+        return breathClouds.containsKey(pos);
+    }
+
+    /** What the cloud on {@code pos} bites for, or 0 when the tile is clear. */
+    public int breathCloudDamage(GridPos pos) {
+        int[] cloud = breathClouds.get(pos);
+        return cloud != null ? cloud[1] : 0;
+    }
+
+    public java.util.Set<GridPos> getBreathCloudTiles() {
+        return java.util.Collections.unmodifiableSet(breathClouds.keySet());
+    }
+
+    /** Every cloud flattened for the client's tile layer: {@code [x, z, turnsLeft, damage, ...]}. */
+    public int[] breathCloudLayer() {
+        int[] out = new int[breathClouds.size() * 4];
+        int i = 0;
+        for (Map.Entry<GridPos, int[]> e : breathClouds.entrySet()) {
+            out[i++] = e.getKey().x();
+            out[i++] = e.getKey().z();
+            out[i++] = e.getValue()[0];
+            out[i++] = e.getValue()[1];
+        }
+        return out;
+    }
+
+    /** Age every cloud one round. Returns the tiles whose cloud ran out. */
+    public java.util.List<GridPos> tickBreathClouds() {
+        java.util.List<GridPos> expired = new java.util.ArrayList<>();
+        var it = breathClouds.entrySet().iterator();
+        while (it.hasNext()) {
+            var entry = it.next();
+            if (--entry.getValue()[0] <= 0) {
+                expired.add(entry.getKey());
+                it.remove();
+            }
+        }
+        return expired;
     }
 
     // --- VFX obstacle tracking (mace slam debris) ---

@@ -44,7 +44,7 @@ public abstract class BossAI implements EnemyAI {
         turnCounter++;
 
         // Phase transition check
-        if (!phaseTwo && self.getCurrentHp() <= self.getMaxHp() / 2) {
+        if (!phaseTwo && reachedPhaseTwo(self)) {
             phaseTwo = true;
             justTransitionedToPhase2 = true;
             onPhaseTransition(self, arena, playerPos);
@@ -105,10 +105,20 @@ public abstract class BossAI implements EnemyAI {
     }
 
     /**
-     * Called once when the boss transitions to Phase 2 (≤50% HP).
-     * Subclasses can use this to set enraged state, create terrain, etc.
+     * Called once when the boss transitions to Phase 2 (see {@link #reachedPhaseTwo}, half of
+     * max HP by default). Subclasses can use this to set enraged state, create terrain, etc.
      */
     protected abstract void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos);
+
+    /**
+     * Whether {@code self} is hurt enough for Phase 2: half its max HP or less, unless the boss
+     * says otherwise (the Ender Dragon moves it to two thirds, so its three tiers split its health
+     * evenly). Integer comparison on purpose - a fraction like 2/3 in floating point lands a hair
+     * under the line and misses an HP value sitting exactly on it.
+     */
+    protected boolean reachedPhaseTwo(CombatEntity self) {
+        return self.getCurrentHp() * 2 <= self.getMaxHp();
+    }
 
     /**
      * Choose which ability to use this turn. Called every turn after phase/cooldown handling.

@@ -1366,6 +1366,15 @@ public class CombatState {
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getForecastPath() { return cachedForecastPath; }
     /** Steampunk radar: tiles that will be struck on the enemies' next turn. */
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getForecastStrike() { return cachedForecastStrike; }
+
+    /** One tile of the Ender Dragon's lingering breath: rounds it has left and what it bites for. */
+    public record BreathCloud(int turnsLeft, int damage) {}
+    private static final java.util.Map<com.crackedgames.craftics.core.GridPos, BreathCloud> cachedBreathClouds =
+        new java.util.HashMap<>();
+    /** The dragon's breath clouds by tile; empty outside the dragon fight. */
+    public static java.util.Map<com.crackedgames.craftics.core.GridPos, BreathCloud> getBreathClouds() {
+        return cachedBreathClouds;
+    }
     public static java.util.Map<com.crackedgames.craftics.core.GridPos, Integer> getEnemyGridMap() { return enemyGridMap; }
     public static java.util.Map<com.crackedgames.craftics.core.GridPos, String> getEnemyGridTypeMap() { return enemyGridTypeMap; }
     public static com.crackedgames.craftics.core.GridPos getHoveredTile() { return hoveredTile; }
@@ -1379,7 +1388,7 @@ public class CombatState {
                                        int[] warningTiles, int[] enemyMapData, String enemyTypes,
                                        int[] mountTiles, int[] warningArrows,
                                        int[] forecastPath, int[] forecastStrike,
-                                       int[] castTiles) {
+                                       int[] castTiles, int[] breathClouds) {
         cachedMoveTiles.clear();
         cachedAttackTiles.clear();
         cachedDangerTiles.clear();
@@ -1389,8 +1398,13 @@ public class CombatState {
         cachedForecastPath.clear();
         cachedForecastStrike.clear();
         cachedCastTiles.clear();
+        cachedBreathClouds.clear();
         enemyGridMap.clear();
         enemyGridTypeMap.clear();
+
+        for (int i = 0; i + 3 < breathClouds.length; i += 4)
+            cachedBreathClouds.put(new com.crackedgames.craftics.core.GridPos(breathClouds[i], breathClouds[i + 1]),
+                new BreathCloud(breathClouds[i + 2], breathClouds[i + 3]));
 
         for (int i = 0; i + 1 < forecastPath.length; i += 2)
             cachedForecastPath.add(new com.crackedgames.craftics.core.GridPos(forecastPath[i], forecastPath[i + 1]));
@@ -1438,6 +1452,7 @@ public class CombatState {
         cachedMountTiles.clear();
         cachedCastTiles.clear();
         cachedWarningArrows.clear();
+        cachedBreathClouds.clear();
         enemyGridMap.clear();
         enemyGridTypeMap.clear();
         teammateHovers.clear();

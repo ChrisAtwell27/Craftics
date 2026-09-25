@@ -2,6 +2,42 @@
 
 0.4.9
 
+The Ender Dragon Fights Back
+
+The dragon's attacks were easy to wait out. Every one was aimed at the tile you stood on, so a single step dodged it, and it only attacked every other turn. Fire Resistance or a Piglin Head shut off the one pressure that lasted, the fire. Nothing punished sitting back between perches. The fight now gets harder as the dragon weakens.
+
+- **Three phases.** Above 2/3 health it throws one attack at a time. At 2/3 it enrages and throws two at once. At 1/3 it throws three at once and no longer rests between attacks: the next one is warned the same turn the last one lands. Each phase change forces a perch
+- **Stacked attacks are still fair.** However many attacks the dragon throws at once, they share one warning and one hit. Every glowing tile hurts, nothing else does, and you are only hit once even where attacks overlap. Chat names the attacks in each one
+- **New attack: Fireball.** It bursts on your tile and the four tiles around it, then leaves a cloud of dragon's breath there for 3 turns
+- **Swoops leave breath behind.** The middle of a swoop's path stays clouded for 2 turns after it passes
+- **Dragon's breath is magic.** Armor, dodging, Fire Resistance and a Piglin Head don't stop it. It hurts when you start your turn in it or walk through it, and it never spreads fire. Walking through costs extra Speed the way lava does, so paths go around it when they can. The dragon's own adds are immune
+- **You can always see the breath.** Every clouded tile glows a slow-pulsing violet on the grid, with pips along its edge counting the turns it has left, so it shows even with particles turned down. Hovering one shows its damage and how long it lasts
+- **Breath Wave reaches you now.** It rolls in from the nearest edge all the way to your tile, instead of stopping at the wall, so the middle of the arena is no longer safe from it
+- **The dragon calls its brood as it lands.** Every perch brings its Endermen, Shulkers and Phantoms back up to 3, 5 or 7 by phase. They never appear right next to a player, on the landing spot, or in fire or breath
+- **Fixed end crystals, TNT, cactus and lightning rods hitting the dragon while it was in the sky.** Their blasts measured distance to a fixed spot on the ground that stood in for the dragon even while it was out of reach. A crystal placed there and shot took a chunk of the dragon's health while nothing else could touch it. Blasts now only reach the dragon while it is perched
+
+No More Falling Through Solid Ground
+
+Stepping onto a tile that looked like normal ground could kill you on the spot. Dropping below the arena floor was an instant death, and the check never asked what the tile under you was meant to be. If the ground under a walkable tile had gone missing, you fell through it and died with no warning.
+
+- **Falling only kills you over a void tile now.** Anywhere else, whether ground that gave way, water deeper than it looked or a shove off the edge of the arena, you are put back on the nearest solid tile instead. If the tile you fell through looked walkable, it becomes a hole so nobody else walks into it
+- **Vanilla fall damage no longer applies during a fight**, so a drop can't kill you on the way down either
+- **Fixed torches, banners, campfires, lanterns and similar items turning deep water into a death trap.** Placing one on water, deep water or lava marks the tile as ground, but the item sits on top of the tile and nothing was put under it, so over deep water you sank straight through. Placing on those tiles now lays a real block of ground first, which is put back to water or lava when the fight ends. Where the biome's ground is sand or gravel it uses cobblestone, since sand would just sink
+- **Powder snow can no longer be poured onto deep water**, and **bone meal and replanted grass no longer grow on water or lava.** Both made the tile walkable with nothing to stand on
+- When a fall through walkable ground is caught, the server log now records what was actually under the tile, so the next report can be traced to its cause
+
+The Village
+
+The wandering trader, the enchanter and the Scribe are now one event. You stumble upon a village full of different workers, and each party member picks who to visit.
+
+- **Everyone picks their own stop.** The menu shows who is at each one: which trader is in town, with a preview of its stock, plus the enchanter and the Scribe. Different players can go to different stops at the same time
+- **Nobody moves on until everyone is done.** Anyone who finishes early waits on a "waiting for the rest of the party" screen, then the whole party heads into the next level together
+- **In the Nether it is a bastion outpost.** The trader stop is the piglin barter, and the enchanter and Scribe are piglins
+- **The whole party can shop at the trader at once.** You used to take turns at the stall; the stock is still shared and updates for everyone as it sells
+- **Keep moving** skips the village and waits for the others
+- **Fewer events overall.** The village takes the trader's place in the event roll, and the enchanter's and Scribe's separate 6% chances are gone
+- `/craftics force_event village` forces it. The old `trader`, `enchanter`, `scribe` and `piglin_barter` names still work
+
 Home Stays Home
 
 On 1.21.1 servers, leaving your island could lock you out of it. Every /home, every visit and even logging back in would put you straight back at the lobby spawn, and only a server restart fixed it.
@@ -40,8 +76,65 @@ Like the rest of the armor enchants, these only work on the piece you are wearin
 
 - **Clockwork (chest):** the first 3 actions of your first turn are remembered. Open your second turn with the same 3 actions in the same order and your next attack deals 2x. Only the first 3 actions of each turn count, and a first turn with fewer than 3 never winds the watch. One chance per fight. Moves, attacks, item uses, mining, Lead commands and stomps are all actions; clicks that the game refuses do not count
 - **Boiling Bracer (chest):** while anyone in the party wears it, water no longer puts enemies out. Soaked and Burning tick side by side, so Fire Fang and Water Fang finally work together. Burning mobs stop running for water, since it can't save them. Your own status effects are unaffected
-- **Ankle Monitor (boots):** enemies come for you from any distance, ahead of closer teammates and of pets that hurt them. Their hits, shots and shoves land on you too. A taunting ally still pulls enemies off you. The catch: you can never be Hidden. Tall grass doesn't conceal you or turn you invisible
+- **Ankle Monitor (boots):** each turn, every enemy has a 50% chance to come for you from any distance, ahead of closer teammates and of pets that hurt them. An enemy that comes for you hits, shoots and shoves you too, not whoever ended up closer. A taunting ally still pulls enemies off you. The catch: you can never be Hidden. Tall grass doesn't conceal you or turn you invisible
 - **Quakeboots (boots):** click yourself (or your own tile) with the move item to stomp. It costs 2 Speed and Stuns every enemy on the 8 tiles around you. The boots then need a turn to recharge, so you can stomp every other turn. Not usable while riding
+
+The Scribe Knows More Words
+
+The Scribe now writes 35 inscriptions, up from 13: 28 ordinary ones and 7 rare legendaries. Every inscription now has tiers.
+
+Tiers:
+
+- **Being offered an inscription your sherd already has upgrades it** instead of taking a new slot. Farsighted I (+1 range) becomes Farsighted II (+2 range). A sherd with all three slots used can still be upgraded
+- Most inscriptions go up to tier III and a few stop at II. On/off inscriptions (Leeching, Enduring, Echoing) have only one tier
+- Sherds inscribed before this update keep their inscriptions, at tier I
+
+New ones that apply to every enemy the sherd hits (values are tier I/II/III):
+
+- **Serrated** - also inflicts 2/3/4 Bleed
+- **Venomous** - also poisons for 3/4/5 turns
+- **Drenching** - also Soaks for 2/3/4 turns (double lightning damage, puts out fire)
+- **Chilling** - also slows for 2/3/4 turns
+- **Blinding** - also blinds for 2/3/4 turns
+- **Dazing** - 25/35/45% chance to stun each target
+- **Enfeebling** - also lowers ATK by 3/5/7
+- **Empowered** - +4/7/10 damage to every enemy hit
+
+New ones for you and your pets, on any sherd:
+
+- **Heartening** - also heals you 6/10/14 HP
+- **Emboldening** - grants Strength for 2/3/4 turns
+- **Swift** - grants Speed for 2/3/4 turns
+- **Bulwark** - grants Absorption for 2/3/4 turns
+- **Fortunate** - grants Luck for 3/4/5 turns
+- **Rallying** - every pet gains +3/5/7 ATK for 3 turns
+
+New one for the sherd itself:
+
+- **Tempered** - shatter chance -4/-7%
+
+Legendary inscriptions, marked with a gold ★. On any visit there is a 5% chance the Scribe also offers one, on top of the usual picks. A sherd can carry only one legendary, but can upgrade it:
+
+- **★ Echoing** - the spell casts twice, for +1 AP (aimed sherds only, one tier)
+- **★ Tempest** - +2/3/4 chains, and Soaks everything it hits
+- **★ Cataclysm** - impacts spread 1 tile further and burn for 3/4/5 turns
+- **★ Sanguine** - inflicts 3/4/5 Bleed and heals you for the damage dealt
+- **★ Doom** - executes non-boss targets below 40/45/50% HP
+- **★ Warlord** - grants Strength II, Resistance II and Speed for 3/4/5 turns
+- **★ Packmaster** - every pet heals 50% of its max HP and gains +5/7/9 ATK
+
+Fixes:
+
+- **Harmful inscriptions no longer hit your own pets.** Kindled, Forceful, Withering and Sundering attached to every step of a spell, including a step aimed at your pets, so Kindled on Guardian Spirit set the whole pack on fire. They now only land on enemies
+- **Resonant no longer heals a pet several times over.** Widening a pet heal made each pet catch its neighbours. Resonant and Arcing now only widen steps that strike enemies
+- **The Scribe only offers inscriptions that would do something on the sherd you picked.** No more Farsighted for a self-cast, Fluent for a 1 AP sherd, Enduring for an unbreakable one, or a burn for a sherd that never hits an enemy. The offer stays the same for a given sherd however often you back out and look
+
+No More Spawning In Lava
+
+Entering a level in a busy party, or in a lava-ringed cavern, could drop you straight onto lava. The spawn search only asked whether a tile was walkable, and lava and fire count as walkable because they only hurt. Once the party and its pets took the safe tiles nearest the start, the next closest tile was often a hazard.
+
+- **Players now spawn on safe ground first.** Lava, fire, embers and other hazard tiles are only used when the arena has no safe tile left at all
+- **Pets no longer spawn on top of a teammate.** Players are not tracked as tile occupants the way mobs are, so a pet could be placed on a party member's tile, hiding them under the cursor. Every ally now gets its own tile
 
 0.4.8
 

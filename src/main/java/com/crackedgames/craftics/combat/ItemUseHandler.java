@@ -1813,6 +1813,11 @@ public class ItemUseHandler {
         }
         String ground = requireFlatGround(arena, targetTile);
         if (ground != null) return ground;
+        // Cover retypes the tile to walkable grass without putting any ground under it, so on
+        // deep water it made a tile you could step onto and sink through.
+        if (tile.isWater() || tile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+            return "§cNothing will take root there.";
+        }
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "grow_cover:" + targetTile.x() + ":" + targetTile.z()
             + "|§aGrass bursts up out of the ground. §7Cover you can crouch in.";
@@ -1836,6 +1841,10 @@ public class ItemUseHandler {
         }
         String ground = requireFlatGround(arena, targetTile);
         if (ground != null) return ground;
+        // Same reason as bone meal: cover over water or lava is walkable with no ground under it.
+        if (tile.isWater() || tile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+            return "§cNothing will take root there.";
+        }
         stack.decrement(1);
         String kind = item == Items.LARGE_FERN ? "fern" : "grass";
         return TILE_EFFECT_PREFIX + "place_cover_" + kind + ":" + targetTile.x() + ":" + targetTile.z()
@@ -2291,8 +2300,10 @@ public class ItemUseHandler {
      * <p>WATER, DEEP_WATER and LAVA are deliberately NOT rejected: placing a block onto
      * one of those is how a player bridges a hazard tile, and DEEP_WATER is the whole
      * point (it is otherwise impassable without a boat). CombatManager's tile-effect
-     * handler flips the tile to NORMAL once the block goes down - walkability is driven
-     * by TileType, not the block sitting on it, so the guard alone isn't enough.
+     * handler flips the tile to NORMAL once the block goes down, and lays a real floor
+     * block in place of the water or lava - walkability is driven by TileType, not the
+     * block sitting on it, so the guard alone isn't enough, and a NORMAL tile with only
+     * water under it is one the player sinks straight through.
      */
     private static String requireFlatGround(GridArena arena, GridPos targetTile) {
         GridTile tile = arena.getTile(targetTile);
@@ -2429,6 +2440,11 @@ public class ItemUseHandler {
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
         String ground = requireFlatGround(arena, targetTile);
         if (ground != null) return ground;
+        // Powder snow holds nobody up - you sink into it - so over deep water it would make a
+        // walkable tile with the river still underneath.
+        if (arena.getTile(targetTile).getType() == com.crackedgames.craftics.core.TileType.DEEP_WATER) {
+            return "§cIt would sink straight to the bottom!";
+        }
         // If an enemy is right on the target tile, freeze them immediately.
         CombatEntity enemy = arena.getOccupant(targetTile);
         String hitMsg = "";
