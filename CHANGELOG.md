@@ -1,5 +1,62 @@
 ﻿Changelog
 
+0.4.10
+
+Bosses That Keep Up
+
+Several melee bosses were slower than the player and had no reliable way to close the distance, so backing away from them was always safe. Three of them were also missing their charge because of bugs.
+
+- **Faster bosses.** The Revenant moves 2 tiles a turn (was 1). The Sandstorm Pharaoh and the Tidecaller move 3 (was 2). The Frostbound Huntsman moves 3, and 4 in phase 2 (was 2 and 3). The Hollow King moves 3 at close range (was 2). The Warden moves 4 (was 3). The Wither moves 3, and 4 in phase 2 (was 2 in both)
+- **Fixed the Rockbreaker's Charge never happening.** It telegraphed the charge and then stood still
+- **Fixed the Bastion Brute's Gore Charge and the Wither's charge doing nothing** when they came with a fire or decay trail, or landed on the same turn as another action. The boss now actually travels the lane and hits whoever is in it
+- **Fixed bosses refusing to walk through their own fire, lava and decay.** Bosses are immune to those, but still treated them as walls. The Bastion Brute could box itself in with its own fire, and the Wither could not walk back over ground it had rotted
+
+The Aether
+
+Compatibility with The Aether, in progress. The gear, the creatures and the three dungeons are in. The dungeon bosses do not fight yet: the Slider, the Valkyrie Queen and the Sun Spirit are still to come.
+
+- **The Aether opens beside The End.** Beat the Nether and both unlock at once. The Aether is optional: it has its own tab on the level select and its own progress, the Ender Dragon is still the final boss, and you can finish the campaign without going up there. Its three dungeons open in order, Bronze, Silver, Gold, and are as hard as the End biomes that open alongside them.
+- **Aether creatures.** Zephyrs shove you with a gust that does no damage. Cockatrices shoot poison needles and back away. Swets swallow you and leave you Levitating, unless you wear a Swet Cape. Sentries sleep until you come close, then walk up and explode. Valkyries leave you alone until you hit one, then lunge and blink. Fire Minions set you Burning. Aechor Plants sit rooted in their own patch of grass and spit poison. Whirlwinds wander and toss whoever is beside them; Evil Whirlwinds hunt you and hit when they do it. Mimics, Moas and the Aether's farm animals are here too.
+- **Gear from below is out of its depth.** A weapon that is not from the Aether deals 20% less to Aether creatures, and each piece of non-Aether armor lets them hit 5% harder. Mild on purpose: the Aether itself would cut a 12 damage sword to 4.
+- Modders: `CrafticsAPI.registerSideRegion` adds an optional region beside any campaign.
+
+- **Every Aether weapon fights.** Skyroot, Holystone, Zanite, Gravitite and Valkyrie tools sit at the tier they mine at (wood, stone, iron, diamond, diamond), and each keeps its trick. Skyroot kills drop double loot. Holystone knocks Ambrosium Shards loose. Zanite hits harder the more worn it is, on the Aether's own curve. Gravitite launches a grounded target so it crashes back down. Valkyrie weapons reach 2 tiles.
+- **Dungeon weapons.** Flaming Sword sets targets Burning. Lightning Sword calls a bolt on every hit, doubled on Soaked targets. Holy Sword does half again to the undead. Vampire Blade heals you. Pig Slayer doubles against pigs, piglins and hoglins. Candy Cane Sword drops candy canes. Hammer of Kingbdogz is a thrown shockwave with knockback.
+- **Ranged.** Dart Shooters fire their own darts, one per shot, so darts are ammo and the Poison Dart Shooter poisons. Phoenix Bow uses arrows and sets targets alight. Cloud Staff fires a crystal that Weakens. Lightning Knives are thrown for lightning damage.
+- **Armor sets.** Zanite, Gravitite, Valkyrie, Neptune, Phoenix and Obsidian each have an armor class and a set bonus. A full Valkyrie set cannot be knocked back, Neptune cannot be Soaked, Phoenix cannot be set Burning. Sentry Boots shorten any knockback by a tile.
+- **Accessories.** Gloves add Melee Power. Ice Ring and Ice Pendant shorten burns. Agility Cape adds Speed, Invisibility Cloak adds Stealth Range, Valkyrie Cape and Golden Feather shorten knockback, Regeneration Stone regenerates, Iron Bubble adds Water Power. Shield of Repulsion has a chance to turn a ranged hit back on the shooter after a turn in which you did not move.
+- **Consumables.** Ambrosium Shards heal, Healing Stones grant Regeneration, White Apples and Remedy Buckets cure Poison. Aether food heals like any food.
+- Tooltips on all of the above say what the item does here, and a Zanite weapon shows its current bonus.
+
+Mob Traits
+
+A mob's panel told you its numbers and nothing about how it fights. Now it says.
+
+- **Traits on the inspect panel.** Hover a mob and a row of tags sits between its stats and its status effects: Undead, Immovable, Toxic, Ethereal and more, 18 in all. Green tags help the mob, red ones are weaknesses, grey ones just describe it. Allies show theirs too.
+- **Hover a tag to read what it does.** Hold Left Alt (rebindable, under Pin Inspect Panel) to keep the panel up, then move onto any trait or status effect for a one line explanation. While the key is held your clicks do nothing, so reaching for a tag can not cost you a turn. Your own status effects in the top left explain themselves on hover with no key needed.
+- **Traits in the bestiary.** Each creature's page lists its traits under its weaknesses and resistances, with the same hover text.
+- **Cave Spiders and Bogged now actually poison.** Both were described as poisoning and neither did. A Cave Spider's bite poisons for 2 turns and a Bogged's attacks for 3.
+- Fixed timed debuffs on a mob's panel (Poisoned, Weakened, Bleeding and the rest) being drawn green like buffs. Only untimed ones such as Stunned were red. On your own panel Soul Burning, Warped, Marked and Vulnerable were green too.
+- A boss that resists Blunt damage has always been fully stun immune rather than resisting half of stuns like other bosses. It is now labelled Thick-skulled so you can tell which is which.
+- Modders: `CrafticsAPI.addMobTrait` and `registerMobTrait` label what your mobs do.
+
+Sculk Affinity
+
+- **Sculk Affinity potions now do something.** While it lasts, about 5 turns, sculk sensors cannot hear you, the same as wearing Swift Sneak boots. It shows as a buff with its own icon, and the potion's tooltip now says what it does. Before this the potion was used up, cost its AP and had no effect
+
+Pets Go Back Where You Left Them
+
+- **Pets return to the spot they were taken from.** A pet you bring into a run comes home to the exact place it was standing on your island, facing the same way, instead of lining up at the island spawn. Build a pen, a kennel or a pond and your animals go back into it. If something was built on the spot while you were away, the pet is set on top of it. If the spot is gone, it lands by the island spawn as before
+- Animals tamed during a run have no spot yet, so they still arrive at the island spawn
+- **Your pets follow you out of a party.** A party plays on its leader's island, so a guest's pets wait at that island's spawn between runs. When you leave the party, are kicked, or it disbands, your pets there are sent back to your own island, to the spot they were taken from if it is still good. If the leader leaves and the party moves to a new leader's island, everyone's pets left on the old one go home too. Pets that are not loaded at that moment go home the next time that part of the island loads
+- **Artifact carriers are labelled with the artifact.** A mob carrying an artifact now shows the artifact's name over its head instead of its own, so you can see what you would win. A carrier you tame no longer keeps that label
+- **Fixed Warden and Resonarium swords and axes showing no combat stats.** They always fought with their real damage, but the tooltip had nothing for them. They now show damage, range, AP cost and their Sweep or Armor Crush chance. Any other modded weapon without its own tooltip text now shows its stat line too, and the Sonorous Staff shows its damage
+
+Tall Grass
+
+- **Throwing things from tall grass gives you away.** Swinging or shooting from cover already flattened the grass under you. Thrown items, pottery sherd spells and addon items did not, so you could sit in a bush and pelt enemies all fight without ever being found. Now any of those that hurts an enemy breaks your cover the same way
+- Items that hurt nothing leave the grass alone: eating, healing, placing blocks, and a throw that misses everything
+
 0.4.9
 
 The Ender Dragon Fights Back

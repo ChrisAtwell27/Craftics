@@ -26,7 +26,7 @@
       {"type": "minecraft:skeleton", "weight": 5, "hp": 6, "attack": 2, "defense": 0, "range": 3},
       {"type": "minecraft:zombie", "weight": 3, "hp": 8, "attack": 2, "defense": 0, "range": 1}
     ],
-    "boss": {"type": "minecraft:stray", "hp": 40, "attack": 4, "defense": 2, "range": 3}
+    "boss": {"type": "minecraft:stray", "hp": 40, "attack": 4, "defense": 2, "range": 3, "speed": 3}
   },
   "loot": [
     {"item": "minecraft:snowball", "weight": 8},

@@ -45,6 +45,7 @@ DARK_GRAY  = 0x555555
 WHITE      = 0xFFFFFF
 BLACK      = 0x222222
 BROWN      = 0xAA7744
+TEAL       = 0x22B8B0
 
 # name -> (main color, 8 rows of 8 chars)
 ICONS = {
@@ -192,6 +193,17 @@ ICONS = {
         "##....##",
         ".######.",
         "..####..",
+    ]),
+    # Sculk Affinity: a muted speaker - sculk sensors cannot hear you.
+    "sculk_affinity": (TEAL, [
+        "...#....",
+        "..##o..o",
+        "####.oo.",
+        "####.oo.",
+        "####o..o",
+        "..##....",
+        "...#....",
+        "........",
     ]),
 
     # ---------------- Debuffs ----------------

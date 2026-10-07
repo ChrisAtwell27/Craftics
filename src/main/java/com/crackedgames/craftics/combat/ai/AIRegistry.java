@@ -196,6 +196,11 @@ public class AIRegistry {
         return STRATEGIES.getOrDefault(entityTypeId, DEFAULT_AI);
     }
 
+    /** Every key with an AI registered: entity type ids, boss keys, and the internal ones. */
+    public static java.util.Set<String> registeredKeys() {
+        return java.util.Collections.unmodifiableSet(STRATEGIES.keySet());
+    }
+
     /**
      * A fresh per-fight AI instance for a stateful (boss) key, or {@code null}
      * when the key has no factory and no shared BossAI to copy. Compat/addon

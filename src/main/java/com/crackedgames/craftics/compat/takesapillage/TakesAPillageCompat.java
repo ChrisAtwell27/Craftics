@@ -76,6 +76,8 @@ public final class TakesAPillageCompat {
         AIRegistry.register(ARCHER, new PillagerAI());
         // Skirmisher: rook charge + normal walking. Own AI class.
         AIRegistry.register(SKIRMISHER, new SkirmisherAI());
+        com.crackedgames.craftics.combat.MobTraits.declare(SKIRMISHER,
+            com.crackedgames.craftics.combat.MobTraits.BERZERKER);
         // Legioner: slow melee advance - zombie behaviour reads right for a phalanx
         // (walk at the player, hit what's adjacent). Its identity is its defenses.
         AIRegistry.register(LEGIONER, new com.crackedgames.craftics.combat.ai.ZombieAI());

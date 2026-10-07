@@ -12,13 +12,14 @@ import java.util.List;
 
 /**
  * Plains Boss - "The Revenant" (Undead Knight)
- * Entity: Zombie | 30HP / 1ATK / 1DEF / Speed 1 | Size 1×1
+ * Entity: Zombie | 30HP / 1ATK / 1DEF / Speed 2 | Size 1×1
  *
  * Stats above are the authored baseline from data/craftics/craftics/biomes/plains.json.
  * LevelGenerator scales them by biome progress and CONFIG.bossHpMultiplier before the fight, so
  * the HP the player actually sees is higher; this is the number the tuning is written against.
- * Speed 1 is the zombie default (plains.json authors none) and nothing here raises it: this boss
- * is slow on purpose and pressures through the graves rather than by closing. Size is 1x1 because
+ * Speed 2 is authored in plains.json (a zombie's own default is 1) and nothing here raises it:
+ * this boss is still slower than the player on purpose and pressures through the graves rather
+ * than by closing. Size is 1x1 because
  * this AI does not override BossAI.getGridSize (which returns 1) and a zombie's footprint is 1x1.
  *
  * Abilities:

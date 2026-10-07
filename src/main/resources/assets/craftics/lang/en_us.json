@@ -74,6 +74,7 @@
   "key.craftics.toggle_party_member": "Add/Remove Battle Party Member",
   "key.craftics.focus_self": "Center Camera on Your Character",
   "key.craftics.ping": "Ping (hold for wheel)",
+  "key.craftics.pin_inspect": "Pin Inspect Panel (hold)",
 
   "text.config.craftics-config.title": "Craftics",
 

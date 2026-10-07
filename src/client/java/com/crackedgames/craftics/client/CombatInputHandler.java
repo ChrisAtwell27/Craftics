@@ -59,7 +59,8 @@ public class CombatInputHandler {
         if (com.crackedgames.craftics.compat.instruments.InstrumentsCompat.isInstrument(held))
             return ActionMode.USE_ITEM;
         if (held == Items.BOW || held == Items.CROSSBOW || held == Items.TRIDENT
-            || com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.isSimplyBow(held))
+            || com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.isSimplyBow(held)
+            || com.crackedgames.craftics.compat.aether.AetherCompat.isRangedWeapon(held))
             return ActionMode.RANGED_ATTACK;
         if (SWORDS.contains(held) || AXES.contains(held) || SPEARS.contains(held)
             || held == Items.MACE)
@@ -105,6 +106,10 @@ public class CombatInputHandler {
             return;
         }
 
+        // Re-earned every tick further down. Clearing it here means every early return below
+        // (no fight, a screen open, the intro, the ping wheel) also drops the pin.
+        CombatState.setInspectPinned(false);
+
         if (!CombatState.isInCombat()) return;
         if (client.currentScreen != null) return;
 
@@ -136,6 +141,20 @@ public class CombatInputHandler {
         boolean leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
         boolean clicked = leftDown && !lastLeftClick;
         lastLeftClick = leftDown;
+
+        // Pin: while the key is held and an inspect panel is up, the hover target stops
+        // following the cursor, so the cursor can leave the mob and reach the pills in its
+        // panel. Clicks are swallowed too - the tile under the cursor on the way there is
+        // not one the player is aiming at, and a stray click would spend AP on it. The edge
+        // tracker above still ran, so a click held through the pin cannot fire on release.
+        //
+        // Keyed on the panel having been drawn, not on the hover id: the HUD withholds the
+        // panel under blindness and darkness, and there is nothing to pin when it does.
+        if (com.crackedgames.craftics.CrafticsClient.isPinInspectHeld()
+                && CombatHudOverlay.isInspectPanelShown()) {
+            CombatState.setInspectPinned(true);
+            return;
+        }
 
         // Update hover tile locally (no server round-trip)
         GridPos hoverPos = TileRaycast.getGridPosUnderCursor();

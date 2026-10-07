@@ -36,6 +36,7 @@
     "minecraft:stick",
     "minecraft:bamboo",
     "minecraft:blaze_rod",
-    "minecraft:breeze_rod"
+    "minecraft:breeze_rod",
+    { "id": "aether:hammer_of_kingbdogz", "required": false }
   ]
 }

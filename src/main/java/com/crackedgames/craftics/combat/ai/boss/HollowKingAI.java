@@ -13,7 +13,7 @@ import java.util.Set;
 
 /**
  * Underground Caverns Boss - "The Hollow King" (Corrupted Miner)
- * Entity: Zombie | 40HP / 7ATK / 3DEF / Speed 2 | Size 2x2
+ * Entity: Zombie | 40HP / 7ATK / 3DEF / Speed 3 (6 beyond his range) | Size 2x2
  *
  * <h2>The props are the fight</h2>
  *
@@ -71,7 +71,7 @@ public class HollowKingAI extends BossAI {
      *       plants his feet and casts. No moving and casting in the same turn; standing here is
      *       the price of being in his range.</li>
      *   <li><b>{@value #MOVE_AND_CAST_RANGE} and beyond</b> - too far to be ignored. He closes
-     *       AND casts in the same turn, at triple speed. Backing off does not buy a free
+     *       AND casts in the same turn, at double speed. Backing off does not buy a free
      *       turn.</li>
      * </ul>
      */
@@ -80,7 +80,7 @@ public class HollowKingAI extends BossAI {
     private static final int MOVE_AND_CAST_RANGE = 6;
 
     /** Speed at his working distance: a miner picking his ground, not a sprinter. */
-    private static final int SPEED_NEAR = 2;
+    private static final int SPEED_NEAR = 3;
     /** Speed once you are outside his range entirely. */
     private static final int SPEED_FAR = 6;
 

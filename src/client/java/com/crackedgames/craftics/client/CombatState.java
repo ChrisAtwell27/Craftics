@@ -562,6 +562,15 @@ public class CombatState {
     public static void setHoveredEnemyId(int id) { hoveredEnemyId = id; }
 
     /**
+     * True while the pin key is holding the inspect panel on its target. The hover target
+     * stops following the cursor for as long as this is set, which is what lets the cursor
+     * leave the mob and reach the pills inside the panel.
+     */
+    private static boolean inspectPinned = false;
+    public static boolean isInspectPinned() { return inspectPinned; }
+    public static void setInspectPinned(boolean pinned) { inspectPinned = pinned; }
+
+    /**
      * Compute movement tiles for the currently hovered enemy. Parses the {@code mv=} tag
      * from the enemy type metadata and dispatches to the matching pattern in
      * {@link ClientGridHelper#getMovePatternTiles}, so each mob's hover preview reflects its

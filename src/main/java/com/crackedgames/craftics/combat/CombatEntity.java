@@ -451,6 +451,12 @@ public class CombatEntity {
     public boolean wasBurningOnDeath() { return burningOnDeath; }
     public void setBurningOnDeath(boolean v) { this.burningOnDeath = v; }
 
+    /** Killed by something that doubles its loot (the Aether's skyroot weapons). Read once,
+     *  when the fight's drops are rolled. */
+    private boolean doubleDrops = false;
+    public boolean hasDoubleDrops() { return doubleDrops; }
+    public void setDoubleDrops(boolean v) { this.doubleDrops = v; }
+
     private boolean stunned = false;
     public boolean isStunned() { return stunned; }
     public void setStunned(boolean s) {
@@ -749,6 +755,12 @@ public class CombatEntity {
     private NbtCompound originalHubNbt = null;
     public NbtCompound getOriginalHubNbt() { return originalHubNbt; }
     public void setOriginalHubNbt(NbtCompound nbt) { this.originalHubNbt = nbt; }
+
+    /** Where this pet stood on its island before the run, or null if it never stood on one
+     *  (tamed mid-fight, an adopted summon, a provider ally). */
+    private PetHome hubHome = null;
+    public PetHome getHubHome() { return hubHome; }
+    public void setHubHome(PetHome home) { this.hubHome = home; }
 
     /**
      * True for allies summoned for the current battle only (e.g. spawn-egg summons),
@@ -1266,6 +1278,51 @@ public class CombatEntity {
         return takeDamage(rawDamage, 0);
     }
 
+    /**
+     * A guard an encounter raises over a combatant: while it is up, nothing damages it.
+     *
+     * <p>For fights whose point is that ordinary attacks do not work - a boss that only one
+     * kind of tool can hurt, or one that must be made vulnerable first. The encounter's AI
+     * raises and drops it; {@link #takeDamage} honours it for every source at once, which is
+     * the only way to be sure, since sweeps, splashes and procs all call that directly. The
+     * one thing the fight is built around then goes in through
+     * {@link #takeDamageThroughImmunity}.
+     *
+     * <p>{@code hint} is what the player is told when a swing bounces off, so a guard is a
+     * puzzle with a clue rather than a wall. Pass null for a generic line.
+     */
+    private boolean damageImmune = false;
+    private String damageImmuneHint = null;
+    public boolean isDamageImmune() { return damageImmune; }
+    public String getDamageImmuneHint() { return damageImmuneHint; }
+    public void setDamageImmune(boolean immune, String hint) {
+        this.damageImmune = immune;
+        this.damageImmuneHint = immune ? hint : null;
+    }
+
+    /**
+     * Whether a pickaxe swung at this combatant strikes it instead of being refused as "tile
+     * is occupied". A pickaxe is a tool, not a weapon, everywhere else in a fight; this is
+     * for the thing that is made of stone.
+     */
+    private boolean pickaxeVulnerable = false;
+    public boolean isPickaxeVulnerable() { return pickaxeVulnerable; }
+    public void setPickaxeVulnerable(boolean v) { this.pickaxeVulnerable = v; }
+
+    /**
+     * Damage from the one source a guarded combatant is open to. Everything else about the
+     * hit (defense, resistance, absorption) applies as usual; only the guard is stepped past.
+     */
+    public int takeDamageThroughImmunity(int rawDamage) {
+        boolean guarded = damageImmune;
+        damageImmune = false;
+        try {
+            return takeDamage(rawDamage);
+        } finally {
+            damageImmune = guarded;
+        }
+    }
+
     /** Bonus damage equal to a fraction of this entity's max HP, used by offensive special
      *  items (TNT, damage sherds, harming potions) so their flat damage keeps scaling into
      *  late-game HP pools. Bosses take a third of the percent so they aren't trivialized. */
@@ -1309,6 +1366,9 @@ public class CombatEntity {
         // calling applyDirectDamage, which is intended: poison applied before the dig keeps
         // ticking underground.
         if (untargetable) return 0;
+        // A boss holding its guard. Here for the same reason as the check above: most damage
+        // reaches a CombatEntity directly, so this is the only place that sees all of it.
+        if (damageImmune) return 0;
         // Timed resistance buff reduces incoming damage by its level (flat), before defense %.
         if (getResistanceLevel() > 0) {
             rawDamage = Math.max(0, rawDamage - getResistanceLevel());
@@ -1431,6 +1491,8 @@ public class CombatEntity {
                  "minecraft:llama", "minecraft:trader_llama" -> new int[]{1, 2};
             // Giant zombie: 3.6-block hitbox width.
             case "minecraft:giant", "minecraft:elder_guardian" -> new int[]{3, 3};
+            // Aether clouds: far wider than a tile, and scaled down to fit these two.
+            case "aether:zephyr", "aether:aerwhale" -> new int[]{2, 2};
             default -> new int[]{1, 1};
         };
     }
@@ -1473,6 +1535,7 @@ public class CombatEntity {
                  "minecraft:ghast",
                  "minecraft:blaze",
                  "minecraft:wither",
+                 "aether:zephyr", "aether:aerwhale",
                  "minecraft:ender_dragon" -> true;
             default -> false;
         };
@@ -1504,6 +1567,8 @@ public class CombatEntity {
             case "minecraft:shulker" -> 1;
             case "minecraft:ender_dragon" -> 4;
             case "minecraft:warden" -> 3;
+            case "aether:zephyr", "aether:aerwhale" -> 1;
+            case "aether:sentry", "aether:valkyrie", "aether:fire_minion", "aether:moa", "aether:aerbunny" -> 3;
             default -> 2;
         };
     }

@@ -2765,9 +2765,18 @@ public class CombatManager {
         }
     }
 
-    /** True if the player's boots have Swift Sneak (bypasses sculk-sensor triggers). */
+    /**
+     * True if sculk sensors cannot hear this player: Swift Sneak on their boots, or a Sculk
+     * Affinity potion still running. Read per player rather than off {@code combatEffects},
+     * because the sensor check walks every participant and that field only ever points at
+     * whoever's turn it is.
+     */
     private boolean minibossSwiftSneak(ServerPlayerEntity p) {
-        return p != null && PlayerCombatStats.getEnchantLevel(
+        if (p == null) return false;
+        CombatEffects fx = playerCombatEffects.get(p.getUuid());
+        if (fx == null && p == player) fx = combatEffects;
+        if (fx != null && fx.hasEffect(CombatEffects.EffectType.SCULK_AFFINITY)) return true;
+        return PlayerCombatStats.getEnchantLevel(
             p.getEquippedStack(net.minecraft.entity.EquipmentSlot.FEET), "minecraft:swift_sneak") > 0;
     }
 
@@ -4508,7 +4517,10 @@ public class CombatManager {
         // this is the matching guard for poison/wither/burn/bleed ticks so DoT
         // can't sidestep the "destroy the heart" rule and leave an orphaned,
         // indestructible Creaking (and heart block) behind.
-        if (isInvulnerableCreaking(target)) return 0;
+        //
+        // A guarded combatant is covered by the same check: a tick does not go through
+        // takeDamage, so without it poison would quietly kill a boss nothing else can touch.
+        if (isInvulnerable(target)) return 0;
         int adjusted = MobResistances.applyResistance(
             target.getEntityTypeId(), DamageType.SPECIAL, rawDamage);
         if (adjusted <= 0) return 0;
@@ -4526,6 +4538,15 @@ public class CombatManager {
             && com.crackedgames.craftics.compat.palegardenbackport
                 .PaleGardenBackportCompat.isCreakingEntity(target.getEntityTypeId())
             && target.getLinkedHeartId() >= 0;
+    }
+
+    /**
+     * True when nothing may damage {@code target} right now: a heart-bound Creaking, or a
+     * combatant holding a guard (see {@link CombatEntity#setDamageImmune}). The check for
+     * paths that would otherwise go around {@code takeDamage} - damage over time above all.
+     */
+    public static boolean isInvulnerable(CombatEntity target) {
+        return isInvulnerableCreaking(target) || (target != null && target.isDamageImmune());
     }
 
     private float playerMoveYaw;
@@ -5433,7 +5454,9 @@ public class CombatManager {
                     }
                     String mobName = mob.getType().getName().getString();
                     if (mob.getCustomName() == null) {
-                        mob.setCustomName(Text.literal("§d" + mobName));
+                        // The tag names the prize, not the mob: you can already see it is a
+                        // zombie, and what it is carrying is the thing worth knowing.
+                        mob.setCustomName(Text.literal("§d" + wornArtifact.getName().getString()));
                         mob.setCustomNameVisible(true);
                     }
                     sendMessage("§d✦ A " + mobName + " carries §e"
@@ -7586,6 +7609,27 @@ public class CombatManager {
         sendMessage("§7You burst from the tall grass - your cover is gone!");
     }
 
+    /**
+     * The same rule for actions that are only sometimes an attack: a thrown item, a sherd, an
+     * addon's usable item. A snowball and a loaf of bread go through one call and a sherd can
+     * be a fireball or a heal, so there is no "this was an attack" to key off the way a weapon
+     * swing has. What gives the player away is the outcome instead: an enemy came out of the
+     * action hurt.
+     *
+     * <p>Skipped once the room is clear - there is nobody left to be revealed to.
+     *
+     * @param before the enemies as they stood before the action ran
+     * @return true when cover was actually lost, so the caller knows a sync is owed
+     */
+    private boolean breakStealthIfHurt(EnemyHpSnapshot before) {
+        if (!active || player == null || arena == null || before == null) return false;
+        if (!before.anyHurt() || !anyEnemyBlockingVictory()) return false;
+        GridPos pos = gridPosOf(player);
+        if (!StealthTiles.isStealthTile(arena, pos, player.getEntityWorld())) return false;
+        breakStealthFromAttack();
+        return !StealthTiles.isStealthTile(arena, pos, player.getEntityWorld());
+    }
+
     private void handleAttack(int targetEntityId, GridPos clickedTile) {
         if (clickedTile != null && isRevenantSummonMarker(clickedTile)) {
             if (tryDestroyRevenantSummonMarker(clickedTile)) {
@@ -7907,6 +7951,19 @@ public class CombatManager {
             return;
         }
 
+        // A combatant holding its guard (see CombatEntity.setDamageImmune): the swing would
+        // land for nothing, so it is refused here, before AP is spent, with the encounter's own
+        // clue. A hittable projectile is never guarded, whatever launched it.
+        if (target != null && target.isDamageImmune() && !target.isProjectile()) {
+            String hint = target.getDamageImmuneHint();
+            sendMessage(hint != null ? hint
+                : "§c§l" + target.getDisplayName() + " cannot be harmed right now!");
+            player.getWorld().playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_ZOMBIE_ATTACK_IRON_DOOR,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.5f, 0.5f);
+            return;
+        }
+
         // Creaking immunity: can't damage the creaking directly, must kill its heart
         if (isInvulnerableCreaking(target)) {
             sendMessage("\u00a7c\u00a7lThe Creaking is invulnerable! \u00a77Destroy its \u00a74Creaking Heart\u00a77 instead!");
@@ -8021,6 +8078,13 @@ public class CombatManager {
                 sendMessage("§cYou need arrows to use ranged weapons!");
                 return;
             }
+        }
+        // Aether dart shooters fire their own dart and nothing else. Not a bow, so none of
+        // the arrow rules above apply - no Infinity, no tipped or spectral substitutes.
+        Item dartAmmo = com.crackedgames.craftics.compat.aether.AetherCompat.dartFor(weapon);
+        if (dartAmmo != null && !player.getInventory().contains(new ItemStack(dartAmmo))) {
+            sendMessage("§cOut of " + dartAmmo.getName().getString() + "s!");
+            return;
         }
 
         // Warp Drive (Artifacts compat): bypass range/LOS, teleport adjacent to the target,
@@ -8197,6 +8261,10 @@ public class CombatManager {
                     PlayerCombatStats.consumeArrow(player);
                 }
             }
+        }
+
+        if (dartAmmo != null) {
+            com.crackedgames.craftics.compat.aether.AetherCompat.consumeDart(player, dartAmmo);
         }
 
         // Special affinity: chance to not consume AP (hoes / Special weapons)
@@ -8794,8 +8862,34 @@ public class CombatManager {
                 return;
             }
 
+            // A compat projectile registered as deflectable. Its handler may settle the strike
+            // on the spot (an ice crystal knocked back into the thing that threw it); if it
+            // does not, the projectile bounces away exactly as a fireball does, below.
+            boolean customDeflect = fTarget.isProjectile()
+                && com.crackedgames.craftics.api.registry.ProjectileImpactRegistry
+                    .isDeflectable(fTarget.getProjectileType());
+            if (customDeflect) {
+                com.crackedgames.craftics.api.ProjectileImpactHandler deflectHandler =
+                    com.crackedgames.craftics.api.registry.ProjectileImpactRegistry
+                        .get(fTarget.getProjectileType());
+                boolean[] deflectGameOver = {false};
+                if (deflectHandler != null && deflectHandler.onDeflect(
+                        projectileImpactContext(fTarget, fTarget.getGridPos(), true, deflectGameOver))) {
+                    if (deflectGameOver[0]) return;
+                    if (fTarget.isAlive()) killEnemy(fTarget);
+                    sendSync();
+                    // The strike may have been the killing blow on whatever it flew into.
+                    if (phase != CombatPhase.GAME_OVER && phase != CombatPhase.LEVEL_COMPLETE
+                            && !anyEnemyBlockingVictory()) {
+                        handleVictory();
+                    }
+                    return;
+                }
+            }
+
             // Projectile redirect: hitting a ghast fireball reverses its direction
-            if (fTarget.isProjectile() && "ghast_fireball".equals(fTarget.getProjectileType())) {
+            if (fTarget.isProjectile() && (customDeflect
+                    || "ghast_fireball".equals(fTarget.getProjectileType()))) {
                 GridPos fireballPos = fTarget.getGridPos();
                 GridPos deflectPlayerPos = arena.getPlayerGridPos();
                 int rdx = fireballPos.x() - deflectPlayerPos.x();
@@ -8810,7 +8904,8 @@ public class CombatManager {
                 fTarget.setProjectileDirX(rdx);
                 fTarget.setProjectileDirZ(rdz);
                 fTarget.setProjectileRedirected(true);
-                sendMessage("§a\u2604 You deflect the fireball!");
+                sendMessage(customDeflect ? "§a\u2604 You knock it back!"
+                    : "§a\u2604 You deflect the fireball!");
                 player.getWorld().playSound(null, player.getBlockPos(),
                     net.minecraft.sound.SoundEvents.ENTITY_GHAST_SHOOT,
                     net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.2f);
@@ -10873,7 +10968,7 @@ public class CombatManager {
     }
 
     /** Returns the display name for a boss based on biome ID. */
-    private static String getBossName(String bossBiomeId) {
+    public static String getBossName(String bossBiomeId) {
         return switch (bossBiomeId) {
             case "plains" -> "The Revenant";
             case "forest" -> "The Hexweaver";
@@ -10893,6 +10988,10 @@ public class CombatManager {
             case "end_city" -> "The Shulker Architect";
             case "chorus_grove" -> "The Chorus Mind";
             case "dragons_nest" -> "The Ender Dragon";
+            // The Aether's three dungeons (compat/aether). Plain ids, harmless without the mod.
+            case "aether_bronze_dungeon" -> "The Slider";
+            case "aether_silver_dungeon" -> "The Valkyrie Queen";
+            case "aether_gold_dungeon" -> "The Sun Spirit";
             default -> "Boss";
         };
     }
@@ -13002,6 +13101,18 @@ public class CombatManager {
 
     private void resolveItemUse(GridPos targetTile, ItemStack heldStack, Item heldItem,
                                 int apCost, TileType terraformPriorType) {
+        EnemyHpSnapshot enemiesBefore = EnemyHpSnapshot.of(enemies);
+        applyItemUse(targetTile, heldStack, heldItem, apCost, terraformPriorType);
+        // applyItemUse has already sent its sync by the time it returns, so a cover break
+        // here needs one of its own or the Hidden indicator lingers until the next action.
+        if (breakStealthIfHurt(enemiesBefore)) {
+            sendSync();
+            refreshHighlights();
+        }
+    }
+
+    private void applyItemUse(GridPos targetTile, ItemStack heldStack, Item heldItem,
+                              int apCost, TileType terraformPriorType) {
         // Read BEFORE the use: a pearl that lands the player somewhere else has already moved
         // them by the time the result comes back, so "were they in the red" is unrecoverable.
         boolean pearlFromTelegraph = heldItem == Items.ENDER_PEARL && isOnTelegraphedTile(player);
@@ -13113,6 +13224,16 @@ public class CombatManager {
                     // returns to the hub after combat. Only needed for mobs that weren't
                     // loaded from a hub snapshot already.
                     if (e.getOriginalHubNbt() == null && e.getMobEntity() != null) {
+                        // An artifact carrier's nametag is the artifact it holds, not a name
+                        // the animal owns. Drop it before the snapshot, or the pet goes home
+                        // to the island permanently named after a curio.
+                        ItemStack heldArtifact = e.getWornArtifact();
+                        net.minecraft.text.Text tag = e.getMobEntity().getCustomName();
+                        if (heldArtifact != null && !heldArtifact.isEmpty() && tag != null
+                                && tag.getString().equals("§d" + heldArtifact.getName().getString())) {
+                            e.getMobEntity().setCustomName(null);
+                            e.getMobEntity().setCustomNameVisible(false);
+                        }
                         net.minecraft.nbt.NbtCompound tameSnap = new net.minecraft.nbt.NbtCompound();
                         try {
                             e.getMobEntity().writeNbt(tameSnap);
@@ -13820,6 +13941,7 @@ public class CombatManager {
         // Cast the spell (applies damage/effects/particles; sherd may shatter on cast).
         // Wrapped so a self-buff sherd (e.g. War Cry's SPEED) tops up live AP/movement this turn.
         String[] resultBox = new String[1];
+        EnemyHpSnapshot enemiesBefore = EnemyHpSnapshot.of(enemies);
         rebudgetAroundBuff(() -> resultBox[0] =
             PotterySherdSpells.useSherd(player, arena, effectiveTarget, enemies, combatEffects));
         String result = resultBox[0];
@@ -13858,6 +13980,10 @@ public class CombatManager {
             handleVictory();
             return;
         }
+
+        // A damaging sherd cast from tall grass gives you away, like any other attack. Before
+        // the encore so the echo cannot land from cover the first cast already blew.
+        breakStealthIfHurt(enemiesBefore);
 
         // Performative (hoe): replay the whole cast once, for free. Re-entering the method (rather
         // than just re-running useSherd) means the encore's own damage, deaths and prefix results
@@ -13904,6 +14030,7 @@ public class CombatManager {
 
         UsableItemContextImpl ctx = new UsableItemContextImpl(targetTile, player.getMainHandStack());
         com.crackedgames.craftics.api.ItemUseResult result;
+        EnemyHpSnapshot enemiesBefore = EnemyHpSnapshot.of(enemies);
         try {
             result = entry.handler().use(ctx);
         } catch (Throwable t) {
@@ -13946,6 +14073,9 @@ public class CombatManager {
             handleVictory();
             return;
         }
+
+        // An addon item that hurt something from tall grass gives the player away too.
+        breakStealthIfHurt(enemiesBefore);
 
         sendSync();
         refreshHighlights();
@@ -15860,6 +15990,11 @@ public class CombatManager {
                         replacementMob.addCommandTag("craftics_arena");
                         tickWorld.spawnEntity(replacementMob);
                         e.setMobEntity(replacementMob);
+                        // The replacement is a bare entity: run the spawn hooks again, or it
+                        // comes back without whatever they set (a sentry pinned asleep, a
+                        // zephyr shrunk to its tiles).
+                        com.crackedgames.craftics.api.registry.SpawnCustomizerRegistry
+                            .apply(tickWorld, replacementMob, e);
                         // Re-apply boss scale lost when the original mob was
                         // removed -without this a respawned Wailing Revenant
                         // would lose its 2x size and look like a normal ghast.
@@ -17423,7 +17558,11 @@ public class CombatManager {
         // Water-immune mobs (drowned, guardians, ...) don't get Soaked by wading, so running
         // for water would never put them out - they'd just jog back and forth on fire forever.
         // They keep fighting and let the burn tick out.
+        // Nor does anything that cannot move at all, or a swet, which water does not put out
+        // so much as delete.
         EnemyAction waterSeek = (currentEnemy.isBoss()
+                || currentEnemy.isImmovable()
+                || com.crackedgames.craftics.compat.aether.AetherMobs.isSwet(currentEnemy.getEntityTypeId())
                 || isWaterImmune(currentEnemy.getEntityTypeId()))
             ? null
             : com.crackedgames.craftics.combat.ai.AIUtils.seekWaterIfBurning(currentEnemy, arena);
@@ -17739,158 +17878,13 @@ public class CombatManager {
                 startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
             }
             case EnemyAction.Swoop swoop -> {
-                // Lerped swoop -dragon/phantom physically flies along path tile-by-tile
-                // via startEnemyMove. Damage is applied up-front to anyone in the path
-                // (size-aware so the dragon's 3x3 footprint crushes the player) and the
-                // per-tile trail particles are spawned by tickEnemyMoving while lerping.
-                sendMessage("§5§l⌇ " + currentEnemy.getDisplayName() + " swoops!");
-                ServerWorld swoopWorld = (ServerWorld) player.getEntityWorld();
-
-                // Truncate the swoop path at the first obstacle that appeared
-                // after the boss planned its charge (player placed a barrier
-                // on the line). FIRE is walkable for swoops by design.
-                // Copied, not aliased: the trim below mutates this list, and the action's own
-                // path belongs to the AI that planned it.
-                List<GridPos> swoopPath = new ArrayList<>(swoop.path());
-                int swoopBlockedAt = -1;
-                for (int i = 0; i < swoopPath.size(); i++) {
-                    var stile = arena.getTile(swoopPath.get(i));
-                    if (stile != null && !stile.isWalkable()
-                            && !stile.getType().isFlames()) {
-                        swoopBlockedAt = i;
-                        break;
+                switch (beginSwoop(swoop)) {
+                    case PLAYER_DOWN -> { return; }
+                    case GROUNDED -> {
+                        enemyTurnState = EnemyTurnState.DONE;
+                        enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
                     }
-                }
-                if (swoopBlockedAt >= 0) {
-                    swoopPath = new ArrayList<>(swoopPath.subList(0, swoopBlockedAt));
-                }
-
-                // Force the mob visible for the lerp -cinematic swoops from off-stage
-                // bosses (like the Ender Dragon) rely on this so the lerp actually shows.
-                MobEntity swoopMob = currentEnemy.getMobEntity();
-                if (swoopMob != null) {
-                    swoopMob.setInvisible(false);
-                    swoopMob.setSilent(false);
-                    // Snap to the first tile of the path so the lerp starts at the correct
-                    // edge position for cross-arena swoops -prevents a diagonal snap from
-                    // the dragon's previous tile.
-                    //
-                    // Skipped when that tile belongs to somebody. This snap is why a phantom
-                    // kept ending its swoop inside the player: a phantom standing NEXT to its
-                    // target builds a path whose first tile IS the target's tile, and this
-                    // moved it there outright - before the flight, before any landing check.
-                    // Every later guard then read the mob as already standing there and left
-                    // it alone, because a mob's own square is the one place it is always
-                    // allowed to be. The illegal position was created and then protected.
-                    //
-                    // Nothing is lost by skipping it. The snap only exists so a boss diving
-                    // in from off-stage starts its lerp at the arena edge instead of sliding
-                    // diagonally out of its old tile, and such a path begins nowhere near a
-                    // player. A phantom simply starts its dive from where it actually is.
-                    if (!swoopPath.isEmpty()) {
-                        GridPos swoopStart = swoopPath.get(0);
-                        if (!currentEnemy.getGridPos().equals(swoopStart)
-                                && !tileTakenByOther(swoopStart)) {
-                            BlockPos snapBlock = arena.gridToBlockPos(swoopStart);
-                            swoopMob.requestTeleport(
-                                snapBlock.getX() + currentEnemy.getSizeX() / 2.0,
-                                arena.getEntityY(swoopStart),
-                                snapBlock.getZ() + currentEnemy.getSizeZ() / 2.0);
-                            arena.moveEntity(currentEnemy, swoopStart);
-                        }
-                    }
-                }
-
-                // Dragon roar on swoop start -adds presence to the invisible entity
-                if (currentEnemy.getAiKey() != null && currentEnemy.getAiKey().contains("dragons_nest")
-                        && currentEnemy.getMobEntity() != null) {
-                    swoopWorld.playSound(null, currentEnemy.getMobEntity().getBlockPos(),
-                        net.minecraft.sound.SoundEvents.ENTITY_ENDER_DRAGON_GROWL,
-                        net.minecraft.sound.SoundCategory.HOSTILE, 2.0f, 0.85f);
-                }
-
-                // Damage the player if any path tile intersects their footprint
-                GridPos playerGridPos = arena.getPlayerGridPos();
-                boolean hitPlayer = false;
-                for (GridPos pos : swoopPath) {
-                    if (CombatEntity.minDistanceFromSizedEntity(
-                            pos, currentEnemy.getSizeX(), currentEnemy.getSizeZ(), playerGridPos) <= 0) {
-                        hitPlayer = true;
-                        break;
-                    }
-                }
-                if (hitPlayer) {
-                    int actual = damagePlayer(swoop.damage());
-                    sendMessage("§c  Swoops through you for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-                    swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
-                        player.getX(), player.getY() + 1.0, player.getZ(), 10, 0.3, 0.5, 0.3, 0.03);
-                    swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
-                        player.getX(), player.getY() + 0.8, player.getZ(), 5, 0.2, 0.3, 0.2, 0.01);
-                    sendSync();
-                    if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
-                }
-
-                // Chain damage: non-active party members standing on the swoop path
-                if (partyPlayers.size() > 1) {
-                    net.minecraft.util.math.BlockPos swoopOrigin = arena.getOrigin();
-                    for (ServerPlayerEntity member : partyPlayers) {
-                        if (member == player) continue;
-                        if (deadPartyMembers.contains(member.getUuid())) continue;
-                        if (member.isRemoved() || member.isDisconnected()) continue;
-                        net.minecraft.util.math.BlockPos mbp = member.getBlockPos();
-                        GridPos memberGrid = new GridPos(
-                            mbp.getX() - swoopOrigin.getX(), mbp.getZ() - swoopOrigin.getZ());
-                        boolean memberHit = false;
-                        for (GridPos pos : swoopPath) {
-                            if (CombatEntity.minDistanceFromSizedEntity(pos,
-                                    currentEnemy.getSizeX(), currentEnemy.getSizeZ(), memberGrid) <= 0) {
-                                memberHit = true;
-                                break;
-                            }
-                        }
-                        if (memberHit) {
-                            // Party member's AC dodge roll. Member-specific
-                            // combat effects / trims aren't tracked here, so
-                            // pass their armor + Defense stat only.
-                            int memberAc = PlayerCombatStats.getArmorClass(member, null, null,
-                                PlayerProgression.get((ServerWorld) member.getEntityWorld())
-                                    .getStats(member).getPoints(PlayerProgression.Stat.DEFENSE) * PROG_DEFENSE_PER_POINT, 0);
-                            if (DodgeRoll.roll(memberAc, swoop.damage(), combatRng).dodged()) {
-                                sendMessage("§b  " + member.getName().getString() + " deflected the swoop!");
-                            } else {
-                                int actual = Math.max(1, swoop.damage());
-                                member.setHealth(Math.max(1, member.getHealth() - actual));
-                                sendMessage("§c  Chains through " + member.getName().getString()
-                                    + " for " + actual + " damage!");
-                                swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
-                                    member.getX(), member.getY() + 1.0, member.getZ(),
-                                    10, 0.3, 0.5, 0.3, 0.03);
-                                if ((int) member.getHealth() <= 1) {
-                                    ServerPlayerEntity savedPlayer = this.player;
-                                    this.player = member;
-                                    retargetEffectsToCurrentPlayer();
-                                    handlePlayerDeathOrGameOver();
-                                    this.player = savedPlayer;
-                                    retargetEffectsToCurrentPlayer();
-                                }
-                            }
-                        }
-                    }
-                    sendSync();
-                }
-
-                // Damage is worked out from the FULL path above; where the mob comes to rest
-                // is settled by startEnemyMove, which refuses to end a move on an occupied
-                // tile whatever the action was.
-
-                // Start the actual per-tile lerp through the swoop path.
-                // tickEnemyMoving handles the visual interpolation and spawns trail
-                // particles when pendingAction is a Swoop (see tickEnemyMoving hook).
-                if (swoopPath.isEmpty()) {
-                    enemyTurnState = EnemyTurnState.DONE;
-                    enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
-                } else {
-                    startEnemyMove(swoopPath);
+                    case FLYING -> { }
                 }
             }
             case EnemyAction.StartFuse fuse -> {
@@ -18225,21 +18219,47 @@ public class CombatManager {
                 // cube's fire-trail bounce burned the floor while the cube itself
                 // silently never moved.
                 boolean tookOverTurn = false;
-                for (EnemyAction subAction : ca.actions()) {
-                    // Only ONE movement-driven sub-action may own the turn state
-                    // machine; a second would reset enemyMovePath mid-flight and
-                    // silently discard the first. No current AI builds such a
-                    // composite -this guards the day one does.
-                    boolean isMovementSub = subAction instanceof EnemyAction.Move
-                        || subAction instanceof EnemyAction.MoveAndAttack
-                        || subAction instanceof EnemyAction.Pounce;
+                // Flattened first: a resolved warning is often a bundle already, and the turn
+                // it resolves it arrives bundled again with the follow-up action. One layer
+                // down, the inner bundle used to be handed to dispatchBossSubAction whole,
+                // which has no way to run a charge - the Rockbreaker's was lost exactly there.
+                for (EnemyAction subAction : EnemyAction.flatten(ca)) {
+                    // Only ONE turn-driving sub-action may own the turn state machine; a
+                    // second would reset enemyMovePath mid-flight and silently discard the
+                    // first. A charge resolving alongside a follow-up step is the real case:
+                    // the charge comes first in the bundle and wins, the step is dropped.
+                    boolean isMovementSub = EnemyAction.drivesTurn(subAction);
                     if (tookOverTurn && isMovementSub) {
-                        CrafticsMod.LOGGER.warn(
-                            "CompositeAction with multiple movement sub-actions -dropping extra {}",
+                        CrafticsMod.LOGGER.debug(
+                            "CompositeAction with multiple turn-driving sub-actions - dropping extra {}",
                             subAction.getClass().getSimpleName());
                         continue;
                     }
-                    if (subAction instanceof EnemyAction.Move mv) {
+                    if (subAction instanceof EnemyAction.Swoop swoop) {
+                        // The same path a lone swoop takes, so a bundled one hits what it
+                        // flies through and is left to finish its flight.
+                        pendingAction = swoop;
+                        SwoopOutcome outcome = beginSwoop(swoop);
+                        if (outcome == SwoopOutcome.PLAYER_DOWN) return;
+                        if (outcome == SwoopOutcome.FLYING) tookOverTurn = true;
+                    } else if (subAction instanceof EnemyAction.MoveAndAttackWithKnockback maakb) {
+                        if (!maakb.path().isEmpty()) {
+                            // pendingAction must be the sub-action so the arrival strike and
+                            // its knockback fire when the movement lerp completes.
+                            pendingAction = maakb;
+                            startEnemyMove(maakb.path());
+                        } else {
+                            // Already in reach: the charge is just the strike.
+                            pendingAction = new EnemyAction.AttackWithKnockback(
+                                maakb.damage(), maakb.knockbackTiles());
+                            startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
+                        }
+                        tookOverTurn = true;
+                    } else if (subAction instanceof EnemyAction.AttackWithKnockback akb) {
+                        pendingAction = akb;
+                        startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
+                        tookOverTurn = true;
+                    } else if (subAction instanceof EnemyAction.Move mv) {
                         if (!mv.path().isEmpty()) {
                             pendingAction = mv;
                             startEnemyMove(mv.path());
@@ -20562,10 +20582,92 @@ public class CombatManager {
                     })) {
                 return;
             }
+        } else {
+            // Not one of ours: a compat projectile, resolved by whoever registered its type.
+            com.crackedgames.craftics.api.ProjectileImpactHandler custom =
+                com.crackedgames.craftics.api.registry.ProjectileImpactRegistry.get(type);
+            if (custom != null) {
+                boolean[] gameOver = {false};
+                custom.onImpact(projectileImpactContext(projectile, effectCenter, redirected, gameOver));
+                if (gameOver[0]) return;
+            }
         }
 
         // Kill the projectile entity
         killEnemy(projectile);
+    }
+
+    /**
+     * The view of an impact handed to a compat projectile handler. {@code gameOver[0]} is set
+     * when a hit on the party ended the fight, so the caller can stop without the handler
+     * having to be trusted to say so.
+     */
+    private com.crackedgames.craftics.api.ProjectileImpactHandler.Context projectileImpactContext(
+            CombatEntity projectile, GridPos center, boolean redirected, boolean[] gameOver) {
+        final CombatManager self = this;
+        return new com.crackedgames.craftics.api.ProjectileImpactHandler.Context() {
+            @Override public CombatEntity projectile() { return projectile; }
+            @Override public GridPos impactPos() { return center; }
+            @Override public boolean redirected() { return redirected; }
+            @Override public GridArena arena() { return arena; }
+            @Override public ServerWorld world() { return (ServerWorld) player.getEntityWorld(); }
+            @Override public CombatManager combat() { return self; }
+
+            @Override
+            public List<CombatEntity> enemiesNear(int radius) {
+                List<CombatEntity> near = new ArrayList<>();
+                for (CombatEntity e : enemies) {
+                    if (e == projectile || !e.isAlive() || e.isAlly() || e.isProjectile()) continue;
+                    // A background boss stands off the grid and owns its tiles through the
+                    // occupant map, so distance to its nominal position says nothing.
+                    boolean in = false;
+                    if (e.isBackgroundBoss()) {
+                        for (int dx = -radius; dx <= radius && !in; dx++) {
+                            for (int dz = -radius; dz <= radius && !in; dz++) {
+                                in = arena.getOccupant(new GridPos(center.x() + dx, center.z() + dz)) == e;
+                            }
+                        }
+                    } else {
+                        in = e.minDistanceTo(center) <= radius;
+                    }
+                    if (in) near.add(e);
+                }
+                return near;
+            }
+
+            @Override
+            public boolean hitPlayers(int radius, int damage, CombatEffects.EffectType effect,
+                                      int turns, int amplifier, String message) {
+                boolean over = damagePartyVictims(partyVictimsNear(center, radius), damage,
+                    (victim, actual, swapped) -> {
+                        if (message != null) {
+                            sendMessage(String.format(message,
+                                swapped ? victim.getName().getString() : "you", actual));
+                        }
+                        if (effect != null && actual > 0) addEffectHooked(effect, turns, amplifier);
+                    });
+                if (over) gameOver[0] = true;
+                return over;
+            }
+
+            @Override
+            public int damage(CombatEntity enemy, int amount) {
+                if (enemy == null || !enemy.isAlive()) return 0;
+                int dealt = enemy.takeDamage(amount);
+                checkAndHandleDeath(enemy);
+                return dealt;
+            }
+
+            @Override
+            public int pierce(CombatEntity enemy, int amount) {
+                if (enemy == null || !enemy.isAlive()) return 0;
+                int dealt = enemy.takeDamageThroughImmunity(amount);
+                checkAndHandleDeath(enemy);
+                return dealt;
+            }
+
+            @Override public void message(String text) { sendMessage(text); }
+        };
     }
 
     /**
@@ -23555,7 +23657,15 @@ public class CombatManager {
             // Move the player -spawn wind particles along push/pull path
             GridPos playerGridPos = arena.getPlayerGridPos();
             GridPos landingPos = playerGridPos;
-            for (int i = 1; i <= fm.tiles(); i++) {
+            // An ordinary mob's shove (a zephyr's gust) is knockback, so whatever the player
+            // wears against knockback gets its say. Boss pushes and pulls are scripted parts
+            // of the fight and stay exactly as long as the boss made them.
+            int fmTiles = fm.tiles();
+            final CombatEntity fmSource = currentEnemy;
+            if (fmSource != null && !fmSource.isBoss() && phase == CombatPhase.ENEMY_TURN) {
+                fmTiles = fireEffectHookChained(fmTiles, (h, d) -> h.onKnockback(effectContext, fmSource, d));
+            }
+            for (int i = 1; i <= fmTiles; i++) {
                 GridPos candidate = new GridPos(playerGridPos.x() + fm.dx() * i, playerGridPos.z() + fm.dz() * i);
                 if (!arena.isInBounds(candidate) || arena.isEnemyOccupied(candidate)) break;
                 GridTile tile = arena.getTile(candidate);
@@ -25918,6 +26028,181 @@ public class CombatManager {
         if (team != null) {
             scoreboard.removeTeam(team);
         }
+    }
+
+    /** How {@link #beginSwoop} left the enemy's turn. */
+    private enum SwoopOutcome {
+        /** The flight is under way; the move ticker owns the turn until it lands. */
+        FLYING,
+        /** Nothing left to fly along (the lane was blocked from the first tile). */
+        GROUNDED,
+        /** The swoop downed the acting player; the death flow has taken over. */
+        PLAYER_DOWN
+    }
+
+    /**
+     * Resolve a swoop's hits and start {@code currentEnemy} flying down its lane.
+     *
+     * <p>One method for every way a swoop can arrive. It used to live inside the top-level
+     * dispatch case only, so a swoop that came bundled with anything else - the Bastion Brute's
+     * Gore Charge with its fire trail, the Wither's charge with its decay, or any charge resolved
+     * on the same turn as a follow-up action - went through a second, thinner copy that started
+     * the flight and dealt no damage, and was then marked finished before the boss had moved.
+     *
+     * <p>{@code pendingAction} must be the swoop when this is called: the move ticker reads it
+     * for the trail and the arrival.
+     */
+    private SwoopOutcome beginSwoop(EnemyAction.Swoop swoop) {
+        // Lerped swoop -dragon/phantom physically flies along path tile-by-tile
+        // via startEnemyMove. Damage is applied up-front to anyone in the path
+        // (size-aware so the dragon's 3x3 footprint crushes the player) and the
+        // per-tile trail particles are spawned by tickEnemyMoving while lerping.
+        sendMessage("§5§l⌇ " + currentEnemy.getDisplayName() + " swoops!");
+        ServerWorld swoopWorld = (ServerWorld) player.getEntityWorld();
+
+        // Truncate the swoop path at the first obstacle that appeared
+        // after the boss planned its charge (player placed a barrier
+        // on the line). FIRE is walkable for swoops by design.
+        // Copied, not aliased: the trim below mutates this list, and the action's own
+        // path belongs to the AI that planned it.
+        List<GridPos> swoopPath = new ArrayList<>(swoop.path());
+        int swoopBlockedAt = -1;
+        for (int i = 0; i < swoopPath.size(); i++) {
+            var stile = arena.getTile(swoopPath.get(i));
+            if (stile != null && !stile.isWalkable()
+                    && !stile.getType().isFlames()) {
+                swoopBlockedAt = i;
+                break;
+            }
+        }
+        if (swoopBlockedAt >= 0) {
+            swoopPath = new ArrayList<>(swoopPath.subList(0, swoopBlockedAt));
+        }
+
+        // Force the mob visible for the lerp -cinematic swoops from off-stage
+        // bosses (like the Ender Dragon) rely on this so the lerp actually shows.
+        MobEntity swoopMob = currentEnemy.getMobEntity();
+        if (swoopMob != null) {
+            swoopMob.setInvisible(false);
+            swoopMob.setSilent(false);
+            // Snap to the first tile of the path so the lerp starts at the correct
+            // edge position for cross-arena swoops -prevents a diagonal snap from
+            // the dragon's previous tile.
+            //
+            // Skipped when that tile belongs to somebody. This snap is why a phantom
+            // kept ending its swoop inside the player: a phantom standing NEXT to its
+            // target builds a path whose first tile IS the target's tile, and this
+            // moved it there outright - before the flight, before any landing check.
+            // Every later guard then read the mob as already standing there and left
+            // it alone, because a mob's own square is the one place it is always
+            // allowed to be. The illegal position was created and then protected.
+            //
+            // Nothing is lost by skipping it. The snap only exists so a boss diving
+            // in from off-stage starts its lerp at the arena edge instead of sliding
+            // diagonally out of its old tile, and such a path begins nowhere near a
+            // player. A phantom simply starts its dive from where it actually is.
+            if (!swoopPath.isEmpty()) {
+                GridPos swoopStart = swoopPath.get(0);
+                if (!currentEnemy.getGridPos().equals(swoopStart)
+                        && !tileTakenByOther(swoopStart)) {
+                    BlockPos snapBlock = arena.gridToBlockPos(swoopStart);
+                    swoopMob.requestTeleport(
+                        snapBlock.getX() + currentEnemy.getSizeX() / 2.0,
+                        arena.getEntityY(swoopStart),
+                        snapBlock.getZ() + currentEnemy.getSizeZ() / 2.0);
+                    arena.moveEntity(currentEnemy, swoopStart);
+                }
+            }
+        }
+
+        // Dragon roar on swoop start -adds presence to the invisible entity
+        if (currentEnemy.getAiKey() != null && currentEnemy.getAiKey().contains("dragons_nest")
+                && currentEnemy.getMobEntity() != null) {
+            swoopWorld.playSound(null, currentEnemy.getMobEntity().getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_ENDER_DRAGON_GROWL,
+                net.minecraft.sound.SoundCategory.HOSTILE, 2.0f, 0.85f);
+        }
+
+        // Damage the player if any path tile intersects their footprint
+        GridPos playerGridPos = arena.getPlayerGridPos();
+        boolean hitPlayer = false;
+        for (GridPos pos : swoopPath) {
+            if (CombatEntity.minDistanceFromSizedEntity(
+                    pos, currentEnemy.getSizeX(), currentEnemy.getSizeZ(), playerGridPos) <= 0) {
+                hitPlayer = true;
+                break;
+            }
+        }
+        if (hitPlayer) {
+            int actual = damagePlayer(swoop.damage());
+            sendMessage("§c  Swoops through you for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+            swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                player.getX(), player.getY() + 1.0, player.getZ(), 10, 0.3, 0.5, 0.3, 0.03);
+            swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
+                player.getX(), player.getY() + 0.8, player.getZ(), 5, 0.2, 0.3, 0.2, 0.01);
+            sendSync();
+            if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return SwoopOutcome.PLAYER_DOWN; }
+        }
+
+        // Chain damage: non-active party members standing on the swoop path
+        if (partyPlayers.size() > 1) {
+            net.minecraft.util.math.BlockPos swoopOrigin = arena.getOrigin();
+            for (ServerPlayerEntity member : partyPlayers) {
+                if (member == player) continue;
+                if (deadPartyMembers.contains(member.getUuid())) continue;
+                if (member.isRemoved() || member.isDisconnected()) continue;
+                net.minecraft.util.math.BlockPos mbp = member.getBlockPos();
+                GridPos memberGrid = new GridPos(
+                    mbp.getX() - swoopOrigin.getX(), mbp.getZ() - swoopOrigin.getZ());
+                boolean memberHit = false;
+                for (GridPos pos : swoopPath) {
+                    if (CombatEntity.minDistanceFromSizedEntity(pos,
+                            currentEnemy.getSizeX(), currentEnemy.getSizeZ(), memberGrid) <= 0) {
+                        memberHit = true;
+                        break;
+                    }
+                }
+                if (memberHit) {
+                    // Party member's AC dodge roll. Member-specific
+                    // combat effects / trims aren't tracked here, so
+                    // pass their armor + Defense stat only.
+                    int memberAc = PlayerCombatStats.getArmorClass(member, null, null,
+                        PlayerProgression.get((ServerWorld) member.getEntityWorld())
+                            .getStats(member).getPoints(PlayerProgression.Stat.DEFENSE) * PROG_DEFENSE_PER_POINT, 0);
+                    if (DodgeRoll.roll(memberAc, swoop.damage(), combatRng).dodged()) {
+                        sendMessage("§b  " + member.getName().getString() + " deflected the swoop!");
+                    } else {
+                        int actual = Math.max(1, swoop.damage());
+                        member.setHealth(Math.max(1, member.getHealth() - actual));
+                        sendMessage("§c  Chains through " + member.getName().getString()
+                            + " for " + actual + " damage!");
+                        swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                            member.getX(), member.getY() + 1.0, member.getZ(),
+                            10, 0.3, 0.5, 0.3, 0.03);
+                        if ((int) member.getHealth() <= 1) {
+                            ServerPlayerEntity savedPlayer = this.player;
+                            this.player = member;
+                            retargetEffectsToCurrentPlayer();
+                            handlePlayerDeathOrGameOver();
+                            this.player = savedPlayer;
+                            retargetEffectsToCurrentPlayer();
+                        }
+                    }
+                }
+            }
+            sendSync();
+        }
+
+        // Damage is worked out from the FULL path above; where the mob comes to rest
+        // is settled by startEnemyMove, which refuses to end a move on an occupied
+        // tile whatever the action was.
+
+        // Start the actual per-tile lerp through the swoop path.
+        // tickEnemyMoving handles the visual interpolation and spawns trail
+        // particles when pendingAction is a Swoop (see tickEnemyMoving hook).
+        if (swoopPath.isEmpty()) return SwoopOutcome.GROUNDED;
+        startEnemyMove(swoopPath);
+        return SwoopOutcome.FLYING;
     }
 
     private void startEnemyMove(List<GridPos> path) {
@@ -28327,6 +28612,17 @@ public class CombatManager {
                 addEffectHooked(CombatEffects.EffectType.POISON, 3, 0);
                 sendMessage("§2  Bee sting! Poisoned for 3 turns!");
             }
+            // Both were documented as poisoning (their AI javadoc, their bestiary pages) and
+            // neither did: the cave spider had no case here, and the bogged's "poison_arrow"
+            // effect name is only read on the boss sub-action path its arrows never take.
+            case "minecraft:cave_spider" -> {
+                addEffectHooked(CombatEffects.EffectType.POISON, 2, 0);
+                sendMessage("§2  Venomous bite! Poisoned for 2 turns!");
+            }
+            case "minecraft:bogged" -> {
+                addEffectHooked(CombatEffects.EffectType.POISON, 3, 0);
+                sendMessage("§2  Bogged poison! Poisoned for 3 turns!");
+            }
             case "minecraft:llama" -> {
                 sendMessage("§a  Splat! Llama spit!");
             }
@@ -29266,6 +29562,7 @@ public class CombatManager {
             int allEmeralds = ld.emeralds;
             if (allEmeralds > 0) ld.spendEmeralds(allEmeralds);
             ld.highestBiomeUnlocked = 1;
+            ld.sideProgress = "";
             // The NG+ offer is campaign progress too. Left standing, a wiped island kept the
             // button and could take the next cycle without beating the campaign again.
             ld.campaignCompleted = false;
@@ -30042,6 +30339,12 @@ public class CombatManager {
                 // Burned to death = already cooked. Applied per roll so the meat that
                 // actually lands in the bag is the meat announced in chat.
                 if (enemy.wasBurningOnDeath()) drops = cookDropsOverFire(drops);
+                // Skyroot weapons (Aether compat): whatever it would have dropped, twice.
+                if (enemy.hasDoubleDrops()) {
+                    for (ItemStack drop : drops) {
+                        if (!drop.isEmpty()) drop.setCount(drop.getCount() * 2);
+                    }
+                }
                 List<ItemStack> summary = lootSummaries.get(recipient.getUuid());
                 for (ItemStack drop : drops) {
                     if (drop.isEmpty() || drop.getCount() <= 0) continue;
@@ -30714,10 +31017,38 @@ public class CombatManager {
                     && biomeOrdinal >= 0 && biomeOrdinal < campaignOrder.size()) {
                 justClearedBiomeId = campaignOrder.get(biomeOrdinal);
             }
-            if (ld.highestBiomeUnlocked <= currentBiomeOrder) {
+            // An optional side region keeps its own count. Its biomes borrow a campaign position
+            // for difficulty only, so letting this clear fall into the cursor step below would
+            // open the next CAMPAIGN biome for beating a dungeon that is not on the campaign.
+            com.crackedgames.craftics.level.campaign.CampaignSideRegion clearedSide =
+                com.crackedgames.craftics.level.campaign.CampaignManager.sideRegionOf(justClearedBiomeId);
+            if (clearedSide != null) {
+                String sideId = clearedSide.region().id();
+                int sideIndex = clearedSide.indexOf(justClearedBiomeId);
+                if (ld.getSideCleared(sideId) <= sideIndex) {
+                    ld.setSideCleared(sideId, sideIndex + 1);
+                    data.markDirty();
+                    if (sideIndex + 1 >= clearedSide.size()) {
+                        sendMessage(clearedSide.region().color() + "§l" + clearedSide.region().icon() + " "
+                            + clearedSide.region().displayName().toUpperCase() + " CONQUERED! "
+                            + clearedSide.region().icon());
+                    }
+                }
+            }
+            if (clearedSide == null && ld.highestBiomeUnlocked <= currentBiomeOrder) {
                 ld.highestBiomeUnlocked = currentBiomeOrder + 1;
                 data.markDirty();
                 com.crackedgames.craftics.CrafticsMod.updateWorldIcon(player.getServer(), ld);
+                // Side regions anchored on this biome open with it, alongside whatever the
+                // campaign itself opens next.
+                for (com.crackedgames.craftics.level.campaign.CampaignSideRegion opened
+                        : com.crackedgames.craftics.level.campaign.CampaignManager.sideRegions()) {
+                    if (opened.unlockAfterBiomeId().equals(justClearedBiomeId)) {
+                        sendMessage(opened.region().color() + "§l" + opened.region().icon() + " "
+                            + opened.region().displayName().toUpperCase() + " HAS BEEN UNLOCKED! "
+                            + opened.region().icon());
+                    }
+                }
                 // Campaign progress belongs to the ISLAND, not to each player who was standing
                 // on it. Only `ld` - the island owner's record - advances here.
                 //
@@ -37350,8 +37681,13 @@ public class CombatManager {
             // Modded rosters can't be case labels here (the ids only exist when the
             // mod does), so they resolve through their compat module instead. Returns
             // null for anything it doesn't own, which is the same as no drops.
-            default -> com.crackedgames.craftics.compat.deeperanddarker
-                .DeeperAndDarkerCompat.mobDrops(entityTypeId);
+            // Compat creatures: their ids only exist when their mod does, so they cannot be
+            // case labels. Each module answers null for anything it does not own.
+            default -> {
+                LootPool aether = com.crackedgames.craftics.compat.aether.AetherMobs.mobDrops(entityTypeId);
+                yield aether != null ? aether : com.crackedgames.craftics.compat.deeperanddarker
+                    .DeeperAndDarkerCompat.mobDrops(entityTypeId);
+            }
         };
     }
 
@@ -38352,7 +38688,8 @@ public class CombatManager {
             null,                       // spawn NBT was already merged into this combatant
             ally.getAiOverrideKey(),
             ally.getNameOverride(),
-            true);
+            true,
+            ally.getHubHome());
     }
 
     /**
@@ -38434,12 +38771,12 @@ public class CombatManager {
                 savedPets.add(new HubPetCollector.PetData(
                     n.getString("type"), n.getInt("hp"), n.getInt("maxHp"),
                     n.getInt("atk"), n.getInt("def"), n.getInt("speed"), n.getInt("range"), null, false,
-                    player.getUuid(), null, null));
+                    player.getUuid(), null, null, null));
                 //?} else {
                 /*savedPets.add(new HubPetCollector.PetData(
                     n.getString("type", ""), n.getInt("hp", 0), n.getInt("maxHp", 0),
                     n.getInt("atk", 0), n.getInt("def", 0), n.getInt("speed", 0), n.getInt("range", 0), null, false,
-                    player.getUuid(), null, null));
+                    player.getUuid(), null, null, null));
                 *///?}
             }
             if (!savedPets.isEmpty()) saveData.markDirty();
@@ -38553,6 +38890,7 @@ public class CombatManager {
             // Carry the hub snapshot forward so end-of-run restoration keeps the
             // mob's variant/collar/saddle and \u2014 crucially \u2014 its battle-party UUID.
             ce.setOriginalHubNbt(pet.originalNbt());
+            ce.setHubHome(pet.home());
             // Identity, exactly as the fight-start path applies it. Without this a carried-over
             // pet loses its name and runs its entity type's AI - so for a mod fielding a roster
             // under one entity type, every survivor comes back as the same blank creature.
@@ -38809,6 +39147,7 @@ public class CombatManager {
             ce.setOwnerUuid(snapshot.playerUuid());
             ce.setMobEntity(mob);
             ce.setOriginalHubNbt(snapshot.fullEntityNbt());
+            ce.setHubHome(snapshot.home());
             // Provider-supplied allies fight this battle only. The flag is what keeps them
             // out of the hub afterwards: they were never a hub entity, so materialising one
             // would hand the player a second copy of a creature its own mod still tracks.
@@ -39487,6 +39826,10 @@ public class CombatManager {
             case HASTE -> net.minecraft.entity.effect.StatusEffects.HASTE;
             case SLOW_FALLING -> net.minecraft.entity.effect.StatusEffects.SLOW_FALLING;
             case WATER_BREATHING -> net.minecraft.entity.effect.StatusEffects.WATER_BREATHING;
+            // The potion's own effect was put on the player for its particles, with no end. This
+            // is what takes it off again when the combat effect runs out. Null without the mod.
+            case SCULK_AFFINITY -> net.minecraft.registry.Registries.STATUS_EFFECT
+                .getEntry(net.minecraft.util.Identifier.of("deeperdarker", "sculk_affinity")).orElse(null);
             case BURNING, SOUL_BURNING, SOAKED, CONFUSION, BLEEDING, AIRTIME, WARPED, MARKED,
                  VULNERABLE -> null; // no vanilla equivalent
         };
@@ -40724,6 +41067,13 @@ public class CombatManager {
             typeIds.append(";spd=").append(e.getMoveSpeed());
             typeIds.append(";range=").append(e.getRange());
             typeIds.append(";mv=").append(MoveStyle.forEntityType(e.getEntityTypeId()).tag());
+            // Permanent traits (Undead, Immovable, ...) for the inspect panel's trait row.
+            // Resolved from live flags every sync, so a trait that depends on state - a
+            // Creaking's heart link - drops off the panel the moment it stops being true.
+            String traitIds = MobTraits.encode(MobTraits.forEntity(e));
+            if (!traitIds.isEmpty()) {
+                typeIds.append(";tr=").append(traitIds);
+            }
             // Tag allies so client can display them separately
             if (e.isAlly()) {
                 typeIds.append(";ally");
@@ -41018,7 +41368,7 @@ public class CombatManager {
     }
 
     /** Convert entity type ID to display name for bestiary (e.g. "minecraft:zombie" -> "Zombie"). */
-    private static String entityTypeIdToMobName(String entityTypeId) {
+    public static String entityTypeIdToMobName(String entityTypeId) {
         String raw = entityTypeId;
         int colon = raw.indexOf(':');
         if (colon >= 0) raw = raw.substring(colon + 1);

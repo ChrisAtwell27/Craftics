@@ -39,7 +39,7 @@ public class LevelSelectBlockEntity extends BlockEntity
         return new LevelSelectScreenHandler(syncId, playerInventory,
             pd.highestBiomeUnlocked, pd.branchChoice, pd.discoveredBiomes,
             !pd.metTraders.isEmpty() && pd.raidDefeated, !pd.metBarterers.isEmpty(),
-            pd.ngPlusLevel, pd.campaignCompleted);
+            pd.ngPlusLevel, pd.campaignCompleted, pd.sideProgress);
     }
 
     @Override
@@ -52,7 +52,7 @@ public class LevelSelectBlockEntity extends BlockEntity
         return new LevelSelectScreenHandler.LevelSelectData(
             pd.highestBiomeUnlocked, pd.branchChoice, pd.discoveredBiomes,
             !pd.metTraders.isEmpty() && pd.raidDefeated, !pd.metBarterers.isEmpty(),
-            pd.ngPlusLevel, pd.campaignCompleted);
+            pd.ngPlusLevel, pd.campaignCompleted, pd.sideProgress);
     }
 
     private CrafticsSavedData getData() {

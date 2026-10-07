@@ -21,7 +21,7 @@ import net.fabricmc.loader.api.FabricLoader;
  * - "How Trims Work" is referenced by name from CombatManager trim-drop unlocks.
  */
 public class GuideBookData {
-    // Content version: 2026-07-15 - Airtime, Elytra launch, Wind Burst recoil, milk rework
+    // Content version: 2026-10-07 - Mob traits and the pin inspect key
 
     /**
      * One boxed feature on a page: an item icon, a bold name, a small right-aligned tag
@@ -167,6 +167,28 @@ public class GuideBookData {
         unlockedEntries.clear();
         unlockedEntries.addAll(defaultUnlocks);
         BiomeAtlasData.clear();
+        traitCatalog = java.util.Map.of();
+    }
+
+    /**
+     * Bestiary entry name to the traits that mob carries, as last sent by the server.
+     *
+     * <p>Synced rather than worked out here for the same reason the atlas is: which traits a
+     * mob has depends on registries a multiplayer client cannot be assumed to share (compat
+     * modules tag their mobs server-side), and a bestiary entry's name does not say which
+     * entity type or boss key it stands for.
+     */
+    private static java.util.Map<String, List<com.crackedgames.craftics.combat.MobTrait>>
+        traitCatalog = java.util.Map.of();
+
+    /** Replace the trait table. Called when MobTraitCatalogPayload is received. */
+    public static void applyTraitCatalog(String encoded) {
+        traitCatalog = com.crackedgames.craftics.combat.MobTraitCatalog.decode(encoded);
+    }
+
+    /** Traits for a bestiary entry, in display order; empty when it has none. */
+    public static List<com.crackedgames.craftics.combat.MobTrait> traitsFor(String entryName) {
+        return traitCatalog.getOrDefault(entryName, List.of());
     }
 
     /** Unlock a bestiary entry locally by mob type ID (for immediate UI feedback during combat). */
@@ -279,7 +301,7 @@ public class GuideBookData {
                 "Your Armor Class (AC) instead gives a chance for enemies to MISS you entirely. The higher your AC compared to the attacker's strength, the more often they whiff.\n\n" +
                 "Worn armor ALSO shaves a small flat amount off every enemy hit that does land, so a bad dodge roll still isn't the same as wearing nothing. Full sets: Leather 0, Gold 0, Chainmail 1, Iron/Copper 2, Diamond 4, Netherite 5. A hit always deals at least 1.\n\n" +
                 "That reduction is deliberately small - AC is still where armor does its real work. It does not apply to hazards like lava or sculk jaws, which bite for full.\n\n" +
-                "Hover any enemy to inspect its live stats in the panel.")
+                "Hover any enemy to inspect its live stats in the panel. The tags under the stats are its traits: green ones help it, red ones are openings for you. Hold the Pin Inspect Panel key (Left Alt by default) to keep the panel up, then hover a tag or a status effect to read what it does.")
         )));
         basics.add(new Entry("Tile Types", "minecraft:grass_block", List.of(
             new Page("Arena Tiles", "", List.of(
@@ -614,6 +636,56 @@ public class GuideBookData {
             enemies.add(mob("Mimic", "artifacts:mimic_spawn_egg|minecraft:chest",
                 st("Ambush", "15+", "10", "2", null, null, null, null, null, null),
                 "Ambusher disguised as loot. Only appears in the Abandoned Campsite event between levels. HP scales to 75% of the biome boss, minimum 15. Each turn it alternates two attacks: Tantrum hops 4-6 times through nearby tiles and deals 10 damage if it lands on you; Dash charges in a straight line until it hits a wall for 10 damage, shoving anything in its path. Drops a random artifact on defeat."));
+        }
+
+        // The Aether - the creatures of its three dungeons. Names follow entityTypeIdToMobName,
+        // so each unlocks the first time it is met. Stats are the dungeon pools' base values.
+        if (loader.isModLoaded("aether")) {
+            enemies.add(mob("Zephyr", "aether:zephyr_spawn_egg|minecraft:ghast_spawn_egg",
+                st("Hostile", "8-10", "0", "0", "1", "5", "2x2", null, null, null),
+                "A cloud with a grudge. Its gust does no damage at all: it throws you two tiles straight back, and what you land in is the problem. Slow and fragile, so close the distance. Sentry Boots, a Valkyrie Cape or a full Valkyrie set hold you in place."));
+            enemies.add(mob("Cockatrice", "aether:cockatrice_spawn_egg|minecraft:chicken_spawn_egg",
+                st("Hostile", "14-16", "5-6", "0", "2", "3", null, null, null, null),
+                "Spits poison needles from three tiles and backs away when you get close. Corner it, or carry a White Apple or a Remedy Bucket for the poison."));
+            enemies.add(mob("Blue Swet", "aether:blue_swet_spawn_egg|minecraft:slime_spawn_egg",
+                st("Hostile", "14", "4", "0", "2", "1", null, null, null, null),
+                "Hops at you and swallows you. The hit is light, but it leaves you Levitating for a turn. A Swet Cape makes every swet lose interest in you. Water dissolves them."));
+            enemies.add(mob("Golden Swet", "aether:golden_swet_spawn_egg|minecraft:slime_spawn_egg",
+                st("Hostile", "16-18", "5-6", "0", "2", "1", null, null, null, null),
+                "The Blue Swet's tougher cousin from the deeper dungeons. Same swallow, same Levitation, same weakness to water and to a Swet Cape."));
+            enemies.add(mob("Aechor Plant", "aether:aechor_plant_spawn_egg|minecraft:spore_blossom",
+                st("Hostile", "16", "6", "1", "0", "3", null, null, null, null),
+                "Rooted in its own patch of Aether grass and going nowhere: it cannot be pushed, pulled or launched. Spits poison needles at anything within three tiles it can see, so break its line of sight or walk in and cut it down."));
+            enemies.add(mob("Whirlwind", "aether:whirlwind_spawn_egg|minecraft:white_wool",
+                st("Hazard", "12-14", "0", "0", "2", "1", null, null, null, null),
+                "A column of wind that is not out to get anyone. It wanders, and if you are beside it when its turn comes it throws you two tiles away. No damage, but mind what is behind you. It stays out of water."));
+            enemies.add(mob("Evil Whirlwind", "aether:evil_whirlwind_spawn_egg|minecraft:gray_wool",
+                st("Hostile", "16-18", "6-7", "0", "2", "1", null, null, null, null),
+                "The same wind with intent. It hunts you down, and its toss is a real hit that throws you three tiles. Sentry Boots or a Valkyrie Cape shorten the throw; a full Valkyrie set ignores it."));
+            enemies.add(mob("Sentry", "aether:sentry_spawn_egg|minecraft:stone",
+                st("Hostile", "10", "8", "1", "3", "1", null, null, null, null),
+                "Looks like part of the dungeon wall until you come within three tiles. Then it walks up to you, and on its next turn it explodes: heavy damage, a shove, and no loot. Kill it at range, or use the one turn of warning to step away."));
+            // Artifacts has a Mimic of its own under the same name; that entry is added above.
+            if (!loader.isModLoaded("artifacts")) {
+                enemies.add(mob("Mimic", "aether:mimic_spawn_egg|minecraft:chest",
+                    st("Hostile", "22-24", "7-8", "2", "2", "1", null, null, null, null),
+                    "A chest that was never a chest. No tricks once it is awake: it walks at you and hits hard."));
+            }
+            enemies.add(mob("Valkyrie", "aether:valkyrie_spawn_egg|minecraft:iron_sword",
+                st("Neutral", "20", "8", "2", "3", "1", null, null, null, null),
+                "Leaves you alone until you strike her. Then she lunges down any clear lane of two to four tiles, hitting harder the further she travels, and blinks to your side when you try to keep away. She drops the Victory Medals the Valkyrie Queen asks for."));
+            enemies.add(mob("Fire Minion", "aether:fire_minion_spawn_egg|minecraft:blaze_spawn_egg",
+                st("Hostile", "20", "9", "1", "3", "1", null, null, null, null),
+                "Fast, strong, and its touch sets you Burning for two turns. A Cloud Staff hits it harder; Phoenix armor or Fire Resistance shrugs off the burn."));
+            enemies.add(mob("Phyg", "aether:phyg_spawn_egg|minecraft:pig_spawn_egg",
+                st("Passive", "8", "0", "0", "2", null, null, null, null, null),
+                "A pig with wings. Harmless. The Pig Slayer does not care about the wings."));
+            enemies.add(mob("Sheepuff", "aether:sheepuff_spawn_egg|minecraft:sheep_spawn_egg",
+                st("Passive", "8", "0", "0", "2", null, null, null, null, null),
+                "A very round sheep. Harmless."));
+            enemies.add(mob("Aerbunny", "aether:aerbunny_spawn_egg|minecraft:rabbit_spawn_egg",
+                st("Passive", "6", "0", "0", "3", null, null, null, null, null),
+                "A rabbit that floats. Harmless."));
         }
 
         // --- Bosses (named exactly as CombatManager.getBossName) ---

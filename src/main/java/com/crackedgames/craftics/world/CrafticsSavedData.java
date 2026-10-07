@@ -110,6 +110,15 @@ public class CrafticsSavedData extends PersistentState {
      * {@code ArenaBuilder.clearArenaSlot} scrubs before reusing a slot.
      */
     public static final int ARENA_SLOT_CLEAR_RADIUS = 64;
+
+    /**
+     * The X where arena and event-room territory begins on every island. The hub and anything a
+     * player builds around it lie west of this; from here on, ground is wiped and rebuilt by
+     * fights, so nothing that is meant to stay put (a pet's pen) belongs past it.
+     */
+    public static int arenaTerritoryStartX() {
+        return ARENA_BASE_X - ARENA_SLOT_CLEAR_RADIUS;
+    }
     /**
      * The two event ARENA slots sit past every room in the column, spaced {@code 400} apart.
      *
@@ -142,6 +151,13 @@ public class CrafticsSavedData extends PersistentState {
         public int activeBiomeLevelIndex = 0;
         public int branchChoice = -1;
         public String discoveredBiomes = "";
+        /**
+         * Progress through optional side regions, as {@code "regionId=cleared,..."}. Kept apart
+         * from {@link #highestBiomeUnlocked} because that cursor is a position on the campaign
+         * line and a side region is not on it: clearing an Aether dungeon must not open the
+         * next End biome, and beating the dragon must not open the next dungeon.
+         */
+        public String sideProgress = "";
         public int ngPlusLevel = 0;
         /**
          * True once this island has cleared the campaign's final biome and has NOT yet
@@ -562,6 +578,17 @@ public class CrafticsSavedData extends PersistentState {
             }
         }
 
+        /** How many biomes of an optional side region this island has cleared. */
+        public int getSideCleared(String regionId) {
+            return com.crackedgames.craftics.level.campaign.SideProgress.get(sideProgress, regionId);
+        }
+
+        /** Record a side region's cleared count. Never lowers it. */
+        public void setSideCleared(String regionId, int cleared) {
+            sideProgress = com.crackedgames.craftics.level.campaign.SideProgress
+                .with(sideProgress, regionId, Math.max(cleared, getSideCleared(regionId)));
+        }
+
         public void initBranchIfNeeded() {
             if (branchChoice < 0) {
                 branchChoice = new java.util.Random().nextInt(2);
@@ -574,6 +601,8 @@ public class CrafticsSavedData extends PersistentState {
             campaignCompleted = false;
             highestBiomeUnlocked = 1;
             discoveredBiomes = "";
+            // A new cycle relocks everything the old one opened, side regions included.
+            sideProgress = "";
             activeBiomeId = "";
             activeBiomeLevelIndex = 0;
             branchChoice = new java.util.Random().nextInt(2);
@@ -617,6 +646,7 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putInt("activeBiomeLevelIndex", activeBiomeLevelIndex);
             nbt.putInt("branchChoice", branchChoice);
             nbt.putString("discoveredBiomes", discoveredBiomes);
+            nbt.putString("sideProgress", sideProgress);
             nbt.putInt("ngPlusLevel", ngPlusLevel);
             nbt.putBoolean("campaignCompleted", campaignCompleted);
             nbt.putBoolean("inCombat", inCombat);
@@ -710,6 +740,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.activeBiomeLevelIndex = nbt.getInt("activeBiomeLevelIndex");
             pd.branchChoice = nbt.contains("branchChoice") ? nbt.getInt("branchChoice") : -1;
             pd.discoveredBiomes = nbt.contains("discoveredBiomes") ? nbt.getString("discoveredBiomes") : "";
+            pd.sideProgress = nbt.contains("sideProgress") ? nbt.getString("sideProgress") : "";
             pd.ngPlusLevel = nbt.contains("ngPlusLevel") ? nbt.getInt("ngPlusLevel") : 0;
             pd.campaignCompleted = nbt.contains("campaignCompleted") && nbt.getBoolean("campaignCompleted");
             pd.inCombat = nbt.contains("inCombat") && nbt.getBoolean("inCombat");
@@ -850,6 +881,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.activeBiomeLevelIndex = nbt.getInt("activeBiomeLevelIndex", 0);
             pd.branchChoice = nbt.getInt("branchChoice", -1);
             pd.discoveredBiomes = nbt.getString("discoveredBiomes", "");
+            pd.sideProgress = nbt.getString("sideProgress", "");
             pd.ngPlusLevel = nbt.getInt("ngPlusLevel", 0);
             pd.campaignCompleted = nbt.getBoolean("campaignCompleted", false);
             pd.inCombat = nbt.getBoolean("inCombat", false);

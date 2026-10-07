@@ -61,6 +61,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(RaidBossToastPayload.ID, RaidBossToastPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(GuideBookSyncPayload.ID, GuideBookSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(BiomeAtlasPayload.ID, BiomeAtlasPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(MobTraitCatalogPayload.ID, MobTraitCatalogPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(AddonBonusSyncPayload.ID, AddonBonusSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(LoadingScreenPayload.ID, LoadingScreenPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(CombatIntroPayload.ID, CombatIntroPayload.CODEC);

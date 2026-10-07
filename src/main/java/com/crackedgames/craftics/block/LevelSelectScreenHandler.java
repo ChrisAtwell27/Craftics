@@ -16,6 +16,7 @@ public class LevelSelectScreenHandler extends ScreenHandler {
     private final boolean metAnyBarterer;
     private final int ngPlusLevel;
     private final boolean ngPlusAvailable;
+    private final String sideProgress;
 
     /**
      * Data record sent from server to client when the screen opens.
@@ -32,10 +33,14 @@ public class LevelSelectScreenHandler extends ScreenHandler {
      *
      * <p>{@code ngPlusAvailable} is the island's standing offer to advance a cycle - raised by
      * clearing the final boss, cleared by taking it. It gates the NG+ button.
+     *
+     * <p>{@code sideProgress} is the island's progress through optional side regions, in
+     * {@code SideProgress}'s format. The campaign cursor cannot stand in for it: a side region
+     * is cleared against its own count.
      */
     public record LevelSelectData(int highestLevelUnlocked, int branchChoice, String discoveredBiomes,
                                   boolean metAnyTrader, boolean metAnyBarterer,
-                                  int ngPlusLevel, boolean ngPlusAvailable) {
+                                  int ngPlusLevel, boolean ngPlusAvailable, String sideProgress) {
         // Hand-written rather than PacketCodec.tuple: tuple() tops out at six field pairs and
         // this record has seven. Writing it out also drops the version fork this block used to
         // carry (PacketCodecs.BOOL was renamed BOOLEAN in 1.21.4) - the buffer's own
@@ -51,6 +56,7 @@ public class LevelSelectScreenHandler extends ScreenHandler {
             buf.writeBoolean(metAnyBarterer);
             buf.writeInt(ngPlusLevel);
             buf.writeBoolean(ngPlusAvailable);
+            buf.writeString(sideProgress);
         }
 
         private static LevelSelectData decode(RegistryByteBuf buf) {
@@ -61,8 +67,9 @@ public class LevelSelectScreenHandler extends ScreenHandler {
             boolean barterer = buf.readBoolean();
             int ngPlus = buf.readInt();
             boolean ngPlusOffer = buf.readBoolean();
+            String side = buf.readString();
             return new LevelSelectData(highest, branch, discovered, trader, barterer,
-                ngPlus, ngPlusOffer);
+                ngPlus, ngPlusOffer, side);
         }
     }
 
@@ -70,7 +77,7 @@ public class LevelSelectScreenHandler extends ScreenHandler {
     public LevelSelectScreenHandler(int syncId, PlayerInventory playerInventory,
                                       int highestLevelUnlocked, int branchChoice, String discoveredBiomes,
                                       boolean metAnyTrader, boolean metAnyBarterer,
-                                      int ngPlusLevel, boolean ngPlusAvailable) {
+                                      int ngPlusLevel, boolean ngPlusAvailable, String sideProgress) {
         super(ModScreenHandlers.LEVEL_SELECT_SCREEN_HANDLER, syncId);
         this.highestLevelUnlocked = highestLevelUnlocked;
         this.branchChoice = branchChoice;
@@ -79,13 +86,14 @@ public class LevelSelectScreenHandler extends ScreenHandler {
         this.metAnyBarterer = metAnyBarterer;
         this.ngPlusLevel = ngPlusLevel;
         this.ngPlusAvailable = ngPlusAvailable;
+        this.sideProgress = sideProgress != null ? sideProgress : "";
     }
 
     // Client constructor (from ExtendedScreenHandlerType)
     public LevelSelectScreenHandler(int syncId, PlayerInventory playerInventory, LevelSelectData data) {
         this(syncId, playerInventory, data.highestLevelUnlocked(), data.branchChoice(),
             data.discoveredBiomes(), data.metAnyTrader(), data.metAnyBarterer(),
-            data.ngPlusLevel(), data.ngPlusAvailable());
+            data.ngPlusLevel(), data.ngPlusAvailable(), data.sideProgress());
     }
 
     public int getHighestLevelUnlocked() { return highestLevelUnlocked; }
@@ -99,6 +107,8 @@ public class LevelSelectScreenHandler extends ScreenHandler {
     public int getNgPlusLevel() { return ngPlusLevel; }
     /** Whether the island has cleared the campaign and not yet taken the next NG+ cycle. */
     public boolean isNgPlusAvailable() { return ngPlusAvailable; }
+    /** Progress through optional side regions, in {@code SideProgress}'s format. */
+    public String getSideProgress() { return sideProgress; }
 
     @Override
     public ItemStack quickMove(PlayerEntity player, int slot) {

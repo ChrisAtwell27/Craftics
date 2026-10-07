@@ -599,6 +599,37 @@ public final class CrafticsAPI {
         CombatEffectRegistry.register(def);
     }
 
+    // === Mob traits ===
+
+    /**
+     * Register a mob trait - a permanent characteristic shown as a pill on the inspect panel
+     * and in the bestiary ("Undead", "Immovable"). The built-ins are constants on
+     * {@link com.crackedgames.craftics.combat.MobTraits}.
+     *
+     * <p>A trait is a label, not a mechanic: registering one changes nothing about how a mob
+     * fights. Give it to mobs with {@link #addMobTrait}. Register on both client and server,
+     * since the server sends ids and the client supplies the name, text and colour.
+     *
+     * @param trait the trait definition
+     * @return the same trait, for assigning to a constant
+     */
+    public static com.crackedgames.craftics.combat.MobTrait registerMobTrait(
+            com.crackedgames.craftics.combat.MobTrait trait) {
+        return com.crackedgames.craftics.combat.MobTraits.register(trait);
+    }
+
+    /**
+     * Declare that a mob carries a trait.
+     *
+     * @param typeOrAiKey an entity type id ({@code "mymod:frost_troll"}) or an AI key
+     *                    ({@code "boss:my_biome"}); a mob collects the traits declared for both
+     * @param traits      built-in or registered traits
+     */
+    public static void addMobTrait(String typeOrAiKey,
+                                   com.crackedgames.craftics.combat.MobTrait... traits) {
+        com.crackedgames.craftics.combat.MobTraits.declare(typeOrAiKey, traits);
+    }
+
     // === Environments ===
 
     /**
@@ -631,6 +662,33 @@ public final class CrafticsAPI {
      */
     public static void registerCampaign(Campaign campaign) {
         CampaignManager.register(campaign, RegistrationSource.CODE);
+    }
+
+    /**
+     * Register an optional side region - biomes that open beside the campaign instead of
+     * extending it.
+     *
+     * <p>Unlike {@link #registerCampaign}, this replaces nothing. The campaign keeps its
+     * length, its order and its final boss; the side region appears as an extra tab on the
+     * level select, opens when {@code unlockAfterBiomeId} is cleared, and is cleared against
+     * its own progress. Its first biome is as hard as the campaign biome that opens at the
+     * same moment. It is in play only while its anchor biome is part of the active campaign.
+     *
+     * <pre>{@code
+     * CrafticsAPI.registerSideRegion(new CampaignSideRegion(
+     *     CampaignRegion.builder("mymod:sky").displayName("The Sky").icon("☁")
+     *         .node("mymod:cloud_keep").node("mymod:storm_spire").build(),
+     *     "basalt_deltas"));   // opens with The End, once the Nether is cleared
+     * }</pre>
+     *
+     * Register it on both client and server: the level select builds its tabs from it.
+     *
+     * @param side the region and the campaign biome that unlocks it
+     * @since 0.4.9
+     */
+    public static void registerSideRegion(
+            com.crackedgames.craftics.level.campaign.CampaignSideRegion side) {
+        CampaignManager.registerSideRegion(side);
     }
 
     // === New: Equipment Scanners ===

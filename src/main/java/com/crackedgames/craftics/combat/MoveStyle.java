@@ -109,6 +109,8 @@ public enum MoveStyle {
         BY_TYPE.put("craftics:egg_sac", STATIONARY);
         BY_TYPE.put("craftics:war_banner", STATIONARY);
         BY_TYPE.put("craftics:grave", STATIONARY);
+        BY_TYPE.put("aether:aechor_plant", STATIONARY);
+        BY_TYPE.put("aether:valkyrie", ROOK_DASH);   // its lunge; capped at 4 tiles
 
         // ─── Mounted ───
         BY_TYPE.put("minecraft:camel", WALK);

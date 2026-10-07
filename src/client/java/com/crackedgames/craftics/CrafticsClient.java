@@ -56,6 +56,18 @@ public class CrafticsClient implements ClientModInitializer {
     private static KeyBinding partyMemberKey;
     private static KeyBinding focusSelfKey;
     private static KeyBinding pingKey;
+    private static KeyBinding pinInspectKey;
+
+    /** True while the pin key is down. Read every tick by {@code CombatInputHandler}. */
+    public static boolean isPinInspectHeld() {
+        return pinInspectKey != null && pinInspectKey.isPressed();
+    }
+
+    /** The pin key as the player has it bound ("Left Alt"), for the inspect panel's hint. */
+    public static String pinInspectKeyName() {
+        if (pinInspectKey == null || pinInspectKey.isUnbound()) return null;
+        return pinInspectKey.getBoundKeyLocalizedText().getString();
+    }
 
     /**
      * Every keybind Craftics registers, in one place.
@@ -70,7 +82,7 @@ public class CrafticsClient implements ClientModInitializer {
         return new KeyBinding[] {
             guideBookKey, respecKey, endTurnKey, affinityRespecKey, toggleUiKey,
             moveSlotLeftKey, moveSlotRightKey, clearPartyKey, mountAbilityKey, threatOverlayKey,
-            focusSelfKey, pingKey, partyMemberKey
+            focusSelfKey, pingKey, partyMemberKey, pinInspectKey
         };
     }
 
@@ -865,6 +877,18 @@ public class CrafticsClient implements ClientModInitializer {
             KEYBIND_CATEGORY
         ));
 
+        // Held, not tapped: the inspect panel stays on its mob for as long as the key is down.
+        //
+        // The panel only exists while the cursor is on the mob's tile, so without a way to
+        // hold it there is no reaching the pills inside it - the cursor leaves the mob on the
+        // way and the panel is gone. Holding rather than toggling means there is no pinned
+        // state to forget about: let go and the HUD is exactly as it was.
+        pinInspectKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.pin_inspect",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_LEFT_ALT,
+            KEYBIND_CATEGORY
+        ));
+
         CombatAnimations.register();
 
         ClientPlayNetworking.registerGlobalReceiver(
@@ -894,6 +918,14 @@ public class CrafticsClient implements ClientModInitializer {
             com.crackedgames.craftics.network.BiomeAtlasPayload.ID, (payload, context) -> {
                 context.client().execute(() ->
                     com.crackedgames.craftics.client.guide.BiomeAtlasData.apply(payload.encoded()));
+            }
+        );
+
+        // Which traits each bestiary entry carries. Without it the trait row is simply absent.
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.MobTraitCatalogPayload.ID, (payload, context) -> {
+                context.client().execute(() ->
+                    com.crackedgames.craftics.client.guide.GuideBookData.applyTraitCatalog(payload.encoded()));
             }
         );
 

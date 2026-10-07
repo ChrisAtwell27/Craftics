@@ -890,6 +890,11 @@ public class GuideBookScreen extends Screen {
             y += 3;
         }
 
+        // Traits, as synced from the server. Outlined where the stat badges above are solid,
+        // so a trait is never read as one more stat.
+        hoveredTrait = null;
+        y = drawTraitChips(ctx, entry.name(), y, mouseX, mouseY);
+
         // Description (current page of possibly several)
         if (currentPage >= entry.pages().size()) currentPage = 0;
         GuideBookData.Page page = entry.pages().get(currentPage);
@@ -921,6 +926,59 @@ public class GuideBookScreen extends Screen {
         }
 
         drawPageNav(ctx, entry, mouseX, mouseY);
+
+        // Last, so the tooltip sits over the description and the nav buttons.
+        if (hoveredTrait != null) {
+            List<Text> tip = new ArrayList<>();
+            tip.add(Text.literal(traitTooltipCode(hoveredTrait.polarity()) + "§l" + hoveredTrait.name()));
+            com.crackedgames.craftics.client.TooltipWrap.addWrapped(tip, "§7", hoveredTrait.description());
+            ctx.drawTooltip(textRenderer, tip, mouseX, mouseY);
+        }
+    }
+
+    /** The trait chip under the cursor this frame, or null. Set by {@link #drawTraitChips}. */
+    private com.crackedgames.craftics.combat.MobTrait hoveredTrait = null;
+
+    /**
+     * A wrapped row of trait chips for a bestiary entry. Returns the y below the row, or
+     * {@code y} unchanged for a mob with no traits.
+     */
+    private int drawTraitChips(DrawContext ctx, String entryName, int y, int mouseX, int mouseY) {
+        List<com.crackedgames.craftics.combat.MobTrait> traits = GuideBookData.traitsFor(entryName);
+        if (traits.isEmpty()) return y;
+        int x = pageX;
+        for (com.crackedgames.craftics.combat.MobTrait trait : traits) {
+            int w = textRenderer.getWidth(trait.name()) + 6;
+            if (x + w > pageX + pageW && x > pageX) {
+                x = pageX;
+                y += 14;
+            }
+            boolean hover = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + 12;
+            int color = traitChipColor(trait.polarity());
+            ctx.fill(x, y, x + w, y + 12, color);
+            ctx.fill(x + 1, y + 1, x + w - 1, y + 11, hover ? 0xFFDcc68f : PARCH_EDGE);
+            ctx.drawText(textRenderer, Text.literal(trait.name()), x + 3, y + 2, color, false);
+            if (hover) hoveredTrait = trait;
+            x += w + 3;
+        }
+        return y + 16;
+    }
+
+    /** Ink colors for the three polarities: good for the mob, bad for it, neither. */
+    private static int traitChipColor(com.crackedgames.craftics.combat.MobTrait.Polarity polarity) {
+        return switch (polarity) {
+            case POSITIVE -> 0xFF2E6B33;
+            case NEGATIVE -> 0xFF96342A;
+            case NEUTRAL -> 0xFF5F5F5F;
+        };
+    }
+
+    private static String traitTooltipCode(com.crackedgames.craftics.combat.MobTrait.Polarity polarity) {
+        return switch (polarity) {
+            case POSITIVE -> "§a";
+            case NEGATIVE -> "§c";
+            case NEUTRAL -> "§7";
+        };
     }
 
     private static String label(String name, String value) {

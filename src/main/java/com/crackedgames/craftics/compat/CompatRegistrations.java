@@ -49,6 +49,7 @@ public final class CompatRegistrations {
         run("immersive armors", com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat::registerDeferred);
         run("simply bows", com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat::registerDeferred);
         run("deeper and darker", com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat::registerDeferred);
+        run("aether", com.crackedgames.craftics.compat.aether.AetherCompat::registerDeferred);
     }
 
     /**

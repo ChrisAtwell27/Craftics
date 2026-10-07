@@ -113,6 +113,8 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.init();
         com.crackedgames.craftics.compat.takesapillage.TakesAPillageCompat.init();
         com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.init();
+        com.crackedgames.craftics.compat.aether.AetherCompat.init();
+        com.crackedgames.craftics.compat.aether.AetherMobs.init();
         com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.init();
         com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.init();
         // Forest's level-4 miniboss (the Pale Garden Creaking encounter) only registers when a
@@ -602,6 +604,9 @@ public class CrafticsMod implements ModInitializer {
                 // live in a server-side registry loaded from datapacks, so a multiplayer
                 // client has never seen a loot pool.
                 com.crackedgames.craftics.level.BiomeAtlasSync.send(player);
+                // Same reasoning for the bestiary's trait rows: which traits a mob carries is
+                // decided from server-side registries the client cannot be assumed to share.
+                com.crackedgames.craftics.level.MobTraitSync.send(player);
 
                 // Sync battle-party membership so the client can label party mobs
                 com.crackedgames.craftics.network.PartyMobSync.sync(player);
@@ -1243,6 +1248,8 @@ public class CrafticsMod implements ModInitializer {
             // Deeper and Darker fully replaces the deep_dark pool, so it must run
             // LAST - after creeperoverhaul's cave_creeper swap - to win.
             com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.applyBiomeOverrides();
+            // The Aether's dungeon biomes: additions, not overrides, and only when the mod is here.
+            com.crackedgames.craftics.compat.aether.AetherCompat.loadBiomes(server.getResourceManager());
 
             // Daily raid bosses: delete any dimension folder left behind by a raid
             // instance that never got torn down (crash, force-kill), then load the
@@ -1271,11 +1278,13 @@ public class CrafticsMod implements ModInitializer {
                     // whose entity is absent from the live registry, so this is a no-op without the mod.
                     com.crackedgames.craftics.compat.takesapillage.TakesAPillageCompat.applyBiomeOverrides();
                     com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.applyBiomeOverrides();
+                    com.crackedgames.craftics.compat.aether.AetherCompat.loadBiomes(server.getResourceManager());
                     // The guide book's biome pages were built from the pools that just got
                     // replaced. Re-push them, or every client keeps showing the previous
                     // pack's loot tables until it reconnects - a guide that is confidently
                     // wrong, which is worse than one that is missing.
                     com.crackedgames.craftics.level.BiomeAtlasSync.sendToAll(server);
+                    com.crackedgames.craftics.level.MobTraitSync.sendToAll(server);
                 }
                 // /reload rebuilds the command dispatcher from scratch, so every mod races for
                 // /home again and the previous verdict says nothing about the new tree.
@@ -1289,6 +1298,9 @@ public class CrafticsMod implements ModInitializer {
         // Refuses any damage a fight did not sanction - see ArenaGuards for why NoAI is not
         // enough on its own.
         com.crackedgames.craftics.combat.ArenaGuards.register();
+
+        // Sends a pet home when it loads on an island its owner no longer plays on.
+        com.crackedgames.craftics.combat.PetRecall.register();
 
         LOGGER.info("Craftics initialized.");
     }
@@ -1928,6 +1940,9 @@ public class CrafticsMod implements ModInitializer {
                 pd.initBranchIfNeeded();
                 int totalBiomes = com.crackedgames.craftics.level.campaign.CampaignManager.totalBiomes();
                 pd.highestBiomeUnlocked = totalBiomes;
+                for (var side : com.crackedgames.craftics.level.campaign.CampaignManager.sideRegions()) {
+                    pd.setSideCleared(side.region().id(), side.size() - 1);
+                }
                 data.markDirty();
                 updateWorldIcon(src.getServer(), pd);
                 src.sendFeedback(() -> Text.literal("§aUnlocked all " + totalBiomes + " biomes."), true);
@@ -3759,6 +3774,9 @@ public class CrafticsMod implements ModInitializer {
             // Snapshot members before leaving
             java.util.Set<java.util.UUID> remainingMembers = new java.util.HashSet<>(party.getMemberUuids());
             data.leaveParty(player.getUuid());
+            // Their pets were parked on the leader's island; and if it was the leader who left,
+            // the party has just moved islands and everyone else's are stranded on the old one.
+            com.crackedgames.craftics.combat.PetRecall.recallStrandedPets(ctx.getSource().getServer());
             ctx.getSource().sendFeedback(() -> Text.literal("§7You left the party."), false);
             remainingMembers.remove(player.getUuid());
             for (java.util.UUID memberUuid : remainingMembers) {
@@ -3793,6 +3811,7 @@ public class CrafticsMod implements ModInitializer {
                         return 0;
                     }
                     data.kickFromParty(party.getPartyId(), target.getUuid());
+                    com.crackedgames.craftics.combat.PetRecall.recallStrandedPets(ctx.getSource().getServer());
                     ctx.getSource().sendFeedback(() -> Text.literal("§aKicked " + target.getName().getString() + " from the party."), false);
                     target.sendMessage(Text.literal("§cYou were kicked from the party."), false);
                     return 1;
@@ -3841,6 +3860,7 @@ public class CrafticsMod implements ModInitializer {
                 }
             }
             data.disbandParty(party.getPartyId());
+            com.crackedgames.craftics.combat.PetRecall.recallStrandedPets(ctx.getSource().getServer());
             ctx.getSource().sendFeedback(() -> Text.literal("§7Party disbanded."), false);
             return 1;
         }));

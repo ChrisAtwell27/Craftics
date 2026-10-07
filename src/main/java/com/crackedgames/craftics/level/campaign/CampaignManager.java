@@ -151,17 +151,117 @@ public final class CampaignManager {
 
     // === Query delegators (all read the active campaign; null-safe) ===
 
-    /** Ordinal of {@code biomeId} in the active campaign's order, or {@code -1} if no active campaign. */
+    /**
+     * Ordinal of {@code biomeId} in the active campaign's order, or {@code -1} if it has none.
+     *
+     * <p>A side-region biome has a place on this scale without being on the line: it reads as
+     * the position right after its region's anchor, plus its own index. That is the campaign
+     * biome which opens at the same moment, so everything that scales by ordinal (enemy stats,
+     * loot tier, boss tuning) treats optional content as exactly as hard as what it opens
+     * beside. It is a difficulty, not a place in the run - {@link #orderedBiomeIds} does not
+     * contain it, and whether it is unlocked is {@link #isSideBiomeUnlocked}'s question, never
+     * a comparison of this number against the campaign cursor.
+     */
     public static int ordinalOf(String biomeId, int branchChoice) {
         Campaign active = active();
-        return active != null ? active.ordinalOf(biomeId, branchChoice) : -1;
+        if (active == null) return -1;
+        int ordinal = active.ordinalOf(biomeId, branchChoice);
+        if (ordinal >= 0) return ordinal;
+        CampaignSideRegion side = sideRegionOf(biomeId);
+        if (side == null) return -1;
+        return active.ordinalOf(side.unlockAfterBiomeId(), branchChoice) + 1 + side.indexOf(biomeId);
     }
 
-    /** Region containing {@code biomeId} in the active campaign, or {@code null}. */
+    /** Region containing {@code biomeId}: one of the active campaign's, or an active side region. */
     @Nullable
     public static CampaignRegion regionOf(String biomeId) {
         Campaign active = active();
-        return active != null ? active.regionOf(biomeId) : null;
+        if (active == null) return null;
+        CampaignRegion region = active.regionOf(biomeId);
+        if (region != null) return region;
+        CampaignSideRegion side = sideRegionOf(biomeId);
+        return side != null ? side.region() : null;
+    }
+
+    // === Side regions (optional content beside the campaign) ===
+
+    /** Registered side regions, in registration order. Tiny, and read far more than written. */
+    private static final List<CampaignSideRegion> SIDE_REGIONS =
+        new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /**
+     * Register an optional region that opens beside the campaign. Re-registering a region id
+     * replaces the earlier definition.
+     */
+    public static void registerSideRegion(CampaignSideRegion side) {
+        if (side == null) return;
+        SIDE_REGIONS.removeIf(s -> s.region().id().equals(side.region().id()));
+        SIDE_REGIONS.add(side);
+    }
+
+    /**
+     * The side regions in play: those whose anchor biome is in the active campaign.
+     *
+     * <p>A region is also left out when it would be ambiguous - one of its biomes is already
+     * on the campaign line, or it shares an id with a campaign region. A biome cannot be both
+     * required and optional, and silently preferring one reading would leave the other
+     * half-working.
+     */
+    public static List<CampaignSideRegion> sideRegions() {
+        Campaign active = active();
+        if (active == null || SIDE_REGIONS.isEmpty()) return List.of();
+        List<CampaignSideRegion> out = new java.util.ArrayList<>();
+        for (CampaignSideRegion side : SIDE_REGIONS) {
+            if (active.ordinalOf(side.unlockAfterBiomeId(), 0) < 0) continue;
+            boolean clash = false;
+            for (CampaignRegion region : active.regions()) {
+                if (region.id().equals(side.region().id())) clash = true;
+            }
+            for (String biomeId : side.biomeIds()) {
+                if (active.ordinalOf(biomeId, 0) >= 0) clash = true;
+            }
+            if (!clash) out.add(side);
+        }
+        return out;
+    }
+
+    /** The active side region that holds {@code biomeId}, or {@code null}. */
+    @Nullable
+    public static CampaignSideRegion sideRegionOf(String biomeId) {
+        if (biomeId == null || SIDE_REGIONS.isEmpty()) return null;
+        for (CampaignSideRegion side : sideRegions()) {
+            if (side.indexOf(biomeId) >= 0) return side;
+        }
+        return null;
+    }
+
+    /**
+     * Whether a side region has opened for an island: its anchor biome is cleared.
+     *
+     * @param highestBiomeUnlocked the island's campaign cursor - the 1-based position of the
+     *                             furthest biome it may play, so a biome at position {@code k}
+     *                             is cleared exactly when the cursor is past {@code k}
+     */
+    public static boolean isSideRegionOpen(CampaignSideRegion side, int branchChoice,
+                                           int highestBiomeUnlocked) {
+        Campaign active = active();
+        if (active == null || side == null) return false;
+        int anchorOrdinal = active.ordinalOf(side.unlockAfterBiomeId(), Math.max(0, branchChoice));
+        return anchorOrdinal >= 0 && highestBiomeUnlocked > anchorOrdinal + 1;
+    }
+
+    /**
+     * Whether a side-region biome may be played: its region is open, and every biome before
+     * it in that region has been cleared.
+     *
+     * @param clearedInRegion how many of the region's biomes the island has cleared
+     */
+    public static boolean isSideBiomeUnlocked(String biomeId, int branchChoice,
+                                              int highestBiomeUnlocked, int clearedInRegion) {
+        CampaignSideRegion side = sideRegionOf(biomeId);
+        if (side == null) return false;
+        return isSideRegionOpen(side, branchChoice, highestBiomeUnlocked)
+            && clearedInRegion >= side.indexOf(biomeId);
     }
 
     /** Whether {@code biomeId} is the final biome of the active campaign ({@code false} if none). */
@@ -198,7 +298,11 @@ public final class CampaignManager {
     @Nullable
     public static CampaignNode nodeOf(String biomeId) {
         Campaign active = active();
-        return active != null ? active.nodeOf(biomeId) : null;
+        if (active == null) return null;
+        CampaignNode node = active.nodeOf(biomeId);
+        if (node != null) return node;
+        CampaignSideRegion side = sideRegionOf(biomeId);
+        return side != null ? side.region().nodes().get(side.indexOf(biomeId)) : null;
     }
 
     /** Regions of the active campaign in play order (empty list if none). */
@@ -213,6 +317,11 @@ public final class CampaignManager {
         for (CampaignRegion region : regions()) {
             if (region.id().equals(regionId)) {
                 return region;
+            }
+        }
+        for (CampaignSideRegion side : sideRegions()) {
+            if (side.region().id().equals(regionId)) {
+                return side.region();
             }
         }
         return null;
@@ -238,5 +347,6 @@ public final class CampaignManager {
         DATAPACK_KEYS.clear();
         REGISTRATION_SEQ.clear();
         SEQUENCE.set(0);
+        SIDE_REGIONS.clear();
     }
 }

@@ -15,7 +15,7 @@ import java.util.Set;
 
 /**
  * Deep Dark Boss - "The Warden" (Enhanced with Vibration Sense)
- * Entity: Warden | 50HP / 8ATK / 4DEF / Speed 3 | Size 2×2
+ * Entity: Warden | 50HP / 8ATK / 4DEF / Speed 4 | Size 2×2
  *
  * Core Mechanic - Vibration Sense:
  * - Blind - hunts by vibration, not sight.

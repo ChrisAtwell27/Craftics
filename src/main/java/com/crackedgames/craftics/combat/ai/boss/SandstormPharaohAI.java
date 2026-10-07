@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * Scorching Desert Boss - "The Sandstorm Pharaoh"
- * Entity: Husk | 25HP / 6ATK / 1DEF / Speed 2 | Size 2×2
+ * Entity: Husk | 25HP / 6ATK / 1DEF / Speed 3 | Size 2×2
  *
  * Abilities:
  * - Plant Mine: Buried mine on a tile (subtle sand tell), 6 dmg + 1-turn stun on contact. Max 4 active.

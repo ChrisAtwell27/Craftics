@@ -133,6 +133,25 @@ public class CombatTooltips implements ItemTooltipCallback {
             return;
         }
 
+        // The Aether: a weapon gets the Craftics combat block in place of the mod's tooltip.
+        // Accessories and consumables keep theirs and gain a block saying what they do in a
+        // fight. Armor falls through to the shared "Craftics Armor:" block, like any
+        // registered set.
+        if (AetherTooltips.isAether(itemId)
+            && com.crackedgames.craftics.compat.aether.AetherCompat.isLoaded()) {
+            if (com.crackedgames.craftics.api.registry.WeaponRegistry.isRegistered(item)) {
+                stripModTooltip(stack, lines);
+                AetherTooltips.appendWeaponLines(stack, itemId.getPath(), lines);
+                addEnchantmentTooltips(stack, lines);
+                return;
+            }
+            if (AetherTooltips.appendGearLines(itemId.getPath(), lines)) {
+                addEnchantmentTooltips(stack, lines);
+                return;
+            }
+            AetherTooltips.appendArmorNote(itemId.getPath(), lines);
+        }
+
         // Immersive Armors: the mod prints its own effect list (fire resistance, spikes,
         // bounceback, ...), none of which Craftics implements - in here the set does what
         // ArmorSetEffects says instead. Wipe its body and fall through to the shared
@@ -667,6 +686,8 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "slow_falling" -> prefix + "\u00a7fSlow Falling: \u00a77No knockback for " + dur(turns, 3);
             case "wither" -> prefix + "\u00a78Wither" + lvl + ": \u00a77Damage ramps up as it ticks down";
             case "blindness" -> prefix + "\u00a78Blindness: \u00a77-2 attack range for " + dur(turns, 2);
+            // Deeper and Darker. Matched on the effect's path; no vanilla effect shares the name.
+            case "sculk_affinity" -> prefix + "§3Sculk Affinity: §7Sculk sensors can't hear you for " + dur(turns, 5);
             default -> null;
         };
     }
@@ -703,7 +724,8 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "turtle_master" -> prefix + "\u00a72Turtle Master: \u00a77+4 DEF, -2 movement for " + dur(turns, 3);
             case "luck" -> prefix + "\u00a7aLuck: \u00a77+1 crit chance for " + dur(turns, 3);
             case "slow_falling" -> prefix + "\u00a7fSlow Falling: \u00a77No knockback for " + dur(turns, 3);
-            default -> prefix + "\u00a78" + potionId.replace("_", " ") + " (no combat effect)";
+            case "sculk_affinity" -> prefix + "§3Sculk Affinity: §7Sculk sensors can't hear you for " + dur(turns, 5);
+            default -> prefix +"\u00a78" + potionId.replace("_", " ") + " (no combat effect)";
         };
     }
 
@@ -773,7 +795,9 @@ public class CombatTooltips implements ItemTooltipCallback {
      * reflect the current config values (DMG, Range, AP, Type, break chance).
      */
     private static String weaponStatLine(Item item) {
-        var entry = com.crackedgames.craftics.api.registry.WeaponRegistry.getOrNull(item);
+        // getIfWeapon, not getOrNull: a modded weapon whose stats Craftics worked out for itself
+        // fights with those stats, so it gets the same line a registered one does.
+        var entry = com.crackedgames.craftics.api.registry.WeaponRegistry.getIfWeapon(item);
         if (entry == null) return null;
         int dmg = entry.attackPower().getAsInt();
         int ap = entry.apCost();
@@ -889,12 +913,14 @@ public class CombatTooltips implements ItemTooltipCallback {
         // Deliberately NOT listed here: which enchantments the tool can carry. Each enchant
         // already prints its own line (with real numbers) once it is actually on the tool, so
         // naming them up front just repeated that for enchants the player doesn't even have.
-        if (item instanceof net.minecraft.item.HoeItem) {
+        // A modded hoe or shovel nobody registered has no stat line; it falls through rather
+        // than printing the literal text "null" in front of the focus lines.
+        if (item instanceof net.minecraft.item.HoeItem && weaponStatLine(item) != null) {
             return weaponStatLine(item)
                 + "\n\u00a7dSpecial focus: \u00a77Low damage, boosted by Special affinity"
                 + "\n\u00a78Enchantments work from your inventory. No need to hold it.";
         }
-        if (item instanceof net.minecraft.item.ShovelItem) {
+        if (item instanceof net.minecraft.item.ShovelItem && weaponStatLine(item) != null) {
             return weaponStatLine(item)
                 + "\n\u00a7aPet focus: \u00a77Low damage, boosted by Pet affinity"
                 + "\n\u00a78Enchantments arm your pets from your inventory. No need to hold it.";
@@ -1009,8 +1035,23 @@ public class CombatTooltips implements ItemTooltipCallback {
                         + "§8Shriek Worms stay revealed; a Stalker can vanish again\n"
                         + "§8Not consumed";
                 }
+                // The Warden and Resonarium blades. Their shovels and hoes are caught by the
+                // tool branches above; these had no entry at all, so they fought with real
+                // stats and showed none.
+                case "warden_sword" -> {
+                    return weaponStatLine(item) + "\n§e⚔ Sweep: §725% chance to hit adjacent enemy";
+                }
+                case "resonarium_sword" -> {
+                    return weaponStatLine(item) + "\n§e⚔ Sweep: §715% chance to hit adjacent enemy";
+                }
+                case "warden_axe" -> {
+                    return weaponStatLine(item) + "\n§6✖ Armor Crush: §715% chance to ignore armor";
+                }
+                case "resonarium_axe" -> {
+                    return weaponStatLine(item) + "\n§6✖ Armor Crush: §78% chance to ignore armor";
+                }
                 case "sonorous_staff" -> {
-                    return "§d2 AP §7- Sonic boom §8(Special, range "
+                    return weaponStatLine(item) + "\n§d2 AP §7- Sonic boom §8(Special, range "
                         + com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat
                             .SONOROUS_STAFF_RANGE + ")\n"
                         + "§7Fires a §fline §7through the target, damage falling off with distance\n"
@@ -1335,7 +1376,10 @@ public class CombatTooltips implements ItemTooltipCallback {
             }
         }
 
-        return null;
+        // Any other weapon - a compat or datapack weapon with no hand-written text, or a modded
+        // one whose stats were worked out from the item - still shows what it fights with. Null
+        // for everything that is not a weapon.
+        return weaponStatLine(item);
     }
 
     public static void register() {

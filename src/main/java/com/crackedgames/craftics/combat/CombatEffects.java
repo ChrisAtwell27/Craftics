@@ -23,6 +23,10 @@ public class CombatEffects {
         SLOW_FALLING("Slow Falling", "no knockback"),
         HASTE("Haste", "+1 AP/level"),
         WATER_BREATHING("Water Breathing", "+2 water damage"),
+        // Deeper and Darker's potion. In that mod it means sculk cannot detect you; here that
+        // is the sculk sensors scattered through every Deep Dark fight, the same thing Swift
+        // Sneak boots quiet.
+        SCULK_AFFINITY("Sculk Affinity", "sculk sensors cannot hear you"),
         POISON("Poison", "-(2/level + turns left) HP/turn, front-loaded"),
         SLOWNESS("Slowness", "-1 movement/level"),
         WEAKNESS("Weakness", "-2 attack/level"),
@@ -563,9 +567,24 @@ public class CombatEffects {
     public static boolean isBuff(EffectType type) {
         return switch (type) {
             case SPEED, STRENGTH, RESISTANCE, REGENERATION, FIRE_RESISTANCE, INVISIBILITY,
-                 ABSORPTION, LUCK, SLOW_FALLING, HASTE, WATER_BREATHING -> true;
+                 ABSORPTION, LUCK, SLOW_FALLING, HASTE, WATER_BREATHING, SCULK_AFFINITY -> true;
             default -> false;
         };
+    }
+
+    /**
+     * The combat effect a MODDED status effect stands for, by its registry id, or null.
+     *
+     * <p>Vanilla effects are matched by identity in {@code ItemUseHandler.mapStatusEffect}. A
+     * modded one has no constant to compare against (Craftics compiles against none of these
+     * mods), and before this existed every modded potion matched nothing: it was drunk, cost its
+     * AP, and did nothing. Kept here as plain strings so it can be tested without a registry.
+     */
+    public static EffectType moddedEffect(String namespace, String path) {
+        if ("deeperdarker".equals(namespace) && "sculk_affinity".equals(path)) {
+            return EffectType.SCULK_AFFINITY;
+        }
+        return null;
     }
 
     /** How many distinct buffs are active right now. The Alchemist feat counts this. */

@@ -50,7 +50,7 @@ public final class SculkSensorEffect implements BiomeEffect {
     @Override
     public String description() {
         return "One to three sculk sensors sit in the arena, each listening two tiles in every "
-            + "direction. Step inside that boundary without Swift Sneak boots and the sensor goes off: "
+            + "direction. Step inside that boundary without Swift Sneak boots or a Sculk Affinity potion and the sensor goes off: "
             + "the whole party is blinded by Darkness, a shrieker wails, and a silverfish ambush lands "
             + "next round beside it. A sensor is an ordinary mineable obstacle, so one AP with a "
             + "pickaxe removes it for good. Left alone, it re-arms after a few quiet rounds.";

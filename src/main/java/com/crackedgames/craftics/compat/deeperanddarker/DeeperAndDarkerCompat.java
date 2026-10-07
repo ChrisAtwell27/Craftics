@@ -97,6 +97,10 @@ public final class DeeperAndDarkerCompat {
         MobThemeTags.addRootMob(SHRIEK_WORM);        // heavy hit + lock
         MobThemeTags.addLifestealMob(SCULK_LEECH);   // drains life on hit
 
+        // Inspect-panel traits. The centipede's Toxic follows from its jungle tag above.
+        com.crackedgames.craftics.combat.MobTraits.declare(STALKER,
+            com.crackedgames.craftics.combat.MobTraits.ETHEREAL); // StalkerAI teleports
+
         if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) {
             CrafticsMod.LOGGER.debug(
                 "[Craftics × Deeper and Darker] mod not loaded - AI/tags registered for any future use");

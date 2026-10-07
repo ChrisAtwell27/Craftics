@@ -56,9 +56,9 @@ public final class MobThemeTags {
         addWaterMob("minecraft:elder_guardian");
         addWaterMob("minecraft:pufferfish");
 
-        // Vanilla jungle-themed mobs - the vanilla cave spider already applies
-        // its own poison via stackPoison during its attack resolution, so leave
-        // it out of this set to avoid double-stacking.
+        // Vanilla jungle-themed mobs - the vanilla cave spider applies its own
+        // poison in CombatManager.applyEnemyHitEffect, so leave it out of this
+        // set to avoid double-stacking.
         addJungleMob("minecraft:ocelot");
 
         // Vanilla cold-themed mobs

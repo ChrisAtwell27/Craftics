@@ -79,6 +79,11 @@ public final class MusicDirector {
             case "raidboss" -> MusicTracks.NECROMANCER;
             case "pillager_camp" -> MusicTracks.EVOKER;
             case "bastille" -> MusicTracks.GARRISON;
+            // The Aether's dungeons (compat/aether). Borrowed tracks: no entry means silence,
+            // and three silent biomes would read as a bug. Swap in the Aether's own when it has some.
+            case "aether_bronze_dungeon" -> MusicTracks.REDSTONE_MINES;
+            case "aether_silver_dungeon" -> MusicTracks.ASTRAY_ARCHIPELAGO;
+            case "aether_gold_dungeon" -> MusicTracks.BASALT_DELTAS;
             default -> null;
         };
     }
@@ -105,6 +110,10 @@ public final class MusicDirector {
             case "chorus_grove" -> MusicTracks.SHATTERED;
             case "dragons_nest" -> MusicTracks.BROKEN_HEART_OF_ENDER;
             case "trial_chamber", "trial_chamber_ominous" -> MusicTracks.GARRISON;
+            // Borrowed, like the Aether biome tracks above.
+            case "aether_bronze_dungeon" -> MusicTracks.REDSTONE_MONSTROSITY;
+            case "aether_silver_dungeon" -> MusicTracks.SHIP;
+            case "aether_gold_dungeon" -> MusicTracks.MENTA_MENARDI;
             default -> null;
         };
     }

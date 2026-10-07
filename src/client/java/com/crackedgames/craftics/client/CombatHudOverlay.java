@@ -67,8 +67,26 @@ public class CombatHudOverlay implements HudRenderCallback {
      *  layers that must not overlap it. */
     public static int getTopCenterReservedPx() { return topCenterReservedPx; }
 
+    /** True when an inspect panel (mob, ally or party player) was drawn last frame. The pin
+     *  key only takes hold while this is set: there has to be a panel to pin. */
+    private static boolean inspectPanelShown = false;
+    public static boolean isInspectPanelShown() { return inspectPanelShown; }
+
+    /** Cursor in HUD coordinates (the largerUI scale already divided out), or -1 with no
+     *  window. Refreshed once per frame for pill hover tests. */
+    private static int hudMouseX = -1;
+    private static int hudMouseY = -1;
+
+    /** What a hovered pill says. Queued while panels draw, rendered once at the end of the
+     *  frame so the tooltip sits over every panel rather than under the next one drawn. */
+    private record PillTip(String title, int titleColor, String body) {}
+    private static PillTip pendingTip = null;
+
     @Override
     public void onHudRender(DrawContext ctx, RenderTickCounter tickCounter) {
+        // Cleared before any early return below: a panel that is not drawn cannot be pinned.
+        inspectPanelShown = false;
+        pendingTip = null;
         // F1 (vanilla "hide HUD") collapses all combat UI together with the rest.
         // The rect has to be dropped on the way out, the way SceneHudOverlay drops its own:
         // tryClickHudButtons hit-tests whatever was last published, so returning while it still
@@ -107,6 +125,10 @@ public class CombatHudOverlay implements HudRenderCallback {
         lastFrameMs = now;
         endTurnBtnRect = null;
 
+        double[] mouse = mouseGuiPos(client);
+        hudMouseX = mouse == null ? -1 : (int) (mouse[0] / uiScale);
+        hudMouseY = mouse == null ? -1 : (int) (mouse[1] / uiScale);
+
         int currentPhase = CombatState.isPlayerTurn() ? 1 : CombatState.isEnemyTurn() ? 2 : 0;
         if (currentPhase != lastTurnPhase) {
             lastTurnPhase = currentPhase;
@@ -140,6 +162,7 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         CombatVisualEffects.render(ctx, client, screenW, screenH);
         CombatLog.render(ctx, client.textRenderer, screenW, screenH);
+        renderPillTooltip(ctx, client, screenW, screenH);
 
         if (largeUI) {
             ctx.getMatrices().pop();
@@ -196,34 +219,86 @@ public class CombatHudOverlay implements HudRenderCallback {
         drawHpBar(ctx, key, x, y, w, h, pct, fillColor, trackColor);
     }
 
-    /** One effect pill in the inspect panel, width precomputed for wrapping. */
-    private record InspectPill(String label, int width, boolean debuff) {}
+    /** Pill colors. A status effect is good or bad; a trait can also be neither. */
+    private enum PillTone {
+        GOOD(0xCC226622, 0xFF55CC55, 0xFFCCFFCC),
+        BAD(0xCC882222, 0xFFCC5544, 0xFFFFCCCC),
+        NEUTRAL(0xCC444444, 0xFF999999, 0xFFDDDDDD);
 
-    private static boolean isDebuffEffect(String eff) {
-        String base = eff.split(" ")[0];
-        return switch (base) {
-            case "Stunned", "Slowed", "Burning", "Poisoned", "Withered", "Frozen",
-                 "Soaked", "Rooted", "Bleeding", "Weakened", "Confused", "Cursed",
-                 "Blinded", "Marked", "Levitating", "Drenched" -> true;
-            default -> false;
-        };
+        final int fill, border, text;
+        PillTone(int fill, int border, int text) {
+            this.fill = fill;
+            this.border = border;
+            this.text = text;
+        }
+
+        static PillTone of(com.crackedgames.craftics.combat.MobTrait.Polarity polarity) {
+            return switch (polarity) {
+                case POSITIVE -> GOOD;
+                case NEGATIVE -> BAD;
+                case NEUTRAL -> NEUTRAL;
+            };
+        }
     }
 
-    /** Wrap effect labels into pill rows that fit {@code availW} (mirrors the self panel). */
+    /**
+     * One pill in an inspect panel, width precomputed for wrapping. Status effects are filled;
+     * traits are {@code outlined}, so the two rows never read as one list. {@code tipBody} is
+     * what hovering the pill explains, or null for an effect nothing describes.
+     */
+    private record InspectPill(String label, int width, PillTone tone, boolean outlined,
+                               String tipBody) {}
+
+    /** Whether an effect is drawn as a debuff. One answer for the pills and the overhead
+     *  icons, since both ask {@code EffectIcons}; an unknown (addon) effect reads as a buff. */
+    private static boolean isDebuffEffect(String eff) {
+        return com.crackedgames.craftics.combat.EffectIcons.forName(eff).harmful();
+    }
+
+    /**
+     * Wrap effect labels into pill rows that fit {@code availW} (mirrors the self panel).
+     *
+     * @param onPlayer whose vocabulary the labels are in - a player's ("Poison II (2t)") or a
+     *                 mob's ("Poisoned(2t)") - which decides the hover text
+     */
     private static List<List<InspectPill>> layoutInspectPills(MinecraftClient client,
-                                                              List<String> effects, int availW) {
+                                                              List<String> effects, int availW,
+                                                              boolean onPlayer) {
+        List<InspectPill> pills = new ArrayList<>();
+        for (String eff : effects) {
+            String tip = onPlayer
+                ? com.crackedgames.craftics.combat.EffectGlossary.onPlayer(eff)
+                : com.crackedgames.craftics.combat.EffectGlossary.onMob(eff);
+            pills.add(new InspectPill(eff, client.textRenderer.getWidth(eff) + 6,
+                isDebuffEffect(eff) ? PillTone.BAD : PillTone.GOOD, false, tip));
+        }
+        return wrapPills(pills, availW);
+    }
+
+    /** Trait pills, in the order the server sent them (registry order). */
+    private static List<List<InspectPill>> layoutTraitPills(
+            MinecraftClient client, List<com.crackedgames.craftics.combat.MobTrait> traits,
+            int availW) {
+        List<InspectPill> pills = new ArrayList<>();
+        for (com.crackedgames.craftics.combat.MobTrait trait : traits) {
+            pills.add(new InspectPill(trait.name(), client.textRenderer.getWidth(trait.name()) + 6,
+                PillTone.of(trait.polarity()), true, trait.description()));
+        }
+        return wrapPills(pills, availW);
+    }
+
+    private static List<List<InspectPill>> wrapPills(List<InspectPill> pills, int availW) {
         List<List<InspectPill>> rows = new ArrayList<>();
         List<InspectPill> row = new ArrayList<>();
         int rowW = 0;
-        for (String eff : effects) {
-            int pillW = client.textRenderer.getWidth(eff) + 6;
-            if (rowW + pillW > availW && !row.isEmpty()) {
+        for (InspectPill pill : pills) {
+            if (rowW + pill.width() > availW && !row.isEmpty()) {
                 rows.add(row);
                 row = new ArrayList<>();
                 rowW = 0;
             }
-            row.add(new InspectPill(eff, pillW, isDebuffEffect(eff)));
-            rowW += pillW + 3;
+            row.add(pill);
+            rowW += pill.width() + 3;
         }
         if (!row.isEmpty()) rows.add(row);
         return rows;
@@ -237,24 +312,74 @@ public class CombatHudOverlay implements HudRenderCallback {
         return rows.size() * INSPECT_PILL_H + (rows.size() - 1) * 2 + 1;
     }
 
-    /** Draw pill rows starting at (x, y); returns the y below the block. */
+    /** Body of an outlined (trait) pill: dark, so the tone lives in the border and the text. */
+    private static final int OUTLINED_PILL_FILL = 0xDD14100C;
+
+    /**
+     * Draw pill rows starting at (x, y); returns the y below the block.
+     *
+     * @param hoverable whether a pill under the cursor queues its tooltip. The hover panels
+     *                  pass false until pinned - unpinned, the cursor is on the mob, and a
+     *                  panel still sliding in would be hit-tested where it is not yet drawn.
+     */
     private static int drawInspectPills(DrawContext ctx, MinecraftClient client,
-                                        List<List<InspectPill>> rows, int x, int y) {
+                                        List<List<InspectPill>> rows, int x, int y,
+                                        boolean hoverable) {
         for (List<InspectPill> row : rows) {
             int px = x;
             for (InspectPill pill : row) {
-                int bg = pill.debuff() ? 0xCC882222 : 0xCC226622;
-                int border = pill.debuff() ? 0xFFCC5544 : 0xFF55CC55;
-                int text = pill.debuff() ? 0xFFFFCCCC : 0xFFCCFFCC;
-                ctx.fill(px - 1, y - 1, px + pill.width() + 1, y + INSPECT_PILL_H - 1, border);
-                ctx.fill(px, y, px + pill.width(), y + INSPECT_PILL_H - 2, bg);
+                PillTone tone = pill.tone();
+                boolean hover = hoverable && pill.tipBody() != null
+                    && hudMouseX >= px - 1 && hudMouseX < px + pill.width() + 1
+                    && hudMouseY >= y - 1 && hudMouseY < y + INSPECT_PILL_H - 1;
+                ctx.fill(px - 1, y - 1, px + pill.width() + 1, y + INSPECT_PILL_H - 1,
+                    hover ? 0xFFFFFFFF : tone.border);
+                ctx.fill(px, y, px + pill.width(), y + INSPECT_PILL_H - 2,
+                    pill.outlined() ? OUTLINED_PILL_FILL : tone.fill);
                 ctx.drawTextWithShadow(client.textRenderer,
-                    Text.literal(pill.label()), px + 3, y + 1, text);
+                    Text.literal(pill.label()), px + 3, y + 1, tone.text);
+                if (hover) pendingTip = new PillTip(pill.label(), tone.text, pill.tipBody());
                 px += pill.width() + 3;
             }
             y += INSPECT_PILL_H + 2;
         }
         return y - 1;
+    }
+
+    /** Draw the tooltip a hovered pill queued this frame, clamped to the screen. */
+    private static void renderPillTooltip(DrawContext ctx, MinecraftClient client,
+                                          int screenW, int screenH) {
+        PillTip tip = pendingTip;
+        if (tip == null || hudMouseX < 0) return;
+        var tr = client.textRenderer;
+        List<String> body = tip.body() == null || tip.body().isEmpty()
+            ? List.of() : TooltipWrap.wrap("§7" + tip.body(), 150);
+        String title = "§l" + tip.title();
+        int w = tr.getWidth(title);
+        for (String line : body) w = Math.max(w, tr.getWidth(line));
+        w += 8;
+        int h = 14 + body.size() * 10 + (body.isEmpty() ? 0 : 2);
+
+        // Below and right of the cursor by default; flipped left near the right edge, which
+        // is where the inspect panel lives and so where most of these appear.
+        int x = hudMouseX + 10;
+        int y = hudMouseY + 10;
+        if (x + w > screenW - 2) x = hudMouseX - w - 6;
+        if (x < 2) x = 2;
+        if (y + h > screenH - 2) y = screenH - h - 2;
+
+        ctx.getMatrices().push();
+        ctx.getMatrices().translate(0f, 0f, 400f);
+        ctx.fill(x - 1, y - 1, x + w + 1, y + h + 1, PANEL_BORDER);
+        ctx.fill(x, y, x + w, y + h, 0xF0000000 | (GuideTheme.COVER_EDGE & 0x00FFFFFF));
+        ctx.fill(x, y, x + w, y + 1, GuideTheme.GOLD_DIM);
+        ctx.drawTextWithShadow(tr, Text.literal(title), x + 4, y + 3, tip.titleColor());
+        int lineY = y + 14;
+        for (String line : body) {
+            ctx.drawTextWithShadow(tr, Text.literal(line), x + 4, lineY, 0xFFBBBBBB);
+            lineY += 10;
+        }
+        ctx.getMatrices().pop();
     }
 
     // Smooth HP bars
@@ -490,6 +615,16 @@ public class CombatHudOverlay implements HudRenderCallback {
                     int bgColor = item.icon.isDebuff ? 0xCC882222 : 0xCC226622;
                     int borderColor = item.icon.isDebuff ? 0xFFCC5544 : 0xFF55CC55;
                     int textColor = item.icon.isDebuff ? 0xFFFFCCCC : 0xFFCCFFCC;
+                    // Your own effects are always on screen, so they answer to the cursor
+                    // without the pin key the hover panels need.
+                    String tip = com.crackedgames.craftics.combat.EffectGlossary
+                        .onPlayer(item.icon.fullName);
+                    if (tip != null
+                            && hudMouseX >= pillX - 1 && hudMouseX < pillX + item.width + 1
+                            && hudMouseY >= rowY - 1 && hudMouseY < rowY + pillH) {
+                        pendingTip = new PillTip(item.label, textColor, tip);
+                        borderColor = 0xFFFFFFFF;
+                    }
                     ctx.fill(pillX - 1, rowY - 1, pillX + item.width + 1, rowY + pillH, borderColor);
                     ctx.fill(pillX, rowY, pillX + item.width, rowY + pillH - 1, bgColor);
                     ctx.drawTextWithShadow(client.textRenderer,
@@ -1002,7 +1137,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         if (floor == net.minecraft.block.Blocks.SCULK) {
             return new TileTooltipInfo("\u00a73\u00a7lSculk Field",
                 "\u00a7fA sculk sensor can hear you within this ring.",
-                "\u00a77Step in without Swift Sneak and it shrieks. Break the sensor from outside.");
+                "\u00a77Step in without Swift Sneak or Sculk Affinity and it shrieks. Break the sensor from outside.");
         }
 
         // Everbloom's flower field - a rose bush laid as a trap by the vine bow.
@@ -1145,6 +1280,38 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
     }
 
+    /**
+     * Whether an inspect panel's pills answer to the cursor this frame: only once pinned, and
+     * only once the slide-in has landed, since the panel is drawn translated until then and a
+     * hit test against its resting position would be testing somewhere it is not.
+     */
+    private static boolean pillsHoverable(float ease) {
+        return CombatState.isInspectPinned() && ease >= 1f;
+    }
+
+    /** The pin hint under an inspect panel's pills, or null when the key is unbound. */
+    private static String pinHintLine(MinecraftClient client, int maxW) {
+        String text;
+        if (CombatState.isInspectPinned()) {
+            text = "§6Pinned: hover a tag";
+        } else {
+            String key = com.crackedgames.craftics.CrafticsClient.pinInspectKeyName();
+            if (key == null) return null;
+            text = "§8[" + key + "] inspect";
+        }
+        return client.textRenderer.trimToWidth(text, maxW);
+    }
+
+    /** A 1px gold frame around a pinned inspect panel, so holding the key visibly does something. */
+    private static void drawPinnedFrame(DrawContext ctx, int x, int y, int w, int h) {
+        if (!CombatState.isInspectPinned()) return;
+        int c = GuideTheme.GOLD;
+        ctx.fill(x - 1, y - 1, x + w + 1, y, c);
+        ctx.fill(x - 1, y + h, x + w + 1, y + h + 1, c);
+        ctx.fill(x - 1, y, x, y + h, c);
+        ctx.fill(x + w, y, x + w + 1, y + h, c);
+    }
+
     private void renderEnemyRoster(DrawContext ctx, MinecraftClient client, int screenW) {
         Map<Integer, int[]> enemies = CombatState.getEnemyHpMap();
         Map<Integer, String> types = CombatState.getEnemyTypeMap();
@@ -1158,9 +1325,10 @@ public class CombatHudOverlay implements HudRenderCallback {
             if (ps != null) {
                 // Entrance slide-in from the right edge, restarted per hover target.
                 float ease = inspectSlide("p:" + hoveredPlayer);
+                inspectPanelShown = true;
                 ctx.getMatrices().push();
                 ctx.getMatrices().translate((1f - ease) * 140f, 0f, 0f);
-                renderPlayerInspectPanel(ctx, client, screenW, ps);
+                renderPlayerInspectPanel(ctx, client, screenW, ps, pillsHoverable(ease));
                 ctx.getMatrices().pop();
                 enemyRosterPanelW = 130;
                 enemyRosterRightX = screenW - 8;
@@ -1173,10 +1341,11 @@ public class CombatHudOverlay implements HudRenderCallback {
         if (hoveredId != -1 && CombatState.getAllyHpMap().containsKey(hoveredId)) {
             String allyType = CombatState.getAllyTypeMap().getOrDefault(hoveredId, "minecraft:wolf");
             float ease = inspectSlide("a:" + hoveredId);
+            inspectPanelShown = true;
             ctx.getMatrices().push();
             ctx.getMatrices().translate((1f - ease) * 130f, 0f, 0f);
             renderInspectPanel(ctx, client, screenW, hoveredId,
-                CombatState.getAllyHpMap().get(hoveredId), allyType);
+                CombatState.getAllyHpMap().get(hoveredId), allyType, pillsHoverable(ease));
             ctx.getMatrices().pop();
             enemyRosterPanelW = 120;
             enemyRosterRightX = screenW - 8;
@@ -1191,9 +1360,11 @@ public class CombatHudOverlay implements HudRenderCallback {
                 && !CombatState.isEnemyHiddenByDarkness(hoveredId)) {
             String typeIdRaw = types.getOrDefault(hoveredId, "minecraft:zombie");
             float ease = inspectSlide("e:" + hoveredId);
+            inspectPanelShown = true;
             ctx.getMatrices().push();
             ctx.getMatrices().translate((1f - ease) * 150f, 0f, 0f);
-            renderInspectPanel(ctx, client, screenW, hoveredId, enemies.get(hoveredId), typeIdRaw);
+            renderInspectPanel(ctx, client, screenW, hoveredId, enemies.get(hoveredId), typeIdRaw,
+                pillsHoverable(ease));
             ctx.getMatrices().pop();
             // Mirror renderInspectPanel's dimensions so the tile tooltip can
             // align under it. Width matches the boss/non-boss split there.
@@ -1374,7 +1545,8 @@ public class CombatHudOverlay implements HudRenderCallback {
     // ─── Inspect Panel (hover detail) ────────────────────────────────────
 
     private void renderInspectPanel(DrawContext ctx, MinecraftClient client, int screenW,
-                                     int entityId, int[] hpData, String typeIdRaw) {
+                                     int entityId, int[] hpData, String typeIdRaw,
+                                     boolean hoverable) {
         int eHp = hpData[0];
         int eMaxHp = hpData[1];
         float ePct = eMaxHp > 0 ? (float) eHp / eMaxHp : 0;
@@ -1384,6 +1556,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         String typeId = parts[0];
         List<String> enemyEffects = new ArrayList<>();
         List<String> enemyEnchants = new ArrayList<>();
+        List<com.crackedgames.craftics.combat.MobTrait> traits = List.of();
         String bossName = null;
         String stackName = null;
         int bossAtk = -1, bossDef = -1, bossSpd = -1, bossRange = -1;
@@ -1408,6 +1581,9 @@ public class CombatHudOverlay implements HudRenderCallback {
             }
             else if (parts[i].startsWith("mv=")) { /* movement style - not a status effect */ }
             else if (parts[i].startsWith("phase=")) { /* boss phase badge - not a status effect */ }
+            else if (parts[i].startsWith("tr=")) {
+                traits = com.crackedgames.craftics.combat.MobTraits.decode(parts[i].substring(3));
+            }
             else if (parts[i].equals("ally")) { /* ally tag - not a status effect */ }
             else enemyEffects.add(parts[i]);
         }
@@ -1434,7 +1610,9 @@ public class CombatHudOverlay implements HudRenderCallback {
                 themeLine = "§b◆ Hit: Soaked "
                     + com.crackedgames.craftics.combat.MobThemeTags.SOAK_TURNS + "t";
                 themeColor = 0xFF55CCFF;
-            } else if (com.crackedgames.craftics.combat.MobThemeTags.isJungle(typeId)) {
+            } else if (com.crackedgames.craftics.combat.MobThemeTags.isJungle(typeId)
+                    // The Toxic trait pill says this now; the line stays only as a fallback.
+                    && !traits.contains(com.crackedgames.craftics.combat.MobTraits.TOXIC)) {
                 themeLine = "§a◆ Hit: Poison "
                     + com.crackedgames.craftics.combat.MobThemeTags.POISON_TURNS + "t";
                 themeColor = 0xFF66DD66;
@@ -1448,14 +1626,25 @@ public class CombatHudOverlay implements HudRenderCallback {
         int panelW = bossName != null ? 140 : 120;
         // Effects render as the same wrapped pills the self status panel uses - one
         // effect language everywhere. Layout first so the frame hugs its content.
-        List<List<InspectPill>> effRows = layoutInspectPills(client, enemyEffects, panelW - 8);
+        List<List<InspectPill>> effRows = layoutInspectPills(client, enemyEffects, panelW - 8, false);
+        // Traits sit between the stats and the effects: what the mob always is, then what is
+        // currently happening to it.
+        List<List<InspectPill>> traitRows = layoutTraitPills(client, traits, panelW - 8);
+        int traitBlockH = traits.isEmpty() ? 0 : inspectPillBlockH(traitRows) + 3;
         String behaviorHint = getAIHint(typeId);
+        // The pin hint only earns its row when there is a pill to hover. It shares the row
+        // already reserved for the behavior hint, and takes a second one only if both exist.
+        String pinHint = traits.isEmpty() && enemyEffects.isEmpty()
+            ? null : pinHintLine(client, panelW - 8);
+        boolean hasBehavior = behaviorHint != null && !behaviorHint.isEmpty();
         int effBlockH = enemyEffects.isEmpty() ? 10 : inspectPillBlockH(effRows) + 2;
         int panelH = 19 + 8 + 5 + 22                                 // header+gap, bar, stat rows
+            + traitBlockH
             + (themeLine != null ? 10 : 0)
             + effBlockH
             + (enemyEnchants.isEmpty() ? 0 : enemyEnchants.size() * 10 + 12)
             + (behaviorHint != null ? 10 : 0)
+            + (pinHint != null && hasBehavior ? 10 : 0)
             + 4;
         int panelX = screenW - panelW - 8;
         int panelY = 4;
@@ -1465,6 +1654,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         int bgColor = bossName != null ? 0xBB2A0A0A : PANEL_BG;
         int underline = bossName != null ? GuideTheme.GOLD : isAlly ? 0xFF55CC55 : 0xFFCC4444;
         drawInspectChrome(ctx, panelX, panelY, panelW, panelH, bgColor, underline);
+        drawPinnedFrame(ctx, panelX, panelY, panelW, panelH);
 
         int nameColor = bossName != null ? GuideTheme.GOLD : isAlly ? 0xFF66DD66 : 0xFFFFFFFF;
         Identifier inspectHead = MobHeadTextures.get(typeId);
@@ -1506,6 +1696,10 @@ public class CombatHudOverlay implements HudRenderCallback {
             panelX + 4, y, 0xFFCCCCCC);
         y += 11;
 
+        if (!traits.isEmpty()) {
+            y = drawInspectPills(ctx, client, traitRows, panelX + 4, y + 1, hoverable) + 2;
+        }
+
         if (themeLine != null) {
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal(themeLine), panelX + 4, y, themeColor);
@@ -1513,7 +1707,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
 
         if (!enemyEffects.isEmpty()) {
-            y = drawInspectPills(ctx, client, effRows, panelX + 4, y + 1) + 2;
+            y = drawInspectPills(ctx, client, effRows, panelX + 4, y + 1, hoverable) + 2;
         } else {
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal("\u00a78No effects"), panelX + 4, y, 0xFF555555);
@@ -1533,16 +1727,20 @@ public class CombatHudOverlay implements HudRenderCallback {
             }
         }
 
-        String behavior = getAIHint(typeId);
-        if (behavior != null) {
+        if (hasBehavior) {
             ctx.drawTextWithShadow(client.textRenderer,
-                Text.literal("\u00a78" + behavior), panelX + 4, y, 0xFF888888);
+                Text.literal("\u00a78" + behaviorHint), panelX + 4, y, 0xFF888888);
+            y += 10;
+        }
+        if (pinHint != null) {
+            ctx.drawTextWithShadow(client.textRenderer,
+                Text.literal(pinHint), panelX + 4, y, 0xFF888888);
         }
     }
 
     /** Hover detail panel for a party player \u2014 mirrors the enemy inspect panel layout. */
     private void renderPlayerInspectPanel(DrawContext ctx, MinecraftClient client, int screenW,
-                                          CombatState.PlayerStats ps) {
+                                          CombatState.PlayerStats ps, boolean hoverable) {
         // Active effects are only known for the local client player.
         boolean isSelf = client.player != null
             && client.player.getUuid().toString().equals(ps.uuid());
@@ -1559,16 +1757,18 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         int panelW = 130;
         // Same wrapped effect pills as the self status panel and enemy inspect.
-        List<List<InspectPill>> effRows = layoutInspectPills(client, effects, panelW - 8);
+        List<List<InspectPill>> effRows = layoutInspectPills(client, effects, panelW - 8, true);
         int effBlockH = !effects.isEmpty() ? inspectPillBlockH(effRows) + 2
             : (isSelf ? 10 : 0);
-        int panelH = 19 + 8 + 5 + 22 + effBlockH + 4;
+        String pinHint = effects.isEmpty() ? null : pinHintLine(client, panelW - 8);
+        int panelH = 19 + 8 + 5 + 22 + effBlockH + (pinHint != null ? 11 : 0) + 4;
         int panelX = screenW - panelW - 8;
         int panelY = 4;
 
         // Shared inspect chrome; blue underline marks a player - distinct from
         // enemy (red), ally (green) and boss (gold).
         drawInspectChrome(ctx, panelX, panelY, panelW, panelH, PANEL_BG, 0xFF55BBEE);
+        drawPinnedFrame(ctx, panelX, panelY, panelW, panelH);
 
         String title = (ps.dead() ? "\u2620 " : "") + ps.name();
         ctx.drawCenteredTextWithShadow(client.textRenderer,
@@ -1597,7 +1797,11 @@ public class CombatHudOverlay implements HudRenderCallback {
         y += 11;
 
         if (!effects.isEmpty()) {
-            drawInspectPills(ctx, client, effRows, panelX + 4, y + 1);
+            y = drawInspectPills(ctx, client, effRows, panelX + 4, y + 1, hoverable) + 2;
+            if (pinHint != null) {
+                ctx.drawTextWithShadow(client.textRenderer,
+                    Text.literal(pinHint), panelX + 4, y, 0xFF888888);
+            }
         } else if (isSelf) {
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal("\u00a78No effects"), panelX + 4, y, 0xFF555555);
@@ -1887,15 +2091,7 @@ public class CombatHudOverlay implements HudRenderCallback {
                 name = name.substring(0, m.start()).trim();
             }
 
-            boolean isDebuff = name.equalsIgnoreCase("Poison") || name.equalsIgnoreCase("Wither")
-                || name.equalsIgnoreCase("Burning") || name.equalsIgnoreCase("Slowness")
-                || name.equalsIgnoreCase("Weakness") || name.equalsIgnoreCase("Blindness")
-                || name.equalsIgnoreCase("Darkness") || name.equalsIgnoreCase("Mining Fatigue")
-                || name.equalsIgnoreCase("Levitation") || name.equalsIgnoreCase("Hunger")
-                || name.equalsIgnoreCase("Bleeding") || name.equalsIgnoreCase("Soaked")
-                || name.equalsIgnoreCase("Confusion");
-
-            icons.add(new EffectIcon(name, level, turns, isDebuff));
+            icons.add(new EffectIcon(name, level, turns, isDebuffEffect(name)));
         }
         return icons;
     }
@@ -1950,17 +2146,16 @@ public class CombatHudOverlay implements HudRenderCallback {
             case "minecraft:skeleton", "minecraft:stray" -> "Kites at range, retreats if close";
             case "minecraft:creeper" -> "Sneaks close, fuses, then explodes";
             case "minecraft:spider" -> "Pounces over obstacles";
-            case "minecraft:enderman" -> "Teleports across the arena";
-            case "minecraft:endermite", "minecraft:breeze" -> "Blinks a short distance";
-            case "minecraft:vindicator", "minecraft:piglin_brute" -> "Dashes in a straight line";
-            case "minecraft:hoglin", "minecraft:ravager" -> "Charges in a straight line";
+            // Enderman, endermite, vindicator, piglin brute, hoglin, ravager and wither
+            // skeleton used to have a line here. Their trait pills (Ethereal, Berzerker,
+            // Decayed) say the same thing now, and say it with a tooltip.
+            case "minecraft:breeze" -> "Blinks a short distance";
             case "minecraft:magma_cube", "minecraft:slime" -> "Bounces toward you, ignoring walls";
             case "minecraft:phantom" -> "Swoops in over obstacles";
             case "minecraft:ghast" -> "Attacks from long range";
             case "minecraft:blaze" -> "Ranged fire attacks";
             case "minecraft:witch" -> "Throws splash potions";
             case "minecraft:warden" -> "Slow, but hits very hard";
-            case "minecraft:wither_skeleton" -> "Inflicts Wither on hit";
             default -> "";
         };
     }

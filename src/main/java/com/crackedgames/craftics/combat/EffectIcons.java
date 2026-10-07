@@ -60,6 +60,7 @@ public final class EffectIcons {
     private static final int WHITE      = 0xFFFFFF;
     private static final int BLACK      = 0x222222;
     private static final int BROWN      = 0xAA7744;
+    private static final int TEAL       = 0x22B8B0;
 
     /**
      * Canonical name -> icon. Every key is lowercase; {@link #forName} lowercases its input.
@@ -93,6 +94,7 @@ public final class EffectIcons {
         put(new Icon("fire_resistance", ORANGE, false), "fire_resistance", "fire resistance");
         put(new Icon("invisibility", GRAY, false),   "invisibility");
         put(new Icon("water_breathing", AQUA, false), "water_breathing", "water breathing");
+        put(new Icon("sculk_affinity", TEAL, false),  "sculk_affinity", "sculk affinity");
         put(new Icon("airtime", AQUA, false),        "airtime");
 
         // ---- Debuffs ----
@@ -174,7 +176,7 @@ public final class EffectIcons {
      * blob that is NOT one of these is an effect - the same rule the HUD already uses.
      */
     private static final String[] META_PREFIXES = {
-        "boss=", "name=", "atk=", "def=", "spd=", "range=", "ench=", "mv=", "phase="
+        "boss=", "name=", "atk=", "def=", "spd=", "range=", "ench=", "mv=", "phase=", "tr="
     };
 
     /**

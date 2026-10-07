@@ -145,6 +145,17 @@ public final class CreeperOverhaulCompat {
             AIRegistry.register(MOD_ID + ":" + path, fallback);
         }
 
+        // Every variant is still a creeper: the attack is the death, and the blast throws you.
+        for (String path : new String[]{
+                "desert_creeper", "jungle_creeper", "bamboo_creeper", "cave_creeper",
+                "dripstone_creeper", "snowy_creeper", "hills_creeper", "dark_oak_creeper",
+                "plains_creeper", "beach_creeper", "ocean_creeper", "mushroom_creeper"}) {
+            declareCreeperTraits(MOD_ID + ":" + path);
+        }
+        for (String path : UNASSIGNED_VARIANTS) {
+            declareCreeperTraits(MOD_ID + ":" + path);
+        }
+
         if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) {
             CrafticsMod.LOGGER.debug(
                 "[Craftics × Creeper Overhaul] mod not loaded - AI entries registered for any future use");
@@ -153,6 +164,12 @@ public final class CreeperOverhaulCompat {
         loaded = true;
         CrafticsMod.LOGGER.info(
             "[Craftics × Creeper Overhaul] enabled - 12 biome-matched variants wired");
+    }
+
+    private static void declareCreeperTraits(String variantId) {
+        com.crackedgames.craftics.combat.MobTraits.declare(variantId,
+            com.crackedgames.craftics.combat.MobTraits.MARTYR,
+            com.crackedgames.craftics.combat.MobTraits.FORCEFUL);
     }
 
     public static boolean isLoaded() {

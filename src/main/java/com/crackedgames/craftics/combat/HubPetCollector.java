@@ -62,13 +62,17 @@ public class HubPetCollector {
          * Only ever set on a {@code temporary} provider ally - a hub pet is a real animal and
          * has nowhere to be benched to.
          */
-        boolean reserve
+        boolean reserve,
+        /** Where the animal stood on its island when it was collected, so it can be put back
+         *  there. Null for anything that never stood on one. */
+        @org.jetbrains.annotations.Nullable PetHome home
     ) {
         /** A real hub pet: permanent, no spawn NBT, AI from its entity type. */
         public TamedPetSnapshot(String entityTypeId, UUID entityUuid, NbtCompound fullEntityNbt,
-                                AllyEntry allyEntry, UUID playerUuid, boolean saddledMount) {
+                                AllyEntry allyEntry, UUID playerUuid, boolean saddledMount,
+                                @org.jetbrains.annotations.Nullable PetHome home) {
             this(entityTypeId, entityUuid, fullEntityNbt, allyEntry, playerUuid, saddledMount,
-                 false, null, null, null, false);
+                 false, null, null, null, false, home);
         }
     }
 
@@ -131,9 +135,20 @@ public class HubPetCollector {
             NbtCompound nbt = new NbtCompound();
             mob.writeNbt(nbt);
             boolean saddledMount = PartyMobs.isSaddledMount(mob);
+            // Where it is standing right now, in the world it is actually in (which may be the
+            // owner's island rather than the run's world), so it can go back to this spot.
+            // Unless it is only parked here: a guest's pet waiting on the leader's island keeps
+            // the home it was marked with, because the leader's spawn is not where it lives.
+            PetHome here = PetHome.of(
+                mob.getEntityWorld().getRegistryKey().getValue().toString(),
+                mob.getX(), mob.getY(), mob.getZ(), mob.getYaw());
+            UUID standingOn = com.crackedgames.craftics.world.IslandDimensions.ownerOf(mob.getEntityWorld());
+            PetHome home = PetTags.homeAtPickup(
+                standingOn == null || standingOn.equals(ownerUuid),
+                here, PetTags.homeOf(mob.getCommandTags()));
 
             results.add(new TamedPetSnapshot(
-                typeId, mob.getUuid(), nbt, allyEntry, ownerUuid, saddledMount));
+                typeId, mob.getUuid(), nbt, allyEntry, ownerUuid, saddledMount, home));
             toDiscard.add(mob);
 
             // Career log of distinct species tamed - the Pet Collector achievement counts
@@ -240,7 +255,8 @@ public class HubPetCollector {
             fa.spawnNbt(),
             fa.aiKey(),
             fa.displayName(),
-            reserve);
+            reserve,
+            null);                         // never stood on the island: nowhere to go back to
     }
 
     /**
@@ -361,6 +377,67 @@ public class HubPetCollector {
         return type;
     }
 
+    /** {@code owner}'s OWN island world, whatever party they are in, or null if they have none. */
+    @org.jetbrains.annotations.Nullable
+    private static ServerWorld ownIslandWorldOf(ServerWorld world, UUID owner, CrafticsSavedData data) {
+        try {
+            if (!data.hasPersonalWorld(owner)) return null;
+            return com.crackedgames.craftics.world.IslandDimensions.getOrCreate(world.getServer(), owner);
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.warn("Could not open {}'s island to send a pet home: {}", owner, e.toString());
+            return null;
+        }
+    }
+
+    /**
+     * Mark a pet with its owner and, when it is not standing on its own spot, with where that
+     * spot is (see {@link PetTags}). Any marks it already carried are dropped first, so a pet
+     * that has come home does not go on claiming a home somewhere else.
+     */
+    private static void markPet(Entity pet, UUID owner, @org.jetbrains.annotations.Nullable PetHome displacedFrom) {
+        for (String tag : new java.util.ArrayList<>(pet.getCommandTags())) {
+            if (PetTags.isPetTag(tag)) pet.removeCommandTag(tag);
+        }
+        pet.addCommandTag(PetTags.ownerTag(owner));
+        if (displacedFrom != null) pet.addCommandTag(PetTags.homeTag(displacedFrom));
+    }
+
+    /** How far below a pet's old spot to look for anything at all before calling it a drop into the void. */
+    private static final int HOME_GROUND_PROBE = 24;
+
+    /**
+     * The spot {x, y, z} a returning pet stood on before the run, when it can still stand there,
+     * or null to send it to the island spawn line-up instead.
+     *
+     * <p>The rules are {@link PetHome}'s: same island, not in arena territory, something under it,
+     * and the body has to fit - lifted on top of whatever was built there meanwhile if it does not.
+     * {@code pet} is moved about to test the fit; the caller positions it for real afterwards.
+     */
+    @org.jetbrains.annotations.Nullable
+    private static double[] homeSpot(ServerWorld world, Entity pet, @org.jetbrains.annotations.Nullable PetHome home) {
+        if (home == null) return null;
+        if (!home.usableIn(world.getRegistryKey().getValue().toString(),
+                CrafticsSavedData.arenaTerritoryStartX())) {
+            return null;
+        }
+        // Reading the column also loads its chunk, which the fit test below needs: an unloaded
+        // chunk reports no blocks at all, and "nothing in the way" would be a lie.
+        BlockPos.Mutable probe = new BlockPos.Mutable(
+            (int) Math.floor(home.x()), (int) Math.floor(home.y()), (int) Math.floor(home.z()));
+        boolean groundBelow = false;
+        int bottom = Math.max(world.getBottomY(), probe.getY() - HOME_GROUND_PROBE);
+        for (int y = probe.getY(); y >= bottom && !groundBelow; y--) {
+            probe.setY(y);
+            groundBelow = !world.getBlockState(probe).isAir();
+        }
+        int lift = PetHome.liftToFit(l -> {
+            pet.setPosition(home.x(), home.y() + l, home.z());
+            return world.isSpaceEmpty(pet);
+        }, groundBelow);
+        if (lift < 0) return null;
+        return new double[]{home.x(), home.y() + lift, home.z()};
+    }
+
     private static double[] findPetLanding(ServerWorld world, BlockPos hub, int offset,
                                            UUID ownerId) {
         BlockPos anchor = findAnchorLanding(world, hub, ownerId);
@@ -396,7 +473,25 @@ public class HubPetCollector {
      */
     public static int restorePetsToHub(ServerWorld world, ServerPlayerEntity player,
                                         List<PetData> survivingPets, CrafticsSavedData data) {
-        BlockPos defaultHub = data.getHubTeleportPos(player.getUuid());
+        return restorePets(world, player, player.getUuid(), survivingPets, data, false);
+    }
+
+    /**
+     * The restore itself.
+     *
+     * @param player       who the restore was called for, or null when nobody is: a pet being
+     *                     recalled from somebody else's island may belong to a player who is
+     *                     offline
+     * @param defaultOwner whose pet an entry is when it does not name an owner
+     * @param toOwnIsland  false sends each pet where its owner PLAYS (their party leader's
+     *                     island, which is where the party is standing between runs). True
+     *                     sends it to its owner's OWN island whatever party they are in, which
+     *                     is what bringing a stranded pet home means
+     */
+    static int restorePets(ServerWorld world, @org.jetbrains.annotations.Nullable ServerPlayerEntity player,
+                           UUID defaultOwner, List<PetData> survivingPets, CrafticsSavedData data,
+                           boolean toOwnIsland) {
+        BlockPos defaultHub = data.getHubTeleportPos(defaultOwner);
         int restoredCount = 0;
 
         int offset = 0;
@@ -408,11 +503,21 @@ public class HubPetCollector {
             // into the host's world at the guest's coordinates - nowhere at all. Falls back to
             // the current world when the owner has no island, which is what single-player and
             // every pre-island save want.
-            java.util.UUID ownerId = pet.owner() != null ? pet.owner() : player.getUuid();
-            BlockPos hubPos = data.getHubTeleportPos(ownerId);
+            java.util.UUID ownerId = pet.owner() != null ? pet.owner() : defaultOwner;
+            BlockPos hubPos;
+            ServerWorld petWorld;
+            if (toOwnIsland) {
+                // Straight to the owner's own island, not through the party rule below - the
+                // owner may still be in a party that plays somewhere else entirely.
+                petWorld = ownIslandWorldOf(world, ownerId, data);
+                if (petWorld == null) continue;   // no island of their own: nowhere to send it
+                hubPos = data.getHubSpawnPos(ownerId);
+            } else {
+                hubPos = data.getHubTeleportPos(ownerId);
+                petWorld = islandWorldOf(world, ownerId);
+                if (petWorld == null) petWorld = world;
+            }
             if (hubPos == null) hubPos = defaultHub;
-            ServerWorld petWorld = islandWorldOf(world, ownerId);
-            if (petWorld == null) petWorld = world;
             if (hubPos == null) {
                 CrafticsMod.LOGGER.warn("No hub anchor for {} - cannot send {} home",
                     ownerId, pet.entityType());
@@ -424,7 +529,7 @@ public class HubPetCollector {
             // restore was called for. Falls back to that caller when its owner has logged off,
             // which is the best available answer and matches the pre-multiplayer behaviour.
             ServerPlayerEntity ownerPlayer = player;
-            if (pet.owner() != null && !pet.owner().equals(player.getUuid())
+            if (pet.owner() != null && (player == null || !pet.owner().equals(player.getUuid()))
                     && world.getServer() != null) {
                 ServerPlayerEntity online = world.getServer().getPlayerManager().getPlayer(pet.owner());
                 if (online != null) ownerPlayer = online;
@@ -438,16 +543,10 @@ public class HubPetCollector {
                 CrafticsMod.LOGGER.info("Skipping hub restore of fallen pet: {}", pet.entityType());
                 continue;
             }
-            offset++;
             try {
                 if (pet.originalNbt() != null) {
                     // Restore from original NBT (preserves collar color, armor, name, variant, UUID)
                     NbtCompound nbt = pet.originalNbt().copy();
-                    // Override position to a verified landing near the hub anchor
-                    double[] landing = findPetLanding(world0, hubPos, offset, ownerId);
-                    double px = landing[0];
-                    double py = landing[1];
-                    double pz = landing[2];
 
                     // Strip combat-arena flags so the pet walks/breathes/takes damage at the hub.
                     // These get set by CombatManager when a mob enters the grid and would
@@ -461,8 +560,13 @@ public class HubPetCollector {
 
                     var entityType = resolveType(pet.entityType());
                     if (entityType == null) continue;   // resolveType already logged the reason
-                    Entity restored = entityType.create(world0, null, BlockPos.ofFloored(px, py, pz),
+                    // Built at the hub coordinate and moved once its spot is known: choosing the
+                    // spot needs the animal's own body, to ask whether it fits where it used to stand.
+                    Entity restored = entityType.create(world0, null, hubPos,
                         SpawnReason.MOB_SUMMONED, false, false);
+                    double px = hubPos.getX() + 0.5, py = hubPos.getY(), pz = hubPos.getZ() + 0.5;
+                    float yaw = 0f;
+                    boolean atHome = false;
 
                     if (restored == null) {
                         // Had no else at all: an entity type that refuses to build - which a
@@ -489,8 +593,26 @@ public class HubPetCollector {
                         if (world0.getEntity(restored.getUuid()) != null) {
                             restored.setUuid(UUID.randomUUID());
                         }
-                        restored.refreshPositionAndAngles(px, py, pz, 0, 0);
+                        // Back to the spot it was taken from when that spot is still good - the
+                        // pen, the perch, the pond - and otherwise to the line-up by the island
+                        // spawn, which is where every pet used to land.
+                        double[] spot = homeSpot(world0, restored, pet.home());
+                        atHome = spot != null;
+                        if (atHome) {
+                            yaw = pet.home().yaw();
+                        } else {
+                            spot = findPetLanding(world0, hubPos, ++offset, ownerId);
+                        }
+                        px = spot[0];
+                        py = spot[1];
+                        pz = spot[2];
+                        restored.refreshPositionAndAngles(px, py, pz, yaw, 0);
+                        restored.setHeadYaw(yaw);
+                        restored.setBodyYaw(yaw);
                         restored.setVelocity(0, 0, 0);
+                        // Whose it is, and - when it has not landed on its own spot - where it
+                        // really lives, so it can be sent there once its owner leaves this island.
+                        markPet(restored, ownerId, atHome ? null : pet.home());
                         if (restored instanceof net.minecraft.entity.mob.MobEntity mob) {
                             mob.setPersistent();
                             mob.setAiDisabled(false);
@@ -498,9 +620,10 @@ public class HubPetCollector {
                         }
                         if (world0.spawnEntity(restored)) {
                             restoredCount++;
-                            CrafticsMod.LOGGER.info("Restored pet to hub: {} at ({}, {}, {}) in {}",
+                            CrafticsMod.LOGGER.info("Restored pet to hub: {} at ({}, {}, {}) in {}{}",
                                 pet.entityType(), (int) px, (int) py, (int) pz,
-                                world0.getRegistryKey().getValue());
+                                world0.getRegistryKey().getValue(),
+                                atHome ? " (where it was taken from)" : "");
                         } else {
                             CrafticsMod.LOGGER.error(
                                 "Hub restore REFUSED for {} at ({}, {}, {}) - the world rejected the spawn",
@@ -511,7 +634,7 @@ public class HubPetCollector {
                     // Fallback: create a fresh entity (no NBT to restore)
                     var entityType = resolveType(pet.entityType());
                     if (entityType == null) continue;   // resolveType already logged the reason
-                    double[] landing = findPetLanding(world0, hubPos, offset, ownerId);
+                    double[] landing = findPetLanding(world0, hubPos, ++offset, ownerId);
                     var rawEntity = entityType.create(world0, null,
                         BlockPos.ofFloored(landing[0], landing[1], landing[2]),
                         SpawnReason.MOB_SUMMONED, false, false);
@@ -524,8 +647,11 @@ public class HubPetCollector {
                     {
                         mob.setPersistent();
                         mob.setAiDisabled(false);
-                        // Try to set tamed state
-                        if (mob instanceof TameableEntity tameable) {
+                        markPet(mob, ownerId, null);
+                        // Try to set tamed state. Skipped when nobody is online to bond it to.
+                        if (owner0 == null) {
+                            // a recall for an offline owner: the owner mark above is all it gets
+                        } else if (mob instanceof TameableEntity tameable) {
                             //? if <=1.21.4 {
                             tameable.setOwnerUuid(owner0.getUuid());
                             //?} else
@@ -558,10 +684,10 @@ public class HubPetCollector {
         // Every owner who got an animal back, not only the player this was called for: in a
         // party fight the others' clients would otherwise keep showing a party that no longer
         // matches what is standing on their island.
-        PartyMobSync.sync(player);
+        if (player != null) PartyMobSync.sync(player);
         if (world.getServer() != null) {
             java.util.Set<UUID> resynced = new java.util.HashSet<>();
-            resynced.add(player.getUuid());
+            if (player != null) resynced.add(player.getUuid());
             for (PetData pet : survivingPets) {
                 if (pet.owner() == null || !resynced.add(pet.owner())) continue;
                 ServerPlayerEntity other = world.getServer().getPlayerManager().getPlayer(pet.owner());
@@ -593,14 +719,16 @@ public class HubPetCollector {
                           /** AI and typing key, or null to use the entity type id. */
                           @org.jetbrains.annotations.Nullable String aiKey,
                           /** Name shown in combat, or null for the entity's own. */
-                          @org.jetbrains.annotations.Nullable String displayName) {
+                          @org.jetbrains.annotations.Nullable String displayName,
+                          /** Where it stood on its island before the run, or null. */
+                          @org.jetbrains.annotations.Nullable PetHome home) {
 
         /** Create from a TamedPetSnapshot (first level entry). */
         public static PetData fromSnapshot(TamedPetSnapshot snapshot) {
             var a = snapshot.allyEntry();
             return new PetData(snapshot.entityTypeId(), a.hp(), a.hp(), a.attack(), a.defense(),
                 a.speed(), a.range(), snapshot.fullEntityNbt(), snapshot.saddledMount(),
-                snapshot.playerUuid(), snapshot.aiKey(), snapshot.displayName());
+                snapshot.playerUuid(), snapshot.aiKey(), snapshot.displayName(), snapshot.home());
         }
 
         /**
@@ -613,7 +741,8 @@ public class HubPetCollector {
         public static PetData fromCombatEntity(CombatEntity e, @org.jetbrains.annotations.Nullable NbtCompound originalNbt) {
             return new PetData(e.getEntityTypeId(), e.getCurrentHp(), e.getMaxHp(),
                 e.getAttackPower(), e.getDefense(), e.getMoveSpeed(), e.getRange(), originalNbt,
-                e.isMounted(), e.getOwnerUuid(), e.getAiOverrideKey(), e.getNameOverride());
+                e.isMounted(), e.getOwnerUuid(), e.getAiOverrideKey(), e.getNameOverride(),
+                e.getHubHome());
         }
     }
 }

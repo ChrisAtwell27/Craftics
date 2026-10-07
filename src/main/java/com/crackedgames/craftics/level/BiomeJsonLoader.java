@@ -59,11 +59,23 @@ public class BiomeJsonLoader {
     private static final String BIOME_PATH = "craftics/biomes";
 
     public static List<BiomeTemplate> loadFromResources(ResourceManager resourceManager) {
+        return loadFromResources(resourceManager, BIOME_PATH);
+    }
+
+    /**
+     * Load biome JSON from a directory other than the standard one.
+     *
+     * <p>For biomes that must only exist when something else does. Everything under
+     * {@code craftics/biomes} loads on every install, so a compat module's biomes cannot live
+     * there: without the mod they are for, they would still be registered - listed in the
+     * atlas, counted among the biomes - with every block and mob in them missing. Kept in a
+     * directory of their own, they load only when the compat asks.
+     */
+    public static List<BiomeTemplate> loadFromResources(ResourceManager resourceManager, String directory) {
         List<BiomeTemplate> loaded = new ArrayList<>();
-        Identifier prefix = Identifier.of(CrafticsMod.MOD_ID, BIOME_PATH);
 
         Map<Identifier, net.minecraft.resource.Resource> resources =
-            resourceManager.findResources(BIOME_PATH, id -> id.getPath().endsWith(".json"));
+            resourceManager.findResources(directory, id -> id.getPath().endsWith(".json"));
 
         for (Map.Entry<Identifier, net.minecraft.resource.Resource> entry : resources.entrySet()) {
             try (InputStream stream = entry.getValue().getInputStream();

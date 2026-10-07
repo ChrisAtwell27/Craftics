@@ -165,7 +165,7 @@ public final class RunInviteManager {
             islandPd.initBranchIfNeeded();
             pd.initBranchIfNeeded();
             int biomeOrder = CampaignManager.ordinalOf(biomeId, Math.max(0, islandPd.branchChoice)) + 1;
-            if (biomeOrder <= 0 || biomeOrder > islandPd.highestBiomeUnlocked) {
+            if (!isBiomeUnlocked(islandPd, biomeId, biomeOrder)) {
                 CrafticsMod.LOGGER.warn("{} tried to start locked biome {} (island unlocked={}, needed={})",
                     starter.getName().getString(), biomeId, islandPd.highestBiomeUnlocked, biomeOrder);
                 starter.sendMessage(Text.literal(
@@ -260,7 +260,7 @@ public final class RunInviteManager {
             CrafticsSavedData data = CrafticsSavedData.get((ServerWorld) starter.getEntityWorld());
             CrafticsSavedData.PlayerData islandPd = data.getPlayerData(p.island);
             int biomeOrder = CampaignManager.ordinalOf(p.biomeId, Math.max(0, islandPd.branchChoice)) + 1;
-            if (findBiome(p.biomeId) == null || biomeOrder <= 0 || biomeOrder > islandPd.highestBiomeUnlocked) {
+            if (findBiome(p.biomeId) == null || !isBiomeUnlocked(islandPd, p.biomeId, biomeOrder)) {
                 List<UUID> bounce = new ArrayList<>(p.accepted);
                 bounce.add(p.starter);
                 for (UUID u : bounce) {
@@ -297,6 +297,28 @@ public final class RunInviteManager {
             if (b.biomeId.equals(biomeId)) return b;
         }
         return null;
+    }
+
+    /**
+     * Whether an island may start {@code biomeId}.
+     *
+     * <p>A campaign biome is open when the island's cursor has reached its position. A
+     * side-region biome is not on that line, so its position says nothing about access: it is
+     * open when its region is, and the side biomes before it are cleared. The two must not
+     * share a test - a side biome borrows a campaign position for difficulty, and comparing
+     * that against the cursor would open the second dungeon to whoever beat the first End
+     * biome.
+     *
+     * @param biomeOrder the biome's 1-based campaign position, or 0 when it has none
+     */
+    private static boolean isBiomeUnlocked(CrafticsSavedData.PlayerData islandPd, String biomeId,
+                                           int biomeOrder) {
+        var side = CampaignManager.sideRegionOf(biomeId);
+        if (side != null) {
+            return CampaignManager.isSideBiomeUnlocked(biomeId, Math.max(0, islandPd.branchChoice),
+                islandPd.highestBiomeUnlocked, islandPd.getSideCleared(side.region().id()));
+        }
+        return biomeOrder > 0 && biomeOrder <= islandPd.highestBiomeUnlocked;
     }
 
     /** "deep_dark" / "forest/pale_garden" -> "Deep Dark" / "Pale Garden" for the popup. */

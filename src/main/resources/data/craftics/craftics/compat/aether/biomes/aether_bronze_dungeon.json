@@ -1,0 +1,63 @@
+{
+  "id": "aether_bronze_dungeon",
+  "name": "Bronze Dungeon",
+  "order": 101,
+  "levels": 7,
+  "grid": { "base_width": 10, "base_height": 10, "width_growth": 1, "height_growth": 1 },
+  "floor_blocks": ["aether:carved_stone", "aether:holystone"],
+  "obstacle_blocks": ["aether:sentry_stone", "aether:mossy_holystone"],
+  "obstacle_density": 0.05,
+  "obstacle_density_growth": 0.01,
+  "environment": "aether_bronze",
+  "enemies": {
+    "passive": [
+      {"type": "aether:phyg", "weight": 2, "hp": 8, "attack": 0, "defense": 0},
+      {"type": "aether:sheepuff", "weight": 2, "hp": 8, "attack": 0, "defense": 0}
+    ],
+    "hostile": [
+      {"type": "aether:sentry", "weight": 6, "hp": 10, "attack": 8, "defense": 1, "speed": 3},
+      {"type": "aether:blue_swet", "weight": 4, "hp": 14, "attack": 4, "defense": 0},
+      {"type": "aether:mimic", "weight": 3, "hp": 22, "attack": 7, "defense": 2},
+      {"type": "aether:cockatrice", "weight": 3, "hp": 14, "attack": 5, "defense": 0, "range": 3},
+      {"type": "aether:zephyr", "weight": 2, "hp": 8, "attack": 1, "defense": 0, "range": 5, "speed": 1},
+      {"type": "aether:whirlwind", "weight": 1, "hp": 12, "attack": 1, "defense": 0}
+    ],
+    "boss": {"type": "aether:slider", "hp": 85, "attack": 9, "defense": 3, "range": 1, "speed": 3}
+  },
+  "loot": [
+    {"item": "aether:ambrosium_shard", "weight": 8},
+    {"item": "aether:zanite_gemstone", "weight": 5},
+    {"item": "aether:golden_dart", "weight": 5},
+    {"item": "aether:poison_dart", "weight": 3},
+    {"item": "aether:enchanted_dart", "weight": 3},
+    {"item": "aether:holystone_pickaxe", "weight": 4},
+    {"item": "aether:zanite_pickaxe", "weight": 4},
+    {"item": "aether:zanite_sword", "weight": 3},
+    {"item": "aether:zanite_axe", "weight": 3},
+    {"item": "aether:golden_dart_shooter", "weight": 3},
+    {"item": "aether:lightning_knife", "weight": 4},
+    {"item": "aether:blue_gummy_swet", "weight": 3},
+    {"item": "aether:golden_amber", "weight": 3},
+    {"item": "aether:zanite_helmet", "weight": 2},
+    {"item": "aether:zanite_chestplate", "weight": 2},
+    {"item": "aether:zanite_leggings", "weight": 2},
+    {"item": "aether:zanite_boots", "weight": 2},
+    {"item": "aether:zanite_gloves", "weight": 2},
+    {"item": "aether:swet_cape", "weight": 2},
+    {"item": "aether:ice_pendant", "weight": 1},
+    {"item": "aether:zanite_ring", "weight": 1},
+    {"item": "aether:neptune_helmet", "weight": 1},
+    {"item": "aether:neptune_chestplate", "weight": 1},
+    {"item": "aether:neptune_leggings", "weight": 1},
+    {"item": "aether:neptune_boots", "weight": 1},
+    {"item": "aether:neptune_gloves", "weight": 1},
+    {"item": "aether:sentry_boots", "weight": 1},
+    {"item": "aether:shield_of_repulsion", "weight": 1},
+    {"item": "aether:cloud_staff", "weight": 1},
+    {"item": "aether:phoenix_bow", "weight": 1},
+    {"item": "aether:flaming_sword", "weight": 1},
+    {"item": "aether:agility_cape", "weight": 1},
+    {"item": "aether:valkyrie_lance", "weight": 1},
+    {"item": "aether:hammer_of_kingbdogz", "weight": 1}
+  ]
+}

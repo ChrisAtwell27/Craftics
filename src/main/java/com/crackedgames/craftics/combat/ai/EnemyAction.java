@@ -243,6 +243,37 @@ public sealed interface EnemyAction {
     /** Multi-action: execute multiple actions in sequence (e.g., teleport + attack + create terrain). */
     record CompositeAction(List<EnemyAction> actions) implements EnemyAction {}
 
+    /**
+     * {@code action} unpacked into the plain actions it is made of, in order, with every nested
+     * {@link CompositeAction} opened up.
+     *
+     * <p>Bundles nest in practice: a boss's telegraphed ability is often a bundle already, and
+     * the turn it resolves it is bundled again with that turn's follow-up action. A runner that
+     * only looks one layer down hands the inner bundle to the code for instant effects, and any
+     * charge inside it is lost.
+     */
+    static List<EnemyAction> flatten(EnemyAction action) {
+        if (!(action instanceof CompositeAction ca)) return List.of(action);
+        List<EnemyAction> out = new java.util.ArrayList<>();
+        for (EnemyAction sub : ca.actions()) out.addAll(flatten(sub));
+        return out;
+    }
+
+    /**
+     * Whether {@code action} plays out over time - a walk, a charge, a leap, a wound-up strike -
+     * and so has to own the enemy's turn until it finishes, rather than resolving on the spot
+     * like terrain or an area hit. Only one such action can run per turn, and a bundle holding
+     * one must not be marked done the moment it starts.
+     */
+    static boolean drivesTurn(EnemyAction action) {
+        return action instanceof Move
+            || action instanceof MoveAndAttack
+            || action instanceof Pounce
+            || action instanceof Swoop
+            || action instanceof MoveAndAttackWithKnockback
+            || action instanceof AttackWithKnockback;
+    }
+
     // === Projectile action types ===
 
     /** Boss spawns projectile entities that travel in a straight line.

@@ -398,6 +398,53 @@ EnemyAI archerAI = (self, arena, playerPos) -&gt; {
 
 CrafticsAPI.registerAI("mymod:dungeon_archer", archerAI);</code></pre>
 
+    <h2 id="mob-traits">Mob Traits</h2>
+    <p>
+      A <strong>trait</strong> is a permanent characteristic shown as a pill on a mob's inspect panel and on its bestiary page: Undead, Immovable, Toxic. Hovering the pill shows a one line description. Green pills help the mob, red ones hurt it, grey ones do neither.
+    </p>
+    <p>
+      A trait is a label, not a mechanic. Giving a mob <code>FORCEFUL</code> does not make its attacks knock anyone back; it tells the player that they do. Declare a trait only for something your AI or your mob really does.
+    </p>
+
+    <h3>Traits Craftics works out for you</h3>
+    <p>
+      Most traits are read off state the fight already tracks, so your mobs get them with no extra code:
+    </p>
+    <ul>
+      <li><strong>Infallible</strong> when <code>CombatEntity.setHazardImmune(true)</code> is set (every boss).</li>
+      <li><strong>Thick-skulled</strong> when the mob resists Blunt damage, which is also what makes it stun immune. A boss that is not stun immune shows <strong>Indomitable</strong> instead.</li>
+      <li><strong>Immovable</strong> and <strong>Inanimate</strong> from <code>setImmovable</code> and <code>setInertObject</code>.</li>
+      <li><strong>Flameborne</strong> when the entity type is fire immune in vanilla.</li>
+      <li><strong>Large</strong> when the mob occupies more than one tile.</li>
+      <li><strong>Toxic</strong> when the mob is in the jungle theme (<code>MobThemeTags.addJungleMob</code>).</li>
+    </ul>
+
+    <h3>Declaring the rest</h3>
+    <p>
+      Behaviour that no flag records has to be declared. Use an entity type id, or a boss AI key such as <code>"boss:my_biome"</code>; a mob collects the traits declared for both.
+    </p>
+    <pre><code>import com.crackedgames.craftics.combat.MobTraits;
+
+// This mob's AI returns Teleport actions and its hit applies Wither.
+CrafticsAPI.addMobTrait("mymod:shade", MobTraits.ETHEREAL, MobTraits.DECAYED);</code></pre>
+    <p>
+      The built-ins are constants on <code>MobTraits</code>: <code>FORCEFUL</code>, <code>ETHEREAL</code>, <code>ACROBATIC</code>, <code>BERZERKER</code>, <code>TOXIC</code>, <code>DECAYED</code>, <code>SUPPRESSOR</code>, <code>MARTYR</code>, <code>UNDEAD</code>, <code>ARTHROPOD</code> and the derived ones listed above. Declared traits are hidden while the mob fights as an ally, since allies run a different turn loop.
+    </p>
+
+    <h3>Adding your own trait</h3>
+    <pre><code>import com.crackedgames.craftics.combat.MobTrait;
+
+public static final MobTrait BRITTLE = CrafticsAPI.registerMobTrait(new MobTrait(
+    "mymod_brittle",                       // id: lowercase, no , ; | or =
+    "Brittle",                             // pill text
+    "Shatters when hit by Blunt damage.",  // hover text
+    MobTrait.Polarity.NEGATIVE));          // POSITIVE, NEGATIVE or NEUTRAL
+
+CrafticsAPI.addMobTrait("mymod:glass_golem", BRITTLE);</code></pre>
+    <p>
+      Register traits in common initialisation so both sides have them. The server only sends ids; the client supplies the name, the text and the colour, and silently drops an id it has never heard of.
+    </p>
+
     <!-- ================================================================
          3. ALLIES
          ================================================================ -->

@@ -279,6 +279,24 @@ public final class MobHeadTextures {
             case "deeperdarker:shriek_worm" -> 0xFF0E4C55;
             case "deeperdarker:angler_fish" -> 0xFF0A2630;
             case "deeperdarker:sludge" -> 0xFF3FBF7F;
+            // The Aether (compat/aether): roster fallback colours until it has head art.
+            case "aether:zephyr" -> 0xFFE8F0F4;
+            case "aether:cockatrice" -> 0xFF4E8B4A;
+            case "aether:aechor_plant" -> 0xFF9B6BC9;
+            case "aether:blue_swet" -> 0xFF4FA8E8;
+            case "aether:golden_swet" -> 0xFFE8C83C;
+            case "aether:whirlwind" -> 0xFFDCE6EA;
+            case "aether:evil_whirlwind" -> 0xFF6E5A7A;
+            case "aether:sentry" -> 0xFF7E8894;
+            case "aether:mimic" -> 0xFF9A6B2F;
+            case "aether:valkyrie" -> 0xFFF2EBD3;
+            case "aether:fire_minion" -> 0xFFE8641E;
+            case "aether:moa" -> 0xFF5B8FD9;
+            case "aether:phyg" -> 0xFFF0A5A2;
+            case "aether:flying_cow" -> 0xFF6B5444;
+            case "aether:sheepuff" -> 0xFFE9E9E9;
+            case "aether:aerbunny" -> 0xFFDDEFF5;
+            case "aether:aerwhale" -> 0xFFA9C8E0;
             default -> 0xFF888888;
         };
     }

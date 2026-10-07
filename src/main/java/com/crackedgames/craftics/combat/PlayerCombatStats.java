@@ -190,7 +190,8 @@ public class PlayerCombatStats {
     public static boolean isBowItem(Item item) {
         if (item == null) return false;
         return item == Items.BOW
-            || com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.isSimplyBow(item);
+            || com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.isSimplyBow(item)
+            || com.crackedgames.craftics.compat.aether.AetherCompat.isPhoenixBow(item);
     }
 
     public static boolean isBow(ServerPlayerEntity player) {

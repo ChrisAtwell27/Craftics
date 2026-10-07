@@ -246,6 +246,34 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             out.add(new DimensionPage(region.id(), region.displayName(), tabLabel, color, entries));
         }
 
+        // Optional side regions: a tab each, after the campaign's own.
+        //
+        // Their biomes are not on the campaign line, so they have no real `order` to compare
+        // against the cursor. Rather than teach every comparison in this screen a second rule,
+        // each entry is given the order that makes the existing ones come out right: one below
+        // the cursor reads as cleared, the cursor itself as the biome to play next, one above
+        // as locked. Which of the three a biome is comes from the region's own progress.
+        for (com.crackedgames.craftics.level.campaign.CampaignSideRegion side : CampaignManager.sideRegions()) {
+            CampaignRegion region = side.region();
+            int color = region.mapColor();
+            boolean open = CampaignManager.isSideRegionOpen(side, Math.max(0, branchChoice), highestUnlocked);
+            int cleared = com.crackedgames.craftics.level.campaign.SideProgress
+                .get(handler.getSideProgress(), region.id());
+            List<BiomeEntry> entries = new ArrayList<>();
+            List<CampaignNode> nodes = region.nodes();
+            for (int i = 0; i < nodes.size(); i++) {
+                CampaignNode node = nodes.get(i);
+                int virtualOrder = !open || i > cleared ? highestUnlocked + 1
+                    : i == cleared ? highestUnlocked
+                    : highestUnlocked - 1;
+                String label = node.labelOverride() != null ? node.labelOverride() : node.biomeId();
+                Identifier tex = com.crackedgames.craftics.level.BiomeCoverArt.coverTexture(node.biomeId());
+                entries.add(new BiomeEntry(node.biomeId(), label, color, tex, virtualOrder));
+            }
+            String tabLabel = region.icon() + " " + region.displayName().toUpperCase();
+            out.add(new DimensionPage(region.id(), region.displayName(), tabLabel, color, entries));
+        }
+
         // Defensive: with no active campaign (shouldn't happen in-game) keep the
         // screen non-empty so the render / rebuild paths never index an empty list.
         if (out.isEmpty()) {

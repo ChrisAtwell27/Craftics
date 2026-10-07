@@ -25,7 +25,7 @@
       {"type": "minecraft:creeper", "weight": 5, "hp": 10, "attack": 4, "defense": 0, "range": 1},
       {"type": "minecraft:skeleton", "weight": 3, "hp": 8, "attack": 3, "defense": 0, "range": 3}
     ],
-    "boss": {"type": "minecraft:husk", "hp": 45, "attack": 6, "defense": 2, "range": 1}
+    "boss": {"type": "minecraft:husk", "hp": 45, "attack": 6, "defense": 2, "range": 1, "speed": 3}
   },
   "loot": [
     {"item": "minecraft:sandstone", "weight": 8},

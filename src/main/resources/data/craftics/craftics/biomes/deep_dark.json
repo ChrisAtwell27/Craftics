@@ -25,7 +25,7 @@
       {"type": "minecraft:spider", "weight": 3, "hp": 12, "attack": 4, "defense": 2, "range": 1},
       {"type": "minecraft:enderman", "weight": 2, "hp": 18, "attack": 7, "defense": 3, "range": 1}
     ],
-    "boss": {"type": "minecraft:warden", "hp": 60, "attack": 8, "defense": 4, "range": 1}
+    "boss": {"type": "minecraft:warden", "hp": 60, "attack": 8, "defense": 4, "range": 1, "speed": 4}
   },
   "loot": [
     {"item": "minecraft:diamond", "weight": 3},

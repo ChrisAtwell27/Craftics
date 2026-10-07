@@ -218,6 +218,36 @@ public final class AccessoriesReflect {
         return out;
     }
 
+    /**
+     * Hand every equipped (non-cosmetic) accessory stack to {@code visitor}.
+     *
+     * <p>For compat modules whose own mod has no equipment helper to borrow: The Aether puts
+     * its gloves, rings, pendants and capes straight into Accessories slots, so reading them
+     * means reading the containers. Cosmetic slots are skipped - an item worn for looks is
+     * explicitly not being worn for its effect. The stacks are the live ones, not copies;
+     * read them, do not keep them. No-op when Accessories isn't installed.
+     */
+    public static void forEachEquipped(LivingEntity entity, java.util.function.Consumer<ItemStack> visitor) {
+        if (!AVAILABLE || entity == null || visitor == null) return;
+        try {
+            Object capability = CAPABILITY_GET.invoke(null, entity);
+            if (capability == null) return;
+            Object containersObj = GET_CONTAINERS.invoke(capability);
+            if (!(containersObj instanceof Map<?, ?> containers)) return;
+            for (Object container : containers.values()) {
+                if (container == null) continue;
+                Object invObj = GET_ACCESSORIES.invoke(container);
+                if (!(invObj instanceof Inventory inv)) continue;
+                for (int i = 0; i < inv.size(); i++) {
+                    ItemStack stack = inv.getStack(i);
+                    if (stack != null && !stack.isEmpty()) visitor.accept(stack);
+                }
+            }
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.debug("[Craftics × Accessories] forEachEquipped failed", t);
+        }
+    }
+
     private static void collectSlots(List<AccessorySnapshot> out, String containerKey, int kind,
                                      Object container, Method getter) {
         try {

@@ -60,6 +60,21 @@ public class Pathfinding {
      * dragon-breath cloud, which bites per tile walked through exactly the way lava does, so a
      * clicked path goes around one whenever there is a way around.
      */
+    /**
+     * What it costs {@code self} to step onto {@code tile}.
+     *
+     * <p>A tile that hurts to stand on is priced far out of reach ({@link GridTile#getMoveCost})
+     * so the AI goes around fire and lava instead of wading in. That only makes sense for
+     * something the tile can hurt. Every boss is hazard-immune, and pricing its own fire, lava
+     * and decay at 50 steps turned them into walls: the Bastion Brute boxed itself in with its
+     * fire cross, and the Wither could not walk back over ground it had rotted. Immunity is to
+     * damage only - mud still bogs an immune mob down, because mud does not hurt, it slows.
+     */
+    static int moveCostFor(GridTile tile, CombatEntity self) {
+        if (self != null && self.isHazardImmune() && tile.getDamageOnStep() > 0) return 1;
+        return tile.getMoveCost();
+    }
+
     private static boolean pricedLikeLava(GridArena arena, GridPos pos, GridTile tile) {
         return (tile != null && tile.getType() == TileType.LAVA) || arena.hasBreathCloud(pos);
     }
@@ -439,7 +454,7 @@ public class Pathfinding {
 
                 int moveCost = ignoreHazardCost
                     ? (pricedLikeLava(arena, neighbor, neighborTile) ? LAVA_STEP_COST : 1)
-                    : neighborTile.getMoveCost();
+                    : moveCostFor(neighborTile, self);
                 int tentativeG = currentG + moveCost;
                 if (tentativeG < gScore.getOrDefault(neighbor, Integer.MAX_VALUE)) {
                     cameFrom.put(neighbor, current);
@@ -785,7 +800,7 @@ public class Pathfinding {
                 if (!ignoreHazardCost) {
                     for (GridPos ft : GridArena.getOccupiedTiles(neighbor, sizeX, sizeZ)) {
                         var ft_tile = arena.getTile(ft);
-                        if (ft_tile != null) moveCost = Math.max(moveCost, ft_tile.getMoveCost());
+                        if (ft_tile != null) moveCost = Math.max(moveCost, moveCostFor(ft_tile, self));
                     }
                 }
                 int newDist = currentDist + moveCost;
@@ -832,7 +847,7 @@ public class Pathfinding {
                 if (tile == null || !tile.isWalkable()) continue;
                 if (isBlockedBy(arena, neighbor, self)) continue;
 
-                int stepCost = tile.getMoveCost();
+                int stepCost = moveCostFor(tile, self);
                 int newDist = currentDist + stepCost;
                 if (newDist > maxSteps) continue;
                 dist.put(neighbor, newDist);
@@ -926,7 +941,7 @@ public class Pathfinding {
                 int moveCost = 1;
                 for (GridPos ft : GridArena.getOccupiedTiles(neighbor, sizeX, sizeZ)) {
                     var ft_tile = arena.getTile(ft);
-                    if (ft_tile != null) moveCost = Math.max(moveCost, ft_tile.getMoveCost());
+                    if (ft_tile != null) moveCost = Math.max(moveCost, moveCostFor(ft_tile, self));
                 }
                 int tentativeG = currentG + moveCost;
                 if (tentativeG < gScore.getOrDefault(neighbor, Integer.MAX_VALUE)) {

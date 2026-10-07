@@ -231,6 +231,31 @@
       The built-in vanilla campaign is the real-world example. Its overworld region defines a segment swap between a warm trio (<code>desert</code>, <code>jungle</code>, <code>forest</code>) and a cool pair (<code>snowy</code>, <code>mountain</code>).
     </p>
 
+    <h2 id="side-regions">Side regions</h2>
+    <p>
+      A side region is optional content that opens <em>beside</em> a campaign instead of extending it. It gets its own tab on the level select and its own progress. It never changes the campaign's length, its order, or which biome is the final boss, so a player can finish the campaign without entering it. The Aether compatibility is the built-in example: three dungeons that open at the same moment The End does.
+    </p>
+    <p>
+      Side regions are Java only. Register one from your addon, on both client and server:
+    </p>
+    <pre><code>CrafticsAPI.registerSideRegion(new CampaignSideRegion(
+    CampaignRegion.builder("mymod:sky")
+        .displayName("The Sky").color("§b").icon("☁").mapColor(0xAA88DDFF)
+        .node("mymod:cloud_keep", "Cloud Keep")
+        .node("mymod:storm_spire", "Storm Spire")
+        .build(),
+    "basalt_deltas"));   // the campaign biome whose clear opens it</code></pre>
+    <ul>
+      <li><strong>When it opens.</strong> The moment the anchor biome is cleared. Anchoring on the last biome of a region makes it open together with the next region.</li>
+      <li><strong>Order inside it.</strong> Its biomes unlock one after another, counted separately from the campaign. Clearing a side biome never unlocks a campaign biome, and campaign progress never unlocks a side biome past the first.</li>
+      <li><strong>Difficulty.</strong> Its first biome plays at the position of the campaign biome that opens alongside it, and each one after that a step further. So content that opens with The End is as hard as The End.</li>
+      <li><strong>When it is in play.</strong> Only while its anchor biome is part of the active campaign. Under a custom campaign that has no such biome, the side region simply does not appear. It is also left out if one of its biomes is already on the campaign, or it shares an id with a campaign region.</li>
+      <li><strong>New Game Plus.</strong> Starting a new cycle relocks it along with everything else.</li>
+    </ul>
+    <p>
+      The biomes themselves are ordinary biome definitions. If they should only exist when another mod is present, keep their JSON out of <code>craftics/biomes</code> (which loads on every install) and load it yourself with <code>BiomeJsonLoader.loadFromResources(resourceManager, directory)</code>.
+    </p>
+
     <!-- ================================================================
          6. COMPLETION
          ================================================================ -->

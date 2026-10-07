@@ -106,6 +106,18 @@ public final class WeaponRegistry {
         return REGISTRY.get(item);
     }
 
+    /**
+     * The entry {@code item} actually fights with when it is a weapon at all - registered, or
+     * worked out from the item itself - and {@code null} for everything that swings as a bare
+     * fist. This is what a tooltip should describe: the same stats {@link #get} hands the
+     * combat code, minus the fist fallback that would put "1 DMG" on a stack of cobblestone.
+     */
+    @Nullable
+    public static WeaponEntry getIfWeapon(Item item) {
+        WeaponEntry registered = REGISTRY.get(item);
+        return registered != null ? registered : inferred(item);
+    }
+
     /** Whether {@code item} has a registered weapon entry. */
     public static boolean isRegistered(Item item) {
         return REGISTRY.containsKey(item);

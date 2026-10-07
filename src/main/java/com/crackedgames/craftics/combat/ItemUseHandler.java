@@ -68,7 +68,7 @@ public class ItemUseHandler {
             if (!splashed.add(enemy)) continue;
             // A Creaking with a living heart is invulnerable - the splash can't
             // damage or status it; the heart must be destroyed instead.
-            if (CombatManager.isInvulnerableCreaking(enemy)) continue;
+            if (CombatManager.isInvulnerable(enemy)) continue;
             if (enemy.minDistanceTo(targetTile) <= radius) {
                 // Water-TYPED damage, not raw. takeDamage knows nothing about damage types, so
                 // the resistance table has to be applied here the way every other typed hit does
@@ -848,7 +848,9 @@ public class ItemUseHandler {
         if (effect == StatusEffects.MINING_FATIGUE.value()) return CombatEffects.EffectType.MINING_FATIGUE;
         if (effect == StatusEffects.LEVITATION.value()) return CombatEffects.EffectType.LEVITATION;
         if (effect == StatusEffects.DARKNESS.value()) return CombatEffects.EffectType.DARKNESS;
-        return null;
+        // Modded effects have no constant to compare against, so they are matched by registry id.
+        net.minecraft.util.Identifier id = net.minecraft.registry.Registries.STATUS_EFFECT.getId(effect);
+        return id == null ? null : CombatEffects.moddedEffect(id.getNamespace(), id.getPath());
     }
 
     /** Public: the client potion tooltip (CombatTooltips) calls this with the effect's real
@@ -856,6 +858,7 @@ public class ItemUseHandler {
     public static int getTurnsForPotion(CombatEffects.EffectType type, int vanillaDurationTicks) {
         int baseTurns = switch (type) {
             case SPEED, STRENGTH, RESISTANCE, ABSORPTION -> 5;
+            case SCULK_AFFINITY -> 5; // long enough to cross a sensor's range and deal with it
             case REGENERATION -> 3;
             case FIRE_RESISTANCE, INVISIBILITY, WATER_BREATHING -> 4;
             case POISON, SLOWNESS, WEAKNESS -> 3;
@@ -982,7 +985,7 @@ public class ItemUseHandler {
         // A Creaking with a living heart takes no damage from any item; the heart
         // must be destroyed instead. Callers that want a player-facing message
         // (e.g. flint &amp; steel) check isInvulnerableCreaking themselves first.
-        if (CombatManager.isInvulnerableCreaking(target)) {
+        if (CombatManager.isInvulnerable(target)) {
             return 0;
         }
         CombatEffects effects = CombatManager.getActiveCombat(player.getUuid()).getCombatEffects();
@@ -2612,6 +2615,12 @@ public class ItemUseHandler {
         GridTile tile = arena.getTile(targetTile);
         if (tile == null) return "§cInvalid tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        // The one thing a pickaxe is a weapon against: a combatant made of stone (the Aether's
+        // Slider). Everywhere else an occupied tile is simply not something you can mine.
+        CombatEntity struck = arena.getOccupant(targetTile);
+        if (struck != null && struck.isAlive() && struck.isPickaxeVulnerable()) {
+            return strikeWithPickaxe(arena, struck, stack);
+        }
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
 
         com.crackedgames.craftics.core.TileType type = tile.getType();
@@ -2645,6 +2654,39 @@ public class ItemUseHandler {
         // NORMAL floor -> sunken pit
         return TILE_EFFECT_PREFIX + "pit:" + targetTile.x() + ":" + targetTile.z()
             + "|§7You dig out a sunken pit.";
+    }
+
+    /**
+     * What a pickaxe is worth as a weapon against something it can break: the sword of the
+     * same tier, read through the live config. A pickaxe has no combat entry of its own, and
+     * the fight that needs one should not be won or lost on a number invented for it.
+     */
+    public static int pickaxeStrikeDamage(Item pickaxe) {
+        String path = net.minecraft.registry.Registries.ITEM.getId(pickaxe).getPath();
+        var config = com.crackedgames.craftics.CrafticsMod.CONFIG;
+        return switch (ToolTiers.of(path)) {
+            case ToolTiers.NETHERITE -> config.dmgNetheriteSword();
+            case ToolTiers.DIAMOND -> config.dmgDiamondSword();
+            case ToolTiers.IRON -> config.dmgIronSword();
+            case ToolTiers.STONE -> config.dmgStoneSword();
+            default -> config.dmgWoodenSword();
+        };
+    }
+
+    /** A pickaxe swung at something it can break. 1 AP like any other use, and adjacent only. */
+    private static String strikeWithPickaxe(GridArena arena, CombatEntity target, ItemStack stack) {
+        if (target.minDistanceTo(arena.getPlayerGridPos()) > 1) {
+            return "§cToo far! Stand next to it.";
+        }
+        int power = pickaxeStrikeDamage(stack.getItem());
+        // Tactical combat is hard on tools: the same wear a weapon takes for a swing.
+        if (stack.getDamage() + 7 >= stack.getMaxDamage()) {
+            stack.decrement(1);
+        } else {
+            stack.setDamage(stack.getDamage() + 7);
+        }
+        int dealt = target.takeDamageThroughImmunity(power);
+        return "§7Your pickaxe bites into " + target.getDisplayName() + " for §c" + dealt + "§7!";
     }
 
     /** Base damage of a crossbow bolt fired as an item action, before Special affinity. */

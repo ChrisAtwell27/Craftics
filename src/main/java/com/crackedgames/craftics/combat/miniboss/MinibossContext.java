@@ -173,7 +173,7 @@ public final class MinibossContext {
      *  (the warning round); {@code false} also sweeps everyone standing in the water toward the
      *  nearest arena edge. See {@link RiverCurrentFn}. */
     public void riverCurrent(boolean telegraphOnly) { riverCurrentFn.run(telegraphOnly); }
-    /** True if the player's boots have Swift Sneak (bypasses sculk-sensor triggers). */
+    /** True if sculk sensors cannot hear this player: Swift Sneak boots, or Sculk Affinity. */
     public boolean hasSwiftSneak(net.minecraft.server.network.ServerPlayerEntity p) { return swiftSneakFn.has(p); }
     /** The grid tile a specific party member currently stands on (not just the acting player). */
     public GridPos tileOf(net.minecraft.server.network.ServerPlayerEntity p) { return playerTileFn.of(p); }

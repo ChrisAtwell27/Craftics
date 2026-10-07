@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * Basalt Deltas Boss - "The Wither"
- * Entity: Wither | 65HP / 8ATK / 5DEF / Range 5 / Speed 2 | Size 2×2
+ * Entity: Wither | 65HP / 8ATK / 5DEF / Range 5 / Speed 3 (4 in Phase 2) | Size 2×2
  * Defense: resists ranged attacks (0.5x) in BOTH phases via MobResistances (RANGED) - not a full immunity.
  *
  * Abilities:
@@ -56,6 +56,9 @@ public class WitherBossAI extends BossAI {
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
         self.setEnraged(true);
+        // Speed 3 → 4. Its aura has to reach the player across the largest walled arena in the
+        // game. Added to whatever is there so a slow the player has landed is not wiped.
+        self.setSpeedBonus(self.getSpeedBonus() + 1);
 
         // Phase 2 transition explosion - heavier hit + Wither application
         // signal via the effectName so the AreaAttack resolver can apply Wither

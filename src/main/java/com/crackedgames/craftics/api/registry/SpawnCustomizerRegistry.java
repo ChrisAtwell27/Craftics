@@ -72,7 +72,9 @@ public final class SpawnCustomizerRegistry {
      */
     private static void warnUnmatchedKey(CombatEntity entity) {
         String aiKey = entity.getAiKey();
-        if (aiKey == null || aiKey.equals(entity.getEntityTypeId())) return;
+        // A boss's key differs from its type by construction ("boss:<biome>"), not because an
+        // addon keyed it, so it is not the wiring mistake this warning is for.
+        if (aiKey == null || aiKey.equals(entity.getEntityTypeId()) || entity.isBoss()) return;
         if (!WARNED_KEYS.add(aiKey)) return;
         CrafticsMod.LOGGER.warn(
             "No spawn customizer registered for AI key '{}' (entity type '{}'). "

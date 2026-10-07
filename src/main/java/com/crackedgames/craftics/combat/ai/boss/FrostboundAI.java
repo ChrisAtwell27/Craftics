@@ -14,7 +14,7 @@ import java.util.List;
 
 /**
  * Snowy Tundra Boss - "The Frostbound Huntsman"
- * Entity: Stray | 25HP / 5ATK / 2DEF / Range 4 / Speed 2 | Size 2×2
+ * Entity: Stray | 25HP / 5ATK / 2DEF / Range 4 / Speed 3 | Size 2×2
  *
  * Abilities:
  * - Harpoon Pull: telegraphed pull that drags player 2 tiles toward the huntsman. 4 dmg.
@@ -24,7 +24,7 @@ import java.util.List;
  * - Frost Arrow: Range 4, ATK dmg + 1-turn Slowness.
  * - Glacial Trap: 2×2 freeze zone, 2 dmg + start-of-turn stun. Lasts 2 turns.
  *
- * Phase 2 - "Permafrost": Speed 3, auto-freeze 2 tiles every 2 turns,
+ * Phase 2 - "Permafrost": Speed 4, auto-freeze 2 tiles every 2 turns,
  *           reduced cooldowns, Blizzard center stuns.
  */
 public class FrostboundAI extends BossAI {
@@ -50,7 +50,7 @@ public class FrostboundAI extends BossAI {
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
         self.setEnraged(true);
-        self.setSpeedBonus(1); // Speed 2 → 3
+        self.setSpeedBonus(1); // Speed 3 → 4
     }
 
     @Override

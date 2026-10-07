@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * River Delta Boss - "The Tidecaller"
- * Entity: Drowned | 30HP / 5ATK / 2DEF / Speed 2 (3 on water) / Range 3 | Size 2×2
+ * Entity: Drowned | 30HP / 5ATK / 2DEF / Speed 3 / Range 3 | Size 2×2
  *
  * Abilities:
  * - Tidal Wave: a wall of water spanning the FULL arena width, 3 tiles thick, spawns at the
