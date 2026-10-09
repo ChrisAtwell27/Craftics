@@ -21,8 +21,12 @@ import java.util.List;
  * fight, before any ExitCombat packet clears {@code inCombat}, so the stale arena
  * would blur through. The server knows the real context, so it declares it here.
  * See {@link #BG_AUTO}/{@link #BG_SCENERY}/{@link #BG_SOLID}.
+ *
+ * <p>{@code flags} is a bit set of {@code FLAG_*} values. An int rather than a boolean per
+ * flag, because the boolean packet codec has a different name on the newer shards and this
+ * one does not.
  */
-public record DialoguePayload(String speaker, String lines, String choices, int background)
+public record DialoguePayload(String speaker, String lines, String choices, int background, int flags)
         implements CustomPayload {
 
     /** Let the client decide from its combat/cinematic flags (legacy heuristic). */
@@ -31,6 +35,13 @@ public record DialoguePayload(String speaker, String lines, String choices, int 
     public static final int BG_SCENERY = 1;
     /** Paint solid black behind the box (pre-level intros with no live scene). */
     public static final int BG_SOLID = 2;
+
+    /**
+     * The dialogue has to be answered. The client sends nothing when the box is taken away
+     * without a choice, and puts it back instead (see {@code DialogueScreen.reopenIfLost}).
+     * Only meaningful on a dialogue that has choices.
+     */
+    public static final int FLAG_MANDATORY = 1;
 
     /** U+001F unit separator: between lines, and between a choice's label and action. */
     private static final String UNIT = "\u001F";
@@ -48,12 +59,21 @@ public record DialoguePayload(String speaker, String lines, String choices, int 
             PacketCodecs.STRING, DialoguePayload::lines,
             PacketCodecs.STRING, DialoguePayload::choices,
             PacketCodecs.INTEGER, DialoguePayload::background,
+            PacketCodecs.INTEGER, DialoguePayload::flags,
             DialoguePayload::new);
 
     /** Backwards-friendly constructor: defaults to {@link #BG_AUTO}. */
     public DialoguePayload(String speaker, String lines, String choices) {
         this(speaker, lines, choices, BG_AUTO);
     }
+
+    /** An ordinary dialogue, which is every one that predates {@code flags}. */
+    public DialoguePayload(String speaker, String lines, String choices, int background) {
+        this(speaker, lines, choices, background, 0);
+    }
+
+    /** Whether this dialogue has to be answered. See {@link #FLAG_MANDATORY}. */
+    public boolean mandatory() { return (flags & FLAG_MANDATORY) != 0; }
 
     @Override public Id<? extends CustomPayload> getId() { return ID; }
 

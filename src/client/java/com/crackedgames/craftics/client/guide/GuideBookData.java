@@ -643,7 +643,7 @@ public class GuideBookData {
         if (loader.isModLoaded("aether")) {
             enemies.add(mob("Zephyr", "aether:zephyr_spawn_egg|minecraft:ghast_spawn_egg",
                 st("Hostile", "8-10", "0", "0", "1", "5", "2x2", null, null, null),
-                "A cloud with a grudge. Its gust does no damage at all: it throws you two tiles straight back, and what you land in is the problem. Slow and fragile, so close the distance. Sentry Boots, a Valkyrie Cape or a full Valkyrie set hold you in place."));
+                "A cloud with a grudge. Its gust does no damage at all: it throws you three tiles straight back, as far as you walk in a turn, so getting back to where you were costs your whole next move. Slow and fragile, so close the distance. Sentry Boots, a Valkyrie Cape or a full Valkyrie set hold you in place."));
             enemies.add(mob("Cockatrice", "aether:cockatrice_spawn_egg|minecraft:chicken_spawn_egg",
                 st("Hostile", "14-16", "5-6", "0", "2", "3", null, null, null, null),
                 "Spits poison needles from three tiles and backs away when you get close. Corner it, or carry a White Apple or a Remedy Bucket for the poison."));
@@ -877,17 +877,20 @@ public class GuideBookData {
                 "- Blink Assault: teleport + hit 3 tiles\n\n" +
                 "Phase 2 - Oblivion: automatic collapses, gale pushes 3 tiles, 2 lightning marks, Speed 4, summons Endermites every 3 turns.\n\n" +
                 "Watch your footing - the boss doesn't have to kill you if the void does.")));
-        enemies.add(mob("The Shulker Architect", "minecraft:shulker_shell",
-            st("Boss", "75", "9", "4", "1", "5", "2x2", "Blunt", "Ranged, Slashing, Physical", null),
-            new Page("The Shulker Architect",
-                "End City boss - a master builder waging siege warfare.\n\n" +
-                "Abilities:\n" +
-                "- Bullet Storm: telegraphed volley of 4 bullets (P2: 6) on marked tiles\n" +
-                "- Deploy Turret: stationary shulker turret (6 HP, range 4, max 3)\n" +
-                "- Fortify Shell: 80% damage reduction for 1 turn\n" +
-                "- Teleport Link: swaps to a turret's position\n\n" +
-                "Phase 2 - Defense Protocol: reflect shell, auto-deploys a turret every 3 turns, turret limit 5.\n\n" +
-                "Kill turrets first or the Architect will always have an escape hatch.")));
+        enemies.add(mob("The Shadow", "minecraft:player_head",
+            st("Boss", "75", "9", "4", "Yours", "Yours", null, null, null, null),
+            new Page("The Shadow",
+                "End City boss - a dark copy of you. One for every player in the fight, and one shulker beside it.\n\n" +
+                "It takes its turn the way you do: your AP and your Speed, one action at a time.\n\n" +
+                "- Your weapons: any weapon you are carrying, with its reach, AP cost and its own ability. A chakram is thrown and ricochets between you, your allies and your pets\n" +
+                "- Your enchantments: Sharpness, Serrated, Fire Aspect, Knockback, Sweeping Edge, Flame, Punch\n" +
+                "- Your food and potions: eats when hurt, drinks your buffs, throws your splash potions. Once each\n" +
+                "- Your throwables: snowballs, bricks, fire charges, wind charges and TNT, up to three of each. An ender pearl puts it right beside you\n" +
+                "- Your sherds: cast at you once each, at the sherd's own AP cost and reach. Nothing it casts stuns or executes\n" +
+                "- Your pets: calls up a shadow of every pet you brought\n\n" +
+                "Its damage comes from the boss it replaces, not from your gear, so leaving your sword at home does not help. Its hits ignore the flat reduction from your armour, but your armour still deflects them.\n\n" +
+                "Phase 2 - one more AP every turn.\n\n" +
+                "Check your pack before you walk in. A bow in your inventory is a bow in its hands.")));
         enemies.add(mob("The Chorus Mind", "minecraft:chorus_fruit",
             st("Boss", "80", "12", "3", "2", "1", null, "Water, Special", "Ranged, Physical", null),
             new Page("The Chorus Mind",
@@ -909,6 +912,54 @@ public class GuideBookData {
                 "Every few turns it PERCHES: it lands, becomes targetable, and defends itself with Wing Buffet and Tail Slam. That's your damage window.\n\n" +
                 "End Crystals on the field empower it - destroy them (carefully, they explode).\n\n" +
                 "Burst it on the perch, survive the strafes, and the End is yours.")));
+        // The Aether's three dungeon bosses, named exactly as CombatManager.getBossName.
+        if (loader.isModLoaded("aether")) {
+            enemies.add(mob("The Slider", "aether:carved_stone|minecraft:chiseled_stone_bricks",
+                st("Boss", "85", "9", "3", "wall to wall", "1", "2x2", null, "Blunt", null),
+                new Page("The Slider",
+                    "Bronze Dungeon boss - a block of carved stone two tiles to a side, asleep in the middle of its room until something wakes it.\n\n" +
+                    "ONLY A PICKAXE HURTS IT. Stand beside it and use a pickaxe on it. Each swing takes a share of its health, more with a better pickaxe: roughly 25 swings of diamond, 35 of iron. Blades, arrows, fire and poison do nothing at all.\n\n" +
+                    "It never rests. Awake, its turns alternate:\n" +
+                    "- BUILD: it raises bricks of carved stone and marks ONE lane of arrows: the way its next slide sets off, and how far that first run goes. Marked ground beside the lane with no arrow is its wake: half as much. That is all it shows you\n" +
+                    "- SLIDE: it starts slow, gathers speed and runs until it meets a wall, a block, a creature or you. Crushed means its full attack and a throw of 3 tiles. What it hits breaks when it gets there\n\n" +
+                    "The walls of the room stop it and are never broken. A brick or a block you placed stops it too, is destroyed, and lets it TURN. Every run after the first is aimed at where you are standing when it happens, and none of them are marked: from wherever its first run stops, it can come down the row or the column it is standing in. Bricks are how it reaches you, not cover. Holes and deep water do not stop it at all.\n\n" +
+                    "SENTRIES: with its bricks it calls up a sentry beside one. They sleep until you come close, then walk up and explode. A creature in its way stops a run and takes a crush. A sentry it runs into explodes instead: the blast hits everyone beside the sentry and not the Slider. That ground is marked with no arrow only when it is its first run that hits the sentry.\n\n" +
+                    "Phase 1: one run, and a second if the first ended on a block. One sentry standing.\n" +
+                    "Phase 2 (two thirds health, it turns red): up to 3 runs a turn, two sentries.\n" +
+                    "Phase 3 (one third health): up to 5, three sentries.\n\n" +
+                    "COUNTERPLAY: stay out of the lane, and out of line with every brick its first run could stop against. Your pickaxe mines its bricks and the lane redraws at once: one gone before it slides is a turn it cannot make. Then close in and swing. A sentry left in its lane is one it clears for you, as long as you are not standing next to it.")));
+            enemies.add(mob("The Valkyrie Queen", "aether:victory_medal|minecraft:gold_nugget",
+                st("Boss", "100", "11", "3", "3", "1", null, null, null, null),
+                new Page("The Valkyrie Queen",
+                    "Silver Dungeon boss. She will not fight you until you have earned it.\n\n" +
+                    "THE TRIBUTE: she cannot be touched until she has been paid 10. Every Victory Medal your party carries counts for 1, and she takes them herself on her turn: there is nothing to hand over. Every valkyrie of hers you beat in front of her counts for 2, the moment it falls. She sends them two at a time, so with no medals at all it takes five. The valkyries in the dungeon's rooms drop 1 medal each when the room is cleared. While her guard is up she keeps one Thunder Crystal hunting you.\n\n" +
+                    "THUNDER CRYSTAL: it homes on you for half her attack and knocks you back a tile, and burns out after 5 turns. STRIKE IT and it is a shot: it flies straight away from you and bursts on the first of hers its line passes within a tile of, however far. On her that is double, and never less than a twentieth of her health. On a valkyrie, never less than a third of its health. Put the crystal between you and her, then hit it.\n\n" +
+                    "Phase 1, on foot:\n" +
+                    "- Blade: only if you end your turn beside her. Every third swing is a SHOVE that throws you 2 tiles\n" +
+                    "- Lunge: marks a straight lane up to 6 tiles long, then runs it on her next turn\n" +
+                    "- Blink: teleports to your far side\n\n" +
+                    "Phase 2 (two thirds health), on the wing:\n" +
+                    "- Dive: she takes off, out of reach, and marks a 3x3. Next turn she lands on it: her full attack and a throw of 2 tiles. While she is up, strike a crystal so its line crosses the square and she falls: a tenth of her health and her next turn lost\n" +
+                    "- The lunge lane is 3 wide. The outer tiles take half\n" +
+                    "- Honour guard: she calls a valkyrie whenever fewer than two are on the floor, as strong as the ones at her gate. It lands calm and comes for you the turn after\n" +
+                    "- Three crystals at once, and the shove comes every second swing\n\n" +
+                    "Phase 3 (one third health), the storm: every turn she ends on the ground a 3x3 is marked under each of you, and lightning strikes it on her next turn. Her guard comes faster. She no longer blinks.\n\n" +
+                    "COUNTERPLAY: everything but her blade and her crystals is marked a turn ahead, so end your turn off the marks and not beside her. Turn on her valkyries the moment they land, and use her crystals on them. Keep a crystal alive for when she takes off.")));
+            enemies.add(mob("The Sun Spirit", "aether:sun_altar|minecraft:magma_block",
+                st("Boss", "110", "12", "4", "2-3", "1", "2x2", null, null, null),
+                new Page("The Sun Spirit",
+                    "Gold Dungeon boss - a ball of living fire in the middle of a room with a brazier near each corner. Nothing you carry can hurt it.\n\n" +
+                    "IT IS ONLY HURT BY ITS OWN COLD. It throws a crystal every turn: Fire, Fire, Ice. Strike the ICE CRYSTAL and it flies straight away from you. If that line passes through the Sun Spirit, or within a tile of it, it loses a tenth of its health and FREEZES for 2 turns with its guard down. If the line misses, the crystal flies wide and is wasted. Get the crystal between you and it before you swing.\n\n" +
+                    "It never walks at you. It drifts in a straight line and bounces off walls, braziers and frost, leaving fire behind it and burning everyone touching it where it stops. Every tile its next turn will burn is marked before you move. End your turn off the marks and only a crystal or a minion can hurt you.\n\n" +
+                    "- Fire Crystal: flies straight and bursts in a 3x3 for its full attack and Burning. One strike breaks it\n" +
+                    "- Ice Crystal: thrown away from you, then it hunts you. Weakness if it lands\n" +
+                    "- Fire Minion: one tears loose at each freeze, two at most\n" +
+                    "- Thaw: it flares when the ice goes. That is marked too\n" +
+                    "- Frost: where you strike an Ice Crystal the floor freezes 3x3 for 4 turns. Safe to stand on. It puts fire out, turns the Sun Spirit aside, stops a brazier's line and darkens a brazier it touches\n\n" +
+                    "Phase 2 (two thirds health): each turn one brazier marks a line of fire across the room toward you. It lights the turn after.\n" +
+                    "Phase 3 (one third health): two braziers a turn. It hunts you, 3 tiles a turn, and the floor burns inward from the walls. Every freeze drives that fire back a ring.\n\n" +
+                    "COUNTERPLAY: stand off the marks, break or sidestep the Fire Crystals, and line every Ice Crystal up before you hit it. Ten sent home kill it with nothing else.")));
+        }
         CATEGORIES.add(new Category("Enemy Bestiary", "minecraft:zombie_head",
             "Know your foes. Entries unlock as you encounter them.", enemies));
 

@@ -1006,7 +1006,13 @@ public class ItemUseHandler {
         if (adjustedDamage <= 0) {
             return 0;
         }
-        return target.takeDamage(adjustedDamage);
+        int dealt = target.takeDamage(adjustedDamage);
+        // Gravitite Hoe: carried, it makes everything Special leave its target floating. Same
+        // funnel as Radiant above, so it reaches every Special item at once.
+        if (type == DamageType.SPECIAL && dealt > 0) {
+            com.crackedgames.craftics.compat.aether.AetherCompat.levitateOnSpecialHit(player, target);
+        }
+        return dealt;
     }
 
     private static String formatPotionLevel(int amplifier) {
@@ -2673,17 +2679,27 @@ public class ItemUseHandler {
         };
     }
 
+    /**
+     * Durability a pickaxe loses to one strike on a combatant. Less than the 7 a weapon loses
+     * to a swing, on purpose: this is the ONLY way to hurt what it is used on, and at a
+     * weapon's rate an iron pickaxe breaks a few swings short of finishing the job.
+     */
+    private static final int PICKAXE_STRIKE_WEAR = 2;
+
     /** A pickaxe swung at something it can break. 1 AP like any other use, and adjacent only. */
     private static String strikeWithPickaxe(GridArena arena, CombatEntity target, ItemStack stack) {
         if (target.minDistanceTo(arena.getPlayerGridPos()) > 1) {
             return "§cToo far! Stand next to it.";
         }
-        int power = pickaxeStrikeDamage(stack.getItem());
-        // Tactical combat is hard on tools: the same wear a weapon takes for a swing.
-        if (stack.getDamage() + 7 >= stack.getMaxDamage()) {
+        // The tool's own damage plus a share of what it is breaking, so the strike keeps pace
+        // with a boss's health at any depth. See ToolTiers.strikeShare.
+        String toolPath = net.minecraft.registry.Registries.ITEM.getId(stack.getItem()).getPath();
+        int power = pickaxeStrikeDamage(stack.getItem())
+            + ToolTiers.strikeShareDamage(ToolTiers.of(toolPath), target.getMaxHp());
+        if (stack.getDamage() + PICKAXE_STRIKE_WEAR >= stack.getMaxDamage()) {
             stack.decrement(1);
         } else {
-            stack.setDamage(stack.getDamage() + 7);
+            stack.setDamage(stack.getDamage() + PICKAXE_STRIKE_WEAR);
         }
         int dealt = target.takeDamageThroughImmunity(power);
         return "§7Your pickaxe bites into " + target.getDisplayName() + " for §c" + dealt + "§7!";

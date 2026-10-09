@@ -44,7 +44,12 @@ public final class SpellEngine {
             List<SpellTarget> targets = step.selector().resolve(ctx);
             int before = report.fragments().size();
             List<GridPos> tiles = new ArrayList<>();
+            // Where each target stood before this step touched it. A pull or a knockback has
+            // already happened by the time the visuals are staged, and a hook line or a
+            // furrow has to be drawn from where the target WAS.
+            List<GridPos> origins = new ArrayList<>();
             for (SpellTarget target : targets) {
+                origins.add(target.tile());
                 for (SpellEffect effect : step.effects()) {
                     effect.apply(ctx, target, report);
                 }
@@ -53,15 +58,28 @@ public final class SpellEngine {
             if (!step.heading().isEmpty() && report.fragments().size() > before) {
                 report.fragments().add(before, step.heading());
             }
-            outcomes.add(new StepOutcome(step, tiles));
+            outcomes.add(new StepOutcome(step, tiles, origins));
         }
 
         // Phase 3 - stage the visuals behind the state change.
+        //
+        // The spell's own choreography first, and whether or not anything was hit: a tidal
+        // surge is a wave going out, and a wave that only appeared when it caught somebody
+        // would make a cast into empty water look like a misfire.
+        List<GridPos> everyTile = new ArrayList<>();
+        List<GridPos> everyOrigin = new ArrayList<>();
+        for (StepOutcome outcome : outcomes) {
+            everyTile.addAll(outcome.tiles);
+            everyOrigin.addAll(outcome.origins);
+        }
+        stage(spell.castVisuals(), ctx, everyTile, everyOrigin, reach(spell));
+
         for (StepOutcome outcome : outcomes) {
             SpellVisuals visuals = outcome.step.visuals();
             List<BlockPos> blocks = new ArrayList<>();
             for (GridPos tile : outcome.tiles) blocks.add(ctx.blockOf(tile));
             if (blocks.isEmpty()) continue;
+            stage(visuals, ctx, outcome.tiles, outcome.origins, outcome.step.selector().radius());
 
             PotterySherdSpells.queue(visuals.trailDelay(),
                 () -> visuals.playTrail(world, casterBlock, blocks));
@@ -102,7 +120,32 @@ public final class SpellEngine {
         return out;
     }
 
-    private record StepOutcome(SpellStep step, List<GridPos> tiles) {}
+    private record StepOutcome(SpellStep step, List<GridPos> tiles, List<GridPos> origins) {}
+
+    /**
+     * Play a choreography, if these visuals have one.
+     *
+     * <p>Guarded, because this is decoration: the spell has already resolved, and a mistake in
+     * how it is drawn must not turn a cast that worked into an error.
+     */
+    private static void stage(SpellVisuals visuals, SpellContext ctx, List<GridPos> tiles,
+                              List<GridPos> origins, int radius) {
+        SpellVisuals.Choreography choreography = visuals.choreography();
+        if (choreography == null) return;
+        try {
+            choreography.play(new SpellStage(ctx, tiles, origins, radius));
+        } catch (Throwable t) {
+            com.crackedgames.craftics.CrafticsMod.LOGGER.warn(
+                "Sherd staging for {} failed; the spell itself resolved normally", ctx.spell().name(), t);
+        }
+    }
+
+    /** The widest area any step of this spell reaches. Read live, so an inscription that widens it is drawn wider. */
+    private static int reach(SherdSpell spell) {
+        int reach = 0;
+        for (SpellStep step : spell.steps()) reach = Math.max(reach, step.selector().radius());
+        return reach;
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // Validation

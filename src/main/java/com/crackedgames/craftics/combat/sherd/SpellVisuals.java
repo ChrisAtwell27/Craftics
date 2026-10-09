@@ -23,6 +23,10 @@ import java.util.List;
  * {@link Builder#extraImpact}. Inventing a particle DSL rich enough to describe a helix would
  * be a worse trade than letting three sherds keep a lambda, and the escape hatch means no sherd
  * has to be flattened to fit the common shape.
+ *
+ * <p>Those two are a puff at one point. A spell that wants the arena itself to answer - the
+ * floor flooding outward, stone coming up through it, ground left burnt - sets a
+ * {@link Choreography}, which is handed the whole stage and a timeline rather than a position.
  */
 public final class SpellVisuals {
 
@@ -55,6 +59,16 @@ public final class SpellVisuals {
 
     private final Flourish extraCast;
     private final Flourish extraImpact;
+    private final Choreography choreography;
+
+    /**
+     * A staged sequence for one part of a spell: blocks, particles and sound laid out over
+     * the ticks after the cast. See {@link SpellStage} for what it may do and what it may not.
+     */
+    @FunctionalInterface
+    public interface Choreography {
+        void play(SpellStage stage);
+    }
 
     private SpellVisuals(Builder b) {
         this.castParticle = b.castParticle;
@@ -77,7 +91,11 @@ public final class SpellVisuals {
         this.impactDelay = b.impactDelay;
         this.extraCast = b.extraCast;
         this.extraImpact = b.extraImpact;
+        this.choreography = b.choreography;
     }
+
+    /** The staged sequence for this part of the spell, or null when it has none. */
+    public Choreography choreography() { return choreography; }
 
     public static Builder builder() { return new Builder(); }
 
@@ -150,6 +168,7 @@ public final class SpellVisuals {
 
         private Flourish extraCast;
         private Flourish extraImpact;
+        private Choreography choreography;
 
         public Builder cast(ParticleEffect p, SoundEvent s) {
             this.castParticle = p; this.castSound = s; return this;
@@ -184,6 +203,13 @@ public final class SpellVisuals {
         public Builder extraCast(Flourish f) { this.extraCast = f; return this; }
         /** A bespoke flourish drawn at each impact, on top of the standard burst. */
         public Builder extraImpact(Flourish f) { this.extraImpact = f; return this; }
+
+        /**
+         * A staged sequence played on top of the standard phases. On a spell's cast visuals it
+         * plays once for the whole cast, whether or not anything was hit; on a step's visuals
+         * it plays when that step landed on something.
+         */
+        public Builder choreography(Choreography c) { this.choreography = c; return this; }
 
         public SpellVisuals build() { return new SpellVisuals(this); }
     }

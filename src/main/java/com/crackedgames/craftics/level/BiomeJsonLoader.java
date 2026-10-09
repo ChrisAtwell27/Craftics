@@ -185,7 +185,7 @@ public class BiomeJsonLoader {
                 enchantmentLootWeights = new int[0];
             }
 
-            return new BiomeTemplate(
+            BiomeTemplate template = new BiomeTemplate(
                 id, name, order, levels,
                 baseWidth, baseHeight, widthGrowth, heightGrowth,
                 floorBlocks, obstacleBlocks,
@@ -196,10 +196,78 @@ public class BiomeJsonLoader {
                 night, environmentId,
                 biomeEffectId, biomeEffectStartLevel
             );
+            if (json.has("prelude")) attachPrelude(template, json, source);
+            // Optional: "boss_grid": {"width": 7, "height": 7} gives the boss level a room of
+            // its own size, measured like base_width.
+            if (json.has("boss_grid")) {
+                JsonObject room = json.getAsJsonObject("boss_grid");
+                template.withBossRoom(
+                    room.has("width") ? room.get("width").getAsInt() : 0,
+                    room.has("height") ? room.get("height").getAsInt() : 0);
+            }
+            // Optional: "boss_loot": [{"item": ..., "weight": ...}], a treasure table one item
+            // of which is added to what clearing the boss level pays.
+            if (json.has("boss_loot")) {
+                List<Item> treasure = new ArrayList<>();
+                List<Integer> treasureWeights = new ArrayList<>();
+                for (JsonElement element : json.getAsJsonArray("boss_loot")) {
+                    JsonObject entry = element.getAsJsonObject();
+                    Identifier itemId = Identifier.of(entry.get("item").getAsString());
+                    if (!Registries.ITEM.containsId(itemId)) {
+                        CrafticsMod.LOGGER.warn("Unknown item '{}' in biome {}, skipping boss loot entry", itemId, source);
+                        continue;
+                    }
+                    treasure.add(Registries.ITEM.get(itemId));
+                    treasureWeights.add(entry.has("weight") ? entry.get("weight").getAsInt() : 1);
+                }
+                int[] weights = new int[treasureWeights.size()];
+                for (int i = 0; i < weights.length; i++) weights[i] = treasureWeights.get(i);
+                template.withBossLoot(treasure.toArray(new Item[0]), weights);
+            }
+            return template;
         } catch (Exception e) {
             CrafticsMod.LOGGER.error("Error parsing biome JSON {}: {}", source, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Opening levels that are somewhere else (see {@link BiomeTemplate#withPrelude}):
+     *
+     * <pre>
+     *   "prelude": {
+     *     "levels": 3,
+     *     "name": "Aether Highlands",
+     *     "grid": {...}, "floor_blocks": [...], "obstacle_blocks": [...],
+     *     "obstacle_density": 0.08, "environment": "...", "night": false,
+     *     "enemies": {"passive": [...], "hostile": [...]},
+     *     "loot": [...]
+     *   }
+     * </pre>
+     *
+     * Everything a biome file says about how a level looks and what is in it, read by the
+     * same parser. What it cannot say is who it is: the id, the level range and the boss
+     * are taken from the biome it belongs to, whatever the block itself contains.
+     */
+    private static void attachPrelude(BiomeTemplate biome, JsonObject json, String source) {
+        JsonObject prelude = json.getAsJsonObject("prelude");
+        int levels = prelude.has("levels") ? prelude.get("levels").getAsInt() : 0;
+        if (levels <= 0) return;
+
+        JsonObject asBiome = prelude.deepCopy();
+        asBiome.remove("prelude");
+        asBiome.add("id", json.get("id"));
+        asBiome.add("order", json.get("order"));
+        asBiome.add("levels", json.get("levels"));
+        if (!asBiome.has("name")) asBiome.add("name", json.get("name"));
+        JsonObject enemies = asBiome.has("enemies") ? asBiome.getAsJsonObject("enemies") : new JsonObject();
+        enemies.remove("boss");
+        JsonObject own = json.getAsJsonObject("enemies");
+        if (own != null && own.has("boss")) enemies.add("boss", own.get("boss"));
+        asBiome.add("enemies", enemies);
+
+        BiomeTemplate look = parseBiome(asBiome, source + " (prelude)");
+        if (look != null) biome.withPrelude(look, levels);
     }
 
     private static Block[] parseBlockArray(JsonArray arr) {

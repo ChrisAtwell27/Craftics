@@ -61,6 +61,32 @@ public class LevelGenerator {
         Map.entry("dragons_nest",      Set.of("minecraft:enderman", "minecraft:phantom"))
     );
 
+    /** The most adds any boss level starts with, before config and per-boss limits. */
+    private static final int USUAL_BOSS_ADDS = 3;
+
+    /**
+     * Bosses that start with less backup than the usual crew.
+     *
+     * <p>The Shadow brings its own company: one Shadow per player, a shadow of every pet, and
+     * whatever its copied items call up. Three shulkers on top of that buried the mirror
+     * match under a crowd, so it gets one.
+     */
+    private static final Map<String, Integer> BOSS_ADD_LIMITS = Map.of(
+        "end_city", 1
+    );
+
+    /**
+     * How many adds a boss level in {@code biomeId} starts with. Pure (no config lookup), so
+     * it can be unit-tested.
+     *
+     * @param configuredMax the {@code maxBossAdds} config value
+     */
+    public static int bossAddCount(String biomeId, int configuredMax) {
+        int usual = Math.min(USUAL_BOSS_ADDS, configuredMax);
+        Integer limit = biomeId == null ? null : BOSS_ADD_LIMITS.get(biomeId);
+        return Math.max(0, limit == null ? usual : Math.min(usual, limit));
+    }
+
     /**
      * Arena id for the Pale Garden sub-biome. Names a single bundled FILE
      * (arenas/forest/pale_garden.schem) rather than a directory of numbered variants.
@@ -105,12 +131,16 @@ public class LevelGenerator {
      */
     public static LevelDefinition generate(int levelNumber, int branchChoice, boolean scaleHpPerLevel,
                                            boolean bossBeaten, InfiniteSpec infiniteSpec) {
-        BiomeTemplate biome = BiomeRegistry.getForLevel(levelNumber);
-        if (biome == null) {
+        BiomeTemplate registered = BiomeRegistry.getForLevel(levelNumber);
+        if (registered == null) {
             throw new IllegalStateException("No biome registered for level " + levelNumber
                 + " - is the BiomeRegistry empty?");
         }
-        int biomeIndex = biome.getBiomeLevelIndex(levelNumber); // 0-based within biome
+        int biomeIndex = registered.getBiomeLevelIndex(levelNumber); // 0-based within biome
+        // A biome's opening levels may be built from its prelude (BiomeTemplate.withPrelude):
+        // the same biome to everything that asks, with the same level range and boss, and
+        // another place to stand in. Everything below reads the template the level is built from.
+        BiomeTemplate biome = registered.themeAt(biomeIndex);
         boolean isBoss = biome.isBossLevel(levelNumber);
         // Campaign levels reroll on every visit, by design. Infinite levels derive from
         // the chapter seed instead, so every player on the server meets the same roster
@@ -123,18 +153,21 @@ public class LevelGenerator {
                 infiniteSpec.virtualOrdinal(), biomeIndex)
             : new Random(System.nanoTime() ^ (levelNumber * 31L + biome.biomeId.hashCode()));
 
-        // +4 extra for ArenaBuilder's edge carving
-        int width = biome.baseWidth + biomeIndex * biome.widthGrowth + 4;
-        int height = biome.baseHeight + biomeIndex * biome.heightGrowth + 4;
+        int[] grid = gridSizeFor(registered, biomeIndex, isBoss);
+        int width = grid[0];
+        int height = grid[1];
 
+        // Numbered within the part of the biome it belongs to: the first level after a
+        // three-level prelude is "Bronze Dungeon I", not "Bronze Dungeon IV".
+        int nameIndex = biome == registered ? biomeIndex - registered.getPreludeLevels() : biomeIndex;
         String name;
         if (isBoss) {
             name = biome.displayName + " - BOSS";
-        } else if (biomeIndex < 5) {
+        } else if (nameIndex < 5) {
             String[] numerals = {"I", "II", "III", "IV", "V"};
-            name = biome.displayName + " " + numerals[biomeIndex];
+            name = biome.displayName + " " + numerals[nameIndex];
         } else {
-            name = biome.displayName + " " + (biomeIndex + 1);
+            name = biome.displayName + " " + (nameIndex + 1);
         }
         if (infiniteSpec != null) {
             name = "∞ " + name; // ∞ prefix marks infinite-run levels
@@ -165,6 +198,13 @@ public class LevelGenerator {
             (int)(Math.min(lootMinTotal, 8) * lootMult), (int)(Math.min(lootMaxTotal, 10) * lootMult),
             lootRng
         );
+        // What the boss was guarding: one piece from the biome's treasure table, on top of the
+        // ordinary loot. Campaign only. An infinite run's boss is not this biome's boss, and
+        // its loot stream is seeded, so nothing is drawn there.
+        if (isBoss && infiniteSpec == null && registered.hasBossLoot()) {
+            loot = new java.util.ArrayList<>(loot);
+            loot.addAll(registered.buildBossLootPool().roll(1, 1, 1, 1, lootRng));
+        }
 
         GeneratedLevelDefinition levelDef = new GeneratedLevelDefinition(
             levelNumber, name, width, height, playerStart,
@@ -275,6 +315,25 @@ public class LevelGenerator {
         return tiles;
     }
 
+    /**
+     * The grid a level of {@code registered} is built to, as {@code {width, height}}: the
+     * size its part of the biome (prelude or not) has grown to by this level, or the boss's
+     * own room when it has been given one. Pure, so the arena cache can ask what size a
+     * level should be without generating it.
+     */
+    public static int[] gridSizeFor(BiomeTemplate registered, int biomeIndex, boolean isBoss) {
+        BiomeTemplate theme = registered.themeAt(biomeIndex);
+        // +4 extra for ArenaBuilder's edge carving
+        int width = theme.baseWidth + biomeIndex * theme.widthGrowth + 4;
+        int height = theme.baseHeight + biomeIndex * theme.heightGrowth + 4;
+        // A boss may be given a room of its own size rather than wherever the growth ended up.
+        if (isBoss && registered.hasBossRoom()) {
+            width = registered.getBossGridWidth() + 4;
+            height = registered.getBossGridHeight() + 4;
+        }
+        return new int[]{width, height};
+    }
+
     private static boolean isProtected(int x, int z, int w, int h) {
         if (z <= 1 && Math.abs(x - w / 2) <= 2) return true;
         if (z >= h - 2 && Math.abs(x - w / 2) <= 2) return true;
@@ -327,7 +386,9 @@ public class LevelGenerator {
         count = Math.min(count, hardCap);
         // Boss rounds: keep the add crew small and thematic. The boss itself is
         // the main threat; extra random biome trash dilutes the fight.
-        if (isBoss) count = Math.min(3, com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAdds());
+        if (isBoss) {
+            count = bossAddCount(biome.biomeId, com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAdds());
+        }
 
         // The two ends of the ramp are configurable (passiveHostileRatioEarly/Late); the rungs
         // between them interpolate off those ends rather than being hardcoded, so moving either

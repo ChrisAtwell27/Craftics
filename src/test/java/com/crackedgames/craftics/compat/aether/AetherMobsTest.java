@@ -831,4 +831,12 @@ class AetherMobsTest {
         CombatEntity swet = mob(a, AetherMobs.BLUE_SWET, 2, 5, 2, 1, 2);
         assertInstanceOf(EnemyAction.Idle.class, new SwetAI().decideAction(swet, a, player));
     }
+
+    @Test
+    void aValkyrieGivesExactlyOneMedalAndNothingElseIsCounted() {
+        assertEquals(1, AetherMobs.fixedDropCount(AetherMobs.VALKYRIE));
+        assertEquals(0, AetherMobs.fixedDropCount(AetherMobs.ZEPHYR), "everything else rolls as it always did");
+        assertEquals(0, AetherMobs.fixedDropCount("minecraft:zombie"));
+        assertEquals(0, AetherMobs.fixedDropCount(null));
+    }
 }

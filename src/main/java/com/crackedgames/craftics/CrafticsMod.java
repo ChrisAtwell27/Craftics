@@ -115,6 +115,10 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.init();
         com.crackedgames.craftics.compat.aether.AetherCompat.init();
         com.crackedgames.craftics.compat.aether.AetherMobs.init();
+        com.crackedgames.craftics.compat.aether.boss.SliderAI.register();
+        com.crackedgames.craftics.compat.aether.boss.ValkyrieQueenAI.register();
+        com.crackedgames.craftics.compat.aether.boss.SunSpiritAI.register();
+        com.crackedgames.craftics.compat.aether.boss.SliderGate.register();
         com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.init();
         com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.init();
         // Forest's level-4 miniboss (the Pale Garden Creaking encounter) only registers when a
@@ -192,6 +196,8 @@ public class CrafticsMod implements ModInitializer {
         Registry.register(Registries.CHUNK_GENERATOR, Identifier.of(MOD_ID, "void"), VoidChunkGenerator.CODEC);
 
         ModBlocks.register();
+        com.crackedgames.craftics.entity.ModEntities.register();
+        com.crackedgames.craftics.combat.shadow.ShadowActions.register();
         com.crackedgames.craftics.item.ModItems.register();
         com.crackedgames.craftics.item.ModItemGroups.register();
         ModScreenHandlers.register();
@@ -1072,6 +1078,7 @@ public class CrafticsMod implements ModInitializer {
 
             try {
                 com.crackedgames.craftics.vfx.PhaseScheduler.tickAll();
+                com.crackedgames.craftics.vfx.GhostBlocks.tickAll();
                 for (net.minecraft.server.world.ServerWorld w : server.getWorlds()) {
                     com.crackedgames.craftics.vfx.VfxBlockTracker.of(w).tick(w);
                 }

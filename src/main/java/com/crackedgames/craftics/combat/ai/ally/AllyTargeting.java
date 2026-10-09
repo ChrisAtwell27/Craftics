@@ -88,8 +88,18 @@ final class AllyTargeting {
         return best;
     }
 
-    /** Size-aware path from the ally's tile to {@code to} (delegates to 1x1 routing for small allies). */
+    /**
+     * Size-aware path from the ally's tile to {@code to} (delegates to 1x1 routing for small allies).
+     *
+     * <p>An ally that flies goes over obstacles rather than round them, and may come to rest
+     * on top of one. That is a parrot, a bee, a bat or an allay by nature, and any pet at all
+     * while its owner carries a Gravitite Shovel.
+     */
     static List<GridPos> pathTo(CombatEntity self, GridArena arena, GridPos to) {
+        if (self.isFlying()) {
+            return Pathfinding.findPathSized(arena, self.getGridPos(), to, self.getMoveSpeed(), self,
+                self.getSizeX(), self.getSizeZ(), true);
+        }
         return Pathfinding.findPathSized(
             arena, self.getGridPos(), to, self.getMoveSpeed(), self);
     }
@@ -117,8 +127,10 @@ final class AllyTargeting {
         // and bears no relation to where the boss actually sits, so steer toward
         // the boss tile that is genuinely closest to us instead.
         GridPos aim = nearestTileOnTarget(target, arena, pos);
-        GridPos closest = Pathfinding.findClosestReachableTo(
-            arena, pos, aim, self.getMoveSpeed(), self);
+        GridPos closest = self.isFlying()
+            ? Pathfinding.findClosestReachableTo(arena, pos, aim, self.getMoveSpeed(), self,
+                self.getSizeX(), self.getSizeZ(), true)
+            : Pathfinding.findClosestReachableTo(arena, pos, aim, self.getMoveSpeed(), self);
         if (closest != null && !closest.equals(pos)) {
             List<GridPos> seek = pathTo(self, arena, closest);
             if (seek != null && !seek.isEmpty()) {
@@ -150,8 +162,11 @@ final class AllyTargeting {
         // Straight line blocked - take the best reachable escape instead.
         GridPos best = null;
         int bestDist = pos.manhattanDistance(threatPos);
-        for (GridPos candidate : Pathfinding.getReachableTiles(
-                arena, pos, self.getMoveSpeed(), self)) {
+        java.util.Set<GridPos> reachable = self.isFlying()
+            ? Pathfinding.getReachableTiles(arena, pos, self.getMoveSpeed(),
+                self.getSizeX(), self.getSizeZ(), self, false, true, false)
+            : Pathfinding.getReachableTiles(arena, pos, self.getMoveSpeed(), self);
+        for (GridPos candidate : reachable) {
             int d = candidate.manhattanDistance(threatPos);
             if (d > bestDist) {
                 bestDist = d;

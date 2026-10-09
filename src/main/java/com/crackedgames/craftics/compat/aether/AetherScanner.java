@@ -16,8 +16,9 @@ import java.util.Set;
 /**
  * Reads what a player is wearing from the Aether and turns it into combat modifiers.
  *
- * <p>Two sources. Armor is the vanilla armor slots: a full Valkyrie, Neptune or Phoenix set
- * brings a conditional effect that {@code ArmorSetEntry} has no field for. Everything else -
+ * <p>Two sources. Armor is the vanilla armor slots: every full set brings a conditional
+ * effect of its own that {@code ArmorSetEntry} has no field for, and Gravitite brings part of
+ * its one with each piece. Everything else -
  * gloves, rings, pendants, capes, the shield - sits in Accessories slots, which is the API
  * the Aether is built on, read through {@link AccessoriesReflect}.
  *
@@ -58,9 +59,16 @@ final class AetherScanner implements EquipmentScanner {
     }
 
     private static void applyArmor(StatModifiers mods, ServerPlayerEntity player) {
+        // Gravitite works piece by piece: each one worn adds to the chance.
+        int gravitite = piecesOf(player, "gravitite");
+        if (gravitite > 0) {
+            mods.addCombatEffect("Gravitite Updraft", new AetherEffects.Updraft(gravitite));
+        }
         String set = fullSet(player);
         if (set != null) {
             switch (set) {
+                case "zanite" -> mods.addCombatEffect("Hardened Zanite", new AetherEffects.Hardened());
+                case "obsidian" -> mods.addCombatEffect("Tempered Obsidian", new AetherEffects.Tempered());
                 case "valkyrie" -> mods.addCombatEffect("Valkyrie Wings", new AetherEffects.Winged());
                 case "neptune" -> mods.addCombatEffect("Neptune's Favor", new AetherEffects.Ward(
                     CombatEffects.EffectType.SOAKED, "§3✦ Neptune armor sheds the water."));
@@ -87,6 +95,18 @@ final class AetherScanner implements EquipmentScanner {
         return pieces;
     }
 
+    /** How many of the four armor slots hold a piece of {@code material}. */
+    private static int piecesOf(ServerPlayerEntity player, String material) {
+        int pieces = 0;
+        for (EquipmentSlot slot : new EquipmentSlot[]{
+                EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            if (material.equals(materialOf(AetherCompat.pathOf(player.getEquippedStack(slot).getItem())))) {
+                pieces++;
+            }
+        }
+        return pieces;
+    }
+
     /** The material all four armor slots share ("valkyrie"), or null when they do not. */
     static String fullSet(ServerPlayerEntity player) {
         String material = null;
@@ -109,7 +129,14 @@ final class AetherScanner implements EquipmentScanner {
         return null;
     }
 
-    /** Melee power a pair of gloves is worth: 2 for the Aether's strong gloves, 1 for the rest. */
+    /**
+     * Physical affinity a pair of gloves is worth: 2 for the Aether's strong gloves, 1 for the
+     * rest.
+     *
+     * <p>Physical, not Melee Power. Gloves in the Aether make a bare hand hit harder, and a
+     * bare hand is what Physical is. As Melee Power they raised every sword, axe and hammer
+     * the wearer picked up as well.
+     */
     static int gloveBonus(String path, boolean wornZanite) {
         if (path == null || !path.endsWith("_gloves")) return 0;
         if (STRONG_GLOVES.contains(path)) return 2;
@@ -118,7 +145,27 @@ final class AetherScanner implements EquipmentScanner {
         return 1;
     }
 
-    private static void applyAccessories(StatModifiers mods, Map<String, Integer> worn, boolean wornZanite) {
+    /** What a dyed cape keeps off its wearer, or null for anything that is not one. */
+    static AetherEffects.Shortened cape(String path) {
+        if (path == null) return null;
+        return switch (path) {
+            case "red_cape" -> new AetherEffects.Shortened("Red Cape", "Weakness",
+                CombatEffects.EffectType.WEAKNESS);
+            case "blue_cape" -> new AetherEffects.Shortened("Blue Cape", "Levitation",
+                CombatEffects.EffectType.LEVITATION);
+            case "white_cape" -> new AetherEffects.Shortened("White Cape", "Poison",
+                CombatEffects.EffectType.POISON);
+            case "yellow_cape" -> new AetherEffects.Shortened("Yellow Cape", "burn",
+                CombatEffects.EffectType.BURNING, CombatEffects.EffectType.SOUL_BURNING);
+            default -> null;
+        };
+    }
+
+    private static String capeName(String path) {
+        return Character.toUpperCase(path.charAt(0)) + path.substring(1, path.indexOf('_')) + " Cape";
+    }
+
+    static void applyAccessories(StatModifiers mods, Map<String, Integer> worn, boolean wornZanite) {
         int chill = 0;
         int drift = 0;
         for (Map.Entry<String, Integer> e : worn.entrySet()) {
@@ -126,7 +173,7 @@ final class AetherScanner implements EquipmentScanner {
             int count = e.getValue();
             int gloves = gloveBonus(path, wornZanite);
             if (gloves > 0) {
-                mods.add(Bonus.MELEE_POWER, gloves);
+                mods.add(Bonus.PHYSICAL_POWER, gloves);
                 continue;
             }
             switch (path) {
@@ -141,8 +188,17 @@ final class AetherScanner implements EquipmentScanner {
                 case "iron_bubble" -> mods.add(Bonus.WATER_POWER, 1);
                 case "shield_of_repulsion" ->
                     mods.addCombatEffect("Shield of Repulsion", new AetherEffects.Repulsion());
-                // iron/golden rings and pendants and the dyed capes are cosmetic in the Aether
-                // and stay cosmetic. The Swet Cape matters once there are swets to pacify.
+                // Plain jewellery and plain capes. The Aether gives these nothing to do, and
+                // they turn up in every loot table here, so each has a small thing of its own:
+                // iron is sturdy, gold bites and takes a charm, and a cape keeps one kind of
+                // trouble off you a turn sooner.
+                case "iron_ring" -> mods.add(Bonus.MAX_HP, count);
+                case "iron_pendant" -> mods.add(Bonus.DEFENSE, count);
+                case "golden_ring" -> mods.add(Bonus.ARMOR_PEN, count);
+                case "golden_pendant" -> mods.add(Bonus.SPECIAL_POWER, count);
+                case "red_cape", "blue_cape", "white_cape", "yellow_cape" ->
+                    mods.addCombatEffect(capeName(path), cape(path));
+                // The Swet Cape is read where it matters, by the swets: AetherMobs.swetPrey.
                 default -> { }
             }
         }

@@ -7,6 +7,7 @@ import com.crackedgames.craftics.combat.CombatEffects;
 import com.crackedgames.craftics.combat.CombatEntity;
 import com.crackedgames.craftics.core.GridPos;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -114,6 +115,114 @@ final class AetherEffects {
         }
     }
 
+    /**
+     * Gravitite armor: a chance that whatever lands a hit on you is sent Levitating.
+     *
+     * <p>Each piece is worth a quarter of the full set's chance, so a mixed set still does
+     * something and the fourth piece is what makes it reliable.
+     */
+    static final class Updraft implements CombatEffectHandler {
+        /** Chance with all four pieces worn. */
+        static final double FULL_SET_CHANCE = 0.25;
+
+        private final int pieces;
+
+        Updraft(int pieces) {
+            this.pieces = pieces;
+        }
+
+        static double chance(int pieces) {
+            return FULL_SET_CHANCE * Math.max(0, Math.min(4, pieces)) / 4.0;
+        }
+
+        @Override
+        public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
+            if (attacker == null || damage <= 0 || Math.random() >= chance(pieces)) {
+                return CombatResult.unchanged(damage);
+            }
+            if (!AetherCompat.levitate(attacker)) return CombatResult.unchanged(damage);
+            return CombatResult.modify(damage, "§d✦ Gravitite updraft! " + attacker.getDisplayName()
+                + " is lifted off its feet, Levitating for " + AetherCompat.LEVITATION_TURNS + " turns.");
+        }
+    }
+
+    /**
+     * Zanite set: the plate hardens as it is hit. Zanite gets better with wear, and a fight
+     * is where armor is worn: every blow that lands makes the next one deal 1 less, up to
+     * {@value #MAX_REDUCTION}, until the fight is over.
+     *
+     * <p>Silent, like {@link Outsider}: it touches every hit, and a line per hit would bury
+     * the fight. The set's tooltip says what it does.
+     */
+    static final class Hardened implements CombatEffectHandler {
+        static final int MAX_REDUCTION = 3;
+
+        /** Hits each player has taken so far this fight. */
+        private static final Map<UUID, Integer> HITS = new ConcurrentHashMap<>();
+
+        /** What a hit deals after {@code hitsTaken} earlier ones. Never below 1. */
+        static int reduced(int damage, int hitsTaken) {
+            if (damage <= 0) return damage;
+            return Math.max(1, damage - Math.max(0, Math.min(MAX_REDUCTION, hitsTaken)));
+        }
+
+        @Override
+        public void onCombatStart(CombatEffectContext ctx) {
+            if (ctx.getPlayer() != null) HITS.remove(ctx.getPlayer().getUuid());
+        }
+
+        @Override
+        public void onCombatEnd(CombatEffectContext ctx) {
+            if (ctx.getPlayer() != null) HITS.remove(ctx.getPlayer().getUuid());
+        }
+
+        @Override
+        public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
+            if (attacker == null || damage <= 0 || ctx.getPlayer() == null) {
+                return CombatResult.unchanged(damage);
+            }
+            UUID id = ctx.getPlayer().getUuid();
+            int hits = HITS.getOrDefault(id, 0);
+            HITS.put(id, Math.min(MAX_REDUCTION, hits + 1));
+            int dealt = reduced(damage, hits);
+            if (dealt == damage) return CombatResult.unchanged(damage);
+            return new CombatResult(dealt, java.util.List.of(), false);
+        }
+    }
+
+    /**
+     * Obsidian set: phoenix plate, cooled hard. The first hit to land on you each round
+     * deals half; everything after it that round lands in full.
+     */
+    static final class Tempered implements CombatEffectHandler {
+        /** Players already hit since their last turn began. */
+        private static final Set<UUID> STRUCK = ConcurrentHashMap.newKeySet();
+
+        /** Half, rounded up, so a hit of 1 is still a hit. */
+        static int halved(int damage) {
+            return damage <= 1 ? damage : (damage + 1) / 2;
+        }
+
+        @Override
+        public void onTurnStart(CombatEffectContext ctx) {
+            if (ctx.getPlayer() != null) STRUCK.remove(ctx.getPlayer().getUuid());
+        }
+
+        @Override
+        public void onCombatEnd(CombatEffectContext ctx) {
+            if (ctx.getPlayer() != null) STRUCK.remove(ctx.getPlayer().getUuid());
+        }
+
+        @Override
+        public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
+            if (attacker == null || damage <= 1 || ctx.getPlayer() == null) {
+                return CombatResult.unchanged(damage);
+            }
+            if (!STRUCK.add(ctx.getPlayer().getUuid())) return CombatResult.unchanged(damage);
+            return CombatResult.modify(halved(damage), "§8✦ Obsidian plate takes the worst of it.");
+        }
+    }
+
     /** Valkyrie set: winged, so a blow that would throw you does not. */
     static final class Winged implements CombatEffectHandler {
         @Override
@@ -182,6 +291,45 @@ final class AetherEffects {
             return CombatResult.modify(left, left == 0
                 ? "§b✦ Your ice charms snuff the flames."
                 : "§b✦ Your ice charms cool the burn.");
+        }
+    }
+
+    /**
+     * The dyed capes: each one keeps a kind of trouble off its wearer a turn sooner. Red for
+     * Weakness, Blue for Levitation, White for Poison, Yellow for a burn. They are plain wool
+     * in the Aether and do nothing there. Here a cape is what it looks like, something
+     * between you and the weather, and each colour is one thing the Aether throws at you.
+     *
+     * <p>A turn and no more. The Ice charms already stack against a burn, and the armor sets
+     * that shut an effect out altogether are a boss's treasure, not a strip of wool.
+     */
+    static final class Shortened implements CombatEffectHandler {
+        private final String cape;
+        private final String trouble;
+        private final Set<CombatEffects.EffectType> kinds;
+
+        Shortened(String cape, String trouble, CombatEffects.EffectType... kinds) {
+            this.cape = cape;
+            this.trouble = trouble;
+            this.kinds = Set.of(kinds);
+        }
+
+        /** What is left of {@code turns} once the cape has had its one. */
+        static int left(int turns) {
+            return Math.max(0, turns - 1);
+        }
+
+        boolean covers(CombatEffects.EffectType effect) {
+            return kinds.contains(effect);
+        }
+
+        @Override
+        public CombatResult onEffectApplied(CombatEffectContext ctx, CombatEffects.EffectType effect, int turns) {
+            if (!kinds.contains(effect) || turns <= 0) return CombatResult.unchanged(turns);
+            int left = left(turns);
+            return CombatResult.modify(left, left == 0
+                ? "§f✦ Your " + cape + " shrugs off the " + trouble + "."
+                : "§f✦ Your " + cape + " takes a turn off the " + trouble + ".");
         }
     }
 

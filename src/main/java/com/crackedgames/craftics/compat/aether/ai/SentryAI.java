@@ -46,6 +46,12 @@ public class SentryAI implements EnemyAI {
         return hop.isEmpty() ? new EnemyAction.Idle() : new EnemyAction.Move(hop);
     }
 
+    /** Run into, it goes off where it stands, asleep or awake: the same blast it would have walked over. */
+    @Override
+    public EnemyAction.Explode whenRammed(CombatEntity self) {
+        return new EnemyAction.Explode(self.getAttackPower(), BLAST_RADIUS);
+    }
+
     /**
      * Asleep, the ground to stay off is the ring that wakes it. Awake, the engine's own
      * reach-plus-movement estimate is the right picture.

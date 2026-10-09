@@ -62,7 +62,7 @@ public final class AetherTooltips {
 
     /**
      * What each registered weapon does beyond its stats. Keyed by registry path; a weapon
-     * with nothing to add (shovels, hoes) returns no lines.
+     * with nothing to add (most shovels and hoes) returns no lines.
      */
     static String[] weaponLines(String path) {
         return switch (path) {
@@ -72,8 +72,17 @@ public final class AetherTooltips {
                 "10% chance per hit to knock an Ambrosium Shard loose"};
             case "zanite_sword", "zanite_axe" -> new String[]{
                 "Hits harder the more worn it is, up to +150% just before it breaks"};
-            case "gravitite_sword", "gravitite_axe" -> new String[]{
-                "Launch: a grounded target crashes back down for +25% damage"};
+            case "gravitite_sword" -> new String[]{
+                "Launch: knocks the target back 1 tile",
+                "and leaves it Levitating for " + AetherCompat.LEVITATION_TURNS + " turns"};
+            case "gravitite_axe" -> new String[]{
+                "Hurl: throws the target " + AetherCompat.HURL_TILES + " tiles",
+                "+25% damage if something stops it short"};
+            case "gravitite_shovel" -> new String[]{
+                "Carried: all your pets float over obstacles, like a parrot"};
+            case "gravitite_hoe" -> new String[]{
+                "Carried: everything of yours that deals Special damage",
+                "leaves its target Levitating for " + AetherCompat.LEVITATION_TURNS + " turns"};
             case "valkyrie_axe", "valkyrie_shovel", "valkyrie_hoe" -> new String[]{
                 "Reach: strikes from " + AetherCompat.VALKYRIE_REACH + " tiles away"};
             case "valkyrie_lance" -> new String[]{
@@ -123,16 +132,41 @@ public final class AetherTooltips {
         return true;
     }
 
-    /** Worn and used items. Cosmetic accessories, and anything with no effect here, return nothing. */
+    /** The Aether's own rule, which holds here too: see {@code PhoenixArmor.damageArmor} in the mod. */
+    static final String PHOENIX_COOLS = "15 seconds in water or rain cools it to Obsidian, for good";
+    static final String OBSIDIAN_FROM = "Made by cooling Phoenix gear in water";
+
+    /** Worn and used items. Anything with no effect here returns nothing. */
     static String[] gearLines(String path) {
         if (path.endsWith("_gloves")) {
             if (path.equals("zanite_gloves")) {
-                return new String[]{"+1 Melee Power", "+2 once more than half worn"};
+                return new String[]{"+1 Physical Power", "+2 once more than half worn"};
             }
-            return new String[]{"+" + glovePower(path) + " Melee Power"};
+            if (path.equals("phoenix_gloves")) {
+                return new String[]{"+" + glovePower(path) + " Physical Power", PHOENIX_COOLS};
+            }
+            if (path.equals("obsidian_gloves")) {
+                return new String[]{"+" + glovePower(path) + " Physical Power", OBSIDIAN_FROM};
+            }
+            return new String[]{"+" + glovePower(path) + " Physical Power"};
         }
         return switch (path) {
+            case "gravitite_pickaxe" -> new String[]{
+                "Mine (1 AP): the block floats up instead of breaking",
+                "Works on any obstacle, not only walls and debris",
+                "It drops back after 2 turns: an enemy under it is hit and Stunned"};
             case "zanite_ring", "zanite_pendant" -> new String[]{"+1 Luck"};
+            case "iron_ring" -> new String[]{"+1 Max HP"};
+            case "iron_pendant" -> new String[]{"+1 Defense"};
+            case "golden_ring" -> new String[]{"+1 Armor Penetration"};
+            case "golden_pendant" -> new String[]{"+1 Special Power"};
+            case "red_cape" -> new String[]{"Weakness on you lasts 1 turn less"};
+            case "blue_cape" -> new String[]{"Levitation on you lasts 1 turn less"};
+            case "white_cape" -> new String[]{"Poison on you lasts 1 turn less"};
+            case "yellow_cape" -> new String[]{
+                "Burning on you lasts 1 turn less", "Stacks with the ice charms"};
+            case "swet_cape" -> new String[]{
+                "Swets leave you alone", "They go for whoever is not wearing one"};
             case "ice_ring", "ice_pendant" -> new String[]{
                 "Burning on you lasts 1 turn less", "Stacks with the other ice charm"};
             case "agility_cape" -> new String[]{"+1 Speed"};
@@ -166,10 +200,24 @@ public final class AetherTooltips {
         };
     }
 
-    /** The one armor piece whose effect is not a set bonus. Appended without ending the chain. */
+    /**
+     * Where Obsidian comes from, on the armor it comes from and on the armor itself. No loot
+     * table pays it and nothing crafts it: it is Phoenix armor that got wet.
+     */
+    static String armorNote(String path) {
+        for (String piece : new String[]{"_helmet", "_chestplate", "_leggings", "_boots"}) {
+            if (path.equals("phoenix" + piece)) return "§6Phoenix: §7" + PHOENIX_COOLS;
+            if (path.equals("obsidian" + piece)) return "§8Obsidian: §7" + OBSIDIAN_FROM;
+        }
+        return null;
+    }
+
+    /** Notes on an armor piece that are not its set bonus. Appended without ending the chain. */
     public static void appendArmorNote(String path, List<Text> lines) {
         if (path.equals("sentry_boots")) {
             lines.add(Text.literal("§6Sentry Boots: §7knockback moves you 1 tile less"));
         }
+        String note = armorNote(path);
+        if (note != null) lines.add(Text.literal(note));
     }
 }

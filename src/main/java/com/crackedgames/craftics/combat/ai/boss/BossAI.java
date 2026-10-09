@@ -39,6 +39,37 @@ public abstract class BossAI implements EnemyAI {
      */
     public int getGridSize() { return 1; }
 
+    /**
+     * Registry id of the block this boss raises when it creates OBSTACLE terrain, or null for
+     * the engine's default. Lets a boss build its walls out of its own dungeon's stone.
+     * An id that is not registered (the mod it names is absent) falls back to the default.
+     */
+    public String getWallBlockId() { return null; }
+
+    /**
+     * Whether this boss starts its fight in the middle of the arena instead of wherever the
+     * level placed it. For a boss whose room is built around it: one that sleeps at the
+     * centre of its chamber, or drifts out from it. The nearest free ground is used when
+     * the exact middle is taken.
+     */
+    public boolean spawnsAtCenter() { return false; }
+
+    /**
+     * Where this boss starts, for one whose room gives it a place of its own: a tile, or
+     * null to start wherever the level put it. Asked before any fight state exists, so it
+     * may read the arena and nothing else. The nearest free ground is used when the tile
+     * named is taken.
+     */
+    public GridPos spawnTile(GridArena arena, int sizeX, int sizeZ) { return null; }
+
+    /**
+     * What the party is told when this boss changes {@code changed} tiles to {@code type}:
+     * null for the engine's own line, an empty string for nothing at all, anything else is
+     * sent as written. For a boss that reshapes the floor every turn, where the stock line
+     * would be chat noise, or that has a better word for what it just did.
+     */
+    public String describeTerrain(com.crackedgames.craftics.core.TileType type, int changed) { return null; }
+
     @Override
     public final EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         turnCounter++;
@@ -166,6 +197,18 @@ public abstract class BossAI implements EnemyAI {
      */
     public EnemyAction getChargingAdvanceAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         return advanceWhileCharging(self, arena, playerPos);
+    }
+
+    /**
+     * Whether this boss has more to do on the turn it is already taking. When true, the turn
+     * machine asks it for another action straight away instead of moving on to the next enemy.
+     *
+     * <p>For a boss whose turn is a budget rather than a single move: the Shadow spends a
+     * player's AP one action at a time. The boss is responsible for eventually saying no.
+     * Default false, so every other boss acts once.
+     */
+    public boolean wantsAnotherAction(CombatEntity self) {
+        return false;
     }
 
     // === Utility methods for subclasses ===

@@ -55,80 +55,144 @@
          1. CUSTOM ARENA MAPS
          ================================================================ -->
     <h2 id="arena-maps">Custom Arena Maps</h2>
-
-    <h3>Step 1: Build Your Arena</h3>
     <p>
-      Create the full scene in creative mode including a flat area for the grid, surrounding decorations (trees, ruins, water, cliffs), and any blocks you want. The area outside the grid is purely cosmetic. The game only reads the grid boundaries and spawn markers.
+      An arena is a schematic with a few marker blocks in it. Craftics ships a set for every biome, and you can replace any of them, or supply arenas for a biome of your own, without writing code. Putting the file in the right folder under the right name is all it takes.
+    </p>
+    <div class="callout">
+      <p><strong>There is a worked example.</strong> The <a href="https://github.com/ChrisAtwell27/Craftics/tree/main/Example_Arena_Addon">Example_Arena_Addon</a> folder in the repository is a ready-made data pack that replaces three Plains arenas, a script that tells you what Craftics will make of any <code>.schem</code> before you start the game, and a walkthrough of everything on this page.</p>
+    </div>
+
+    <h3 id="arena-build">Step 1: Build the arena</h3>
+    <p>
+      Build in a creative world that has Craftics and WorldEdit installed. An arena is three things: a flat floor to fight on, scenery around it, and marker blocks that tell Craftics where the floor is. The <strong>floor layer</strong> is the layer of blocks the fighters stand on. Every marker goes <em>in</em> that layer, replacing a floor block, not on top of it.
     </p>
 
-    <h3>Step 2: Place Marker Blocks</h3>
+    <h3 id="arena-markers">Step 2: Place the markers</h3>
     <p>
-      Place special marker blocks to define the playable grid and spawn positions. The game scans for these blocks when loading the arena.
+      The <strong>Arena Corner Marker</strong> (<code>craftics:arena_corner</code>) draws the arena. It is in the Craftics creative tab, or run <code>/give @s craftics:arena_corner</code>. How many you place decides what you get.
     </p>
 
-    <div class="marker-diagram">  &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
-  &#9474;      Decorations...          &#9474;
-  &#9474;  <span class="go">DIAMOND</span>&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;<span class="em">EMERALD</span> &#9474;  &#8592; Diamond + Emerald on opposite corners OUTSIDE grid
-  &#9474;  &#9474;  <span class="go">GOLD</span>                  &#9474;  &#9474;  &#8592; Gold = Player 1 spawn (inside grid)
-  &#9474;  &#9474;     (playable grid)    &#9474;  &#9474;
-  &#9474;  &#9474;  <span class="ir">IRON</span>                  &#9474;  &#9474;  &#8592; Iron = Player 2 spawn (optional)
-  &#9474;  &#9474;                        &#9474;  &#9474;
-  &#9474;  &#9474;                        &#9474;  &#9474;
-  &#9474;      More terrain...         &#9474;
-  &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</div>
+    <div class="marker-diagram">  Two markers: a rectangle             Three or more: any shape
 
-    <h4>Marker Block Reference</h4>
+  <span class="em">C</span> . . . . . . . .                        <span class="em">C</span> - - - - <span class="em">C</span>
+  . . . . . . . . .                      /  . . . . .  \
+  . . . . <span class="go">G</span> . . . .                     <span class="em">C</span>  . . . . . . .  <span class="em">C</span>
+  . . . . . . . . .                     |  . . <span class="go">G</span> . . . .  |
+  . . . . . . . . .                     <span class="em">C</span>  . . . . . . .  <span class="em">C</span>
+  . . . . . . . . <span class="em">C</span>                      \  . . . . .  /
+                                           <span class="em">C</span> - - - - <span class="em">C</span>
+
+  The two markers are corner tiles      The markers are the border.
+  of the arena, and part of it.         The arena is the tiles inside it.
+
+  <span class="em">C</span> = Arena Corner Marker     <span class="go">G</span> = gold block, player 1 start</div>
+
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Block</th><th>Purpose</th></tr>
+          <tr><th>Markers</th><th>Arena</th></tr>
         </thead>
         <tbody>
-          <tr><td>Diamond Block</td><td>Camera corner. Place on one corner outside the grid (required).</td></tr>
-          <tr><td>Emerald Block</td><td>Opposite corner. Place on the corner diagonally opposite the Diamond Block (required).</td></tr>
-          <tr><td>Gold Block</td><td>Player 1 spawn (primary)</td></tr>
-          <tr><td>Iron Block</td><td>Player 2 spawn (multiplayer)</td></tr>
-          <tr><td>Copper Block</td><td>Player 3 spawn</td></tr>
-          <tr><td>Coal Block</td><td>Player 4 spawn</td></tr>
+          <tr><td>Two Arena Corner Markers</td><td>A rectangle. Put them on two opposite corner tiles. Both tiles are part of the arena, so markers nine blocks apart give a 9 by 9 arena.</td></tr>
+          <tr><td>Three or more Arena Corner Markers</td><td>Any shape. Walk the outline and place one at each corner, in any order. The markers are the border: the arena is the tiles strictly inside the line they draw. A marker may be hidden under the floor, up to two blocks down, or lie in the floor with a wall built on top of it: the floor is the height most of the arena can be stood on. A marker that is not a corner, part way along a straight edge or inside the shape, is set aside (four at most), so a room built from cells can have one at every cell corner.</td></tr>
+          <tr><td>Gold block (optional)</td><td>Where player 1 starts. It goes in the floor layer, inside the arena. Without one, Craftics uses the middle column one row in from the camera on a rectangle, and the tile nearest the middle on any other shape.</td></tr>
         </tbody>
       </table>
     </div>
+    <p>
+      Craftics removes every marker and patches the hole with the block most common around it, so none of them shows in the finished arena.
+    </p>
+    <ul>
+      <li><strong>Straight-edged shapes</strong> (an L, a T, a plus), where every edge runs north-south or east-west, are traced exactly. They always have an even number of corners.</li>
+      <li><strong>Shapes with diagonal edges</strong> work when they bulge outward everywhere (an octagon, a hexagon, a diamond). A shape that has diagonals and also bends inward will not come out right.</li>
+      <li><strong>The camera</strong> sits at a marker on the west side of the arena and looks at the middle. On a rectangle that is the western of the two markers, so choose the diagonal that puts a marker where you want the camera. To see an arena from another side, turn the build before you save it. Keep tall scenery away from that corner.</li>
+      <li><strong>Markers at different heights</strong> are tolerated. A rectangle uses the higher of its two markers as the floor. A shape uses the height most of its markers agree on.</li>
+    </ul>
     <div class="callout callout-muted">
-      <p>All markers must be at the same Y level.</p>
+      <p><strong>Diamond and emerald blocks are the old markers.</strong> Earlier arenas mark the two corners of a rectangle with a diamond block and an emerald block. They still load and do not need converting, and a diamond block placed among Arena Corner Markers still sets the camera corner. Use the Arena Corner Marker for anything new.</p>
     </div>
 
-    <h3>Step 3: Export</h3>
+    <h3 id="arena-kinds">Numbered arenas and boss rooms</h3>
+    <p>
+      A biome's ordinary levels use numbered files, and its last level, the boss, uses <code>boss.schem</code>. The two are treated differently, so decide which one you are building first.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th></th><th>Numbered arena (<code>1.schem</code>, <code>2.schem</code>, ...)</th><th>Boss room (<code>boss.schem</code>)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Floor inside the arena</td><td>Repainted with the biome's <code>floor_blocks</code>. Water, lava and gaps are kept.</td><td>Kept exactly as built.</td></tr>
+          <tr><td>Blocks standing on that floor</td><td>Removed. Carpets are kept. The biome's <code>obstacle_blocks</code> are scattered instead.</td><td>Kept. They become obstacles.</td></tr>
+          <tr><td>Around the arena</td><td>A ring of concrete is laid as a border.</td><td>Nothing is added.</td></tr>
+          <tr><td>Edge of the schematic</td><td>The outer 4 blocks are cut into a slope.</td><td>Kept exactly as built.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      A numbered arena is terrain: you supply the shape, the water and the scenery, and Craftics dresses the floor to match the biome. A boss room is yours block for block, which also means its edges have to look finished on their own. Trial chamber arenas are kept as built too.
+    </p>
+    <p>
+      In both kinds, everything two or more blocks above the floor is cleared inside the arena, apart from cobwebs, so keep roofs, branches and tall pillars outside it. Craftics also adds lamp posts around every arena, in the blocks of the biome's <a href="world.html#environments">environment</a>, and on rectangular arenas the environment's usual scatter (tall grass on Plains, cactus in the Desert, and so on).
+    </p>
 
-    <h4>Option A: WorldEdit (recommended)</h4>
+    <h3 id="arena-blocks">What a block means</h3>
+    <p>
+      After the arena is placed, Craftics reads each tile from the blocks that are left. This matters most in a boss room, where everything you built is still there.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>In the arena</th><th>Becomes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>A block standing on the floor</td><td>An obstacle. Fences, walls and glass panes count.</td></tr>
+          <tr><td>Stairs or a bottom slab on the floor</td><td>A step. Full blocks beside a step become a raised platform you can walk onto.</td></tr>
+          <tr><td>Stairs or a bottom slab on a raised platform</td><td>A second step. Full blocks beside it become a second floor. Three floors up is the limit.</td></tr>
+          <tr><td>A cobweb on the floor, or one block up</td><td>A web trap.</td></tr>
+          <tr><td>Water in the floor layer, one block deep</td><td>Shallow water. Walkable, and it soaks you.</td></tr>
+          <tr><td>Water two or more blocks deep</td><td>Deep water. Nobody can enter it.</td></tr>
+          <tr><td>Lava or a magma block in the floor layer</td><td>A lava tile.</td></tr>
+          <tr><td>Powder snow in the floor layer</td><td>A powder snow tile.</td></tr>
+          <tr><td>A gap in the floor with ground one block down</td><td>A pit you can walk through.</td></tr>
+          <tr><td>A gap with nothing under it</td><td>A void tile. Nobody can walk onto it, and anything knocked in falls to its death.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="arena-export">Step 3: Save it</h3>
     <ol>
-      <li>Select: <code>//pos1</code> and <code>//pos2</code></li>
+      <li>Select the whole build, including the scenery and the ground under it: <code>//pos1</code> and <code>//pos2</code></li>
       <li>Copy: <code>//copy</code></li>
-      <li>Save: <code>//schem save &lt;name&gt;</code></li>
-      <li>Find in <code>config/worldedit/schematics/</code></li>
-      <li>Copy to <code>craftics_arenas/&lt;biome&gt;/&lt;number&gt;.schem</code></li>
+      <li>Save: <code>//schem save plains_1</code></li>
     </ol>
+    <p>
+      That writes <code>config/worldedit/schematics/plains_1.schem</code> in the game folder. Any tool that saves Sponge <code>.schem</code> files, version 2 or 3, works.
+    </p>
 
-    <h4>Option B: Vanilla Structure Block (48&times;48&times;48 limit)</h4>
-    <ol>
-      <li><code>/give @s structure_block</code></li>
-      <li>Set to Save mode, define box, name it, click SAVE</li>
-      <li>Find in <code>&lt;world&gt;/generated/minecraft/structures/</code></li>
-      <li>Copy to datapack at <code>data/craftics/structures/arenas/&lt;biome&gt;/&lt;number&gt;.nbt</code></li>
-    </ol>
-
-    <h3>File Naming</h3>
-    <pre><code>craftics_arenas/          (in game run directory, for .schem)
-  plains/
-    1.schem
-    2.schem
-    boss_1.schem
-  forest/
-    1.schem
-
-data/craftics/structures/arenas/   (in datapack, for .nbt)
-  plains/
-    1.nbt
-    boss_1.nbt</code></pre>
+    <h3 id="arena-files">Step 4: Put it where Craftics looks</h3>
+    <p>
+      There are three places. The first two are loose files in the game folder, which is <code>.minecraft</code> or your launcher's instance folder in single player, and the folder the server is started from on a server. The third is a data pack.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Where</th><th>Files</th><th>Good for</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>config/worldedit/schematics/</code></td><td><code>plains_1.schem</code> to <code>plains_10.schem</code>, <code>plains_boss.schem</code></td><td>Testing. This is where WorldEdit already saved it.</td></tr>
+          <tr><td><code>craftics_arenas/plains/</code></td><td><code>1.schem</code> to <code>10.schem</code>, <code>boss.schem</code></td><td>Keeping arenas apart from your other schematics.</td></tr>
+          <tr><td>A data pack: <code>data/craftics/arenas/plains/</code></td><td><code>1.schem</code> to <code>10.schem</code>, <code>boss.schem</code></td><td>Sharing, and anything tied to one world.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Number from 1 with no gaps.</strong> Craftics stops at the first missing number, so <code>1</code>, <code>2</code>, <code>4</code> is read as two arenas.</li>
+      <li><strong>Levels cycle through the files.</strong> Level 1 of a biome uses <code>1.schem</code>, level 2 uses <code>2.schem</code>, and it wraps round when it runs out. The last level is the boss and uses <code>boss.schem</code>.</li>
+      <li><strong>Loose files replace the whole set.</strong> If Craftics finds any loose numbered file for a biome, loose files are the only numbered arenas that biome uses. Boss files are counted separately, so adding only <code>plains_boss.schem</code> leaves the numbered arenas alone.</li>
+      <li><strong>A data pack folder counts as loose files. A zipped data pack replaces file by file.</strong> A zip holding only <code>1.schem</code> replaces arena 1 and leaves the built-in 2, 3 and 4 in the rotation.</li>
+      <li><strong>Blocks from other mods</strong> load as air for anyone without that mod, and a hole in the floor is a void tile. A loose arena that needs a missing mod is skipped and the built-in ones are used.</li>
+    </ul>
 
     <h4>Biome IDs for Arena Folders</h4>
     <div class="table-wrap">
@@ -149,15 +213,65 @@ data/craftics/structures/arenas/   (in datapack, for .nbt)
         </tbody>
       </table>
     </div>
+    <p>
+      Trial chambers use <code>trial_chamber</code> and <code>trial_chamber_ominous</code>. The Pale Garden is a single file, <code>forest/pale_garden.schem</code>. <code>outer_end_islands</code> ignores loose files, so use a data pack for it.
+    </p>
+    <p>
+      A biome you add yourself keeps its arenas under its own namespace. See <a href="world.html#arenas">Arenas for a biome</a>.
+    </p>
+    <div class="callout callout-muted">
+      <p><strong>Shipping arenas in a mod jar.</strong> The same <code>data/.../arenas/</code> layout works inside a jar, but only use it for biomes your mod adds. To replace a built-in arena, ship a data pack: when two mods provide the same file there is no telling which one wins, and a world's data pack always does.</p>
+    </div>
+    <div class="callout callout-muted">
+      <p><strong>Vanilla structure files.</strong> For a biome with no <code>.schem</code> arenas at all, Craftics also reads structures saved with a structure block, at <code>data/&lt;namespace&gt;/structure/arenas/&lt;biome&gt;/1.nbt</code> (<code>boss_1.nbt</code> for the boss). Schematics are looked for first, so a structure file cannot replace a built-in arena, and a structure block is limited to 48 blocks a side.</p>
+    </div>
+
+    <h3 id="arena-test">Step 5: Rebuild and test</h3>
+    <p>
+      An arena is built the first time a level is entered on an island and reused after that, so an island that has already seen the old arena keeps it until you ask:
+    </p>
+    <pre><code>/craftics rebuild_arenas plains</code></pre>
+    <p>
+      This rebuilds every arena of that biome on your island from the files as they are now. It is for operators unless the server config opens it up, and it refuses while anyone on the island is in a run. Loose files are read fresh each time. If you changed a data pack while the world was running, run <code>/reload</code> first. <code>/craftics skip_level</code> wins the current fight, which is the quick way to step through a biome and see each arena in turn.
+    </p>
+    <p>
+      Then read <code>logs/latest.log</code>. A good load looks like this:
+    </p>
+    <pre><code>ArenaBuilder: resolved biomeId='plains' isBoss=false ...
+Found 2 disk .schem candidate(s) for biome 'plains': [...]
+Structure 1.schem marker scan: diamond=false, emerald=false, corners=2, spawns=[true,false,false,false]
+Arena built. origin=..., size=9x9, playerStart=GridPos[x=4, z=1], polygon=false</code></pre>
+    <p>
+      An arena from a zipped data pack is reported as <code>Loading bundled arena: craftics:arenas/plains/1.schem</code>, the same wording as a built-in one.
+    </p>
+
+    <h3 id="arena-troubleshooting">Troubleshooting</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>What you see</th><th>Why, and what to do</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>The old arena is still there</td><td>Arenas are reused once built. Run <code>/craftics rebuild_arenas &lt;biome&gt;</code>.</td></tr>
+          <tr><td>Nothing changed even after a rebuild</td><td>Check the file name and folder, and that the numbering starts at 1 with no gaps. The log says which file was loaded.</td></tr>
+          <tr><td>Every level now uses one arena</td><td>Loose files replace the whole set. Add more numbered files, or ship a zipped data pack to replace a single arena.</td></tr>
+          <tr><td>The floor was repainted and the decorations are gone</td><td>That is what happens to a numbered arena. Keep decorations outside the arena, or build a boss room.</td></tr>
+          <tr><td>The log says <code>has no arena corner markers</code></td><td>No markers were found, so Craftics guessed a floor and laid the biome's default grid. Put the markers in the floor layer and include them in the selection you save.</td></tr>
+          <tr><td>The arena is one tile smaller all round than expected</td><td>With three or more markers they are the border, not part of the floor. Move them out a tile, or use two for a rectangle.</td></tr>
+          <tr><td>Players start in a strange place</td><td>The gold block has to be in the floor layer and inside the arena.</td></tr>
+          <tr><td>The camera faces the wrong way</td><td>It sits at a marker on the west side. Turn the build and save it again.</td></tr>
+          <tr><td>There are holes in the floor</td><td>Either gaps you left, or blocks from a mod that is not installed. The log names the missing mod.</td></tr>
+        </tbody>
+      </table>
+    </div>
 
     <h3>Tips</h3>
     <ul>
-      <li>Size your grid for the biome's growth range (e.g., Plains starts 8&times;8, grows +1 per level).</li>
-      <li>The isometric camera looks from the southwest at ~55&deg;. Tall structures on the north/east edges may block the view.</li>
-      <li>Floor level = marker Y level.</li>
-      <li>Obstacles are overlaid by the game, so your arena provides the base terrain only.</li>
-      <li>Add atmosphere outside the grid (lanterns, campfires, particle-emitting blocks, etc.).</li>
-      <li>Under-floor lighting is automatic (glowstone every 3 blocks).</li>
+      <li>Keep the whole schematic under about 110 blocks wide and long and 100 tall.</li>
+      <li>For a numbered arena, keep the arena at least 4 blocks in from every edge of the schematic so the slope does not cut into it, and keep scenery 2 blocks clear of the arena so the border and lamp posts have room.</li>
+      <li>The built-in arenas start at about 9 by 9 tiles. The largest boss rooms are a little over 20 by 20.</li>
+      <li>The size comes from the markers, not from the biome's <code>grid</code> values. Those only size an arena that has no schematic.</li>
+      <li>Add atmosphere outside the arena: lanterns, campfires, ruins, trees.</li>
     </ul>
 
     <!-- ================================================================

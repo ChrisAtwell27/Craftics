@@ -11,7 +11,9 @@ import com.crackedgames.craftics.core.GridTile;
 import java.util.List;
 
 /**
- * Zephyr AI: a cloud that does no damage at all and is a nuisance anyway.
+ * Zephyr AI: a cloud that does no damage at all and costs you a turn anyway. A full gust
+ * is as far as a player walks in a turn, so being caught by one means spending the whole of
+ * the next move getting back to where you were.
  * - GUST: with its target in range and in sight, it spits a snowball that throws the target
  *   up to {@link #GUST_TILES} tiles directly away from it. No damage, no roll to avoid it
  * - PANIC: with anything within {@link #PANIC_DISTANCE} tiles it stops blowing and drifts
@@ -27,7 +29,7 @@ import java.util.List;
 public class ZephyrAI implements EnemyAI {
 
     /** How far a gust throws its target, given the room. */
-    public static final int GUST_TILES = 2;
+    public static final int GUST_TILES = 3;
     /** A threat this close makes a zephyr run rather than blow. */
     public static final int PANIC_DISTANCE = 2;
 

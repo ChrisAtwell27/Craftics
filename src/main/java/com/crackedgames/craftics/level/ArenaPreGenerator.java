@@ -96,8 +96,7 @@ public class ArenaPreGenerator {
         // that, not against the registry biome. Stamping the registry id meant a Pale Garden
         // level matched a plain-forest arena and silently reused it: Creakings standing in an
         // ordinary Dark Forest, with pale_garden.schem never loaded.
-        String wantedBiome = ArenaBiomeStamp.effectiveBiomeId(
-            biome.biomeId, LevelGenerator.arenaBiomeOverrideFor(level));
+        String wantedBiome = stampFor(biome, level, LevelGenerator.arenaBiomeOverrideFor(level));
 
         int[] existing = pd.getArenaMetadata(level);
         if (existing != null) {
@@ -143,7 +142,7 @@ public class ArenaPreGenerator {
             // lookup happily reuses a plain-forest arena for it.
             pd.storeArenaMetadata(level, arena.getOrigin(),
                 arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask(),
-                ArenaBiomeStamp.effectiveBiomeId(biome.biomeId, levelDef.getArenaBiomeId()));
+                stampFor(biome, level, levelDef.getArenaBiomeId()));
             pd.arenasPreGenerated = true;
             data.markDirty();
             CrafticsMod.LOGGER.debug(
@@ -206,7 +205,7 @@ public class ArenaPreGenerator {
                 if (arena != null) {
                     pd.storeArenaMetadata(level, arena.getOrigin(),
                         arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask(),
-                        ArenaBiomeStamp.effectiveBiomeId(biome.biomeId, levelDef.getArenaBiomeId()));
+                        stampFor(biome, level, levelDef.getArenaBiomeId()));
                     rebuilt++;
                 }
                 CrafticsMod.LOGGER.debug("ArenaPreGenerator: rebuilt level {} ({}) at {}", level, biome.biomeId, origin);
@@ -250,7 +249,7 @@ public class ArenaPreGenerator {
                 pd.storeArenaMetadata(level, arena.getOrigin(),
                     arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask(),
                     biome != null
-                        ? ArenaBiomeStamp.effectiveBiomeId(biome.biomeId, levelDef.getArenaBiomeId())
+                        ? stampFor(biome, level, levelDef.getArenaBiomeId())
                         : null);
                 data.markDirty();
                 CrafticsMod.LOGGER.info("ArenaPreGenerator: auto-repaired level {}", level);
@@ -349,4 +348,32 @@ public class ArenaPreGenerator {
             }
         }
     }
+
+    /**
+     * What a cached arena for this level has to be stamped with to be reused.
+     *
+     * <p>A biome built all of one piece is stamped with its name alone, as it always was. One
+     * with a prelude, or a boss room of its own size, also says which part the level is and
+     * how big it is built (see {@link ArenaBiomeStamp#withLayout}), so an arena cached before
+     * the level was given that part, or that size, is rebuilt the next time it is entered.
+     */
+    private static String stampFor(BiomeTemplate biome, int level, String arenaBiomeOverride) {
+        String id = ArenaBiomeStamp.effectiveBiomeId(biome.biomeId, arenaBiomeOverride);
+        if (biome.getPrelude() == null && !biome.hasBossRoom()) return id;
+        int index = biome.getBiomeLevelIndex(level);
+        boolean boss = biome.isBossLevel(level);
+        int[] size = LevelGenerator.gridSizeFor(biome, index, boss);
+        char part = biome.themeAt(index) != biome ? 'p' : (boss && biome.hasBossRoom() ? 'b' : 'r');
+        String stamp = ArenaBiomeStamp.withLayout(id, part, size[0], size[1]);
+        return com.crackedgames.craftics.compat.aether.AetherCompat.isHandBuiltArena(id)
+            ? ArenaBiomeStamp.withRevision(stamp, HAND_BUILT_REVISION) : stamp;
+    }
+
+    /**
+     * Raised whenever a hand-built room is laid down differently, so one cached the old
+     * way is built again the next time it is entered. 2: nothing above the floor is swept
+     * away, a treasure doorway is laid as floor, and a boss room gets no ring of light posts.
+     * 3: the Slider's room is measured inside its walls, not along them.
+     */
+    private static final int HAND_BUILT_REVISION = 3;
 }

@@ -127,6 +127,13 @@ public class CrafticsClient implements ClientModInitializer {
             (handler, client) ->
                 com.crackedgames.craftics.util.RegistryHealthScanner.scan("client-disconnect"));
 
+        // The Shadow is the one entity Craftics adds, and it is drawn as a player.
+        net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(
+            com.crackedgames.craftics.entity.ModEntities.SHADOW_CLONE,
+            com.crackedgames.craftics.client.render.ShadowCloneRenderer::new);
+        // And its HUD icon is the copied player's face, not one picture for every Shadow.
+        com.crackedgames.craftics.client.render.ShadowPortrait.register();
+
         HandledScreens.register(ModScreenHandlers.LEVEL_SELECT_SCREEN_HANDLER, LevelSelectScreen::new);
         HandledScreens.register(ModScreenHandlers.LOOT_MANAGEMENT_SCREEN_HANDLER,
             com.crackedgames.craftics.client.LootManagementScreen::new);
@@ -192,6 +199,8 @@ public class CrafticsClient implements ClientModInitializer {
                 // disarm before the sweep below closes the screen, or the tick handler would
                 // put it straight back.
                 com.crackedgames.craftics.client.VictoryChoiceScreen.clearReopen();
+                // Likewise a mandatory dialogue: entering a fight is the server's own answer to it.
+                com.crackedgames.craftics.client.DialogueScreen.clearReopen();
                 CombatState.enterCombat(
                     payload.originX(), payload.originY(), payload.originZ(),
                     payload.width(), payload.height()
@@ -438,6 +447,7 @@ public class CrafticsClient implements ClientModInitializer {
                 com.crackedgames.craftics.client.CombatIntroSequence.abort();
                 // Combat is over on the server's terms; nothing is waiting on a choice.
                 com.crackedgames.craftics.client.VictoryChoiceScreen.clearReopen();
+                com.crackedgames.craftics.client.DialogueScreen.clearReopen();
                 CombatVisualEffects.resetOverlays();
                 // Whatever mood the fight left the fog in dies with the fight, so the next
                 // arena doesn't open under the last boss's red.
@@ -602,8 +612,16 @@ public class CrafticsClient implements ClientModInitializer {
                     net.minecraft.client.gui.screen.Screen prev = context.client().currentScreen;
                     if (prev instanceof com.crackedgames.craftics.client.DialogueScreen ds) ds.markSuperseded();
                     else if (prev instanceof com.crackedgames.craftics.client.RewardRevealScreen rr) rr.markSuperseded();
-                    context.client().setScreen(new com.crackedgames.craftics.client.DialogueScreen(
-                        payload.speaker(), lines, labels, actions, payload.background(), tooltips));
+                    // A new dialogue from the server answers for whatever mandatory one was
+                    // still waiting, on screen or lost: the server has moved on from it.
+                    com.crackedgames.craftics.client.DialogueScreen.clearReopen();
+                    var dialogue = new com.crackedgames.craftics.client.DialogueScreen(
+                        payload.speaker(), lines, labels, actions, payload.background(), tooltips,
+                        payload.mandatory());
+                    if (dialogue.isMandatory()) {
+                        com.crackedgames.craftics.client.DialogueScreen.armReopen(dialogue);
+                    }
+                    context.client().setScreen(dialogue);
                 });
             }
         );
@@ -1116,6 +1134,11 @@ public class CrafticsClient implements ClientModInitializer {
             AchievementToast.tick();
             RaidBossToast.tick();
             com.crackedgames.craftics.client.music.MusicToast.tick();
+
+            // A mandatory dialogue that was lost before it was answered comes back first. It is
+            // the more recent question: when both are owed, the server raised it over the
+            // victory screen, and that screen cannot be answered until this one is.
+            com.crackedgames.craftics.client.DialogueScreen.reopenIfLost(client);
 
             // Restore the victory screen if it was lost with a choice still outstanding.
             // No-op whenever nothing is waiting, which is every tick outside that window.

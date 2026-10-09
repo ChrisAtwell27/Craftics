@@ -270,8 +270,11 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
                 Identifier tex = com.crackedgames.craftics.level.BiomeCoverArt.coverTexture(node.biomeId());
                 entries.add(new BiomeEntry(node.biomeId(), label, color, tex, virtualOrder));
             }
-            String tabLabel = region.icon() + " " + region.displayName().toUpperCase();
-            out.add(new DimensionPage(region.id(), region.displayName(), tabLabel, color, entries));
+            // An optional region keeps its name to itself until it is open. A tab that reads
+            // "AETHER" from the first day says what is up there before anyone has earned it.
+            String shownName = open ? region.displayName() : "???";
+            String tabLabel = open ? region.icon() + " " + region.displayName().toUpperCase() : "???";
+            out.add(new DimensionPage(region.id(), shownName, tabLabel, color, entries));
         }
 
         // Defensive: with no active campaign (shouldn't happen in-game) keep the

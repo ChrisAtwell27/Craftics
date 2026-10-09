@@ -25,6 +25,17 @@ public interface EnemyAI {
     }
 
     /**
+     * What this mob does when something heavy runs into it ({@link EnemyAction.Ram}): the
+     * blast it goes up in, or {@code null} to take the blow like anything else.
+     * <p>
+     * For a mob that is a bomb waiting for an excuse. It bursts where it stands, at once,
+     * whether or not it had woken or lit a fuse, and whatever ran into it is left out.
+     */
+    default EnemyAction.Explode whenRammed(CombatEntity self) {
+        return null;
+    }
+
+    /**
      * Whether this enemy is currently a threat to the player - i.e. it will try to
      * attack. Defaults to {@code true} for ordinary hostile mobs.
      * <p>
@@ -50,5 +61,16 @@ public interface EnemyAI {
      */
     default boolean spawnsInvisible(CombatEntity self, GridArena arena) {
         return false;
+    }
+
+    /**
+     * A line this enemy says as it dies, or {@code null} for none. CombatManager asks once,
+     * right after it announces a boss defeated, and sends whatever comes back to the party.
+     * <p>
+     * An AI is not otherwise told that its creature has died, so this is the place for a
+     * boss with parting words. {@code self} is already dead when this is called.
+     */
+    default String getLastWords(CombatEntity self) {
+        return null;
     }
 }

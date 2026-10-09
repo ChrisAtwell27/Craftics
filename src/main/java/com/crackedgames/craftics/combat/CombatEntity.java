@@ -175,6 +175,16 @@ public class CombatEntity {
     // getEffectiveDefense(), which already included it.
     public int getDefense() { return defense + defenseBoost + permanentBonusDefense; }
     public int getRange() { return rangeOverride >= 0 ? rangeOverride : range; }
+
+    /**
+     * Whether this enemy's hits skip the flat amount a player's worn armour takes off every
+     * blow. False for everything except an enemy whose damage is already worked out as what
+     * should LAND: the Shadow hits several times a turn for small amounts, and a flat
+     * reduction per hit rounds every one of them down to 1. Armour's dodge roll is untouched.
+     */
+    private boolean strikesPastArmor = false;
+    public boolean strikesPastArmor() { return strikesPastArmor; }
+    public void setStrikesPastArmor(boolean value) { this.strikesPastArmor = value; }
     public int getAttackBoost() { return attackBoost; }
     public void setAttackBoost(int boost) { this.attackBoost = boost; }
     public void setDefenseBoost(int boost) { this.defenseBoost = boost; }
@@ -545,6 +555,20 @@ public class CombatEntity {
     public void setBossDisplayName(String name) { this.bossDisplayName = name; }
 
     /**
+     * The name this combatant was given, or null when it has only its species to go by.
+     * Same order as {@link #getDisplayName}, without the fall back to the entity type.
+     *
+     * <p>This is what a hover has to be sent. A projectile is carried across the grid by a
+     * creature nobody is meant to see, an allay or a blaze, and a client left to work the
+     * name out from the entity type called a Thunder Crystal an Allay.
+     */
+    public String getGivenName() {
+        if (bossDisplayName != null) return bossDisplayName;
+        if (stackDisplayName != null) return stackDisplayName;
+        return nameOverride;
+    }
+
+    /**
      * Stack chain: the layers UNDER the current one, base-first. When this is
      * non-empty and the entity would die, it instead consumes the head of the
      * list and re-arms with that layer's stats and display name. Used by the
@@ -690,6 +714,16 @@ public class CombatEntity {
     private String pendingAttackType = null;
     public String getPendingAttackType() { return pendingAttackType; }
     public void setPendingAttackType(String typeId) { this.pendingAttackType = typeId; }
+
+    /**
+     * The tile this enemy's pending strike is aimed at, or null. Set by an AI for the action
+     * it is about to name and cleared before every decision, like the override above. When
+     * it is set, a melee strike lands on the party member standing there rather than on
+     * whoever is nearest: a charge hits who it ran into, not a teammate beside the stop.
+     */
+    private GridPos pendingStrikeTile = null;
+    public GridPos getPendingStrikeTile() { return pendingStrikeTile; }
+    public void setPendingStrikeTile(GridPos tile) { this.pendingStrikeTile = tile; }
 
     /**
      * How likely this combatant's NEXT action is to land, as a multiplier where 1.0 always
@@ -1493,6 +1527,8 @@ public class CombatEntity {
             case "minecraft:giant", "minecraft:elder_guardian" -> new int[]{3, 3};
             // Aether clouds: far wider than a tile, and scaled down to fit these two.
             case "aether:zephyr", "aether:aerwhale" -> new int[]{2, 2};
+            // The two Aether bosses built wider than a tile, each scaled to fill these.
+            case "aether:slider", "aether:sun_spirit" -> new int[]{2, 2};
             default -> new int[]{1, 1};
         };
     }
@@ -1520,8 +1556,16 @@ public class CombatEntity {
      * inside it.
      */
     public boolean isFlying() {
-        return isFlyingType(entityTypeId);
+        return grantedFlight || isFlyingType(entityTypeId);
     }
+
+    /**
+     * Flight given by something other than the mob's own kind: a pet whose owner carries a
+     * Gravitite Shovel floats the way a parrot does. Set afresh at the start of each of the
+     * pet's turns, so it follows the shovel in and out of the inventory.
+     */
+    private boolean grantedFlight = false;
+    public void setGrantedFlight(boolean granted) { this.grantedFlight = granted; }
 
     public static boolean isFlyingType(String entityTypeId) {
         if (entityTypeId == null) return false;

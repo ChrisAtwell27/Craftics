@@ -336,6 +336,28 @@ public class ArenaBuilder {
                     continue;
                 }
 
+                // Steps up, read exactly as buildAt reads them. This scan is the one a fight
+                // actually starts from, and without these a stair was an obstacle and the
+                // floor it led to a wall.
+                if (aboveState.getBlock() instanceof net.minecraft.block.StairsBlock) {
+                    tiles[x][z] = new GridTile(
+                        com.crackedgames.craftics.core.TileType.STAIR, aboveState.getBlock());
+                    continue;
+                }
+                if (aboveState.getBlock() instanceof net.minecraft.block.SlabBlock) {
+                    net.minecraft.block.enums.SlabType slabType =
+                        aboveState.get(net.minecraft.block.SlabBlock.TYPE);
+                    if (slabType == net.minecraft.block.enums.SlabType.BOTTOM) {
+                        tiles[x][z] = new GridTile(
+                            com.crackedgames.craftics.core.TileType.STAIR, aboveState.getBlock());
+                        continue;
+                    } else if (slabType == net.minecraft.block.enums.SlabType.TOP) {
+                        tiles[x][z] = new GridTile(
+                            com.crackedgames.craftics.core.TileType.ELEVATED, aboveState.getBlock());
+                        continue;
+                    }
+                }
+
                 // Fences, walls, panes, iron bars, fence gates, and cactus all
                 // have non-full collision shapes so isSolidBlock returns false,
                 // yet they hard-block movement. isArenaObstacle catches them all
@@ -356,6 +378,8 @@ public class ArenaBuilder {
                 }
             }
         }
+
+        raiseFloors(world, tiles, insideMask, floorX, floorY, floorZ, gridW, gridH);
 
         // Snap player start to nearest walkable tile, restricted to the polygon
         // mask when one was persisted at pre-gen (null = rectangular arena).
@@ -645,8 +669,12 @@ public class ArenaBuilder {
         // strip the trap (the player would see no web yet still get caught
         // by the floor+1 overlay, or vice versa - visually confusing either
         // way). The cobweb scan below picks them up regardless of height.
+        // A room built by hand is kept as built, and is not swept at all. Its throne, its
+        // second floor, the tops of its walls and the fire on its braziers all stand two
+        // blocks up or more, and this took every one of them.
+        boolean keptAsBuilt = com.crackedgames.craftics.compat.aether.AetherCompat.isHandBuiltArena(biomeId);
         int clearCeiling = floorY + Math.max(15, structureHeight > 0 ? structureHeight + 3 : 15);
-        for (int x = 0; x < finalW; x++) {
+        for (int x = 0; !keptAsBuilt && x < finalW; x++) {
             for (int z = 0; z < finalH; z++) {
                 // Polygon arenas: only sweep above the outline's own columns -
                 // the bounding box reaches over terrain outside the drawn shape,
@@ -688,7 +716,9 @@ public class ArenaBuilder {
         // chambers - the dev's schematic already provides any lighting it
         // wants, and the procedural posts were the choppy "fences just
         // outside the arena" you could see in the screenshot.
-        if (!biomeId.startsWith("trial_chamber")) {
+        // Nor round a hand-built boss room, which is walled and lit by whoever built it:
+        // the posts stood as a ring of wall pieces and lanterns around a throne room.
+        if (!biomeId.startsWith("trial_chamber") && !(keptAsBuilt && isBoss)) {
             placeLighting(world, floorX, floorY, floorZ, finalW, finalH, env, structureInsideMask);
         }
 
@@ -888,44 +918,8 @@ public class ArenaBuilder {
             }
         }
 
-        // Second pass: promote OBSTACLE → ELEVATED. A stair provides a Y+0.5
-        // ramp; the full block at floor+1 that the stair butts up against is
-        // the upper-floor landing (Y+1). Then ELEVATED propagates outward
-        // through 4-connected OBSTACLE neighbors so an entire raised platform
-        // becomes walkable, not just the single tile touching the stair.
-        // Walls with no stair access stay as OBSTACLE.
-        int[][] stairAdjDirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-        boolean changed = true;
-        while (changed) {
-            changed = false;
-            for (int x = 0; x < finalW; x++) {
-                for (int z = 0; z < finalH; z++) {
-                    GridTile tile = finalTiles[x][z];
-                    if (tile == null || tile.getType() != com.crackedgames.craftics.core.TileType.OBSTACLE) continue;
-                    // Only promote if not a head-level (permanent) obstacle -
-                    // those are walls the player can't reasonably stand on top of.
-                    if (tile.isPermanent()) continue;
-                    boolean adjacentToLanding = false;
-                    for (int[] d : stairAdjDirs) {
-                        int nx = x + d[0], nz = z + d[1];
-                        if (nx < 0 || nx >= finalW || nz < 0 || nz >= finalH) continue;
-                        GridTile neighbor = finalTiles[nx][nz];
-                        if (neighbor == null) continue;
-                        com.crackedgames.craftics.core.TileType nt = neighbor.getType();
-                        if (nt == com.crackedgames.craftics.core.TileType.STAIR
-                                || nt == com.crackedgames.craftics.core.TileType.ELEVATED) {
-                            adjacentToLanding = true;
-                            break;
-                        }
-                    }
-                    if (adjacentToLanding) {
-                        finalTiles[x][z] = new GridTile(
-                            com.crackedgames.craftics.core.TileType.ELEVATED, tile.getBlockType());
-                        changed = true;
-                    }
-                }
-            }
-        }
+        // Second pass: the raised floors. Stairs lead to them, one level at a time.
+        raiseFloors(world, finalTiles, structureInsideMask, floorX, floorY, floorZ, finalW, finalH);
 
         // Snap player start to nearest walkable tile after obstacle scan
         GridPos finalPlayerStart = findNearestWalkableTile(finalTiles, requestedPlayerStart,
@@ -953,17 +947,178 @@ public class ArenaBuilder {
         return arena;
     }
 
+    /**
+     * Make the raised floors of a room walkable, on a grid already read tile by tile.
+     *
+     * <p>A stair is a half step up, and the full block it butts against is the landing: an
+     * upper floor, one block above the arena's own. That floor runs outward through every
+     * block joined to it, so a whole platform is walkable and not only the tile at the top
+     * of the stairs. A wall with no stair to it stays a wall, and so does anything with a
+     * block at head height.
+     *
+     * <p>Then the same again a level up (see {@link ArenaTiers}): a stair standing on a
+     * raised floor leads to a second, so a dais with steps of its own is fought on too.
+     *
+     * <p>Both ways of getting a grid end here: a room as it is first built, and one read
+     * back out of the world when a fight starts. While only the first did, a raised floor
+     * was a floor on paper and a wall in every fight.
+     */
+    static void raiseFloors(ServerWorld world, GridTile[][] tiles, boolean[][] insideMask,
+                            int floorX, int floorY, int floorZ, int w, int h) {
+        int[][] stairAdjDirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (int x = 0; x < w; x++) {
+                for (int z = 0; z < h; z++) {
+                    GridTile tile = tiles[x][z];
+                    if (tile == null || tile.getType() != com.crackedgames.craftics.core.TileType.OBSTACLE) continue;
+                    // Only promote if not a head-level (permanent) obstacle -
+                    // those are walls the player can't reasonably stand on top of.
+                    if (tile.isPermanent()) continue;
+                    boolean adjacentToLanding = false;
+                    for (int[] d : stairAdjDirs) {
+                        int nx = x + d[0], nz = z + d[1];
+                        if (nx < 0 || nx >= w || nz < 0 || nz >= h) continue;
+                        GridTile neighbor = tiles[nx][nz];
+                        if (neighbor == null) continue;
+                        com.crackedgames.craftics.core.TileType nt = neighbor.getType();
+                        if (nt == com.crackedgames.craftics.core.TileType.STAIR
+                                || nt == com.crackedgames.craftics.core.TileType.ELEVATED) {
+                            adjacentToLanding = true;
+                            break;
+                        }
+                    }
+                    if (adjacentToLanding) {
+                        tiles[x][z] = new GridTile(
+                            com.crackedgames.craftics.core.TileType.ELEVATED, tile.getBlockType());
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        // The floors above that one. Every column with a block at head height was left a
+        // permanent wall; those are looked at again.
+        int[][] have = new int[w][h];
+        int[][] could = new int[w][h];
+        boolean any = false;
+        for (int x = 0; x < w; x++) {
+            for (int z = 0; z < h; z++) {
+                GridTile tile = tiles[x][z];
+                if (tile == null) continue;
+                if (insideMask != null && x < insideMask.length && z < insideMask[0].length
+                    && !insideMask[x][z]) {
+                    continue;
+                }
+                com.crackedgames.craftics.core.TileType type = tile.getType();
+                if (type == com.crackedgames.craftics.core.TileType.STAIR) {
+                    have[x][z] = -1;
+                } else if (type == com.crackedgames.craftics.core.TileType.ELEVATED) {
+                    have[x][z] = 1;
+                } else if (type == com.crackedgames.craftics.core.TileType.OBSTACLE && tile.isPermanent()) {
+                    could[x][z] = upperTierAt(world, floorX + x, floorY, floorZ + z);
+                    any |= could[x][z] != 0;
+                }
+            }
+        }
+        if (!any) return;
+
+        int[][] reached = ArenaTiers.reached(have, could);
+        boolean raised = false;
+        for (int x = 0; x < w; x++) {
+            for (int z = 0; z < h; z++) {
+                int cell = reached[x][z];
+                if (cell == 0) continue;
+                int tier = Math.abs(cell);
+                Block block = world.getBlockState(
+                    new BlockPos(floorX + x, floorY + tier, floorZ + z)).getBlock();
+                GridTile upper = new GridTile(cell < 0
+                    ? com.crackedgames.craftics.core.TileType.STAIR
+                    : com.crackedgames.craftics.core.TileType.ELEVATED, block);
+                upper.setRise(tier - 1);
+                tiles[x][z] = upper;
+                raised = true;
+            }
+        }
+        if (!raised) return;
+
+        // With a rim to stand on, the block under standing water is in reach of a pickaxe.
+        // It is the bottom of a basin, not a rock: mined out, the pool drains onto the floor.
+        for (int x = 0; x < w; x++) {
+            for (int z = 0; z < h; z++) {
+                GridTile tile = tiles[x][z];
+                if (tile == null || tile.isPermanent()
+                    || tile.getType() != com.crackedgames.craftics.core.TileType.OBSTACLE) {
+                    continue;
+                }
+                if (!world.getFluidState(new BlockPos(floorX + x, floorY + 2, floorZ + z)).isEmpty()) {
+                    tile.setPermanent(true);
+                }
+            }
+        }
+    }
+
+    /**
+     * What a walled-off column would be on an upper floor: {@code n} for the floor of tier
+     * {@code n}, {@code -n} for a flight of stairs climbing to it, zero for a wall.
+     */
+    private static int upperTierAt(ServerWorld world, int x, int floorY, int z) {
+        for (int tier = 2; tier <= ArenaTiers.MAX_TIER; tier++) {
+            BlockPos at = new BlockPos(x, floorY + tier, z);
+            if (!isStandingRoom(world, at.up()) || !isStandingRoom(world, at.up(2))) continue;
+            BlockState state = world.getBlockState(at);
+            boolean slab = state.getBlock() instanceof net.minecraft.block.SlabBlock;
+            boolean bottomSlab = slab
+                && state.get(net.minecraft.block.SlabBlock.TYPE) == net.minecraft.block.enums.SlabType.BOTTOM;
+            if (state.getBlock() instanceof net.minecraft.block.StairsBlock || bottomSlab) {
+                // A flight stands on the floor below the one it climbs to.
+                BlockPos under = at.down();
+                return com.crackedgames.craftics.combat.WallBlocks
+                    .providesStandingSurface(world.getBlockState(under), world, under) ? -tier : 0;
+            }
+            boolean topSlab = slab
+                && state.get(net.minecraft.block.SlabBlock.TYPE) == net.minecraft.block.enums.SlabType.TOP;
+            // Only a whole block is a floor. A fence or a wall two high is still a railing.
+            return topSlab || Block.isShapeFullCube(state.getCollisionShape(world, at)) ? tier : 0;
+        }
+        return 0;
+    }
+
+    /** Nothing here to stand inside: no block with a body to it, and no water or lava. */
+    private static boolean isStandingRoom(ServerWorld world, BlockPos pos) {
+        BlockState state = world.getBlockState(pos);
+        return state.getFluidState().isEmpty()
+            && !com.crackedgames.craftics.combat.WallBlocks.isArenaObstacle(state, world, pos);
+    }
+
     // Tries .schem on disk first, then bundled .schem in JAR, then .nbt via StructureTemplateManager
     private static boolean tryLoadStructure(ServerWorld world, int ox, int oy, int oz,
                                               int w, int h, GridTile[][] tiles,
                                               String biomeId, boolean isBoss,
                                               int biomeLevelIndex, Random rng) {
+        // Where this biome's arenas live. A built-in biome ("plains") is under Craftics' own
+        // namespace; an addon biome ("mymod:cavern") is under its own. The id used to be pasted
+        // straight into a craftics: resource path, where a colon is illegal, so every
+        // namespaced biome threw right here instead of falling back to a generated arena.
+        ArenaPaths.Location arenaLoc = ArenaPaths.of(biomeId);
+        if (arenaLoc == null) {
+            CrafticsMod.LOGGER.warn("Biome id '{}' cannot name an arena folder, using procedural", biomeId);
+            return false;
+        }
+        String arenaNs = arenaLoc.namespace();
+        String arenaFolder = arenaLoc.folder();
+
         // 1. Disk .schem files (filesystem overrides take priority)
         List<java.nio.file.Path> diskSchemCandidates = new ArrayList<>();
         try {
             var server = world.getServer();
             java.nio.file.Path datapacksDir = server.getSavePath(net.minecraft.util.WorldSavePath.DATAPACKS);
-            searchSchemFiles(datapacksDir, biomeId, isBoss, diskSchemCandidates);
+            // The loose-folder scan only knows data/craftics/arenas/. An addon biome's pack
+            // is read through the resource manager in step 2 like any other datapack.
+            if (!arenaLoc.namespaced()) {
+                searchSchemFiles(datapacksDir, biomeId, isBoss, diskSchemCandidates);
+            }
 
             java.nio.file.Path currentDir = java.nio.file.Path.of("").toAbsolutePath();
             List<java.nio.file.Path> searchRoots = new ArrayList<>();
@@ -984,8 +1139,10 @@ public class ArenaBuilder {
             }
 
             for (java.nio.file.Path root : searchRoots) {
-                CrafticsMod.LOGGER.debug("Searching for .schem arenas in: {}", root);
-                searchSchemFiles(root, biomeId, isBoss, diskSchemCandidates);
+                // An addon biome gets a folder per namespace: craftics_arenas/mymod/cavern/.
+                java.nio.file.Path searchDir = arenaLoc.namespaced() ? root.resolve(arenaNs) : root;
+                CrafticsMod.LOGGER.debug("Searching for .schem arenas in: {}", searchDir);
+                searchSchemFiles(searchDir, arenaFolder, isBoss, diskSchemCandidates);
             }
         } catch (Exception e) {
             CrafticsMod.LOGGER.debug("Error while searching for .schem arenas: {}", e.getMessage());
@@ -1032,7 +1189,10 @@ public class ArenaBuilder {
             boolean preserveGround = isBoss || biomeId.startsWith("trial_chamber")
                 // Hand-built event arenas: the schematic IS the design - no procedural
                 // obstacle/floor overlay painting over it (same rule as trial chambers).
-                || "pillager_camp".equals(biomeId) || "bastille".equals(biomeId);
+                || "pillager_camp".equals(biomeId) || "bastille".equals(biomeId)
+                // The Aether's levels are built room by room, above ground and below: every
+                // one is kept as built, not just the boss rooms.
+                || com.crackedgames.craftics.compat.aether.AetherCompat.isHandBuiltArena(biomeId);
             return loadAndPlaceSchem(world, chosenSchem, ox, oy, oz, w, h, tiles, biomeId, preserveGround);
         }
 
@@ -1046,13 +1206,16 @@ public class ArenaBuilder {
         // would always miss, dropping the dedicated arena to the procedural fallback in
         // packaged installs. Resolve the literal file here, mirroring the disk-path
         // handling in searchSchemFiles.
-        if (biomeId.contains("/")) {
-            Identifier subId = Identifier.of("craftics", "arenas/" + biomeId + ".schem");
+        if (arenaFolder.contains("/")) {
+            Identifier subId = Identifier.of(arenaNs, arenaLoc.singleFile());
             if (resourceManager.getResource(subId).isPresent()) {
                 boolean preserveGround = isBoss || biomeId.startsWith("trial_chamber")
                 // Hand-built event arenas: the schematic IS the design - no procedural
                 // obstacle/floor overlay painting over it (same rule as trial chambers).
-                || "pillager_camp".equals(biomeId) || "bastille".equals(biomeId);
+                || "pillager_camp".equals(biomeId) || "bastille".equals(biomeId)
+                // The Aether's levels are built room by room, above ground and below: every
+                // one is kept as built, not just the boss rooms.
+                || com.crackedgames.craftics.compat.aether.AetherCompat.isHandBuiltArena(biomeId);
                 CrafticsMod.LOGGER.info("Loading bundled sub-biome arena: {} (preserveGround={})",
                     subId, preserveGround);
                 return loadAndPlaceBundledSchem(world, resourceManager, subId, ox, oy, oz, w, h, tiles, biomeId, preserveGround);
@@ -1060,14 +1223,14 @@ public class ArenaBuilder {
         }
 
         if (isBoss) {
-            Identifier bossId = Identifier.of("craftics", "arenas/" + biomeId + "/boss.schem");
+            Identifier bossId = Identifier.of(arenaNs, arenaLoc.file("boss.schem"));
             if (resourceManager.getResource(bossId).isPresent()) {
                 bundledCandidates.add(bossId);
             }
         }
         if (bundledCandidates.isEmpty()) {
             for (int i = 1; i <= 10; i++) {
-                Identifier id = Identifier.of("craftics", "arenas/" + biomeId + "/" + i + ".schem");
+                Identifier id = Identifier.of(arenaNs, arenaLoc.file(i + ".schem"));
                 if (resourceManager.getResource(id).isPresent()) {
                     bundledCandidates.add(id);
                 } else {
@@ -1084,7 +1247,10 @@ public class ArenaBuilder {
             boolean preserveGround = isBoss || biomeId.startsWith("trial_chamber")
                 // Hand-built event arenas: the schematic IS the design - no procedural
                 // obstacle/floor overlay painting over it (same rule as trial chambers).
-                || "pillager_camp".equals(biomeId) || "bastille".equals(biomeId);
+                || "pillager_camp".equals(biomeId) || "bastille".equals(biomeId)
+                // The Aether's levels are built room by room, above ground and below: every
+                // one is kept as built, not just the boss rooms.
+                || com.crackedgames.craftics.compat.aether.AetherCompat.isHandBuiltArena(biomeId);
             CrafticsMod.LOGGER.info("Loading bundled arena: {} ({} candidates, biomeLevelIndex={}, preserveGround={})",
                 chosen, bundledCandidates.size(), biomeLevelIndex, preserveGround);
             return loadAndPlaceBundledSchem(world, resourceManager, chosen, ox, oy, oz, w, h, tiles, biomeId, preserveGround);
@@ -1096,7 +1262,7 @@ public class ArenaBuilder {
         String prefix = isBoss ? "boss_" : "";
 
         for (int i = 1; i <= 10; i++) {
-            Identifier id = Identifier.of("craftics", "arenas/" + biomeId + "/" + prefix + i);
+            Identifier id = Identifier.of(arenaNs, arenaLoc.file(prefix + i));
             var template = manager.getTemplate(id);
             if (template.isPresent()) {
                 nbtCandidates.add(id);
@@ -1107,7 +1273,7 @@ public class ArenaBuilder {
 
         if (nbtCandidates.isEmpty() && isBoss) {
             for (int i = 1; i <= 10; i++) {
-                Identifier id = Identifier.of("craftics", "arenas/" + biomeId + "/" + i);
+                Identifier id = Identifier.of(arenaNs, arenaLoc.file(String.valueOf(i)));
                 var template = manager.getTemplate(id);
                 if (template.isPresent()) {
                     nbtCandidates.add(id);
@@ -1233,7 +1399,7 @@ public class ArenaBuilder {
         }
 
         if (diamondPos == null || emeraldPos == null) {
-            CrafticsMod.LOGGER.warn("Structure {} missing DIAMOND/EMERALD corner markers. Falling back to default overlay.", sourceName);
+            CrafticsMod.LOGGER.warn("Structure {} has no arena corner markers. Falling back to default overlay.", sourceName);
             int scannedY = scanSchematicFloorY(world, placeX, placeY, placeZ, sizeX, sizeY, sizeZ, ox, oz, w, h);
             overlayArenaTiles(world, ox, scannedY, oz, w, h, tiles);
             return true;
@@ -1427,11 +1593,10 @@ public class ArenaBuilder {
 
     /**
      * Polygon-arena builder. Triggered when {@link #processPlacedStructure} sees
-     * 3+ {@code ArenaCornerBlock} markers. Sorts the corners by angle around
-     * their centroid to produce a sensible polygon outline (handles convex
-     * shapes perfectly and most concave shapes that are drawn corner-by-corner
-     * in order), then builds a per-tile in/out mask via ray-casting and hands
-     * it to {@link GridArena} via {@link #structureInsideMask}. Tile overlay,
+     * 3+ {@code ArenaCornerBlock} markers. {@link ArenaOutline} reads the outline
+     * off them and gives the tiles on and inside it; the floor is the height most
+     * of that inside can be stood on ({@link ArenaFloorLevel}). The per-tile mask
+     * goes to {@link GridArena} via {@link #structureInsideMask}. Tile overlay,
      * border placement, and spawn-marker scanning all respect the polygon -
      * tiles outside the mask are left untouched so the surrounding terrain
      * shows through whatever shape the dev outlined.
@@ -1450,20 +1615,19 @@ public class ArenaBuilder {
         // up with the other markers, instead of being left as a stray diamond block.
         if (diamondPos != null) corners.add(diamondPos);
 
-        // Polygon floor = the surface the player stands on. A corner marker may
-        // be deliberately buried under the floor block so it doesn't show in the
-        // arena - climb from each marker through any solid blocks stacked
-        // directly on it (capped at 2: that's a hidden marker, a taller column
-        // is a wall and shouldn't lift the floor) and use THAT as the corner's
-        // floor level. Exposed markers keep their own Y, matching the
-        // diamond/emerald rule. The arena floor is the most common corner
-        // surface (ties prefer the higher), so one odd corner - buried deeper,
-        // dropped on a step, tucked under a wall - can't shift the whole
-        // playfield the way the old raw max-Y did.
+        // What the markers' own columns say the floor is. A corner marker may be
+        // deliberately buried under the floor block so it doesn't show in the arena, so
+        // each one is followed up through the solid blocks stacked on it (two at most)
+        // and the commonest answer taken (ties prefer the higher).
+        //
+        // This is one opinion and not the last word: a marker laid in the floor with a
+        // wall standing on it reads exactly the same from here, and a walled room read
+        // this way alone had its floor at the top of its walls. The room itself decides,
+        // once its outline is known (see polygonFloorY below).
         Map<Integer, Integer> surfaceVotes = new HashMap<>();
         for (BlockPos c : corners) {
             int surfaceY = c.getY();
-            for (int climb = 0; climb < 2; climb++) {
+            for (int climb = 0; climb < ArenaFloorLevel.MAX_BURIED; climb++) {
                 BlockPos above = new BlockPos(c.getX(), surfaceY + 1, c.getZ());
                 BlockState aboveState = world.getBlockState(above);
                 if (aboveState.isAir() || !aboveState.isSolidBlock(world, above)) break;
@@ -1471,13 +1635,13 @@ public class ArenaBuilder {
             }
             surfaceVotes.merge(surfaceY, 1, Integer::sum);
         }
-        int arenaFloorY = corners.get(0).getY();
+        int markerFloorY = corners.get(0).getY();
         int bestVotes = -1;
         for (Map.Entry<Integer, Integer> vote : surfaceVotes.entrySet()) {
             if (vote.getValue() > bestVotes
-                || (vote.getValue() == bestVotes && vote.getKey() > arenaFloorY)) {
+                || (vote.getValue() == bestVotes && vote.getKey() > markerFloorY)) {
                 bestVotes = vote.getValue();
-                arenaFloorY = vote.getKey();
+                markerFloorY = vote.getKey();
             }
         }
 
@@ -1508,90 +1672,36 @@ public class ArenaBuilder {
         if (gridW <= 0 || gridH <= 0) {
             CrafticsMod.LOGGER.warn("Polygon arena {} produced invalid size {}x{}. Falling back to default overlay.",
                 sourceName, gridW, gridH);
-            overlayArenaTiles(world, borderMinX, arenaFloorY, borderMinZ, gridW, gridH, tiles);
+            overlayArenaTiles(world, borderMinX, markerFloorY, borderMinZ, gridW, gridH, tiles);
             return true;
         }
 
-        // Order the corners into one closed outline. Rectilinear outlines (the
-        // L / T / plus / U shapes authors actually draw) are reconstructed
-        // EXACTLY from their edge structure; everything else falls back to a
-        // centroid-angle sort, which is correct for convex rings (diamond,
-        // octagon, hexagon). The angle sort alone self-intersected on concave
-        // shapes - an L's concave vertex sits AT the centroid, where the angle
-        // is undefined - which made the ray-cast mask mark regions outside the
-        // drawn shape as playable: mobs, floor, and hover showing up "outside
-        // the arena".
-        List<BlockPos> sorted = orderOutline(corners);
-
-        // Build per-tile in/out mask via ray-casting point-in-polygon. Tiles are
-        // sampled at their integer block coordinate (gridMinX + tx, gridMinZ + tz)
-        // and the outline is grown a hair OUTWARD from its centroid, so an
-        // axis-aligned edge never falls exactly on a sample point.
-        //
-        // The old test sampled tile CENTERS at +0.5 against vertices also at +0.5,
-        // which put every axis-aligned edge right on the sample row/column; the
-        // half-open even-odd rule then resolved those boundary hits asymmetrically
-        // and lopsided otherwise-symmetric shapes - one plus/cross/diamond inner
-        // corner filled while its mirror was not. Integer sampling keeps the mask
-        // symmetric about a centered polygon; the outward grow removes the on-edge
-        // degeneracy without shifting the shape.
-        int polyN = sorted.size();
-        double polyCx = 0, polyCz = 0;
-        for (BlockPos c : sorted) { polyCx += c.getX(); polyCz += c.getZ(); }
-        polyCx /= polyN;
-        polyCz /= polyN;
-        final double GROW = 0.001;
-        double[] vx = new double[polyN];
-        double[] vz = new double[polyN];
-        for (int i = 0; i < polyN; i++) {
-            double x = sorted.get(i).getX();
-            double z = sorted.get(i).getZ();
-            vx[i] = x + (x - polyCx) * GROW;
-            vz[i] = z + (z - polyCz) * GROW;
+        // Order the corners into one closed outline, then take the tiles on and inside it.
+        // The outline itself is a rim one tile wide: the markers sit on it, never on floor.
+        // All of that is ArenaOutline, where it can be tested without a world.
+        List<ArenaOutline.Point> markerPoints = new ArrayList<>(corners.size());
+        for (BlockPos c : corners) markerPoints.add(new ArenaOutline.Point(c.getX(), c.getZ()));
+        ArenaOutline.Traced traced = ArenaOutline.trace(markerPoints);
+        List<ArenaOutline.Point> ring = traced.ring();
+        if (!traced.spare().isEmpty()) {
+            CrafticsMod.LOGGER.info("Polygon arena {}: {} of its {} corner markers are not corners of "
+                + "the outline (on a straight edge, or inside it) and were set aside: {}",
+                sourceName, traced.spare().size(), markerPoints.size(), traced.spare());
         }
-        boolean[][] outer = new boolean[gridW][gridH];
-        for (int tx = 0; tx < gridW; tx++) {
-            for (int tz = 0; tz < gridH; tz++) {
-                double px = gridMinX + tx;
-                double pz = gridMinZ + tz;
-                boolean inside = false;
-                for (int i = 0, j = polyN - 1; i < polyN; j = i++) {
-                    boolean intersects = ((vz[i] > pz) != (vz[j] > pz))
-                        && (px < (vx[j] - vx[i]) * (pz - vz[i]) / (vz[j] - vz[i]) + vx[i]);
-                    if (intersects) inside = !inside;
-                }
-                outer[tx][tz] = inside;
-            }
-        }
-        // Erode one tile inward (4-neighbour): a tile is playable floor only if it
-        // and all four orthogonal neighbours are inside the outer polygon (grid-edge
-        // neighbours count as outside). This recedes the floor uniformly so every
-        // corner marker on the outer ring sits one tile outside the playable area.
-        boolean[][] mask = new boolean[gridW][gridH];
+        int polyN = ring.size();
+        boolean[][] outer = ArenaOutline.filled(ring, gridMinX, gridMinZ, gridW, gridH);
+        boolean[][] mask = ArenaOutline.floor(outer, ring, gridMinX, gridMinZ);
         int insideCount = 0;
         for (int tx = 0; tx < gridW; tx++) {
             for (int tz = 0; tz < gridH; tz++) {
-                if (!outer[tx][tz]) continue;
-                boolean keep = tx > 0 && tx < gridW - 1 && tz > 0 && tz < gridH - 1
-                    && outer[tx - 1][tz] && outer[tx + 1][tz]
-                    && outer[tx][tz - 1] && outer[tx][tz + 1];
-                mask[tx][tz] = keep;
-                if (keep) insideCount++;
+                if (mask[tx][tz]) insideCount++;
             }
         }
-        // Markers are the border ring, never playable floor. Clear any mask tile that
-        // coincides with a corner marker - this enforces "markers sit outside the
-        // floor" and also corrects the half-open rasterization asymmetry where a
-        // single concave-armpit vertex could otherwise survive the 4-neighbour
-        // erosion and lopside an otherwise-symmetric shape (e.g. plus / cross).
-        for (BlockPos c : corners) {
-            int ctx = c.getX() - gridMinX;
-            int ctz = c.getZ() - gridMinZ;
-            if (ctx >= 0 && ctx < gridW && ctz >= 0 && ctz < gridH && mask[ctx][ctz]) {
-                mask[ctx][ctz] = false;
-                insideCount--;
-            }
-        }
+
+        int arenaFloorY = insideCount == 0
+            ? markerFloorY
+            : polygonFloorY(world, corners, markerFloorY, mask, gridMinX, gridMinZ, sourceName);
+
         if (insideCount == 0) {
             // Degrade to a plain rectangle over the marker bounding box with the
             // ground preserved - the old fallback repainted the level
@@ -1619,9 +1729,10 @@ public class ArenaBuilder {
 
         // Camera yaw: face the polygon centroid from the camera anchor. A
         // DIAMOND_BLOCK marks the chosen camera-corner vertex; without one, fall back
-        // to the first sorted corner (dev can rotate by re-ordering corners).
-        BlockPos camAnchor = diamondPos != null ? diamondPos : sorted.get(0);
-        pendingCameraYaw = yawFromTo(camAnchor.getX() + 0.5, camAnchor.getZ() + 0.5,
+        // to the first corner of the outline (dev can rotate by re-ordering corners).
+        int camAnchorX = diamondPos != null ? diamondPos.getX() : ring.get(0).x();
+        int camAnchorZ = diamondPos != null ? diamondPos.getZ() : ring.get(0).z();
+        pendingCameraYaw = yawFromTo(camAnchorX + 0.5, camAnchorZ + 0.5,
             gridMinX + gridW / 2.0, gridMinZ + gridH / 2.0);
 
         Block floorBlock = tiles[0][0].getBlockType();
@@ -1782,100 +1893,51 @@ public class ArenaBuilder {
     }
 
     /**
-     * Order polygon corner markers into a single closed outline (XZ only -
-     * corner Y is ignored).
-     *
-     * <p>Rectilinear vertex sets - every edge axis-aligned, which is what
-     * arena authors actually draw (L, T, plus, U) - are reconstructed exactly
-     * by {@link #tryRectilinearOutline}. Anything that doesn't form a single
-     * simple rectilinear ring (diamonds, octagons, hexagons - diagonal edges)
-     * falls back to a centroid-angle sort, which is correct for convex rings.
-     * Nearest-neighbor chaining was tried here and rejected: from a plus
-     * shape's concave vertex the closest unvisited corner is across the
-     * interior, not along the arm, so the chain cut through the shape.
+     * The floor of a marked-out room: the height most of the inside of its outline can be
+     * stood on. The markers' own answer stands unless another height has more room on it
+     * (see {@link ArenaFloorLevel}).
      */
-    private static List<BlockPos> orderOutline(List<BlockPos> corners) {
-        // Dedupe by column - two markers stacked in the same X/Z column would
-        // break both ordering strategies.
-        java.util.LinkedHashMap<Long, BlockPos> unique = new java.util.LinkedHashMap<>();
+    private static int polygonFloorY(ServerWorld world, List<BlockPos> corners, int markerFloorY,
+                                     boolean[][] mask, int gridMinX, int gridMinZ,
+                                     String sourceName) {
+        java.util.TreeSet<Integer> heights = new java.util.TreeSet<>();
         for (BlockPos c : corners) {
-            unique.putIfAbsent(((long) c.getX() << 32) ^ (c.getZ() & 0xFFFFFFFFL), c);
+            for (int up = 0; up <= ArenaFloorLevel.MAX_BURIED; up++) heights.add(c.getY() + up);
         }
-        List<BlockPos> verts = new ArrayList<>(unique.values());
-
-        List<BlockPos> rectilinear = tryRectilinearOutline(verts);
-        if (rectilinear != null) return rectilinear;
-
-        double cx = 0, cz = 0;
-        for (BlockPos c : verts) { cx += c.getX(); cz += c.getZ(); }
-        final double centerX = cx / verts.size(), centerZ = cz / verts.size();
-        List<BlockPos> sorted = new ArrayList<>(verts);
-        sorted.sort((a, b) -> {
-            double angA = Math.atan2(a.getZ() - centerZ, a.getX() - centerX);
-            double angB = Math.atan2(b.getZ() - centerZ, b.getX() - centerX);
-            return Double.compare(angA, angB);
-        });
-        return sorted;
+        int[] levels = new int[heights.size()];
+        int[] standable = new int[heights.size()];
+        int i = 0;
+        for (int y : heights) {
+            levels[i] = y;
+            standable[i] = standableTiles(world, mask, gridMinX, y, gridMinZ);
+            i++;
+        }
+        int floorY = ArenaFloorLevel.pick(markerFloorY, levels, standable);
+        if (floorY != markerFloorY) {
+            CrafticsMod.LOGGER.info("Polygon arena {}: the corner markers point to Y={} but the room "
+                + "is stood on at Y={} (tiles to stand on at each height {}: {}); using Y={}.",
+                sourceName, markerFloorY, floorY, java.util.Arrays.toString(levels),
+                java.util.Arrays.toString(standable), floorY);
+        }
+        return floorY;
     }
 
-    /**
-     * Exact outline reconstruction for rectilinear polygons. In a simple
-     * rectilinear ring every vertex joins exactly one vertical and one
-     * horizontal edge, and those edges are recovered uniquely by pairing
-     * consecutive vertices within each X column and each Z row. Returns the
-     * ring in walk order, or {@code null} when the vertex set isn't a single
-     * simple rectilinear ring (odd column/row counts, false pairings that
-     * close early, multiple loops) - callers then fall back to the angle sort.
-     */
-    private static List<BlockPos> tryRectilinearOutline(List<BlockPos> verts) {
-        int n = verts.size();
-        if (n < 4 || (n & 1) != 0) return null; // rectilinear rings have even vertex counts
-
-        Map<Integer, List<Integer>> byX = new HashMap<>();
-        Map<Integer, List<Integer>> byZ = new HashMap<>();
-        for (int i = 0; i < n; i++) {
-            byX.computeIfAbsent(verts.get(i).getX(), k -> new ArrayList<>()).add(i);
-            byZ.computeIfAbsent(verts.get(i).getZ(), k -> new ArrayList<>()).add(i);
-        }
-
-        int[] vPartner = new int[n];
-        int[] hPartner = new int[n];
-        java.util.Arrays.fill(vPartner, -1);
-        java.util.Arrays.fill(hPartner, -1);
-        for (List<Integer> column : byX.values()) {
-            if ((column.size() & 1) != 0) return null;
-            column.sort(java.util.Comparator.comparingInt(i -> verts.get(i).getZ()));
-            for (int k = 0; k + 1 < column.size(); k += 2) {
-                vPartner[column.get(k)] = column.get(k + 1);
-                vPartner[column.get(k + 1)] = column.get(k);
+    /** How many tiles of the mask have ground at this height and room to stand above it. */
+    private static int standableTiles(ServerWorld world, boolean[][] mask,
+                                      int gridMinX, int y, int gridMinZ) {
+        int count = 0;
+        for (int x = 0; x < mask.length; x++) {
+            for (int z = 0; z < mask[x].length; z++) {
+                if (!mask[x][z]) continue;
+                BlockPos at = new BlockPos(gridMinX + x, y, gridMinZ + z);
+                BlockState ground = world.getBlockState(at);
+                // Water and lava lie in the floor, level with it: a pond is floor, not a hole.
+                boolean isGround = !ground.getFluidState().isEmpty()
+                    || com.crackedgames.craftics.combat.WallBlocks.providesStandingSurface(ground, world, at);
+                if (isGround && isStandingRoom(world, at.up())) count++;
             }
         }
-        for (List<Integer> row : byZ.values()) {
-            if ((row.size() & 1) != 0) return null;
-            row.sort(java.util.Comparator.comparingInt(i -> verts.get(i).getX()));
-            for (int k = 0; k + 1 < row.size(); k += 2) {
-                hPartner[row.get(k)] = row.get(k + 1);
-                hPartner[row.get(k + 1)] = row.get(k);
-            }
-        }
-
-        // Walk the ring, alternating vertical and horizontal edges. A valid
-        // simple ring visits every vertex exactly once and closes at the start;
-        // false pairings (e.g. an octagon's columns pair up but join vertices
-        // that aren't really adjacent) close early and are rejected.
-        List<BlockPos> ring = new ArrayList<>(n);
-        boolean[] seen = new boolean[n];
-        int at = 0;
-        boolean vertical = true;
-        for (int step = 0; step < n; step++) {
-            if (seen[at]) return null;
-            seen[at] = true;
-            ring.add(verts.get(at));
-            at = vertical ? vPartner[at] : hPartner[at];
-            if (at < 0) return null;
-            vertical = !vertical;
-        }
-        return at == 0 ? ring : null;
+        return count;
     }
 
     /**
@@ -2974,23 +3036,28 @@ public class ArenaBuilder {
         // A tile being safe to STAND on is not enough - it must also be possible to LEAVE.
         // A one-block pillar ringed by lava or void passes isSafeForSpawn and used to strand
         // the player with no legal move on turn one.
+        // And it has to be the arena's own floor. A start asked for on a stair or a raised
+        // floor is moved to the nearest hall floor: a fight begins at the bottom of the room.
         if (requestedTile != null && requestedTile.isSafeForSpawn() && requestedInMask
+                && requestedTile.isOnArenaFloor()
                 && hasEscapeRoute(tiles, insideMask, rx, rz)) {
             return new GridPos(rx, rz);
         }
 
-        // First pass: the nearest safe tile the player can actually walk off of.
-        GridPos best = nearestSafeTile(tiles, insideMask, rx, rz, true);
+        // First pass: the nearest safe tile of the arena's own floor the player can walk off of.
+        GridPos best = nearestSafeTile(tiles, insideMask, rx, rz, true, true);
+        // A room that is all stairs and raised floor: any safe tile with a way off it.
+        if (best == null) best = nearestSafeTile(tiles, insideMask, rx, rz, true, false);
         // Only if the whole arena is stranded tiles do we accept one without an exit -
         // better to stand somewhere than to fail the level build outright.
-        if (best == null) best = nearestSafeTile(tiles, insideMask, rx, rz, false);
+        if (best == null) best = nearestSafeTile(tiles, insideMask, rx, rz, false, false);
 
         return best != null ? best : new GridPos(rx, rz);
     }
 
     /** Nearest spawn-safe tile to (rx,rz), optionally requiring a walkable neighbour. */
     private static GridPos nearestSafeTile(GridTile[][] tiles, boolean[][] insideMask,
-                                           int rx, int rz, boolean requireEscape) {
+                                           int rx, int rz, boolean requireEscape, boolean groundOnly) {
         int w = tiles.length;
         int h = w > 0 ? tiles[0].length : 0;
         GridPos best = null;
@@ -2999,6 +3066,7 @@ public class ArenaBuilder {
             for (int z = 0; z < h; z++) {
                 GridTile tile = tiles[x][z];
                 if (tile == null || !tile.isSafeForSpawn()) continue;
+                if (groundOnly && !tile.isOnArenaFloor()) continue;
                 // Polygon arenas: the player must start inside the drawn shape.
                 if (insideMask != null
                     && (x >= insideMask.length || z >= insideMask[0].length || !insideMask[x][z])) {

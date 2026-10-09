@@ -342,17 +342,29 @@ public class TransitionOverlay {
             }
         }
 
-        // The tip stays pinned to the bottom edge, well clear of the row.
+        // The tip stays pinned to the bottom edge, well clear of the row. A long one wraps
+        // instead of running off both sides of the screen, and grows upward, so its last line
+        // sits in the same place however long the tip is.
         if (alpha >= 1f && !currentTip.isEmpty()) {
             Text tipLine = Text.literal("TIP: ")
                 .styled(s -> s.withBold(true)
                     .withColor(net.minecraft.text.TextColor.fromRgb(GuideTheme.GOLD & 0x00FFFFFF)))
                 .append(Text.literal(currentTip).styled(s -> s.withBold(false)));
-            context.drawCenteredTextWithShadow(
-                client.textRenderer, tipLine,
-                screenW / 2, screenH - 14, 0xFF888888);
+            java.util.List<net.minecraft.text.OrderedText> lines = client.textRenderer.wrapLines(
+                tipLine, Math.max(TIP_MIN_WIDTH, screenW - 2 * TIP_SIDE_MARGIN));
+            int lineHeight = client.textRenderer.fontHeight + 2;
+            int y = screenH - 14 - (lines.size() - 1) * lineHeight;
+            for (net.minecraft.text.OrderedText line : lines) {
+                context.drawCenteredTextWithShadow(client.textRenderer, line, screenW / 2, y, 0xFF888888);
+                y += lineHeight;
+            }
         }
     }
+
+    /** Space kept clear between a wrapped tip and each side of the screen. */
+    private static final int TIP_SIDE_MARGIN = 12;
+    /** Narrowest a tip is ever wrapped to, so a sliver of a window still gets whole words. */
+    private static final int TIP_MIN_WIDTH = 80;
 
     /**
      * Ticks the hold may overrun its timer before the overlay gives up and fades out.

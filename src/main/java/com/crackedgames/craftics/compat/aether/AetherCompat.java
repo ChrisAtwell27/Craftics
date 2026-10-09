@@ -45,7 +45,7 @@ import java.util.function.IntSupplier;
  *
  * <p>This is the gear half: every Aether weapon, tool, armor set and consumable gets Craftics
  * stats, and each keeps the thing that made it worth carrying in the Aether - a zanite blade
- * that hits harder the more worn it is, a gravitite one that throws its target into the air,
+ * that hits harder the more worn it is, gravitite that leaves whatever it touches floating,
  * a vampire blade that drinks. The worn half (armor set effects, gloves, rings, capes) is
  * {@link AetherScanner}.
  *
@@ -140,6 +140,8 @@ public final class AetherCompat {
         environment("aether_bronze", "carved_stone", "carved_wall");
         environment("aether_silver", "angelic_stone", "angelic_wall");
         environment("aether_gold", "hellfire_stone", "hellfire_wall");
+        // Above ground, on the way to each dungeon: grass underfoot, skyroot fencing at the edge.
+        environment("aether_highlands", "aether_grass_block", "skyroot_fence");
     }
 
     private static void environment(String id, String floorPath, String postPath) {
@@ -151,6 +153,38 @@ public final class AetherCompat {
         // No Aether block hangs like a lantern, so the lights stay vanilla's default.
         if (post != null) b.postBlock(post);
         com.crackedgames.craftics.api.registry.EnvironmentRegistry.register(b.build());
+    }
+
+    /** Whether this biome's arenas are hand-built rooms to be kept exactly as they were saved. */
+    public static boolean isHandBuiltArena(String biomeId) {
+        return BRONZE_DUNGEON.equals(biomeId) || SILVER_DUNGEON.equals(biomeId) || GOLD_DUNGEON.equals(biomeId);
+    }
+
+    /**
+     * The block an arena should be built with in place of {@code blockId}.
+     *
+     * <p>A dungeon copied out of the Aether brings its trapped stone with it: blocks that
+     * look like the floor around them and, when a player steps on one, turn to plain stone
+     * and spawn a live sentry, valkyrie or fire minion with its own AI. In an arena that is
+     * a real mob loose in a turn-based fight. They are laid as the stone they imitate.
+     *
+     * <p>A treasure doorway is the lid over a dungeon's loot room, which the Aether opens
+     * when its boss falls. Nothing here ever opens it, and in the Valkyrie Queen's room it
+     * is four tiles of the floor in front of her throne. It is laid as the locked stone
+     * around it, which is certain to hold whoever stands there. Any other id comes back
+     * unchanged.
+     */
+    public static String arenaSafeBlockId(String blockId) {
+        if (blockId == null) return null;
+        String trapped = MOD_ID + ":trapped_";
+        if (blockId.startsWith(trapped)) {
+            return MOD_ID + ":" + blockId.substring(trapped.length());
+        }
+        String treasureDoor = MOD_ID + ":treasure_doorway_";
+        if (blockId.startsWith(treasureDoor)) {
+            return MOD_ID + ":locked_" + blockId.substring(treasureDoor.length());
+        }
+        return blockId;
     }
 
     /** The {@code aether:<path>} block, or null when it is not registered. */
@@ -195,6 +229,70 @@ public final class AetherCompat {
 
     public static boolean isAetherItem(Item item) {
         return pathOf(item) != null;
+    }
+
+    /** Whether {@code player} has the {@code aether:<path>} item anywhere on them, held or not. */
+    static boolean carries(ServerPlayerEntity player, String path) {
+        if (!loaded || player == null) return false;
+        Item item = lookupItem(path);
+        if (item == null) return false;
+        var inv = player.getInventory();
+        for (int i = 0; i < inv.size(); i++) {
+            if (inv.getStack(i).isOf(item)) return true;
+        }
+        return false;
+    }
+
+    // ── Gravitite: whatever it touches floats ──
+
+    /** Turns of Levitation gravitite puts on whatever it lifts. */
+    public static final int LEVITATION_TURNS = 2;
+    /** Tiles a Gravitite Axe throws its target. */
+    public static final int HURL_TILES = 2;
+
+    /**
+     * Whether gravitite can lift this. Whatever cannot be thrown in the Aether cannot be
+     * thrown here: things rooted to the ground, and anything that flies already.
+     */
+    static boolean canLift(CombatEntity target) {
+        return target != null && target.isAlive() && !target.isImmovable() && !target.isBackgroundBoss()
+            && !target.isInertObject() && !target.isFlying()
+            && !"aether:aechor_plant".equals(target.getEntityTypeId());
+    }
+
+    /** Set {@code target} Levitating, if it is something that can be lifted. */
+    public static boolean levitate(CombatEntity target) {
+        if (!canLift(target)) return false;
+        target.applyLevitationState(LEVITATION_TURNS, 0);
+        return true;
+    }
+
+    /**
+     * Gravitite Pickaxe: the block it mines floats up off its tile instead of breaking, and
+     * comes back down later. See {@code CombatManager.liftObstacle}.
+     */
+    public static boolean liftsBlocks(Item item) {
+        return "gravitite_pickaxe".equals(pathOf(item));
+    }
+
+    /**
+     * Gravitite Shovel: every pet of whoever carries it floats over obstacles. A shovel is a
+     * focus for pets rather than something swung, so, like the shovel enchantments, it works
+     * from anywhere in the inventory.
+     */
+    public static boolean petsFloat(ServerPlayerEntity owner) {
+        return carries(owner, "gravitite_shovel");
+    }
+
+    /**
+     * Gravitite Hoe: while it is carried, anything of the player's that deals Special damage
+     * (a hoe, a sherd, a horn, a thrown potion) also leaves what it hits Levitating.
+     *
+     * @return true if {@code target} was lifted by it
+     */
+    public static boolean levitateOnSpecialHit(ServerPlayerEntity player, CombatEntity target) {
+        if (!loaded || target == null || target.isAlly() || !target.isAlive()) return false;
+        return carries(player, "gravitite_hoe") && levitate(target);
     }
 
     /** The Phoenix Bow draws ordinary arrows, so it is a bow for every rule that asks. */
@@ -325,7 +423,7 @@ public final class AetherCompat {
         any |= tier("skyroot", Tier.SKYROOT, bounty(), 1);
         any |= tier("holystone", Tier.HOLYSTONE, ambrosiumVein(), 1);
         any |= tier("zanite", Tier.ZANITE, null, 1);       // wear scaling is added per item below
-        any |= tier("gravitite", Tier.GRAVITITE, launch(), 1);
+        any |= tier("gravitite", Tier.GRAVITITE, launch(), hurl(), 1);
         // Valkyrie tools reach a tile further; the lance stands in for the tier's sword.
         any |= tier("valkyrie", Tier.VALKYRIE, null, VALKYRIE_REACH);
         // A lance does not sweep (the Aether refuses it Sweeping Edge), so it gets reach and
@@ -366,6 +464,12 @@ public final class AetherCompat {
      * are not combat weapons (they are what the Slider is hurt by, which is its own story).
      */
     private static boolean tier(String material, Tier tier, WeaponAbilityHandler ability, int range) {
+        return tier(material, tier, ability, ability, range);
+    }
+
+    /** As above, for a material whose sword and axe do different things with it. */
+    private static boolean tier(String material, Tier tier, WeaponAbilityHandler swordExtra,
+                                WeaponAbilityHandler axeExtra, int range) {
         boolean zanite = tier == Tier.ZANITE;
         int axeAp = 2;
         int swordAp = 1;
@@ -374,9 +478,9 @@ public final class AetherCompat {
         if (zanite) {
             swordAbility = swordAbility.and(wearScaling(tier::sword));
             axeAbility = axeAbility.and(wearScaling(tier::axe));
-        } else if (ability != null) {
-            swordAbility = swordAbility.and(ability);
-            axeAbility = axeAbility.and(ability);
+        } else {
+            if (swordExtra != null) swordAbility = swordAbility.and(swordExtra);
+            if (axeExtra != null) axeAbility = axeAbility.and(axeExtra);
         }
         boolean any = false;
         any |= melee(material + "_sword", DamageType.SLASHING, tier::sword, swordAp, range, swordAbility);
@@ -461,25 +565,46 @@ public final class AetherCompat {
     }
 
     /**
-     * Gravitite: throws the target into the air, and it comes down hard.
+     * Gravitite Sword: knocks the target back a tile and leaves it floating.
      *
-     * <p>Resolved as the landing rather than as time spent airborne: on this grid an airborne
-     * enemy is one that may path over obstacles, which would make being launched a favour.
-     * Whatever cannot be thrown in the Aether cannot be thrown here: things rooted to the
-     * ground, and anything that flies and so would not fall.
+     * <p>No bonus damage. The sword's worth is where it puts things: a tile further off, and
+     * slowed by Levitation for the turns it takes to drift back down.
      */
     private static WeaponAbilityHandler launch() {
+        WeaponAbilityHandler shove = Abilities.knockbackDirection(1);
+        return (player, target, arena, baseDamage, stats, luckPoints) -> {
+            List<String> msgs = new ArrayList<>();
+            if (canLift(target)) {
+                msgs.addAll(shove.apply(player, target, arena, baseDamage, stats, luckPoints).messages());
+                if (levitate(target)) {
+                    burst(player, arena, target, ParticleTypes.CLOUD, 14);
+                    msgs.add("§b✦ Launched! " + target.getDisplayName() + " floats, Levitating for "
+                        + LEVITATION_TURNS + " turns.");
+                }
+            }
+            return new WeaponAbility.AttackResult(baseDamage, msgs, List.of());
+        };
+    }
+
+    /**
+     * Gravitite Axe: throws the target {@value #HURL_TILES} tiles, and it lands hard if
+     * something stops it short - a wall, the arena's edge, another body.
+     */
+    private static WeaponAbilityHandler hurl() {
+        WeaponAbilityHandler shove = Abilities.knockbackDirection(HURL_TILES);
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
             List<String> msgs = new ArrayList<>();
             int total = baseDamage;
-            boolean launchable = target.isAlive() && !target.isImmovable() && !target.isBackgroundBoss()
-                && !target.isInertObject() && !target.isFlying()
-                && !"aether:aechor_plant".equals(target.getEntityTypeId());
-            if (launchable) {
-                int dealt = target.takeDamage(Math.max(1, baseDamage / 4));
-                total += dealt;
+            if (canLift(target)) {
+                com.crackedgames.craftics.core.GridPos from = target.getGridPos();
+                msgs.addAll(shove.apply(player, target, arena, baseDamage, stats, luckPoints).messages());
                 burst(player, arena, target, ParticleTypes.CLOUD, 14);
-                msgs.add("§b✦ Launched! " + target.getDisplayName() + " crashes down for +" + dealt + ".");
+                boolean stoppedShort = from.chebyshevDistanceTo(target.getGridPos()) < HURL_TILES;
+                if (stoppedShort && target.isAlive()) {
+                    int dealt = target.takeDamage(Math.max(1, baseDamage / 4));
+                    total += dealt;
+                    msgs.add("§b✦ Hurled! " + target.getDisplayName() + " slams down for +" + dealt + ".");
+                }
             }
             return new WeaponAbility.AttackResult(total, msgs, List.of());
         };
@@ -621,15 +746,21 @@ public final class AetherCompat {
      * (20), and Obsidian matches netherite's toughness.
      *
      * <p>Set detection needs no code: {@code ArmorClassTable.armorSetKeyOf} derives the key
-     * from the item path. The conditional halves - Valkyrie's footing, Neptune staying dry,
-     * Phoenix not burning - are {@link AetherEffects}, attached by {@link AetherScanner}.
+     * from the item path. The conditional halves - Zanite hardening, Gravitite's updraft,
+     * Valkyrie's footing, Neptune staying dry, Phoenix not burning, Obsidian's tempered plate -
+     * are {@link AetherEffects}, attached by {@link AetherScanner}. Every set has one, and no
+     * two are the same.
      */
     private static boolean registerArmorSets() {
         boolean any = false;
-        any |= set("zanite", DamageType.CLEAVING, 4, 0, 0,
-            "§5Zanite: §7+2 Cleaving Power");
+        // Pet, not the Cleaving it had for mirroring iron. No other armor in the game carries
+        // Pet affinity, and Zanite is the crafted, common Aether tier, so a pet build can wear
+        // its armor from the first Aether levels.
+        any |= set("zanite", DamageType.PET, 4, 0, 0,
+            "§5Zanite: §7+2 Pet Power, and it hardens as it is hit: each blow you take"
+                + " makes the next deal 1 less, up to 3");
         any |= set("gravitite", DamageType.BLUNT, 6, 1, 0,
-            "§dGravitite: §7+1 Speed, light as air");
+            "§dGravitite: §7+1 Speed, and a 25% chance that whatever hits you is sent Levitating");
         any |= set("valkyrie", DamageType.SLASHING, 6, 1, 0,
             "§fValkyrie: §7+1 Speed, and winged: you cannot be knocked back");
         any |= set("neptune", DamageType.WATER, 4, 0, 0,
@@ -637,7 +768,7 @@ public final class AetherCompat {
         any |= set("phoenix", DamageType.SPECIAL, 6, 0, 0,
             "§6Phoenix: §7+2 Special Power, and you cannot be set Burning");
         any |= set("obsidian", DamageType.PHYSICAL, 7, 0, 1,
-            "§8Obsidian: §7+1 Defense, cooled phoenix plate");
+            "§8Obsidian: §7+1 Defense, and the first hit you take each round deals half");
         // A set of one piece: registering it is what gives the boots an armor class at all.
         any |= set("sentry", DamageType.BLUNT, 4, 0, 0, "", "sentry_boots");
         return any;

@@ -2,59 +2,205 @@
   "id": "aether_silver_dungeon",
   "name": "Silver Dungeon",
   "order": 102,
-  "levels": 7,
-  "grid": { "base_width": 10, "base_height": 10, "width_growth": 1, "height_growth": 1 },
-  "floor_blocks": ["aether:angelic_stone", "aether:light_angelic_stone"],
-  "obstacle_blocks": ["aether:pillar", "aether:holystone"],
-  "obstacle_density": 0.05,
-  "obstacle_density_growth": 0.01,
+  "levels": 4,
+  "grid": {
+    "base_width": 8,
+    "base_height": 8,
+    "width_growth": 0,
+    "height_growth": 0
+  },
+  "boss_grid": {
+    "width": 21,
+    "height": 17
+  },
+  "floor_blocks": [
+    "aether:angelic_stone",
+    "aether:light_angelic_stone"
+  ],
+  "obstacle_blocks": [
+    "aether:pillar",
+    "aether:holystone"
+  ],
+  "obstacle_density": 0.06,
+  "obstacle_density_growth": 0.0,
   "environment": "aether_silver",
   "enemies": {
-    "passive": [
-      {"type": "aether:aerbunny", "weight": 2, "hp": 6, "attack": 0, "defense": 0}
-    ],
+    "passive": [],
     "hostile": [
-      {"type": "aether:valkyrie", "weight": 6, "hp": 20, "attack": 8, "defense": 2, "speed": 3},
-      {"type": "aether:mimic", "weight": 3, "hp": 24, "attack": 8, "defense": 2},
-      {"type": "aether:zephyr", "weight": 3, "hp": 9, "attack": 1, "defense": 0, "range": 5, "speed": 1},
-      {"type": "aether:golden_swet", "weight": 3, "hp": 16, "attack": 5, "defense": 0},
-      {"type": "aether:cockatrice", "weight": 2, "hp": 15, "attack": 6, "defense": 0, "range": 3},
-      {"type": "aether:whirlwind", "weight": 1, "hp": 14, "attack": 1, "defense": 0},
-      {"type": "aether:evil_whirlwind", "weight": 1, "hp": 16, "attack": 6, "defense": 0}
+      {
+        "type": "aether:valkyrie",
+        "weight": 6,
+        "hp": 20,
+        "attack": 8,
+        "defense": 2,
+        "speed": 3
+      },
+      {
+        "type": "aether:mimic",
+        "weight": 3,
+        "hp": 24,
+        "attack": 8,
+        "defense": 2
+      },
+      {
+        "type": "aether:golden_swet",
+        "weight": 2,
+        "hp": 16,
+        "attack": 5,
+        "defense": 0
+      }
     ],
-    "boss": {"type": "aether:valkyrie_queen", "hp": 100, "attack": 11, "defense": 3, "range": 1, "speed": 3}
+    "boss": {
+      "type": "aether:valkyrie_queen",
+      "hp": 100,
+      "attack": 11,
+      "defense": 3,
+      "range": 1,
+      "speed": 3
+    }
   },
   "loot": [
-    {"item": "aether:ambrosium_shard", "weight": 6},
-    {"item": "aether:zanite_gemstone", "weight": 5},
-    {"item": "aether:golden_amber", "weight": 4},
-    {"item": "aether:enchanted_berry", "weight": 5},
-    {"item": "aether:healing_stone", "weight": 4},
-    {"item": "aether:golden_gummy_swet", "weight": 3},
-    {"item": "aether:golden_dart", "weight": 4},
-    {"item": "aether:enchanted_dart", "weight": 4},
-    {"item": "aether:poison_dart", "weight": 3},
-    {"item": "aether:enchanted_dart_shooter", "weight": 3},
-    {"item": "aether:poison_dart_shooter", "weight": 3},
-    {"item": "aether:gravitite_sword", "weight": 2},
-    {"item": "aether:gravitite_axe", "weight": 2},
-    {"item": "aether:gravitite_pickaxe", "weight": 2},
-    {"item": "aether:gravitite_helmet", "weight": 1},
-    {"item": "aether:gravitite_chestplate", "weight": 1},
-    {"item": "aether:gravitite_leggings", "weight": 1},
-    {"item": "aether:gravitite_boots", "weight": 1},
-    {"item": "aether:gravitite_gloves", "weight": 1},
-    {"item": "aether:valkyrie_helmet", "weight": 1},
-    {"item": "aether:valkyrie_chestplate", "weight": 1},
-    {"item": "aether:valkyrie_leggings", "weight": 1},
-    {"item": "aether:valkyrie_boots", "weight": 1},
-    {"item": "aether:valkyrie_gloves", "weight": 1},
-    {"item": "aether:valkyrie_axe", "weight": 1},
-    {"item": "aether:valkyrie_pickaxe", "weight": 1},
-    {"item": "aether:valkyrie_cape", "weight": 1},
-    {"item": "aether:regeneration_stone", "weight": 1},
-    {"item": "aether:lightning_sword", "weight": 1},
-    {"item": "aether:holy_sword", "weight": 1},
-    {"item": "aether:invisibility_cloak", "weight": 1}
+    {
+      "item": "aether:ambrosium_shard",
+      "weight": 8
+    },
+    {
+      "item": "aether:zanite_gemstone",
+      "weight": 6
+    },
+    {
+      "item": "aether:golden_amber",
+      "weight": 5
+    },
+    {
+      "item": "aether:holystone",
+      "weight": 4
+    },
+    {
+      "item": "aether:enchanted_gravitite",
+      "weight": 3
+    },
+    {
+      "item": "aether:skyroot_stick",
+      "weight": 4
+    },
+    {
+      "item": "aether:golden_dart",
+      "weight": 4
+    },
+    {
+      "item": "aether:enchanted_dart",
+      "weight": 3
+    },
+    {
+      "item": "aether:poison_dart",
+      "weight": 3
+    },
+    {
+      "item": "aether:enchanted_berry",
+      "weight": 4
+    },
+    {
+      "item": "aether:healing_stone",
+      "weight": 3
+    },
+    {
+      "item": "aether:golden_gummy_swet",
+      "weight": 2
+    },
+    {
+      "item": "aether:victory_medal",
+      "weight": 3
+    },
+    {
+      "item": "aether:golden_ring",
+      "weight": 1
+    },
+    {
+      "item": "aether:golden_pendant",
+      "weight": 1
+    },
+    {
+      "item": "aether:zanite_ring",
+      "weight": 1
+    },
+    {
+      "item": "aether:zanite_pendant",
+      "weight": 1
+    },
+    {
+      "item": "aether:golden_gloves",
+      "weight": 1
+    },
+    {
+      "item": "aether:blue_cape",
+      "weight": 1
+    }
+  ],
+  "boss_loot": [
+    {
+      "item": "aether:valkyrie_helmet",
+      "weight": 2
+    },
+    {
+      "item": "aether:valkyrie_chestplate",
+      "weight": 2
+    },
+    {
+      "item": "aether:valkyrie_leggings",
+      "weight": 2
+    },
+    {
+      "item": "aether:valkyrie_boots",
+      "weight": 2
+    },
+    {
+      "item": "aether:valkyrie_gloves",
+      "weight": 2
+    },
+    {
+      "item": "aether:valkyrie_axe",
+      "weight": 2
+    },
+    {
+      "item": "aether:valkyrie_pickaxe",
+      "weight": 2
+    },
+    {
+      "item": "aether:valkyrie_shovel",
+      "weight": 1
+    },
+    {
+      "item": "aether:valkyrie_hoe",
+      "weight": 1
+    },
+    {
+      "item": "aether:valkyrie_lance",
+      "weight": 2
+    },
+    {
+      "item": "aether:valkyrie_cape",
+      "weight": 2
+    },
+    {
+      "item": "aether:golden_feather",
+      "weight": 2
+    },
+    {
+      "item": "aether:regeneration_stone",
+      "weight": 2
+    },
+    {
+      "item": "aether:invisibility_cloak",
+      "weight": 2
+    },
+    {
+      "item": "aether:lightning_sword",
+      "weight": 1
+    },
+    {
+      "item": "aether:holy_sword",
+      "weight": 1
+    }
   ]
 }

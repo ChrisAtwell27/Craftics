@@ -59,4 +59,15 @@ class DialoguePayloadCodecTest {
         assertTrue(DialoguePayload.decodeChoiceLabels(encoded).isEmpty());
         assertTrue(DialoguePayload.decodeChoiceActions(encoded).isEmpty());
     }
+
+    @Test
+    void aDialogueIsOnlyMandatoryWhenFlagged() {
+        // The two shorter constructors are every dialogue that predates the flag: a trader
+        // or an intro that suddenly could not be dismissed would hold its event open forever.
+        assertFalse(new DialoguePayload("", "Hello.", "").mandatory());
+        assertFalse(new DialoguePayload("", "Hello.", "", DialoguePayload.BG_SOLID).mandatory());
+        assertFalse(new DialoguePayload("", "Hello.", "", DialoguePayload.BG_SOLID, 0).mandatory());
+        assertTrue(new DialoguePayload("", "Hello.", "", DialoguePayload.BG_SOLID,
+            DialoguePayload.FLAG_MANDATORY).mandatory());
+    }
 }

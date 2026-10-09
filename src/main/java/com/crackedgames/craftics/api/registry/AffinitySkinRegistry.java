@@ -74,6 +74,38 @@ public final class AffinitySkinRegistry {
         return (s != null && s.description() != null) ? s.description() : affinity.description;
     }
 
+    /**
+     * The description without its note about weapon weight, for a screen that explains that
+     * once instead of on every row. A skin's own description is shown as it was written.
+     */
+    public static String shortDescriptionOf(PlayerProgression.Affinity affinity) {
+        if (affinity == null) return "";
+        return describedBySkin(affinity) ? SKINS.get(affinity).description() : affinity.shortDescription();
+    }
+
+    /**
+     * A word or two for what this affinity buys beyond damage, or null when a skin has
+     * described it in its own words: the built-in word would then name something the
+     * player is never told about.
+     */
+    public static String perkOf(PlayerProgression.Affinity affinity) {
+        if (affinity == null || describedBySkin(affinity)) return null;
+        return affinity.perk;
+    }
+
+    /**
+     * Whether the numbers shown for this affinity come in threes, one for each weapon
+     * weight, so a screen knows to say so. Never for a description a skin wrote.
+     */
+    public static boolean scalesWithWeapon(PlayerProgression.Affinity affinity) {
+        return affinity != null && !describedBySkin(affinity) && affinity.scalesWithWeapon();
+    }
+
+    private static boolean describedBySkin(PlayerProgression.Affinity affinity) {
+        AffinitySkin s = SKINS.get(affinity);
+        return s != null && s.description() != null;
+    }
+
     // ── Damage type display, following the affinity it scales from ───────────
 
     /**

@@ -20,6 +20,32 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ArenaBiomeStampTest {
 
+    /**
+     * A biome whose levels are not all one kind of place says which part a level is and how
+     * big it was built. Real case: the Aether dungeons were cached as 14x14 rooms under the
+     * bare biome name, then given three levels above ground and smaller rooms. The name alone
+     * still matched, so the old rooms would have been reused for all of them.
+     */
+    @Test
+    void layoutStampTellsPartsAndSizesApart() {
+        String bare = ArenaBiomeStamp.effectiveBiomeId("aether_bronze_dungeon", null);
+        String surface = ArenaBiomeStamp.withLayout(bare, 'p', 10, 10);
+        String room = ArenaBiomeStamp.withLayout(bare, 'r', 9, 9);
+        String bossRoom = ArenaBiomeStamp.withLayout(bare, 'b', 11, 11);
+
+        assertFalse(ArenaBiomeStamp.stampMatches(bare, surface), "a cache from before is rebuilt");
+        assertFalse(ArenaBiomeStamp.stampMatches(bare, room));
+        assertFalse(ArenaBiomeStamp.stampMatches(room, surface), "a room is not open ground");
+        assertFalse(ArenaBiomeStamp.stampMatches(room, bossRoom));
+        assertFalse(ArenaBiomeStamp.stampMatches(room, ArenaBiomeStamp.withLayout(bare, 'r', 14, 14)),
+            "nor a room of another size");
+        assertTrue(ArenaBiomeStamp.stampMatches(room, ArenaBiomeStamp.withLayout(bare, 'r', 9, 9)),
+            "built once, reused after");
+        // The save packs its fields with commas and finds the stamp by its "b=" prefix.
+        assertFalse(surface.contains(","));
+        assertTrue(surface.startsWith(bare));
+    }
+
     @Test
     void plainBiomeStampsAsItsOwnId() {
         assertEquals("forest", ArenaBiomeStamp.effectiveBiomeId("forest", null));
@@ -80,5 +106,19 @@ class ArenaBiomeStampTest {
             "an arena with no stamp cannot be shown to belong to this level's biome");
         assertFalse(ArenaBiomeStamp.stampMatches(null, "cave"),
             "the cave-level-in-a-nether-arena case: unstamped must not be reused");
+    }
+
+    /**
+     * A hand-built room cached before it was laid down the way it is now is rebuilt:
+     * the same level, the same size, and still not the same room.
+     */
+    @Test
+    void aRoomLaidDownTheOldWayIsRebuilt() {
+        String old = ArenaBiomeStamp.withLayout("aether_silver_dungeon", 'b', 25, 21);
+        String now = ArenaBiomeStamp.withRevision(old, 2);
+        assertEquals("aether_silver_dungeon@b25x21#2", now);
+        assertFalse(ArenaBiomeStamp.stampMatches(old, now));
+        assertTrue(ArenaBiomeStamp.stampMatches(now, ArenaBiomeStamp.withRevision(old, 2)));
+        assertFalse(ArenaBiomeStamp.stampMatches(now, ArenaBiomeStamp.withRevision(old, 3)));
     }
 }

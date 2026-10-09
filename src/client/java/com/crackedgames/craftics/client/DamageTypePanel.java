@@ -334,7 +334,7 @@ public class DamageTypePanel {
             case SPECIAL  -> "SPECIAL_POWER";
             case PET      -> "ALLY_DAMAGE";
             case RANGED   -> "RANGED_POWER";
-            case PHYSICAL -> null;
+            case PHYSICAL -> "PHYSICAL_POWER";
         };
         if (bonusKey != null) {
             wholePoints += trimBonuses.getOrDefault(bonusKey, 0);

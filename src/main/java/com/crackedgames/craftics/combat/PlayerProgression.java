@@ -42,23 +42,39 @@ public class PlayerProgression extends PersistentState {
     }
 
     public enum Affinity {
-        SLASHING("Slashing", "\u00a7c\u2694", "+2/3/4 dmg, +3/5/7% sweep (1/2/3 AP weapon)"),
-        CLEAVING("Cleaving", "\u00a76\u2716", "+2/3/4 dmg, +2/4/6% armor shatter (1/2/3 AP weapon)"),
-        BLUNT("Blunt", "\u00a78\u2B24", "+2/3/4 dmg, +2/4/6% stun (1/2/3 AP weapon)"),
-        RANGED("Ranged", "\u00a7b\u27B3", "+2/3/4 ranged dmg (1/2/3 AP weapon), +5% ricochet chain chance"),
-        WATER("Water", "\u00a73\u2248", "+2/3/4 dmg, +2/4/6% knockback & Wet (1/2/3 AP weapon)"),
-        SPECIAL("Special", "\u00a7d\u2728", "+2/3/4 dmg, +2/4/6% free AP (1/2/3 AP weapon), +10% conserve consumable"),
-        PET("Pet", "\u00a7a\uD83D\uDC3E", "+3 dmg, +35% HP to allies, +1% spawn egg drops"),
-        PHYSICAL("Physical", "\u00a77\u270A", "+2/3/4 dmg (1/2/3 AP weapon), +3% counterattack");
+        SLASHING("Slashing", "\u00a7c\u2694", "Sweep", "+2/3/4 dmg, +3/5/7% sweep (1/2/3 AP weapon)"),
+        CLEAVING("Cleaving", "\u00a76\u2716", "Armor shatter", "+2/3/4 dmg, +2/4/6% armor shatter (1/2/3 AP weapon)"),
+        BLUNT("Blunt", "\u00a78\u2B24", "Stun", "+2/3/4 dmg, +2/4/6% stun (1/2/3 AP weapon)"),
+        RANGED("Ranged", "\u00a7b\u27B3", "Ricochet", "+2/3/4 ranged dmg (1/2/3 AP weapon), +5% ricochet chain chance"),
+        WATER("Water", "\u00a73\u2248", "Knockback & Wet", "+2/3/4 dmg, +2/4/6% knockback & Wet (1/2/3 AP weapon)"),
+        SPECIAL("Special", "\u00a7d\u2728", "Free AP", "+2/3/4 dmg, +2/4/6% free AP (1/2/3 AP weapon), +10% conserve consumable"),
+        PET("Pet", "\u00a7a\uD83D\uDC3E", "Stronger allies", "+3 dmg, +35% HP to allies, +1% spawn egg drops"),
+        PHYSICAL("Physical", "\u00a77\u270A", "Counterattack", "+2/3/4 dmg (1/2/3 AP weapon), +3% counterattack");
+
+        /** What a description says when its numbers come in threes, one for each weapon weight. */
+        public static final String WEAPON_SCALING_NOTE = "(1/2/3 AP weapon)";
 
         public final String displayName;
         public final String icon;
+        /** A word or two for what a point buys beyond damage, for a label with no room for numbers. */
+        public final String perk;
         public final String description;
 
-        Affinity(String displayName, String icon, String description) {
+        Affinity(String displayName, String icon, String perk, String description) {
             this.displayName = displayName;
             this.icon = icon;
+            this.perk = perk;
             this.description = description;
+        }
+
+        /** Whether this affinity's numbers come in threes, one for each weapon weight. */
+        public boolean scalesWithWeapon() {
+            return description.contains(WEAPON_SCALING_NOTE);
+        }
+
+        /** The description without the weapon-weight note, for a screen that explains that once. */
+        public String shortDescription() {
+            return description.replace(" " + WEAPON_SCALING_NOTE, "");
         }
     }
 

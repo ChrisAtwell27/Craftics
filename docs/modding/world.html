@@ -49,7 +49,7 @@
   <!-- Content -->
   <main class="content">
     <h1>World</h1>
-    <p class="page-desc">How to add custom biomes, arena environment themes, campaigns, between-level events, and Village / Bartering Station scenes to Craftics.</p>
+    <p class="page-desc">How to add custom biomes and their arenas, arena environment themes, campaigns, between-level events, and Village / Bartering Station scenes to Craftics.</p>
 
     <!-- ================================================================
          1. BIOMES
@@ -60,6 +60,9 @@
     </p>
     <p>
       Biomes can be added two ways: through a JSON datapack file (no code required) or programmatically through <code>CrafticsAPI.registerBiome()</code>. The JSON path is simpler for pure content; the code path is needed when you want to share a <code>BiomeTemplate</code> object built entirely in Java.
+    </p>
+    <p>
+      A biome works with the JSON alone: Craftics generates its arenas from the grid size and floor blocks. To give it arenas you built yourself, add schematics as described in <a href="#arenas">Arenas for a biome</a>.
     </p>
 
     <h3 id="biome-card-art">Biome card art</h3>
@@ -142,8 +145,8 @@
           <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Display name shown in the HUD and level select.</td></tr>
           <tr><td><code>order</code></td><td>int</td><td>Yes</td><td>Sort position used to sequence biomes outside the active campaign, and as a tiebreaker. The active <a href="#campaigns">campaign</a> drives the play order. Lower values sort earlier.</td></tr>
           <tr><td><code>levels</code></td><td>int</td><td>Yes</td><td>Total number of levels in this biome. The last level is the boss fight.</td></tr>
-          <tr><td><code>grid.base_width</code></td><td>int</td><td>Yes</td><td>Arena grid width on level 1.</td></tr>
-          <tr><td><code>grid.base_height</code></td><td>int</td><td>Yes</td><td>Arena grid height on level 1.</td></tr>
+          <tr><td><code>grid.base_width</code></td><td>int</td><td>Yes</td><td>Arena grid width on level 1. When the biome has an <a href="#arenas">arena schematic</a>, its markers set the size instead.</td></tr>
+          <tr><td><code>grid.base_height</code></td><td>int</td><td>Yes</td><td>Arena grid height on level 1. Same rule as the width.</td></tr>
           <tr><td><code>grid.width_growth</code></td><td>int</td><td>No</td><td>Columns added per level. Default 0.</td></tr>
           <tr><td><code>grid.height_growth</code></td><td>int</td><td>No</td><td>Rows added per level. Default 0.</td></tr>
           <tr><td><code>floor_blocks</code></td><td>string[]</td><td>Yes</td><td>Block ids used for the arena floor, drawn in a checkerboard pattern.</td></tr>
@@ -299,6 +302,69 @@ boolean exists = CrafticsAPI.hasEnvironmentStyle("mymod:aether");</code></pre>
         </tbody>
       </table>
     </div>
+
+    <!-- ================================================================
+         ARENAS FOR A BIOME
+         ================================================================ -->
+    <h2 id="arenas">Arenas for a biome</h2>
+    <p>
+      The biome JSON says what is fought. A schematic says where. Every level is played in an arena, which comes from a schematic when the biome has one and is generated from the JSON when it does not. Building a schematic, placing its marker blocks and testing it are covered in <a href="reference.html#arena-maps">Custom Arena Maps</a>. This section is how the two files find each other.
+    </p>
+
+    <h3>Where a biome's arenas live</h3>
+    <p>
+      The folder is worked out from the biome's <code>id</code>. A built-in biome has no namespace and lives under Craftics' own. A biome you add lives under yours, so two addons that both name a biome <code>cavern</code> cannot overwrite each other.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Biome id</th><th>Arena folder in a data pack or jar</th></tr></thead>
+        <tbody>
+          <tr><td><code>plains</code> (built in, no namespace)</td><td><code>data/craftics/arenas/plains/</code></td></tr>
+          <tr><td><code>mymod:cavern</code></td><td><code>data/mymod/arenas/cavern/</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Inside the folder go <code>1.schem</code> to <code>10.schem</code>, numbered from 1 with no gaps, and <code>boss.schem</code>. A biome with <code>"levels": 5</code> plays four ordinary levels and then the boss. The ordinary levels cycle through the numbered files and the boss uses <code>boss.schem</code>. With no <code>boss.schem</code>, the boss is fought in one of the numbered arenas.
+    </p>
+    <pre><code>data/
+  mymod/
+    craftics/
+      biomes/
+        cavern.json        "id": "mymod:cavern"
+    arenas/
+      cavern/
+        1.schem
+        2.schem
+        boss.schem</code></pre>
+    <p>
+      While you are building, the same files can sit loose in the game folder instead, at <code>craftics_arenas/mymod/cavern/</code>.
+    </p>
+    <div class="callout">
+      <p><strong>Addon biomes need Craftics 0.5.0 or later.</strong> Before that the arena lookup did not understand a namespaced id, and a biome that used one failed to build its arena.</p>
+    </div>
+
+    <h3>What each file decides</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>With a schematic</th><th>Without one</th></tr></thead>
+        <tbody>
+          <tr><td>Shape and size of the arena</td><td>The marker blocks in the schematic.</td><td><code>grid.base_width</code> and <code>grid.base_height</code>, plus the growth per level.</td></tr>
+          <tr><td>Floor</td><td>Numbered arenas are repainted with <code>floor_blocks</code>. A boss room keeps the floor you built.</td><td><code>floor_blocks</code>, in a checkerboard.</td></tr>
+          <tr><td>Obstacles</td><td>Numbered arenas get <code>obstacle_blocks</code> scattered by <code>obstacle_density</code>. A boss room keeps the obstacles you built.</td><td><code>obstacle_blocks</code>, scattered by <code>obstacle_density</code>.</td></tr>
+          <tr><td>Lamp posts and decoration</td><td colspan="2">The biome's <a href="#environments">environment</a>, either way.</td></tr>
+          <tr><td>Enemies, boss and loot</td><td colspan="2">The biome JSON, either way.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      A biome with no schematics at all is complete as it stands. Add them when you want a place that looks like somewhere.
+    </p>
+
+    <h3>Replacing a built-in biome's arenas</h3>
+    <p>
+      No JSON is needed for this. Use the built-in folder name: a data pack holding <code>data/craftics/arenas/desert/1.schem</code> replaces Desert arena 1. <a href="reference.html#arena-files">Custom Arena Maps</a> lists the folder names and the rules for loose files, and the <a href="https://github.com/ChrisAtwell27/Craftics/tree/main/Example_Arena_Addon">Example_Arena_Addon</a> folder in the repository is a data pack that does exactly this for Plains.
+    </p>
 
     <!-- ================================================================
          3. CAMPAIGNS

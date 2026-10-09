@@ -139,6 +139,18 @@ public interface CustomActionHandler {
         /** Apply an addon-registered custom effect by id. */
         void applyCustomEffect(CombatEntity target, String effectId, int turns, int amplifier);
 
+        /**
+         * Apply one of Craftics' built-in status effects to the player this action is aimed
+         * at, the same one {@link #damagePlayer(int)} would hit.
+         *
+         * <p>{@link #applyEffect} takes a combatant, and a player is not one, so an action
+         * that poisons or slows the player had no way to say so.
+         *
+         * @since 0.5.0
+         */
+        default void applyEffectToPlayer(com.crackedgames.craftics.combat.CombatEffects.EffectType type,
+                                         int turns, int amplifier) {}
+
         /** Send a line to everyone in the fight. */
         void message(String text);
     }

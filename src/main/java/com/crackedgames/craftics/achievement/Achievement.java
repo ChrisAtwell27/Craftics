@@ -21,7 +21,7 @@ public enum Achievement {
     BOSS_WARPED("Hex Breaker", "Defeat the Void Walker", Category.BOSS),
     BOSS_BASALT("Molten Slayer", "Defeat the Wither", Category.BOSS),
     BOSS_OUTER_END("Void Touched", "Defeat the Void Herald", Category.BOSS),
-    BOSS_END_CITY("Architect's Fall", "Defeat the Shulker Architect", Category.BOSS),
+    BOSS_END_CITY("Own Worst Enemy", "Defeat your Shadow", Category.BOSS),
     BOSS_CHORUS("Mind Over Matter", "Defeat the Chorus Mind", Category.BOSS),
     BOSS_DRAGONS_NEST("Dragon Slayer", "Defeat the Ender Dragon", Category.BOSS),
 
@@ -37,7 +37,7 @@ public enum Achievement {
     CLASS_TIDEBRINGER("Tidebringer", "Defeat the Dragon's Nest boss using only Water weapons", Category.CLASS),
     CLASS_REAPER("Reaper's Harvest", "Defeat a Nether boss using only Special weapons", Category.CLASS),
     CLASS_BEAST_TAMER("Beast Tamer", "Defeat an End boss using only Pet weapons", Category.CLASS),
-    CLASS_SHARPSHOOTER("Sharpshooter", "Defeat the Shulker Architect using only Ranged weapons", Category.CLASS),
+    CLASS_SHARPSHOOTER("Sharpshooter", "Defeat your Shadow using only Ranged weapons", Category.CLASS),
     CLASS_BARE_KNUCKLE("Bare Knuckle", "Defeat an End boss with only your fists", Category.CLASS),
 
     // === Class Mastery - Armor Restricted (7) ===

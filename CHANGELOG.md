@@ -1,6 +1,68 @@
 ﻿Changelog
 
-0.4.10
+0.5.0
+
+
+
+The Aether Comes to Craftics
+
+Compatibility with The Aether: its gear, its creatures, its three dungeons and the three bosses that guard them.
+
+- **The Aether opens beside The End.** Beat the Nether and both unlock at once. The Aether is optional: it has its own tab on the level select and its own progress, the Ender Dragon is still the final boss, and you can finish the campaign without going up there. Its three dungeons open in order, Bronze, Silver, Gold, and are as hard as the End biomes that open alongside them.
+- The Aether's tab on the level select reads ??? until it is unlocked.
+- **Above ground first.** The Bronze Dungeon now opens on the surface: three levels of Aether Highlands, open grass with quicksoil, aerclouds and skyroot trees, the Aether's wildlife, and wood, holystone and ambrosium to carry off. Then three rooms of the dungeon itself, then the Slider. The Silver Dungeon is three rooms and the Valkyrie Queen. The Gold Dungeon is the Sun Spirit and nothing else.
+- **No pickaxe, no Slider.** The Slider can only be hurt with a pickaxe, so the run now checks before its room. If nobody in the party is carrying one, a dialogue that cannot be skipped says so and the party leader chooses: go home, or start the Bronze Dungeon again from level 1 with everything you are carrying. The Highlands drop skyroot, holystone and the odd Skyroot Pickaxe.
+- **Hand-built rooms.** Every Aether level is a room built for it rather than a generated one, and is kept exactly as built. Until now a room lost everything two blocks above its floor when it was laid down: the Valkyrie Queen's throne and dais, the tops of walls, torches, the fire on the Sun Spirit's braziers. Nothing is cleared any more, and the three boss rooms no longer get a ring of light posts around them. Rooms already built in a save are rebuilt the next time they are entered. The Slider and the Sun Spirit start in the middle of theirs.
+- **Walled rooms no longer put you on the walls.** A room drawn with Arena Corner Markers lying under its walls was read with its floor at the top of those walls: you stood on the battlements and the room below was a pit. That was the Bronze Dungeon's sixth room and the Silver Dungeon's second and third. The floor is now the height most of the room can be stood on. In the same rooms, a marker that is not a corner (part way along a wall, or where four cells meet) no longer bends the outline, and a wall that faces the middle of the room no longer takes a strip of floor off the room beside it. Plains arena 3 and Snowy arena 3 gain a strip along one inner edge for that last reason.
+- **Rooms with more than one floor.** Stairs in an arena have always been meant to lead to a raised floor you can fight on, but a fight read its room back without them, so every raised floor was a wall and every stair an obstacle. That is fixed for every arena. A stair standing on a raised floor now leads to a second floor, up to three, so the Valkyrie Queen is fought across her whole room: the lower hall, the upper floor and the throne dais. The move path preview follows you up the stairs. Players always start on the lowest floor of a room, never on a stair or a raised floor. The Valkyrie Queen starts on the floor above the hall, in the middle of her room, and the valkyries she sends come down on the hall floor. Anything set down on a raised floor now stands on it instead of inside it.
+- **Aether loot is materials.** Levels pay in what things are made of: skyroot, holystone, ambrosium, zanite, gravitite, amber, darts and food. Rings, pendants, capes and gloves are the rare end of each table. A dungeon's own weapons and armor no longer turn up in its corridors: beating its boss pays one piece of its treasure.
+- Modders: a biome file can now give its opening levels another look with `"prelude"`, give its boss level a room of its own size with `"boss_grid"`, and add a treasure table for the boss level with `"boss_loot"`.
+- **Aether creatures.** Zephyrs throw you 3 tiles with a gust that does no damage but costs you your next move getting back. Cockatrices shoot poison needles and back away. Swets swallow you and leave you Levitating, unless you wear a Swet Cape. Sentries sleep until you come close, then walk up and explode. Valkyries leave you alone until you hit one, then lunge and blink. Fire Minions set you Burning. Aechor Plants sit rooted in their own patch of grass and spit poison. Whirlwinds wander and toss whoever is beside them; Evil Whirlwinds hunt you and hit when they do it. Mimics, Moas and the Aether's farm animals are here too.
+- **The Slider (Bronze Dungeon).** A 2x2 block of carved stone asleep in the middle of its room, which only a pickaxe can hurt. Each swing takes a share of its health, so the fight is the same length whatever depth you meet it at. Awake, it never rests: one turn it raises bricks of carved stone and marks the floor, the next it slides until it meets a wall, a block or you. A crush is its full attack and a throw of 3 tiles. The walls of its room stop it and are never broken: only blocks standing on the floor are. Blocks stop a run and are destroyed, its own bricks included, and where it stops is where it turns. It shows one lane of arrows, the way its slide sets off and how far that first run goes, with its wake marked beside it. The turns it takes off bricks are not marked: you read those from the bricks. At two thirds health it turns red and makes up to 3 runs a turn, at one third up to 5. Your pickaxe mines its bricks.
+- **The Slider has weight.** A run starts slow and gathers speed, and every run starts again from slow, so a corner reads as a stop and a fresh shove. What it hits is hit when it gets there and not when it sets off: blocks break as it reaches them, with dust off its leading face and a camera shake that is harder the further it came.
+- **The Slider runs into creatures.** Anything in its way that is not a player still stops a run, and now takes a full crush where it stands. Once a slide for each creature: with runs to spare it goes another way rather than standing there battering the same one.
+- **The Slider calls up sentries.** On a turn that raises bricks, one sentry comes up beside a brick: one standing at a time, two once it is red, three in its last third. Never right next to a player and never in the lane it has just marked. They are the dungeon's own sentries, a little slighter. A sentry the Slider runs into explodes as it arrives. The blast hits everyone beside the sentry and not the Slider, and ground it would reach is marked with no arrow, the same as its wake.
+- **The Valkyrie Queen (Silver Dungeon).** She cannot be touched until she is paid a tribute of 10: Victory Medals your party carries count for 1 and are taken, valkyries of hers you beat in front of her count for 2. She takes the medals herself, a valkyrie counts the moment it falls, and the fight always says how many of her valkyries are left to beat before she will fight: in chat as the count moves, and on her guard if you strike it. She keeps a homing thunder crystal on you the whole time. Strike one and it is a shot: it flies straight away from you and bursts on the first of hers its line passes within a tile of, for double on her and never less than a twentieth of her health, or a third of a valkyrie. Left alone it burns out after 5 turns. A thunder crystal is seen as a glowing crystal, and one you strike is seen to fly its line before it bursts. On foot she lunges down a marked lane, blinks to your far side, and shoves anyone standing against her 2 tiles clear. At two thirds health she takes wing: a dive onto a marked 3x3 that a crystal struck across the square while she is up will knock her out of, a lunge lane 3 wide, three crystals at once, and an honour guard of valkyries called in one at a time. At one third she calls the storm: a 3x3 marked under every player each turn, struck by lightning the turn after.
+- **The Sun Spirit (Gold Dungeon).** Nothing you carry hurts it. It starts in the middle of its room and drifts in straight lines, bouncing off walls and braziers, trailing fire and burning everyone touching it, and every tile its next turn will burn is marked before you move. It throws a crystal every turn: Fire, Fire, Ice. Strike the Ice Crystal and it flies straight away from you. If that line passes through the Sun Spirit or within a tile of it, it loses a tenth of its health and freezes with its guard down for two turns. If not, the crystal flies wide. Where you strike one the floor freezes in a 3x3 for four turns: safe ground that puts fire out, turns the Sun Spirit aside, stops a line of fire and darkens a brazier it touches. Each freeze brings out a Fire Minion (two at most) and it flares when it thaws. From two thirds health the braziers take turns marking lines of fire across the room. From one third two mark every turn, it hunts you at 3 tiles a turn, and the floor burns inward from the walls until a freeze drives it back.
+- **Gear from below is out of its depth.** A weapon that is not from the Aether deals 20% less to Aether creatures, and each piece of non-Aether armor lets them hit 5% harder. Mild on purpose: the Aether itself would cut a 12 damage sword to 4.
+- Modders: `CrafticsAPI.registerSideRegion` adds an optional region beside any campaign.
+- Modders: `EnemyAction.Ram` strikes whatever creature a charge ends against, and in a bundle it lands on the step the mover gets there. A mob can burst instead of taking the blow by overriding `EnemyAI.whenRammed`. An AI that implements `PacedMover` sets the pace of its own moves and is told as each step lands.
+- Modders: three or more Arena Corner Markers now cope with spare markers, up to four, and with markers under walls. `check_arena.py` in the example addon lists the ones it set aside.
+
+- **Every Aether weapon fights.** Skyroot, Holystone, Zanite, Gravitite and Valkyrie tools sit at the tier they mine at (wood, stone, iron, diamond, diamond), and each keeps its trick. Skyroot kills drop double loot. Holystone knocks Ambrosium Shards loose. Zanite hits harder the more worn it is, on the Aether's own curve. Valkyrie weapons reach 2 tiles.
+- **Gravitite makes things float, and every tool does it differently.** The sword knocks its target back a tile and leaves it Levitating for 2 turns. The axe throws its target 2 tiles, for +25% damage if something stops it short. The pickaxe does not break a block: it floats it off its tile, any obstacle and not only walls and debris, and 2 turns later it drops back, hitting and Stunning an enemy standing under it. The shovel, carried anywhere on you, has all your pets floating over obstacles. The hoe, carried anywhere on you, makes everything of yours that deals Special damage (hoes, sherds, horns, thrown potions) leave its target Levitating
+- **Flying pets fly.** Parrots, bees, bats and allays now go over obstacles instead of round them, and can perch on top of one. Before, they only looked like they were flying
+- **Dungeon weapons.** Flaming Sword sets targets Burning. Lightning Sword calls a bolt on every hit, doubled on Soaked targets. Holy Sword does half again to the undead. Vampire Blade heals you. Pig Slayer doubles against pigs, piglins and hoglins. Candy Cane Sword drops candy canes. Hammer of Kingbdogz is a thrown shockwave with knockback.
+- **Ranged.** Dart Shooters fire their own darts, one per shot, so darts are ammo and the Poison Dart Shooter poisons. Phoenix Bow uses arrows and sets targets alight. Cloud Staff fires a crystal that Weakens. Lightning Knives are thrown for lightning damage.
+- **Armor sets.** Zanite, Gravitite, Valkyrie, Neptune, Phoenix and Obsidian each have an armor class and a full set bonus of their own. Zanite is the game's first Pet affinity armor: each piece adds to what your pets and your shovel hit for, +2 Pet Power with all four. It also hardens as it is hit: each blow you take makes the next deal 1 less, up to 3, for the rest of the fight. Gravitite has a 25% chance to send whatever hits you Levitating, and each piece worn is a quarter of that. Valkyrie cannot be knocked back. Neptune cannot be Soaked. Phoenix cannot be set Burning. Obsidian halves the first hit you take each round. Sentry Boots shorten any knockback by a tile.
+- **Accessories.** Gloves add Physical Power, 1 for most pairs and 2 for the strong ones (diamond, netherite, gravitite, valkyrie, phoenix, obsidian, and zanite once more than half worn). Ice Ring and Ice Pendant shorten burns. Agility Cape adds Speed, Invisibility Cloak adds Stealth Range, Valkyrie Cape and Golden Feather shorten knockback, Regeneration Stone regenerates, Iron Bubble adds Water Power. Shield of Repulsion has a chance to turn a ranged hit back on the shooter after a turn in which you did not move.
+- **Nothing you wear is an ornament.** The plain rings, pendants and dyed capes did nothing in the Aether and nothing here, and they turn up in every loot table. Each now has one small use. Iron Ring: +1 Max HP. Iron Pendant: +1 Defense. Golden Ring: +1 Armor Penetration. Golden Pendant: +1 Special Power. Two rings count twice. A dyed cape takes a turn off one kind of trouble: Red for Weakness, Blue for Levitation, White for Poison, Yellow for Burning, which stacks with the ice charms.
+- The Swet Cape always kept swets off you and never said so. Its tooltip does now.
+- **Obsidian is Phoenix armor that got wet.** That is the Aether's own rule and it holds here: 15 seconds in water or rain cools every Phoenix piece you are wearing, gloves included, to Obsidian for good. No loot table pays Obsidian and nothing crafts it, so that is the way to the set, and the tooltips on both now say so. Mind where you stand in Phoenix armor if you mean to keep it.
+- The Valkyrie Queen's treasure now includes the Valkyrie Hoe, the one Valkyrie tool that could not be had at all. Zanite and Gravitite armor stay crafted: the rooms pay the gemstones and the enchanted gravitite.
+- **Consumables.** Ambrosium Shards heal, Healing Stones grant Regeneration, White Apples and Remedy Buckets cure Poison. Aether food heals like any food.
+- Tooltips on all of the above say what the item does here, and a Zanite weapon shows its current bonus.
+
+The Shadow
+
+The End City has a new boss. The Shulker Architect is gone, and what waits at the top of the city now is you.
+
+- **The Shadow is a dark copy of the player.** It wears your skin a few shades darker, your armour and your weapons, and it takes its turn the way you do: your AP and your Speed, spent one action at a time
+- **It fights with your weapons.** It can draw any weapon in your inventory, not only the one in your hand. Each keeps its reach and AP cost, so a spear hits from two tiles away, a bow shoots when it has a clear line, and a 1 AP sword gets more swings out of a turn than a 2 AP axe
+- **Your weapons do what they do for you.** The Shadow runs the weapon's own ability, aimed back at you. A chakram is thrown, ricochets between you, your allies and your pets, and flies home. A weapon that sweeps catches everyone beside you, one that knocks back throws you across the arena, one that drains life heals the Shadow, and a legendary's special goes off at the same odds it does in your hands. Modded weapons included
+- **Your enchantments work against you.** The weapon in its hand is a copy of yours. Sharpness and Serrated make you bleed, Fire Aspect sets you alight, Knockback throws you and anyone lined up behind you, Sweeping Edge carries the swing into everyone around you, and Flame and Punch work on its arrows
+- **It uses your items.** It eats your food when badly hurt, drinks your Strength, Swiftness, Resistance and Regeneration potions, and throws your harmful splash potions at you. Once per kind of item
+- **It throws what you throw.** Snowballs, eggs, bricks, fire charges, wind charges and TNT come back at you, up to three of each: a snowball or a wind charge knocks you back, a fire charge sets you alight, TNT lands on everyone beside you. Too far away to walk to, it throws your ender pearl and appears next to you
+- **It casts your pottery sherds.** Once each, at the sherd's own AP cost and reach, inscriptions included. Immolation burns, Death Mark withers, Tectonic Charge throws you back, Riptide Hook drags you in, Soul Drain heals it, Phase Step carries it across the arena and Seeker Vexes calls up vexes. Nothing it casts stuns you or executes you, and Guardian Spirit, Petsplosion and Hex Trap it cannot use
+- **Its icon is your face.** In the turn order, the rosters and the inspect panel, each Shadow shows the face of the player it copies, a little darker
+- **It copies your pets.** On its first turn it calls up a shadow of every pet you brought into the fight
+- **One Shadow per player.** In a party everyone gets their own, each with a little less health than a lone one: 85% with two players, 70% with three, 60% with four or more
+- **Leaving your gear at home does not help.** The Shadow's damage comes from the boss it replaces, not from your equipment, so one with bare fists hits as hard as one with your best sword. Your gear decides how it fights, not how much it hurts
+- **Its hits land for what they say.** Every AP it spends is worth the same share of the boss's attack, and the flat damage armour takes off each hit is not taken off the Shadow's, since it hits many times a turn for small amounts. Armour still deflects its hits outright
+- **It brings one shulker**, not three. It has a Shadow per player and a shadow of every pet for company already
+- At half health it gets one more AP every turn
+- The End City achievement is now Own Worst Enemy, and Sharpshooter asks you to beat your Shadow with only Ranged weapons
+- Modders: custom actions can now apply a status effect to the player with `applyEffectToPlayer`, a boss AI can take several actions in one turn by overriding `wantsAnotherAction`, and an area attack's effect name can carry a status effect for whoever it hits, as `name:rider:TYPE,turns,level`
 
 Bosses That Keep Up
 
@@ -9,24 +71,11 @@ Several melee bosses were slower than the player and had no reliable way to clos
 - **Faster bosses.** The Revenant moves 2 tiles a turn (was 1). The Sandstorm Pharaoh and the Tidecaller move 3 (was 2). The Frostbound Huntsman moves 3, and 4 in phase 2 (was 2 and 3). The Hollow King moves 3 at close range (was 2). The Warden moves 4 (was 3). The Wither moves 3, and 4 in phase 2 (was 2 in both)
 - **Fixed the Rockbreaker's Charge never happening.** It telegraphed the charge and then stood still
 - **Fixed the Bastion Brute's Gore Charge and the Wither's charge doing nothing** when they came with a fire or decay trail, or landed on the same turn as another action. The boss now actually travels the lane and hits whoever is in it
+- **Fixed big enemies hitting the wrong player and throwing at an angle.** A charge from an enemy wider than one tile picked its victim by distance from one corner of its body, so in co-op it could hit a teammate standing beside it instead of the player it ran into, and it threw whoever met its far half off diagonally. It now measures from the nearest part of its body.
+- **Fixed boss warnings marked on a turn the boss also moved.** They showed the red tiles but not the particles.
+- A boss putting the floor back no longer says it "reshapes 2 tiles to normal". It flattens them.
+- **Fixed the Steampunk radar fast-forwarding bosses.** Reading a boss's next move counted as the boss taking its turn, so with a radar wearer in the party its cooldowns ran down early and a telegraphed attack could be used up before it landed. The radar and the intention preview now leave bosses alone. A boss still shows its own warnings.
 - **Fixed bosses refusing to walk through their own fire, lava and decay.** Bosses are immune to those, but still treated them as walls. The Bastion Brute could box itself in with its own fire, and the Wither could not walk back over ground it had rotted
-
-The Aether
-
-Compatibility with The Aether, in progress. The gear, the creatures and the three dungeons are in. The dungeon bosses do not fight yet: the Slider, the Valkyrie Queen and the Sun Spirit are still to come.
-
-- **The Aether opens beside The End.** Beat the Nether and both unlock at once. The Aether is optional: it has its own tab on the level select and its own progress, the Ender Dragon is still the final boss, and you can finish the campaign without going up there. Its three dungeons open in order, Bronze, Silver, Gold, and are as hard as the End biomes that open alongside them.
-- **Aether creatures.** Zephyrs shove you with a gust that does no damage. Cockatrices shoot poison needles and back away. Swets swallow you and leave you Levitating, unless you wear a Swet Cape. Sentries sleep until you come close, then walk up and explode. Valkyries leave you alone until you hit one, then lunge and blink. Fire Minions set you Burning. Aechor Plants sit rooted in their own patch of grass and spit poison. Whirlwinds wander and toss whoever is beside them; Evil Whirlwinds hunt you and hit when they do it. Mimics, Moas and the Aether's farm animals are here too.
-- **Gear from below is out of its depth.** A weapon that is not from the Aether deals 20% less to Aether creatures, and each piece of non-Aether armor lets them hit 5% harder. Mild on purpose: the Aether itself would cut a 12 damage sword to 4.
-- Modders: `CrafticsAPI.registerSideRegion` adds an optional region beside any campaign.
-
-- **Every Aether weapon fights.** Skyroot, Holystone, Zanite, Gravitite and Valkyrie tools sit at the tier they mine at (wood, stone, iron, diamond, diamond), and each keeps its trick. Skyroot kills drop double loot. Holystone knocks Ambrosium Shards loose. Zanite hits harder the more worn it is, on the Aether's own curve. Gravitite launches a grounded target so it crashes back down. Valkyrie weapons reach 2 tiles.
-- **Dungeon weapons.** Flaming Sword sets targets Burning. Lightning Sword calls a bolt on every hit, doubled on Soaked targets. Holy Sword does half again to the undead. Vampire Blade heals you. Pig Slayer doubles against pigs, piglins and hoglins. Candy Cane Sword drops candy canes. Hammer of Kingbdogz is a thrown shockwave with knockback.
-- **Ranged.** Dart Shooters fire their own darts, one per shot, so darts are ammo and the Poison Dart Shooter poisons. Phoenix Bow uses arrows and sets targets alight. Cloud Staff fires a crystal that Weakens. Lightning Knives are thrown for lightning damage.
-- **Armor sets.** Zanite, Gravitite, Valkyrie, Neptune, Phoenix and Obsidian each have an armor class and a set bonus. A full Valkyrie set cannot be knocked back, Neptune cannot be Soaked, Phoenix cannot be set Burning. Sentry Boots shorten any knockback by a tile.
-- **Accessories.** Gloves add Melee Power. Ice Ring and Ice Pendant shorten burns. Agility Cape adds Speed, Invisibility Cloak adds Stealth Range, Valkyrie Cape and Golden Feather shorten knockback, Regeneration Stone regenerates, Iron Bubble adds Water Power. Shield of Repulsion has a chance to turn a ranged hit back on the shooter after a turn in which you did not move.
-- **Consumables.** Ambrosium Shards heal, Healing Stones grant Regeneration, White Apples and Remedy Buckets cure Poison. Aether food heals like any food.
-- Tooltips on all of the above say what the item does here, and a Zanite weapon shows its current bonus.
 
 Mob Traits
 
@@ -56,6 +105,48 @@ Tall Grass
 
 - **Throwing things from tall grass gives you away.** Swinging or shooting from cover already flattened the grass under you. Thrown items, pottery sherd spells and addon items did not, so you could sit in a bush and pelt enemies all fight without ever being found. Now any of those that hurts an enemy breaks your cover the same way
 - Items that hurt nothing leave the grass alone: eating, healing, placing blocks, and a throw that misses everything
+
+Sherds Move The Arena
+
+Pottery sherds used to look alike: a streak of particles and a puff. Every one of them now changes the ground it is cast on. It is all for show: the blocks are only drawn for a moment, nothing is placed, and each spell does exactly what it did before.
+
+- **Phase Step** tears the floor open where you stood and where you land
+- **Guardian Spirit** turns the ground under each pet to moss, with flowers coming up around it
+- **Corrode** rusts the floor under the target through the copper stages, and it spreads
+- **Riptide Hook** runs a line of water out along the floor and reels it back in
+- **Shatter Will** closes glass round the target and breaks it
+- **Entangle** runs roots through the ground, closes a thorn bush over the target's legs and spreads moss beside it
+- **Earthen Spike** splits the ground from you to your target and drives a spike of dripstone up through it
+- **Hex Trap** burns a rune on the tile that dims and is gone
+- **Phantom Slash** scores the floor from side to side behind the cut
+- **Immolation** leaves fire standing where the fireball lands and beside it, the floor glowing under the blast and scorched black after
+- **Tectonic Charge** tears a furrow along the way the target was thrown
+- **Tidal Surge** sends a wave out from you, ring by ring: a crest of standing water, and the floor awash behind it until it drains
+- **Soul Drain** turns the ground to soul soil burning blue, and what it takes streams back to you
+- **Petsplosion** flashes the ground under each pet like a lit charge and leaves a ring of scorched floor
+- **Chain Lightning** brings a real bolt down on every enemy the chain reaches
+- **Mending Light** lights the floor around you and grows a ring of moss and flowers
+- **Stone Aegis** raises stone on every side of you, and sinks it back
+- **Alchemist's Surge** crystallises the floor to amethyst and grows shards out of it
+- **Bountiful Harvest** tills the ground around you, and wheat comes up, ripens and is gathered in
+- **Seeker Vexes** lays a summoning circle with a soul lantern at each corner
+- **Fortune's Favor** runs gold out across the floor in a ripple, with coins flying up
+- **War Cry** raises banners at the four corners inside a ring of flame
+- **Death Mark** blackens the ground, with blue fire and wither roses, and a bolt of lightning when it kills outright
+- An inscription that widens a spell widens what you see with it
+- A spell never holds your turn for more than about half a second: anything longer finishes behind your next move
+- Turning VFX intensity to 0, or block effects off, switches the block changes off
+
+Loading Screen
+
+- **Fixed long tips running off the screen.** A tip on the loading screen was one line however long it was, so the longer ones lost both ends. They now wrap to the width of the screen
+
+Custom Arenas
+
+- **Fixed addon biomes failing to build an arena.** A biome with a namespaced id such as `mymod:cavern`, which is the kind the modding guide tells you to use, tripped up the arena lookup before it could even fall back to a generated arena. Every built-in biome has a plain id, so none of them were affected
+- **Addon biomes can have their own arenas.** A namespaced biome now loads its schematics from its own namespace: `mymod:cavern` looks in `data/mymod/arenas/cavern/`. Built-in biomes are where they always were, under `data/craftics/arenas/`
+- **A worked example of replacing arenas.** The new `Example_Arena_Addon` folder in the repository is a data pack that replaces three Plains arenas, a walkthrough of doing the same with something you built, and a script that tells you what the game will make of a schematic before you start it
+- The arena pages of the modding guide are rewritten around the Arena Corner Marker and now match what the game does: two markers for a rectangle, three or more for any other shape. Arenas marked the old way, with a diamond and an emerald block, still load
 
 0.4.9
 

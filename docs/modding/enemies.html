@@ -349,6 +349,7 @@ CrafticsAPI.registerEnemy(entry);</code></pre>
           <tr><td><code>MoveAndAttackMob</code></td><td><code>path, targetEntityId, damage</code></td><td>Move, then attack another mob.</td></tr>
           <tr><td><code>AttackWithKnockback</code></td><td><code>damage, knockbackTiles</code></td><td>Attack and push the player N tiles away from the attacker.</td></tr>
           <tr><td><code>MoveAndAttackWithKnockback</code></td><td><code>path, damage, knockbackTiles</code></td><td>Move, then attack with knockback.</td></tr>
+          <tr><td><code>Ram</code></td><td><code>tiles, damage, afterSteps</code></td><td>Strike whatever creature stands on the tiles, for a charge that ends against a body. In a bundle, listed after the move, it lands as step <code>afterSteps</code> of that move does. A mob whose AI overrides <code>whenRammed</code> bursts instead. Never hits a player.</td></tr>
           <tr><td><code>MimicDash</code></td><td><code>dirX, dirZ, damage</code></td><td>Charge in a cardinal direction until blocked; shove players or allies in the path sideways.</td></tr>
           <tr><td><code>MimicTantrum</code></td><td><code>path, damage</code></td><td>Hop through an ordered list of tiles; stop and deal damage if any hop lands on the player.</td></tr>
           <tr><td><code>SummonMinions</code></td><td><code>entityTypeId, count, positions, hp, atk, def</code></td><td>Boss action: spawn minions at the given positions.</td></tr>

@@ -132,6 +132,22 @@ public sealed interface EnemyAction {
     record TileAreaAttack(List<GridPos> tiles, GridPos center, int damage,
                           String effectName) implements EnemyAction {}
 
+    /**
+     * Strike whatever creature stands on {@code tiles} as the mover runs into it.
+     *
+     * <p>For a charge that ends against a body and not on one. Each creature there takes
+     * {@code damage}, once, however many of the tiles it covers. One that bursts when it is
+     * run into ({@link EnemyAI#whenRammed}) does that instead of taking the blow, and the
+     * mover is left out of the blast it set off. A player is never struck by this: a charge
+     * that ends on a player is {@link MoveAndAttackWithKnockback}.
+     *
+     * <p>When it lands is the point of it. In a bundle, listed after the move, it lands as
+     * the mover finishes step number {@code afterSteps} of that move, which is the moment it
+     * gets there. A move cut short of that never lands it. Alone, ahead of the move, or with
+     * {@code afterSteps} of 0, it lands at once.
+     */
+    record Ram(List<GridPos> tiles, int damage, int afterSteps) implements EnemyAction {}
+
     /** Create or transform terrain tiles for a duration (0 = permanent). */
     record CreateTerrain(List<GridPos> tiles, TileType terrainType, int duration) implements EnemyAction {}
 

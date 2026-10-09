@@ -144,7 +144,7 @@ public class AchievementManager {
         if (END_BIOMES.contains(biomeId) && singleType && weaponsUsed.contains(DamageType.PET)) {
             grant(player, Achievement.CLASS_BEAST_TAMER);
         }
-        // Sharpshooter: Shulker Architect with only Ranged
+        // Sharpshooter: the Shadow (End City) with only Ranged
         if ("end_city".equals(biomeId) && singleType && weaponsUsed.contains(DamageType.RANGED)) {
             grant(player, Achievement.CLASS_SHARPSHOOTER);
         }

@@ -127,9 +127,37 @@ public class TileOverlayRenderer {
             return originY + 2.01f;
         }
         if (!above.isAir() && above.isSolidBlock(world, abovePos)) {
-            return originY + 2.01f;
+            return originY + 1.01f + upperSurface(world, originX + tileX, originY, originZ + tileZ, 1);
+        }
+        // A floor laid over a gap, with nothing at body height: the lid of a pit under a
+        // raised floor. The surface is the top of that, not the bottom of the pit.
+        net.minecraft.util.math.BlockPos headPos =
+            new net.minecraft.util.math.BlockPos(originX + tileX, originY + 2, originZ + tileZ);
+        if (above.isAir() && world.getBlockState(headPos).isSolidBlock(world, headPos)) {
+            return originY + 1.01f + upperSurface(world, originX + tileX, originY, originZ + tileZ, 2);
         }
         return originY + 1.01f;
+    }
+
+    /**
+     * How far above the arena floor the top of a raised column is, given a solid block
+     * {@code solidAt} blocks up. A room may stack floors (see {@code ArenaTiers}): a block
+     * on a block is two up, and a stair standing on one is a step and a half. A column
+     * taller than any floor is a wall, and keeps the old answer of one.
+     */
+    private static float upperSurface(net.minecraft.client.world.ClientWorld world,
+                                      int wx, int originY, int wz, int solidAt) {
+        int top = com.crackedgames.craftics.level.ArenaTiers.MAX_TIER;
+        for (int tier = solidAt + 1; tier <= top + 1; tier++) {
+            net.minecraft.util.math.BlockPos pos = new net.minecraft.util.math.BlockPos(wx, originY + tier, wz);
+            net.minecraft.block.BlockState state = world.getBlockState(pos);
+            boolean step = state.getBlock() instanceof net.minecraft.block.StairsBlock
+                || (state.getBlock() instanceof net.minecraft.block.SlabBlock
+                    && state.get(net.minecraft.block.SlabBlock.TYPE) == net.minecraft.block.enums.SlabType.BOTTOM);
+            if (step) return tier <= top ? tier - 0.5f : 1f;
+            if (state.isAir() || !state.isSolidBlock(world, pos)) return tier - 1;
+        }
+        return 1f;
     }
 
     // Quad assembly (shared across versions)

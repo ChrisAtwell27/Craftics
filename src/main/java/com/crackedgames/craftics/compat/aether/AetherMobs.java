@@ -277,6 +277,15 @@ public final class AetherMobs {
         return pool;
     }
 
+    /**
+     * How many items one kill of this creature gives, when that is not left to the roll.
+     * Zero for anything that rolls as usual. A valkyrie gives one Victory Medal and no
+     * more: the Valkyrie Queen counts them, so neither luck nor a doubled drop adds to it.
+     */
+    public static int fixedDropCount(String entityTypeId) {
+        return VALKYRIE.equals(entityTypeId) ? 1 : 0;
+    }
+
     /** Add an item to a loot pool by id, skipping ids that are not registered. */
     private static void addItem(LootPool pool, String itemId, int weight) {
         Identifier id = Identifier.tryParse(itemId);

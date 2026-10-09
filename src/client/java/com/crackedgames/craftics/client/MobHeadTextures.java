@@ -297,6 +297,9 @@ public final class MobHeadTextures {
             case "aether:sheepuff" -> 0xFFE9E9E9;
             case "aether:aerbunny" -> 0xFFDDEFF5;
             case "aether:aerwhale" -> 0xFFA9C8E0;
+            case "aether:slider" -> 0xFF8C8F96;
+            case "aether:valkyrie_queen" -> 0xFFF5E6A8;
+            case "aether:sun_spirit" -> 0xFFF2A21E;
             default -> 0xFF888888;
         };
     }

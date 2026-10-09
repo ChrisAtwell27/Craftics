@@ -1,0 +1,17 @@
+{
+  "id": "craftics:boss_intro_aether_gold_dungeon",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "Something vast and burning turns to face you.",
+    "\"You are certainly a brave soul to have entered this chamber.\"",
+    "\"Your presence annoys me. Do you not fear my burning aura?\"",
+    "\"I am a sun spirit, embodiment of Aether's eternal daylight.\"",
+    "\"As long as I am alive, the sun will never set on this world.\"",
+    "\"My body burns with the anger of a thousand beasts.\"",
+    "\"No man, hero, or villain can harm me. You are no exception.\"",
+    "\"This is your final warning. Leave now, or prepare to burn.\"",
+    "\"As you wish, your death will be slow and agonizing.\""
+  ],
+  "choices": []
+}

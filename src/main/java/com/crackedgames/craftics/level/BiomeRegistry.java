@@ -75,20 +75,10 @@ public class BiomeRegistry {
         for (int i = 0; i < BIOMES.size(); i++) {
             BiomeTemplate old = BIOMES.get(i);
             if (old.startLevel != currentLevel) {
-                BIOMES.set(i, new BiomeTemplate(
-                    old.biomeId, old.displayName, currentLevel, old.levelCount,
-                    old.baseWidth, old.baseHeight, old.widthGrowth, old.heightGrowth,
-                    old.floorBlocks, old.obstacleBlocks,
-                    old.baseObstacleDensity, old.obstacleDensityGrowth,
-                    old.passiveMobs, old.hostileMobs, old.boss,
-                    old.lootItems, old.lootWeights,
-                    old.enchantmentLootIds, old.enchantmentLootWeights,
-                    old.nightLevel, old.environmentId,
-                    // Carry the biome-effect fields through the startLevel-renumber rebuild -
-                    // the 20-arg constructor would default them to null/0 and silently drop the
-                    // weather (the "no rain/sandstorm in-game" bug).
-                    old.biomeEffectId, old.biomeEffectStartLevel
-                ));
+                // withStartLevel copies every field, the biome-effect ones and the prelude
+                // included. Rebuilding it by hand here once dropped the effect fields and
+                // silently lost the weather (the "no rain/sandstorm in-game" bug).
+                BIOMES.set(i, old.withStartLevel(currentLevel));
             }
             currentLevel += BIOMES.get(i).levelCount;
         }

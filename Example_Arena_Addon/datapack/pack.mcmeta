@@ -1,0 +1,7 @@
+{
+  "pack": {
+    "description": "Craftics example: replaces Plains arenas 1 and 2 and the Plains boss room",
+    "pack_format": 48,
+    "supported_formats": [48, 71]
+  }
+}

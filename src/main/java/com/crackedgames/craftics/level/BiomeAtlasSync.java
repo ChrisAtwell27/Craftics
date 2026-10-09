@@ -53,7 +53,10 @@ public final class BiomeAtlasSync {
         CrafticsSavedData.PlayerData pd = data.getPlayerData(island);
 
         List<BiomeAtlasCodec.Entry> entries = new ArrayList<>();
-        for (BiomeTemplate biome : BiomeRegistry.getAllBiomes()) {
+        for (BiomeTemplate registered : BiomeRegistry.getAllBiomes()) {
+            // With its prelude folded in: the atlas lists what a biome holds, and the levels
+            // a player crosses to reach the dungeon are part of that.
+            BiomeTemplate biome = registered.withPreludeFolded();
             entries.add(entryFor(biome, pd.isBiomeDiscovered(biome.biomeId),
                 itemIds(biome.lootItems), BiomeAtlasSync::liveMobDrops));
         }

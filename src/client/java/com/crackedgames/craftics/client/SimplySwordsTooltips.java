@@ -74,9 +74,13 @@ public final class SimplySwordsTooltips {
             case "katana" -> new String[]{"25% (+Slashing) chance to inflict Bleed"};
             case "rapier" -> new String[]{"15% riposte: a second thrust at full damage"};
             case "cutlass" -> new String[]{"20% chance to sweep an adjacent enemy"};
+            // Both read off their constants: the sai line said 75% long after it became 50%.
             case "sai" -> new String[]{
-                "§6Dual-wield two sais: §esecond hit at 75% for 1 AP"};
-            case "twinblade" -> new String[]{"Back blade always follows up at 50% damage"};
+                "§6Dual-wield two sais: §esecond hit at "
+                    + BasicWeaponsTooltips.percent(SimplySwordsCompat.SAI_OFFHAND_MULT) + " for 1 AP"};
+            case "twinblade" -> new String[]{
+                "Back blade always follows up at "
+                    + BasicWeaponsTooltips.percent(SimplySwordsCompat.TWINBLADE_SECOND_MULT) + " damage"};
             case "spear" -> new String[]{
                 "Reach (2 tiles), lower base damage",
                 "§e" + com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat

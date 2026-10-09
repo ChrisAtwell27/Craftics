@@ -33,4 +33,30 @@ public final class ToolTiers {
         if (path.contains("stone") || path.contains("copper")) return STONE;
         return WOOD;
     }
+
+    /**
+     * How much of a struck combatant's full health one swing of a pickaxe of this tier takes,
+     * in thousandths, on top of the tool's own flat damage.
+     *
+     * <p>A pickaxe strike is the only thing that hurts something a pickaxe alone can hurt, so
+     * it has to keep pace with a health pool that grows with every biome cleared. A flat
+     * number cannot: by the depth the Aether opens at, a boss has hundreds of health and the
+     * best pickaxe's flat damage barely clears its armour. A share does, at any depth: about
+     * 25 swings of a diamond pickaxe and 35 of an iron one against the Slider, whose armour
+     * takes two fifths off every hit.
+     */
+    public static int strikeShare(int tier) {
+        return switch (tier) {
+            case NETHERITE -> 60;
+            case DIAMOND -> 50;
+            case IRON -> 38;
+            case STONE -> 28;
+            default -> 20;
+        };
+    }
+
+    /** The health a swing takes by share alone: see {@link #strikeShare}. Never below one. */
+    public static int strikeShareDamage(int tier, int targetMaxHp) {
+        return Math.max(1, targetMaxHp * strikeShare(tier) / 1000);
+    }
 }

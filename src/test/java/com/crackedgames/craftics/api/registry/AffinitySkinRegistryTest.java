@@ -37,6 +37,48 @@ class AffinitySkinRegistryTest {
     }
 
     @Test
+    void shortDescription_dropsOnlyTheWeaponWeightNote() {
+        // The level-up screen says what the three numbers mean once, not on every row.
+        for (PlayerProgression.Affinity affinity : PlayerProgression.Affinity.values()) {
+            String shortened = AffinitySkinRegistry.shortDescriptionOf(affinity);
+            assertFalse(shortened.contains(PlayerProgression.Affinity.WEAPON_SCALING_NOTE), affinity.name());
+            assertFalse(shortened.contains("  "), affinity.name() + " left a double space: " + shortened);
+            assertFalse(shortened.contains(" ,"), affinity.name() + " left a stray comma: " + shortened);
+            assertEquals(affinity.description.contains(PlayerProgression.Affinity.WEAPON_SCALING_NOTE),
+                AffinitySkinRegistry.scalesWithWeapon(affinity), affinity.name());
+        }
+        assertEquals("+2/3/4 dmg, +3/5/7% sweep",
+            AffinitySkinRegistry.shortDescriptionOf(PlayerProgression.Affinity.SLASHING));
+        assertEquals("+2/3/4 dmg, +3% counterattack",
+            AffinitySkinRegistry.shortDescriptionOf(PlayerProgression.Affinity.PHYSICAL));
+        assertEquals(PlayerProgression.Affinity.PET.description,
+            AffinitySkinRegistry.shortDescriptionOf(PlayerProgression.Affinity.PET), "nothing to drop");
+        assertFalse(AffinitySkinRegistry.scalesWithWeapon(PlayerProgression.Affinity.PET));
+    }
+
+    @Test
+    void perk_isAWordForEveryAffinity_andGoesWhenASkinDescribesIt() {
+        for (PlayerProgression.Affinity affinity : PlayerProgression.Affinity.values()) {
+            String perk = AffinitySkinRegistry.perkOf(affinity);
+            assertNotNull(perk, affinity.name());
+            assertTrue(perk.length() <= 16, affinity.name() + " is not a word or two: " + perk);
+        }
+        // Renamed only: the mechanic is still Craftics' own, so its word and numbers stand.
+        AffinitySkinRegistry.reskin(PlayerProgression.Affinity.BLUNT, AffinitySkin.named("Crushing"));
+        assertEquals("Stun", AffinitySkinRegistry.perkOf(PlayerProgression.Affinity.BLUNT));
+        assertTrue(AffinitySkinRegistry.scalesWithWeapon(PlayerProgression.Affinity.BLUNT));
+        // Described in the skin's own words: nothing of ours is added to them.
+        AffinitySkinRegistry.reskin(PlayerProgression.Affinity.SLASHING,
+            AffinitySkin.of("Physical", "!", "+3 dmg to physical moves (1/2/3 AP weapon)"));
+        assertNull(AffinitySkinRegistry.perkOf(PlayerProgression.Affinity.SLASHING));
+        assertFalse(AffinitySkinRegistry.scalesWithWeapon(PlayerProgression.Affinity.SLASHING));
+        assertEquals("+3 dmg to physical moves (1/2/3 AP weapon)",
+            AffinitySkinRegistry.shortDescriptionOf(PlayerProgression.Affinity.SLASHING));
+        assertNull(AffinitySkinRegistry.perkOf(null));
+        assertEquals("", AffinitySkinRegistry.shortDescriptionOf(null));
+    }
+
+    @Test
     void unskinned_damageTypeKeepsItsOwnName() {
         assertEquals(DamageType.SLASHING.displayName,
             AffinitySkinRegistry.nameOf(DamageType.SLASHING));

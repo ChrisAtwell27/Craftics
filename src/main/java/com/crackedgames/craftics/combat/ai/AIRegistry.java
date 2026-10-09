@@ -150,7 +150,7 @@ public class AIRegistry {
         registerBoss("boss:warped_forest", VoidWalkerAI::new);
         registerBoss("boss:basalt_deltas", WitherBossAI::new);
         registerBoss("boss:outer_end_islands", VoidHeraldAI::new);
-        registerBoss("boss:end_city", ShulkerArchitectAI::new);
+        registerBoss("boss:end_city", com.crackedgames.craftics.combat.shadow.ShadowCloneAI::new);
         registerBoss("boss:chorus_grove", ChorusMindAI::new);
         registerBoss("boss:dragons_nest", DragonAI::new);
 

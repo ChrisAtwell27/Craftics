@@ -1,0 +1,11 @@
+{
+  "id": "craftics:boss_intro_aether_bronze_dungeon",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "The passage opens on a block of carved stone, two tiles to a side.",
+    "It does not stir. A blade would only ring off it.",
+    "Stone like this is not fought. It is quarried."
+  ],
+  "choices": []
+}

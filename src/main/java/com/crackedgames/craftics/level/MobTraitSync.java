@@ -61,7 +61,8 @@ public final class MobTraitSync {
         for (String key : MobTraits.declaredKeys()) {
             if (isEntityTypeKey(key)) addMob(out, key, key);
         }
-        for (BiomeTemplate biome : BiomeRegistry.getAllBiomes()) {
+        for (BiomeTemplate registered : BiomeRegistry.getAllBiomes()) {
+            BiomeTemplate biome = registered.withPreludeFolded();
             addPool(out, biome.hostileMobs);
             addPool(out, biome.passiveMobs);
         }

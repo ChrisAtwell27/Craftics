@@ -47,6 +47,13 @@ public class BossWarning {
      *  diamond (see {@code AoeShapes.filledDiamond}) so the telegraph shows the
      *  whole area the attack reaches from the mark, not just the mark itself. */
     private final int trackRadius;
+    /** Explicit per-tile arrows, or null for "every tile, pointing (dirX, dirZ)". See {@link #withArrows}. */
+    private java.util.Map<GridPos, int[]> arrows = null;
+    /** Recomputes the tiles and arrows on every read, or null for a warning that is fixed. See {@link #withLive}. */
+    private java.util.function.Supplier<Live> live = null;
+
+    /** What a live warning shows right now: its tiles, and the arrow on each tile that carries one. */
+    public record Live(List<GridPos> tiles, java.util.Map<GridPos, int[]> arrows) {}
 
     public BossWarning(int bossEntityId, WarningType type, List<GridPos> affectedTiles,
                        int turnsUntilResolve, EnemyAction resolveAction, int color) {
@@ -131,6 +138,10 @@ public class BossWarning {
      *  read, so the sync/highlight path repaints the telegraph as the mark walks. A dead or
      *  absent mark resolves to an empty list and the warning paints nothing. */
     public List<GridPos> getAffectedTiles() {
+        if (live != null) {
+            Live now = live.get();
+            return now != null && now.tiles() != null ? now.tiles() : List.of();
+        }
         if (tracker != null) {
             GridPos live = tracker.apply(trackedId);
             if (live == null) return List.of();
@@ -150,6 +161,45 @@ public class BossWarning {
     public int getDirX() { return dirX; }
     public int getDirZ() { return dirZ; }
     public boolean hasDirection() { return dirX != 0 || dirZ != 0; }
+
+    /**
+     * Say exactly which tiles carry an arrow, and which way each points. Tiles left out are
+     * still painted, without one.
+     *
+     * <p>For a telegraph whose tiles do not all mean the same thing: a charge with a blast
+     * either side of it, where the arrows mark the ground the charge itself crosses, or a
+     * route that turns a corner, where each leg points its own way. Returns this warning.
+     */
+    public BossWarning withArrows(java.util.Map<GridPos, int[]> arrowsByTile) {
+        this.arrows = arrowsByTile == null ? null : java.util.Map.copyOf(arrowsByTile);
+        return this;
+    }
+
+    /**
+     * Make this warning live: its tiles and arrows are asked for again every time they are
+     * read, so the paint follows the board as it changes instead of showing the board as it
+     * was when the warning was raised. For a telegraph whose danger depends on things the
+     * players can change between its being shown and its landing: a wall they break, a block
+     * they place, where their pets end up.
+     *
+     * <p>The source is called often: once for the tiles and once per tile for its arrow, on
+     * every sync. It has to answer from a cache whenever the board has not changed. Returns
+     * this warning.
+     */
+    public BossWarning withLive(java.util.function.Supplier<Live> source) {
+        this.live = source;
+        return this;
+    }
+
+    /** The arrow on {@code tile} as {dx, dz}, or null when it carries none. */
+    public int[] arrowAt(GridPos tile) {
+        if (live != null) {
+            Live now = live.get();
+            return now != null && now.arrows() != null ? now.arrows().get(tile) : null;
+        }
+        if (arrows != null) return arrows.get(tile);
+        return hasDirection() ? new int[]{dirX, dirZ} : null;
+    }
 
     /** Tick down the warning. Returns true if it should resolve now. */
     public boolean tick() {

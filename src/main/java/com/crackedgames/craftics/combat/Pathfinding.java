@@ -878,6 +878,27 @@ public class Pathfinding {
         return findClosestReachableTo(arena, from, target, maxSteps, self, entitySize, entitySize);
     }
 
+    /**
+     * {@code findClosestReachableTo} for something that floats: obstacle tiles count as open
+     * ground, to cross and to stop on. With {@code ignoreObstacles} false this is exactly the
+     * footprint variant below.
+     */
+    public static GridPos findClosestReachableTo(GridArena arena, GridPos from, GridPos target,
+                                                   int maxSteps, CombatEntity self, int sizeX, int sizeZ,
+                                                   boolean ignoreObstacles) {
+        if (!ignoreObstacles) return findClosestReachableTo(arena, from, target, maxSteps, self, sizeX, sizeZ);
+        GridPos best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (GridPos pos : getReachableTiles(arena, from, maxSteps, sizeX, sizeZ, self, false, true, false)) {
+            int d = CombatEntity.minDistanceFromSizedEntity(pos, sizeX, sizeZ, target);
+            if (d < bestDist) {
+                bestDist = d;
+                best = pos;
+            }
+        }
+        return best;
+    }
+
     /** Rectangular-footprint variant of findClosestReachableTo. */
     public static GridPos findClosestReachableTo(GridArena arena, GridPos from, GridPos target,
                                                    int maxSteps, CombatEntity self, int sizeX, int sizeZ) {

@@ -279,7 +279,6 @@ public final class MobTraits {
         declare("boss:nether_wastes_g1", ETHEREAL);
         declare("boss:warped_forest", ETHEREAL);      // Void Walker
         declare("boss:outer_end_islands", ETHEREAL);  // Void Herald
-        declare("boss:end_city", ETHEREAL);           // Shulker Architect
         declare("boss:chorus_grove", ETHEREAL);       // Chorus Mind
 
         // Acrobatic: the AI emits CeilingAscend.

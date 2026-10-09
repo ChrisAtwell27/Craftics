@@ -872,6 +872,9 @@ public class SchemLoader {
             // resolve to AIR on older shards.
             String remapped = com.crackedgames.craftics.compat.palegardenbackport
                 .PaleGardenBackportCompat.remapBlockId(plainId);
+            // Aether dungeon blocks that act on whoever walks over them are laid as the
+            // plain stone they look like: an arena floor is walked on every turn.
+            remapped = com.crackedgames.craftics.compat.aether.AetherCompat.arenaSafeBlockId(remapped);
             Block block = Registries.BLOCK.get(Identifier.of(remapped));
             if (block != Blocks.AIR || "minecraft:air".equals(remapped)) {
                 if (blockStr.contains("[")) {

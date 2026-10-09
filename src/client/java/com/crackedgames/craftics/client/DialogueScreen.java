@@ -49,6 +49,43 @@ public class DialogueScreen extends Screen {
     /** Set once a choice / dismiss has been sent (or the server superseded this box).
      *  Guards the close() safety net below from double-sending or firing on progression. */
     private boolean finished = false;
+    /** The server wants an answer, not a dismissal (DialoguePayload.FLAG_MANDATORY). */
+    private final boolean mandatory;
+
+    /**
+     * The mandatory dialogue the player still owes an answer to, or null.
+     *
+     * <p>Same shape, and the same reason, as {@link VictoryChoiceScreen}'s reopen guard.
+     * {@code shouldCloseOnEsc()} is already false, but {@code MinecraftClient.setScreen} does
+     * not ask a screen's permission: anything that opens or clears one replaces this box
+     * silently. An ordinary dialogue answers that by telling the server it was dismissed. A
+     * mandatory one has no such answer to give, because being closed is not one of its
+     * choices, so it sends nothing and {@link #reopenIfLost} puts the same box back.
+     *
+     * <p>Cleared the moment a choice is made, when the server replaces the box with something
+     * else, and by the combat enter/exit handlers, so it can never fight a real screen change.
+     */
+    private static DialogueScreen awaitingAnswer;
+
+    /** Arm the re-open guard for a freshly opened mandatory dialogue. */
+    public static void armReopen(DialogueScreen screen) {
+        awaitingAnswer = screen;
+    }
+
+    /** Disarm: it was answered, or the server moved on without an answer. */
+    public static void clearReopen() {
+        awaitingAnswer = null;
+    }
+
+    /** Put a mandatory dialogue back if it was lost before it was answered. */
+    public static void reopenIfLost(net.minecraft.client.MinecraftClient client) {
+        if (awaitingAnswer == null || client == null) return;
+        // Left the world: the question died with the session.
+        if (client.world == null) { awaitingAnswer = null; return; }
+        if (client.currentScreen != null) return;
+        client.setScreen(awaitingAnswer);
+        client.mouse.unlockCursor();
+    }
 
     // --- Piglin barter stepper state ---------------------------------------
     // The barter intro narration arrives as a normal DialoguePayload (opening a
@@ -93,6 +130,12 @@ public class DialogueScreen extends Screen {
     public DialogueScreen(String speakerId, List<String> lines,
                           List<String> choiceLabels, List<String> choiceActions,
                           int background, List<String> choiceTooltips) {
+        this(speakerId, lines, choiceLabels, choiceActions, background, choiceTooltips, false);
+    }
+
+    public DialogueScreen(String speakerId, List<String> lines,
+                          List<String> choiceLabels, List<String> choiceActions,
+                          int background, List<String> choiceTooltips, boolean mandatory) {
         super(Text.literal("Dialogue"));
         this.speakerId = speakerId;
         this.lines = lines;
@@ -100,6 +143,9 @@ public class DialogueScreen extends Screen {
         this.choiceActions = choiceActions;
         this.choiceTooltips = choiceTooltips == null ? List.of() : choiceTooltips;
         this.background = background;
+        // With nothing to pick there is no answer to hold out for, and a box that could be
+        // neither answered nor dismissed would trap the player behind it.
+        this.mandatory = mandatory && !choiceLabels.isEmpty();
         // A dialogue with no lines is still "complete" so choices show immediately.
         if (lines.isEmpty()) {
             this.lineComplete = true;
@@ -290,6 +336,7 @@ public class DialogueScreen extends Screen {
 
     private void choose(String action) {
         finished = true;
+        if (awaitingAnswer == this) awaitingAnswer = null;
         ClientPlayNetworking.send(new DialogueChoicePayload(action));
         this.close();
     }
@@ -299,7 +346,11 @@ public class DialogueScreen extends Screen {
      *  normal flow progression for the player bailing out. */
     public void markSuperseded() {
         finished = true;
+        if (awaitingAnswer == this) awaitingAnswer = null;
     }
+
+    /** Whether this box has to be answered rather than dismissed. */
+    public boolean isMandatory() { return mandatory; }
 
     @Override
     public void removed() {
@@ -309,7 +360,10 @@ public class DialogueScreen extends Screen {
         // per-player event / intro / trader gate releases and the rest of the party isn't
         // left softlocked waiting on us. markSuperseded() suppresses this when the server
         // is simply swapping in the next screen.
-        if (!finished) {
+        //
+        // A mandatory box is the exception: "dismissed" is not an answer the server will
+        // take for it, so nothing is sent and reopenIfLost() brings the box back.
+        if (!finished && !mandatory) {
             finished = true;
             ClientPlayNetworking.send(new DialogueChoicePayload(DialogueChoicePayload.ACTION_DISMISS));
         }

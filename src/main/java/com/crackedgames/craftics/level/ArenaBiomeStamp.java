@@ -49,6 +49,35 @@ public final class ArenaBiomeStamp {
      * next entered. The mismatch path already wipes and rebuilds cleanly, and each rebuild writes
      * a stamp, so it happens once and never again.
      */
+    /**
+     * A stamp that also says which part of its biome a level is and how big it was built.
+     *
+     * <p>For a biome whose levels are not all one kind of place: one that opens with a
+     * prelude, or gives its boss a room of its own size. A name alone cannot tell a cached
+     * dungeon room from the open ground that level is now meant to be, or a room built to
+     * last month's size from one built to this month's. Biomes built all of one piece keep
+     * the bare name, so nothing of theirs is rebuilt.
+     *
+     * @param part {@code p} for a prelude level, {@code b} for the boss's own room, {@code r}
+     *             for any other room of the biome
+     */
+    public static String withLayout(String effectiveBiomeId, char part, int width, int height) {
+        return effectiveBiomeId + "@" + part + width + "x" + height;
+    }
+
+    /**
+     * A stamp that also says how its room was laid down.
+     *
+     * <p>For rooms kept exactly as their builder made them. When what "exactly" means
+     * changes, a room built the old way is the wrong room: the sweep that cleared
+     * everything two blocks above the floor took a throne and a whole second floor with
+     * it. A higher number here has such a room built again the next time it is entered,
+     * once, like any other mismatch.
+     */
+    public static String withRevision(String stamp, int revision) {
+        return stamp + "#" + revision;
+    }
+
     public static boolean stampMatches(String cachedStamp, String wantedStamp) {
         if (cachedStamp == null) return false;
         return cachedStamp.equals(wantedStamp);

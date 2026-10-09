@@ -1,5 +1,6 @@
 package com.crackedgames.craftics.client;
 
+import com.crackedgames.craftics.api.registry.AffinitySkinRegistry;
 import com.crackedgames.craftics.client.guide.GuideButton;
 import com.crackedgames.craftics.client.guide.GuideTheme;
 import com.crackedgames.craftics.combat.PlayerProgression;
@@ -8,6 +9,7 @@ import com.crackedgames.craftics.network.StatChoicePayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.text.OrderedText;
 import net.minecraft.text.Text;
 
 /**
@@ -36,6 +38,12 @@ public class LevelUpScreen extends Screen {
     // Panel sizing (header/footer/pad fixed; card + panel sizes computed in layout()).
     private static final int HEADER_H   = 45;   // lines above the card list
     private static final int FOOTER_H   = 20;   // description tooltip row below cards
+    private static final int AFFINITY_FOOTER_H = 34;   // numbers for the hovered affinity, and what they mean
+
+    // The panel sits under the screen's dimmed background, where the book's darker inks all
+    // but vanish. These are the light greys AffinityRespecScreen reads by on the same panel.
+    private static final int TEXT_SOFT  = 0xFFC8C8C8;
+    private static final int TEXT_FAINT = 0xFF9A9A9A;
     private static final int PANEL_PAD  = 12;   // top/bottom padding inside panel
 
     // Responsive sizing, recomputed each layout() so the panel never clips off-screen
@@ -119,7 +127,11 @@ public class LevelUpScreen extends Screen {
     private int panelHeight() {
         int cards = cardCount();
         int listH = cards * (cardH + cardGap) - cardGap;
-        return PANEL_PAD + HEADER_H + listH + FOOTER_H + PANEL_PAD;
+        return PANEL_PAD + HEADER_H + listH + footerH() + PANEL_PAD;
+    }
+
+    private int footerH() {
+        return phase == Phase.AFFINITY_CHOICE ? AFFINITY_FOOTER_H : FOOTER_H;
     }
 
     /** Recompute responsive card/panel sizing so the panel fits the current window.
@@ -130,7 +142,7 @@ public class LevelUpScreen extends Screen {
         panelW = cardW + 32;
 
         int cards = cardCount();
-        int chrome = PANEL_PAD * 2 + HEADER_H + FOOTER_H;
+        int chrome = PANEL_PAD * 2 + HEADER_H + footerH();
         int avail = this.height - 16; // small margin top+bottom (plus the drawPanel bevel)
         int natural = chrome + cards * (CARD_HEIGHT + CARD_GAP) - CARD_GAP;
         if (natural <= avail) {
@@ -209,8 +221,11 @@ public class LevelUpScreen extends Screen {
             PlayerProgression.Affinity affinity = affinities[i];
             int y = startY + i * (cardH + cardGap);
 
-            String btnText = com.crackedgames.craftics.api.registry.AffinitySkinRegistry.iconOf(affinity) + " " + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.nameOf(affinity)
-                + " - " + com.crackedgames.craftics.api.registry.AffinitySkinRegistry.descriptionOf(affinity);
+            // A name and a word. The numbers used to ride along on every button, and eight
+            // rows of them ran off both ends: they are shown for the row under the mouse.
+            String perk = AffinitySkinRegistry.perkOf(affinity);
+            String btnText = AffinitySkinRegistry.iconOf(affinity) + " " + AffinitySkinRegistry.nameOf(affinity)
+                + (perk != null ? " - " + perk : "");
 
             final int affinityIndex = i;
             GuideButton btn = GuideButton.of(
@@ -267,7 +282,7 @@ public class LevelUpScreen extends Screen {
         if (phase == Phase.STAT_CHOICE) {
             drawHeaderPop(context, "★ LEVEL UP! ★", centerX, headerY, elapsed);
             GuideTheme.drawCentered(context, this.textRenderer,
-                "Level " + playerLevel, centerX, headerY + 14, GuideTheme.INK);
+                "Level " + playerLevel, centerX, headerY + 14, TEXT_SOFT);
             String pointsText = unspentPoints > 0
                 ? unspentPoints + " point" + (unspentPoints != 1 ? "s" : "") + " to spend"
                 : "Choose a stat to upgrade!";
@@ -275,11 +290,8 @@ public class LevelUpScreen extends Screen {
                 pointsText, centerX, headerY + 28, GuideTheme.INK_SOFT);
         } else {
             drawHeaderPop(context, "⚔ CHOOSE AFFINITY ⚔", centerX, headerY, elapsed);
-            GuideTheme.drawCentered(context, this.textRenderer,
-                "Permanent +1 damage & special effect boost", centerX, headerY + 14, GuideTheme.INK);
-            GuideTheme.drawCentered(context, this.textRenderer,
-                "Each point increases damage and unique ability chance",
-                centerX, headerY + 28, GuideTheme.INK_SOFT);
+            drawWrappedCentered(context, "One permanent point. Hover an affinity for its numbers.",
+                centerX, headerY + 16, panelW - 16, TEXT_SOFT, 2);
         }
 
         // 4. Stat value labels + bars (stat choice only)
@@ -320,6 +332,41 @@ public class LevelUpScreen extends Screen {
                 }
             }
         }
+
+        // 5. The numbers for the affinity under the mouse, below the list (affinity choice only)
+        if (phase == Phase.AFFINITY_CHOICE) {
+            PlayerProgression.Affinity[] affinities = PlayerProgression.Affinity.values();
+            int descY = startY + affinities.length * (cardH + cardGap) + 4;
+            for (int i = 0; i < affinities.length; i++) {
+                int y = startY + i * (cardH + cardGap);
+                if (mouseX < centerX - cardW / 2 || mouseX > centerX + cardW / 2
+                        || mouseY < y || mouseY > y + cardH) continue;
+                PlayerProgression.Affinity affinity = affinities[i];
+                int nextY = drawWrappedCentered(context, AffinitySkinRegistry.shortDescriptionOf(affinity),
+                    centerX, descY, cardW, TEXT_SOFT, 2);
+                // Said once, here, for the row it applies to, instead of on every button.
+                if (AffinitySkinRegistry.scalesWithWeapon(affinity)) {
+                    drawWrappedCentered(context, "Three numbers: for a 1, 2 or 3 AP weapon",
+                        centerX, nextY + 1, cardW, TEXT_FAINT, 1);
+                }
+                break;
+            }
+        }
+    }
+
+    /**
+     * Centred text wrapped to {@code maxW}, at most {@code maxLines} lines. Returns the y the
+     * next line would start at.
+     */
+    private int drawWrappedCentered(DrawContext ctx, String text, int centerX, int y, int maxW,
+                                    int color, int maxLines) {
+        java.util.List<OrderedText> lines = this.textRenderer.wrapLines(Text.literal(text), maxW);
+        for (int i = 0; i < Math.min(maxLines, lines.size()); i++) {
+            OrderedText line = lines.get(i);
+            ctx.drawText(this.textRenderer, line, centerX - this.textRenderer.getWidth(line) / 2, y, color, false);
+            y += 10;
+        }
+        return y;
     }
 
     /** Gold header with an ease-out-back pop-in over the first ~320ms on open. */

@@ -2,49 +2,173 @@
   "id": "aether_gold_dungeon",
   "name": "Gold Dungeon",
   "order": 103,
-  "levels": 7,
-  "grid": { "base_width": 11, "base_height": 11, "width_growth": 1, "height_growth": 1 },
-  "floor_blocks": ["aether:hellfire_stone", "aether:light_hellfire_stone"],
-  "obstacle_blocks": ["aether:holystone", "minecraft:netherrack"],
-  "obstacle_density": 0.04,
-  "obstacle_density_growth": 0.01,
+  "levels": 1,
+  "grid": {
+    "base_width": 15,
+    "base_height": 15,
+    "width_growth": 0,
+    "height_growth": 0
+  },
+  "boss_grid": {
+    "width": 15,
+    "height": 15
+  },
+  "floor_blocks": [
+    "aether:hellfire_stone",
+    "aether:light_hellfire_stone"
+  ],
+  "obstacle_blocks": [
+    "aether:holystone",
+    "minecraft:netherrack"
+  ],
+  "obstacle_density": 0.05,
+  "obstacle_density_growth": 0.0,
   "environment": "aether_gold",
   "enemies": {
     "passive": [],
     "hostile": [
-      {"type": "aether:fire_minion", "weight": 6, "hp": 20, "attack": 9, "defense": 1, "speed": 3},
-      {"type": "aether:cockatrice", "weight": 4, "hp": 16, "attack": 6, "defense": 0, "range": 3},
-      {"type": "aether:golden_swet", "weight": 3, "hp": 18, "attack": 6, "defense": 0},
-      {"type": "aether:zephyr", "weight": 2, "hp": 10, "attack": 1, "defense": 0, "range": 5, "speed": 1},
-      {"type": "aether:aechor_plant", "weight": 3, "hp": 16, "attack": 6, "defense": 1, "range": 3},
-      {"type": "aether:evil_whirlwind", "weight": 2, "hp": 18, "attack": 7, "defense": 0}
+      {
+        "type": "aether:fire_minion",
+        "weight": 6,
+        "hp": 20,
+        "attack": 9,
+        "defense": 1,
+        "speed": 3
+      },
+      {
+        "type": "aether:mimic",
+        "weight": 2,
+        "hp": 24,
+        "attack": 8,
+        "defense": 2
+      },
+      {
+        "type": "aether:evil_whirlwind",
+        "weight": 2,
+        "hp": 18,
+        "attack": 7,
+        "defense": 0
+      }
     ],
-    "boss": {"type": "aether:sun_spirit", "hp": 110, "attack": 12, "defense": 4, "range": 1, "speed": 2}
+    "boss": {
+      "type": "aether:sun_spirit",
+      "hp": 110,
+      "attack": 12,
+      "defense": 4,
+      "range": 1,
+      "speed": 2
+    }
   },
   "loot": [
-    {"item": "aether:ambrosium_shard", "weight": 6},
-    {"item": "aether:golden_gummy_swet", "weight": 5},
-    {"item": "aether:enchanted_berry", "weight": 5},
-    {"item": "aether:healing_stone", "weight": 4},
-    {"item": "aether:icestone", "weight": 3},
-    {"item": "aether:enchanted_gravitite", "weight": 2},
-    {"item": "aether:gravitite_sword", "weight": 3},
-    {"item": "aether:gravitite_axe", "weight": 3},
-    {"item": "aether:gravitite_helmet", "weight": 2},
-    {"item": "aether:gravitite_chestplate", "weight": 2},
-    {"item": "aether:gravitite_leggings", "weight": 2},
-    {"item": "aether:gravitite_boots", "weight": 2},
-    {"item": "aether:gravitite_gloves", "weight": 2},
-    {"item": "aether:ice_ring", "weight": 2},
-    {"item": "aether:ice_pendant", "weight": 2},
-    {"item": "aether:iron_bubble", "weight": 2},
-    {"item": "aether:vampire_blade", "weight": 2},
-    {"item": "aether:pig_slayer", "weight": 2},
-    {"item": "aether:phoenix_helmet", "weight": 1},
-    {"item": "aether:phoenix_chestplate", "weight": 1},
-    {"item": "aether:phoenix_leggings", "weight": 1},
-    {"item": "aether:phoenix_boots", "weight": 1},
-    {"item": "aether:phoenix_gloves", "weight": 1},
-    {"item": "aether:life_shard", "weight": 1}
+    {
+      "item": "aether:ambrosium_shard",
+      "weight": 8
+    },
+    {
+      "item": "aether:zanite_gemstone",
+      "weight": 5
+    },
+    {
+      "item": "aether:enchanted_gravitite",
+      "weight": 4
+    },
+    {
+      "item": "aether:golden_amber",
+      "weight": 4
+    },
+    {
+      "item": "aether:icestone",
+      "weight": 4
+    },
+    {
+      "item": "aether:holystone",
+      "weight": 3
+    },
+    {
+      "item": "aether:enchanted_dart",
+      "weight": 3
+    },
+    {
+      "item": "aether:enchanted_berry",
+      "weight": 4
+    },
+    {
+      "item": "aether:healing_stone",
+      "weight": 4
+    },
+    {
+      "item": "aether:golden_gummy_swet",
+      "weight": 3
+    },
+    {
+      "item": "aether:white_apple",
+      "weight": 2
+    },
+    {
+      "item": "aether:ice_ring",
+      "weight": 1
+    },
+    {
+      "item": "aether:ice_pendant",
+      "weight": 1
+    },
+    {
+      "item": "aether:zanite_ring",
+      "weight": 1
+    },
+    {
+      "item": "aether:gravitite_gloves",
+      "weight": 1
+    },
+    {
+      "item": "aether:red_cape",
+      "weight": 1
+    }
+  ],
+  "boss_loot": [
+    {
+      "item": "aether:phoenix_helmet",
+      "weight": 2
+    },
+    {
+      "item": "aether:phoenix_chestplate",
+      "weight": 2
+    },
+    {
+      "item": "aether:phoenix_leggings",
+      "weight": 2
+    },
+    {
+      "item": "aether:phoenix_boots",
+      "weight": 2
+    },
+    {
+      "item": "aether:phoenix_gloves",
+      "weight": 2
+    },
+    {
+      "item": "aether:vampire_blade",
+      "weight": 3
+    },
+    {
+      "item": "aether:pig_slayer",
+      "weight": 3
+    },
+    {
+      "item": "aether:candy_cane_sword",
+      "weight": 1
+    },
+    {
+      "item": "aether:iron_bubble",
+      "weight": 2
+    },
+    {
+      "item": "aether:life_shard",
+      "weight": 3
+    },
+    {
+      "item": "aether:regeneration_stone",
+      "weight": 1
+    }
   ]
 }

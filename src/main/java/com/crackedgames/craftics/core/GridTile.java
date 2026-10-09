@@ -10,6 +10,10 @@ public class GridTile {
     private Block restoreBlockType; // original block before temporary terrain override
     private int turnsRemaining; // for temporary tiles like fire
     private boolean permanent; // permanent obstacles cannot be broken by pickaxes
+    // Whole blocks this tile stands above where its type alone would put it: 0 on the
+    // arena's own floor and its first raised one, 1 on a second floor reached by a second
+    // flight of stairs. Only STAIR and ELEVATED read it (GridArena.getEntityY).
+    private int rise;
 
     public GridTile(TileType type, Block blockType) {
         this.type = type;
@@ -104,6 +108,14 @@ public class GridTile {
         return 1;
     }
 
+    /**
+     * True for a tile on the arena's own floor: not part way up a staircase and not a
+     * raised floor. Where players start, and where a fight sets its creatures down.
+     */
+    public boolean isOnArenaFloor() {
+        return type != TileType.STAIR && type != TileType.ELEVATED;
+    }
+
     public boolean isWater() {
         return type == TileType.WATER || type == TileType.DEEP_WATER;
     }
@@ -114,6 +126,14 @@ public class GridTile {
 
     public void setPermanent(boolean permanent) {
         this.permanent = permanent;
+    }
+
+    public int getRise() {
+        return rise;
+    }
+
+    public void setRise(int rise) {
+        this.rise = Math.max(0, rise);
     }
 
     public int getDamageOnStep() {

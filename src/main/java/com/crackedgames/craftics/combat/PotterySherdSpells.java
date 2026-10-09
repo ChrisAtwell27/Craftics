@@ -49,9 +49,15 @@ public class PotterySherdSpells {
     public static class DelayedSpellEffect {
         public int ticksRemaining;
         public final Runnable effect;
+        /** Whether the caster has to wait for this before acting again. */
+        public final boolean holdsTurn;
         public DelayedSpellEffect(int ticks, Runnable effect) {
+            this(ticks, effect, true);
+        }
+        public DelayedSpellEffect(int ticks, Runnable effect, boolean holdsTurn) {
             this.ticksRemaining = ticks;
             this.effect = effect;
+            this.holdsTurn = holdsTurn;
         }
     }
 
@@ -60,10 +66,23 @@ public class PotterySherdSpells {
         PENDING_EFFECTS.add(new DelayedSpellEffect(delayTicks, effect));
     }
 
-    /** Returns the max delay across all pending effects (for input-blocking duration). */
+    /**
+     * Queue a visual effect the caster does not have to wait for.
+     *
+     * <p>For the tail of a spell: smoke clearing, a spike crumbling, crops being gathered in.
+     * The spell is over by then, and making the player sit through the tidying up is how a
+     * good-looking spell becomes a slow one.
+     */
+    public static void queueBackground(int delayTicks, Runnable effect) {
+        PENDING_EFFECTS.add(new DelayedSpellEffect(delayTicks, effect, false));
+    }
+
+    /** Returns the max delay across the pending effects the caster waits for (for input-blocking duration). */
     public static int getMaxPendingDelay() {
         int max = 0;
-        for (DelayedSpellEffect e : PENDING_EFFECTS) max = Math.max(max, e.ticksRemaining);
+        for (DelayedSpellEffect e : PENDING_EFFECTS) {
+            if (e.holdsTurn) max = Math.max(max, e.ticksRemaining);
+        }
         return max;
     }
 

@@ -1,0 +1,12 @@
+{
+  "id": "craftics:boss_intro_aether_silver_dungeon",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "A winged queen waits on her throne. You ask her what this place is.",
+    "\"This is a sanctuary for us Valkyries who seek rest.\"",
+    "You tell her you wish to fight.",
+    "\"Very well then. Bring me ten medals from my subordinates to prove your worth, then we'll see.\""
+  ],
+  "choices": []
+}

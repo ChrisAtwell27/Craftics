@@ -501,8 +501,8 @@ public class GridArena {
         if (tile != null) {
             TileType t = tile.getType();
             if (flying) {
-                if (t == TileType.OBSTACLE || t == TileType.ELEVATED) return baseY + 1;
-                if (t == TileType.STAIR) return baseY + 0.5;
+                if (t == TileType.OBSTACLE || t == TileType.ELEVATED) return baseY + 1 + tile.getRise();
+                if (t == TileType.STAIR) return baseY + 0.5 + tile.getRise();
                 return baseY;
             }
             if (t == TileType.WATER || t == TileType.DEEP_WATER || t == TileType.LOW_GROUND
@@ -517,10 +517,25 @@ public class GridArena {
             // Stair = half-step landing (Y+0.5). Elevated = full upper-floor
             // landing (Y+1). The lerp in CombatManager.tickAnimation handles
             // the smooth ramp transition between floor → stair → elevated.
-            if (t == TileType.STAIR) return baseY + 0.5;
-            if (t == TileType.ELEVATED) return baseY + 1;
+            // A second floor, reached by a second flight, adds its rise to both.
+            if (t == TileType.STAIR) return baseY + 0.5 + tile.getRise();
+            if (t == TileType.ELEVATED) return baseY + 1 + tile.getRise();
         }
         return baseY;
+    }
+
+    /**
+     * How far above the arena's own floor a body stands on this tile: half a block on a
+     * stair, a whole one on a raised floor, more on the floors above that, and nothing
+     * anywhere else. What a spawn adds to the flat height it would otherwise use, so
+     * that nothing set down on a raised floor starts inside the block under it.
+     */
+    public double getSurfaceLift(GridPos pos) {
+        GridTile tile = getTile(pos);
+        if (tile == null) return 0;
+        if (tile.getType() == TileType.STAIR) return 0.5 + tile.getRise();
+        if (tile.getType() == TileType.ELEVATED) return 1 + tile.getRise();
+        return 0;
     }
 
     /** Far-away X base for the legacy / test arena origins, kept well clear of the

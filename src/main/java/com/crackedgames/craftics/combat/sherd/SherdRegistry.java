@@ -106,7 +106,8 @@ public final class SherdRegistry {
                 .visuals(SpellVisuals.builder()
                     .trail(ParticleTypes.PORTAL, ParticleTypes.END_ROD).trailShape(14, 0.5).trailDelay(3)
                     .impact(ParticleTypes.END_ROD, SoundEvents.ENTITY_ENDERMAN_TELEPORT)
-                    .impactCount(20).impactRing(0.8).impactDelay(6).impactPitch(0.6f, 1.3f)))
+                    .impactCount(20).impactRing(0.8).impactDelay(6).impactPitch(0.6f, 1.3f)
+                    .choreography(SherdStaging::phaseStep)))
             // Slip through space: a brief guard right after the blink, so Phase Step is an
             // escape tool rather than a scouting one.
             .step(SpellStep.of(Selector.self())
@@ -126,7 +127,8 @@ public final class SherdRegistry {
                 .visuals(SpellVisuals.builder()
                     .trail(ParticleTypes.HAPPY_VILLAGER, ParticleTypes.ENCHANT).trailShape(12, 0.4).trailDelay(3)
                     .impact(ParticleTypes.HEART, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP)
-                    .impactCount(6).impactRing(0.6).impactDelay(6).impactPitch(0.5f, 1.5f)))
+                    .impactCount(6).impactRing(0.6).impactDelay(6).impactPitch(0.5f, 1.5f)
+                    .choreography(SherdStaging::guardianSpirit)))
             .tooltip("§d[3 AP] Guardian Spirit §7- Heal every pet for "
                 + Math.round(FRIEND_HEAL_PERCENT * 100) + "% of its max HP\n"
                 + "§7+" + FRIEND_ATK_BUFF + " ATK and +" + FRIEND_SPEED_BUFF
@@ -141,7 +143,8 @@ public final class SherdRegistry {
                 .effect(Effects.damage(5).pctMaxHp(0.08))
                 .effect(Effects.defensePenalty(3, 7))
                 .visuals(spellTrail(ParticleTypes.ITEM_SLIME, ParticleTypes.FALLING_OBSIDIAN_TEAR,
-                    ParticleTypes.ITEM_SLIME, SoundEvents.BLOCK_GRINDSTONE_USE)))
+                    ParticleTypes.ITEM_SLIME, SoundEvents.BLOCK_GRINDSTONE_USE)
+                    .choreography(SherdStaging::corrode)))
             .tooltip("§d[3 AP] Corrode §7- 5 dmg + reduce DEF by 7 (3 turns)")
             .build());
 
@@ -156,7 +159,8 @@ public final class SherdRegistry {
                 .effect(Effects.damage(6).pctMaxHp(0.08)
                     .bonusIf(Effects.Condition.ADJACENT_TO_CASTER, 5).label("WATER"))
                 .visuals(spellTrail(ParticleTypes.CRIT, null,
-                    ParticleTypes.SPLASH, SoundEvents.ENTITY_FISHING_BOBBER_SPLASH)))
+                    ParticleTypes.SPLASH, SoundEvents.ENTITY_FISHING_BOBBER_SPLASH)
+                    .choreography(SherdStaging::riptideHook)))
             .tooltip("§3[3 AP] Riptide Hook §7- Pull 2 tiles + 6 dmg (+5 if adjacent)")
             .build());
 
@@ -170,7 +174,8 @@ public final class SherdRegistry {
                 .effect(Effects.attackPenalty(5))
                 .effect(Effects.speedChange(-4))
                 .visuals(spellTrail(ParticleTypes.ENCHANTED_HIT, ParticleTypes.LARGE_SMOKE,
-                    ParticleTypes.ENCHANTED_HIT, SoundEvents.BLOCK_ANVIL_DESTROY)))
+                    ParticleTypes.ENCHANTED_HIT, SoundEvents.BLOCK_ANVIL_DESTROY)
+                    .choreography(SherdStaging::shatterWill)))
             .tooltip("§d[3 AP] Shatter Will §7- 5 dmg + -5 ATK, -4 SPD (2 turns)")
             .build());
 
@@ -181,7 +186,8 @@ public final class SherdRegistry {
             .step(SpellStep.of(Selector.enemy())
                 .effect(Effects.stun())
                 .visuals(spellTrail(ParticleTypes.COMPOSTER, ParticleTypes.HAPPY_VILLAGER,
-                    ParticleTypes.COMPOSTER, SoundEvents.BLOCK_VINE_PLACE)))
+                    ParticleTypes.COMPOSTER, SoundEvents.BLOCK_VINE_PLACE)
+                    .choreography(SherdStaging::entangle)))
             .step(SpellStep.of(Selector.enemiesNear(1))
                 .heading("§2Roots spread!")
                 .effect(Effects.speedChange(-5))
@@ -198,8 +204,12 @@ public final class SherdRegistry {
             .step(SpellStep.of(Selector.enemy())
                 .effect(Effects.damage(10).pctMaxHp(0.10)
                     .bonusIf(Effects.Condition.NEAR_OBSTACLE, 6).label("BLUNT"))
-                .visuals(spellTrail(ParticleTypes.DUST_PLUME, null,
-                    ParticleTypes.DUST_PLUME, SoundEvents.BLOCK_STONE_BREAK)))
+                // The dust hugs the floor: this one travels through the ground, not over it.
+                .visuals(SpellVisuals.builder()
+                    .trail(ParticleTypes.DUST_PLUME).trailShape(12, 0.1).trailDelay(2)
+                    .impact(ParticleTypes.DUST_PLUME, SoundEvents.BLOCK_STONE_BREAK)
+                    .impactCount(18).impactRing(0.6).impactDelay(6)
+                    .choreography(SherdStaging::earthenSpike)))
             .tooltip("§8[3 AP] Earthen Spike §7- 10 BLUNT dmg (+6 near obstacle)")
             .build());
 
@@ -213,7 +223,8 @@ public final class SherdRegistry {
                     "§dTrap set §78 damage + stun on trigger"))
                 .visuals(SpellVisuals.builder()
                     .trail(ParticleTypes.WITCH, ParticleTypes.ENCHANT).trailShape(8, 0.5).trailDelay(4)
-                    .impact(ParticleTypes.WITCH).impactCount(8).impactRing(0.5).impactDelay(8)))
+                    .impact(ParticleTypes.WITCH).impactCount(8).impactRing(0.5).impactDelay(8)
+                    .choreography(SherdStaging::hexTrap)))
             .tooltip("§d[3 AP] Hex Trap §7- Invisible trap: 12 dmg + stun on trigger")
             .build());
 
@@ -229,7 +240,8 @@ public final class SherdRegistry {
                 .visuals(SpellVisuals.builder()
                     .trail(ParticleTypes.SWEEP_ATTACK, ParticleTypes.ENCHANTED_HIT)
                     .trailShape(6, 0.3).trailDelay(3)
-                    .impact(ParticleTypes.CRIT).impactCount(15).impactRing(0.7).impactDelay(7)))
+                    .impact(ParticleTypes.CRIT).impactCount(15).impactRing(0.7).impactDelay(7)
+                    .choreography(SherdStaging::phantomSlash)))
             // A random adjacent enemy, not a positionally-first one - see Selector.random().
             .step(SpellStep.of(Selector.enemiesNear(1).random().maxTargets(1))
                 .heading("§dCleave!")
@@ -249,7 +261,8 @@ public final class SherdRegistry {
                 .visuals(SpellVisuals.builder()
                     .trail(ParticleTypes.FLAME, ParticleTypes.LARGE_SMOKE).trailShape(14, 1.8).trailDelay(4)
                     .impact(ParticleTypes.FLAME, SoundEvents.ENTITY_GENERIC_EXPLODE.value())
-                    .impactCount(30).impactRing(1.0).impactDelay(8)))
+                    .impactCount(30).impactRing(1.0).impactDelay(8)
+                    .choreography(SherdStaging::immolation)))
             .step(SpellStep.of(Selector.enemiesNear(1))
                 .heading("§6Caught in the blast!")
                 .effect(Effects.damage(5).plain().label("fire"))
@@ -268,7 +281,8 @@ public final class SherdRegistry {
                 .visuals(SpellVisuals.builder()
                     .trail(ParticleTypes.DUST_PLUME).trailShape(6, 0.2).trailDelay(3)
                     .impact(ParticleTypes.DUST_PLUME, SoundEvents.BLOCK_ANVIL_LAND)
-                    .impactCount(25).impactRing(0.8).impactDelay(7).impactPitch(1.2f, 0.7f)))
+                    .impactCount(25).impactRing(0.8).impactDelay(7).impactPitch(1.2f, 0.7f)
+                    .choreography(SherdStaging::tectonicCharge)))
             .tooltip("§8[4 AP] Tectonic Charge §7- KB 3 tiles, 4 dmg/tile, wall slam +9")
             .build());
 
@@ -276,7 +290,8 @@ public final class SherdRegistry {
             .color("§3").ap(4).selfCast()
             .emptyMessage("§7No enemies in range.")
             .castVisuals(SpellVisuals.builder()
-                .cast(ParticleTypes.BUBBLE, SoundEvents.ENTITY_GENERIC_SPLASH).castCount(12).converge(1.5))
+                .cast(ParticleTypes.BUBBLE, SoundEvents.ENTITY_GENERIC_SPLASH).castCount(12).converge(1.5)
+                .choreography(SherdStaging::tidalSurge))
             .step(SpellStep.of(Selector.enemiesAroundCaster(2))
                 .effect(Effects.damage(8).pctMaxHp(0.06).label("WATER"))
                 .effect(Effects.knockback(2, 0, 0, false))
@@ -294,7 +309,8 @@ public final class SherdRegistry {
             .step(SpellStep.of(Selector.enemy())
                 .effect(Effects.damage(10).pctMaxHp(0.08))
                 .visuals(spellTrail(ParticleTypes.SOUL_FIRE_FLAME, ParticleTypes.SOUL,
-                    ParticleTypes.SOUL, SoundEvents.ENTITY_VEX_CHARGE)))
+                    ParticleTypes.SOUL, SoundEvents.ENTITY_VEX_CHARGE)
+                    .choreography(SherdStaging::soulDrain)))
             // Reads report.totalDamage(), so it must follow the damage step.
             .step(SpellStep.of(Selector.self())
                 .effect(Effects.lifesteal()))
@@ -305,7 +321,8 @@ public final class SherdRegistry {
             .color("§7").ap(4).selfCast()
             .emptyMessage("§7You have no pets to detonate.")
             .castVisuals(SpellVisuals.builder()
-                .cast(ParticleTypes.CLOUD, howlSound()).castCount(8).converge(1.5).castPitch(2.0f, 0.8f))
+                .cast(ParticleTypes.CLOUD, howlSound()).castCount(8).converge(1.5).castPitch(2.0f, 0.8f)
+                .choreography(SherdStaging::petsplosion))
             .step(SpellStep.of(Selector.enemiesAroundEachPet(PETSPLOSION_RADIUS))
                 .effect(Effects.damage(PETSPLOSION_DAMAGE))
                 .visuals(SpellVisuals.builder()
@@ -328,7 +345,8 @@ public final class SherdRegistry {
                     .trail(ParticleTypes.ELECTRIC_SPARK, ParticleTypes.SOUL_FIRE_FLAME)
                     .trailShape(10, 1.5).trailDelay(3)
                     .impact(ParticleTypes.ELECTRIC_SPARK, SoundEvents.ENTITY_LIGHTNING_BOLT_IMPACT)
-                    .impactCount(20).impactRing(0).impactDelay(7).impactPitch(0.6f, 1.2f)))
+                    .impactCount(20).impactRing(0).impactDelay(7).impactPitch(0.6f, 1.2f)
+                    .choreography(SherdStaging::chainLightning)))
             .tooltip("§e[4 AP] Chain Lightning §7- 8 dmg, chains to enemies within 2 tiles (2x on Soaked)")
             .build());
 
@@ -344,7 +362,8 @@ public final class SherdRegistry {
                 .visuals(SpellVisuals.builder()
                     .impact(ParticleTypes.HEART, SoundEvents.BLOCK_BEACON_ACTIVATE)
                     .impactCount(12).impactRing(1.0).impactDelay(7).impactPitch(0.4f, 1.5f)
-                    .extraImpact(SherdRegistry::risingHelix)))
+                    .extraImpact(SherdRegistry::risingHelix)
+                    .choreography(SherdStaging::mendingLight)))
             .tooltip("§d[5 AP] Mending Light §7- Heal 15 HP + Regen II (4 turns)")
             .build());
 
@@ -357,7 +376,8 @@ public final class SherdRegistry {
                 .effect(Effects.casterEffect(EffectType.ABSORPTION, 4, 2))
                 .visuals(SpellVisuals.builder()
                     .impact(ParticleTypes.ENCHANTED_HIT, SoundEvents.BLOCK_ANVIL_USE)
-                    .impactCount(10).impactRing(0.6).impactDelay(8).impactPitch(0.4f, 1.5f)))
+                    .impactCount(10).impactRing(0.6).impactDelay(8).impactPitch(0.4f, 1.5f)
+                    .choreography(SherdStaging::stoneAegis)))
             .tooltip("§7[5 AP] Stone Aegis §7- Resistance III (5t) + Absorption III (4t)")
             .build());
 
@@ -369,7 +389,8 @@ public final class SherdRegistry {
                 .effect(Effects.randomCasterEffects(BREWER_POOL, 4, 4, 1))
                 .visuals(SpellVisuals.builder()
                     .impact(ParticleTypes.EFFECT, SoundEvents.ENTITY_SPLASH_POTION_BREAK)
-                    .impactCount(12).impactRing(0.8).impactDelay(8)))
+                    .impactCount(12).impactRing(0.8).impactDelay(8)
+                    .choreography(SherdStaging::alchemistsSurge)))
             .tooltip("§d[5 AP] Alchemist's Surge §7- 4 random buffs II (4 turns each)")
             .build());
 
@@ -383,7 +404,8 @@ public final class SherdRegistry {
                 .effect(Effects.giveItems(PLENTY_CONSUMABLES, 3))
                 .visuals(SpellVisuals.builder()
                     .impact(ParticleTypes.HAPPY_VILLAGER, SoundEvents.ENTITY_VILLAGER_YES)
-                    .impactCount(12).impactRing(0.8).impactDelay(8).impactPitch(0.5f, 1.2f)))
+                    .impactCount(12).impactRing(0.8).impactDelay(8).impactPitch(0.5f, 1.2f)
+                    .choreography(SherdStaging::bountifulHarvest)))
             .tooltip("§a[5 AP] Bountiful Harvest §7- Heal 10 HP + 3 random consumables")
             .build());
 
@@ -396,7 +418,8 @@ public final class SherdRegistry {
                 .effect(Effects.summonSeekers(SEEKER_BASE_COUNT, SEEKER_DAMAGE))
                 .visuals(SpellVisuals.builder()
                     .impact(ParticleTypes.ENCHANTED_HIT, SoundEvents.ENTITY_ILLUSIONER_CAST_SPELL)
-                    .impactCount(0).impactRing(1.5).impactDelay(4).impactPitch(0.8f, 1.5f)))
+                    .impactCount(0).impactRing(1.5).impactDelay(4).impactPitch(0.8f, 1.5f)
+                    .choreography(SherdStaging::seekerVexes)))
             .tooltip("§b[5 AP] Seeker Vexes §7- Summon " + SEEKER_BASE_COUNT + " seeking vexes\n"
                 + "§7They fly at the nearest enemy on their own each round, then destroy themselves"
                 + " on attack for " + SEEKER_DAMAGE + " damage\n"
@@ -413,7 +436,8 @@ public final class SherdRegistry {
                 .effect(Effects.doubleNextAttack())
                 .visuals(SpellVisuals.builder()
                     .impact(ParticleTypes.ENCHANTED_HIT, SoundEvents.BLOCK_ENCHANTMENT_TABLE_USE)
-                    .impactCount(15).impactRing(0.6).impactDelay(8).impactPitch(0.5f, 1.2f)))
+                    .impactCount(15).impactRing(0.6).impactDelay(8).impactPitch(0.5f, 1.2f)
+                    .choreography(SherdStaging::fortunesFavor)))
             .tooltip("§6[5 AP] Fortune's Favor §7- Next attack = DOUBLE damage + Luck III (4t)")
             .build());
 
@@ -429,7 +453,8 @@ public final class SherdRegistry {
                 .effect(Effects.casterEffect(EffectType.SPEED, 4, 1))
                 .visuals(SpellVisuals.builder()
                     .impact(ParticleTypes.CRIT, SoundEvents.EVENT_RAID_HORN.value())
-                    .impactCount(12).impactRing(0.6).impactDelay(8)))
+                    .impactCount(12).impactRing(0.6).impactDelay(8)
+                    .choreography(SherdStaging::warCry)))
             .tooltip("§6[6 AP] War Cry §7- STR III (+9 ATK) + SPD II (+4 SPD) (4 turns)")
             .build());
 
@@ -446,14 +471,16 @@ public final class SherdRegistry {
                 .visuals(SpellVisuals.builder()
                     .trail(ParticleTypes.SOUL_FIRE_FLAME, ParticleTypes.SOUL).trailShape(14, 2.0).trailDelay(4)
                     .impact(ParticleTypes.SOUL_FIRE_FLAME, SoundEvents.ENTITY_WITHER_SHOOT)
-                    .impactCount(25).impactRing(1.0).impactDelay(8).impactPitch(1.5f, 0.5f)))
+                    .impactCount(25).impactRing(1.0).impactDelay(8).impactPitch(1.5f, 0.5f)
+                    .choreography(SherdStaging::deathMarkExecute)))
             .step(SpellStep.of(Selector.enemy())
                 .effect(Effects.damage(10).pctMaxHp(0.08))
                 .effect(Effects.wither(4, 3))
                 .visuals(SpellVisuals.builder()
                     .trail(ParticleTypes.SOUL_FIRE_FLAME, ParticleTypes.SOUL).trailShape(14, 2.0).trailDelay(4)
                     .impact(ParticleTypes.SOUL, SoundEvents.ENTITY_WITHER_SHOOT)
-                    .impactCount(15).impactRing(0.6).impactDelay(8).impactPitch(1.0f, 0.8f)))
+                    .impactCount(15).impactRing(0.6).impactDelay(8).impactPitch(1.0f, 0.8f)
+                    .choreography(SherdStaging::deathMark)))
             .tooltip("§4[6 AP] Death Mark §7- Execute <"
                 + Math.round(DEATH_MARK_EXECUTE_BELOW * 100) + "% HP or 10 dmg + Wither IV (4t)")
             .build());
@@ -464,14 +491,13 @@ public final class SherdRegistry {
     // ─────────────────────────────────────────────────────────────────────
 
     /** The common "streak out, burst on arrival" pair most targeted sherds use. */
-    private static SpellVisuals spellTrail(net.minecraft.particle.ParticleEffect trail,
-                                           net.minecraft.particle.ParticleEffect trailSecondary,
-                                           net.minecraft.particle.ParticleEffect impact,
-                                           SoundEvent impactSound) {
+    private static SpellVisuals.Builder spellTrail(net.minecraft.particle.ParticleEffect trail,
+                                                   net.minecraft.particle.ParticleEffect trailSecondary,
+                                                   net.minecraft.particle.ParticleEffect impact,
+                                                   SoundEvent impactSound) {
         return SpellVisuals.builder()
             .trail(trail, trailSecondary).trailShape(12, 0.8).trailDelay(4)
-            .impact(impact, impactSound).impactCount(18).impactRing(0.6).impactDelay(8)
-            .build();
+            .impact(impact, impactSound).impactCount(18).impactRing(0.6).impactDelay(8);
     }
 
     /** Mending Light's rising helix, kept exactly as it was drawn. */

@@ -134,6 +134,23 @@ class EncounterGuardTest {
     }
 
     @Test
+    @DisplayName("a pickaxe strike takes a share of its target's health, so it keeps pace at any depth")
+    void pickaxeStrikeShare() {
+        // A better tool takes a bigger share.
+        int[] tiers = {ToolTiers.WOOD, ToolTiers.STONE, ToolTiers.IRON, ToolTiers.DIAMOND, ToolTiers.NETHERITE};
+        for (int i = 1; i < tiers.length; i++) {
+            assertTrue(ToolTiers.strikeShare(tiers[i]) > ToolTiers.strikeShare(tiers[i - 1]), "tier " + i);
+        }
+        // The Slider at the depth the Aether opens: about 700 health.
+        assertEquals(35, ToolTiers.strikeShareDamage(ToolTiers.DIAMOND, 700));
+        assertEquals(26, ToolTiers.strikeShareDamage(ToolTiers.IRON, 700));
+        // Whatever the pool, the number of swings the share alone needs stays put.
+        assertEquals(1000 / ToolTiers.strikeShare(ToolTiers.DIAMOND),
+            2000 / ToolTiers.strikeShareDamage(ToolTiers.DIAMOND, 2000));
+        assertEquals(1, ToolTiers.strikeShareDamage(ToolTiers.WOOD, 10), "never nothing");
+    }
+
+    @Test
     @DisplayName("Aether pickaxes sit at the tier they mine at")
     void aetherToolTiers() {
         assertEquals(ToolTiers.WOOD, ToolTiers.of("skyroot_pickaxe"));

@@ -103,7 +103,7 @@ public enum DamageType {
             case SPECIAL  -> scan.get(TrimEffects.Bonus.SPECIAL_POWER);
             case PET      -> scan.get(TrimEffects.Bonus.ALLY_DAMAGE);
             case RANGED   -> scan.get(TrimEffects.Bonus.RANGED_POWER);
-            default       -> 0;
+            case PHYSICAL -> scan.get(TrimEffects.Bonus.PHYSICAL_POWER);
         };
         // Melee Power is deliberately NOT folded in here.
         //

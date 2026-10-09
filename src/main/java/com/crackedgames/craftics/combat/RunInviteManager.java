@@ -448,6 +448,13 @@ public final class RunInviteManager {
             return;
         }
 
+        // A paused run resumes on the level it stopped at, which can be the boss - and this
+        // entry passes neither the victory screen nor transitionPartyToArena, the two places a
+        // registered boss gate is otherwise asked. So it is asked here, before anything is built
+        // and before anyone's hub pets are collected. Stopped, the party stays in the hub, and
+        // the gate's answer either ends the run or comes back through this method at level 1.
+        if (CombatManager.get(starter).bossGateAtRunStart(starter, castMembers, levelDef)) return;
+
         GridArena arena = ArenaBuilder.build(world, levelDef, worldOwner);
         BlockPos startPos = arena.getPlayerStartBlockPos();
         BlockPos origin = arena.getOrigin();

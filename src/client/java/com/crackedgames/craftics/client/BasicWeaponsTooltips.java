@@ -52,12 +52,22 @@ public final class BasicWeaponsTooltips {
         }
     }
 
+    /** A fraction as a whole percentage: {@code 0.5} is {@code "50%"}. */
+    static String percent(double fraction) {
+        return Math.round(fraction * 100) + "%";
+    }
+
     /** Effect description lines per type. The dagger gets an extra line spelling out the double hit. */
     private static String[] effectLines(String type) {
         return switch (type) {
+            // Read off the constant rather than written out: the off-hand hit was rebalanced
+            // from 75% to 50% once already and this line went on saying 75%.
             case "dagger" -> new String[]{
-                "§6Dual-wield two daggers: §esecond hit at 75% for 1 AP",
-                "About 1.75x damage when paired"
+                "§6Dual-wield two daggers: §esecond hit at " + percent(
+                    com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.DAGGER_OFFHAND_MULT)
+                    + " for 1 AP",
+                "About " + (1.0 + com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat
+                    .DAGGER_OFFHAND_MULT) + "x damage when paired"
             };
             case "spear" -> new String[]{
                 "Reach (2 tiles), lower base damage",

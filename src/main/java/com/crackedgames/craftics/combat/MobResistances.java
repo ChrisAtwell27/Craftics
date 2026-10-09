@@ -178,6 +178,7 @@ public class MobResistances {
         resist("boss:mountain",        DamageType.BLUNT); // The Rockbreaker
         resist("boss:crimson_forest",  DamageType.BLUNT); // The Bastion Brute
         resist("boss:cave",            DamageType.BLUNT); // The Hollow King
+        resist("boss:aether_bronze_dungeon", DamageType.BLUNT); // The Slider
     }
 
     // ── Helpers to populate the maps ──

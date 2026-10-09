@@ -316,6 +316,11 @@ public class ClientGridHelper {
 
     public static boolean isTileWalkable(MinecraftClient client, GridPos pos) {
         if (client.world == null) return false;
+        // The server has already said the player can stand here this turn. A raised floor
+        // is a solid block at body height, which the block scan below reads as a wall, so
+        // the path preview stopped at the foot of every staircase.
+        Set<GridPos> moveTiles = CombatState.getMoveTiles();
+        if (moveTiles != null && moveTiles.contains(pos)) return true;
         int wx = CombatState.getArenaOriginX() + pos.x();
         int wy = CombatState.getArenaOriginY();
         int wz = CombatState.getArenaOriginZ() + pos.z();
